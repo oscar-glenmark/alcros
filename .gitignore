@@ -1,0 +1,17 @@
+# VS Code / Cursor
+.vscode/
+
+# Environment files
+.env
+.env.*
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# OS files
+.DS_Store
+Thumbs.db

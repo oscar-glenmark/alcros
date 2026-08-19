@@ -13,33 +13,41 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $viewDate)) {
     $viewDate = date('Y-m-d');
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $id = (int) ($_POST['appointment_id'] ?? 0);
-    $status = $_POST['status'] ?? '';
-    $valid = ['scheduled', 'confirmed', 'completed', 'cancelled', 'no_show'];
-    if ($id > 0 && in_array($status, $valid, true)) {
-        $pdo->prepare('UPDATE appointments SET status = ? WHERE id = ?')->execute([$status, $id]);
-        $codeStmt = $pdo->prepare('SELECT appointment_code FROM appointments WHERE id = ?');
-        $codeStmt->execute([$id]);
-        $code = $codeStmt->fetchColumn();
-        logActivity(staffId(), 'Appointment Updated', 'Changed ' . ($code ?: "#$id") . " to $status");
+    $isDelete = isset($_POST['delete_appointment']);
+    $isUpdate = isset($_POST['update_status']) || (!$isDelete && isset($_POST['status']));
+
+    if ($isDelete) {
+        if ($id > 0) {
+            $codeStmt = $pdo->prepare('SELECT appointment_code FROM appointments WHERE id = ?');
+            $codeStmt->execute([$id]);
+            $code = $codeStmt->fetchColumn();
+            if ($code) {
+                $pdo->prepare('DELETE FROM appointments WHERE id = ?')->execute([$id]);
+                logActivity(staffId(), 'Appointment Deleted', "Deleted appointment $code");
+                appointmentFlashSet('success', 'Appointment ' . $code . ' deleted.');
+            }
+        }
+    } elseif ($isUpdate) {
+        $status = (string) ($_POST['status'] ?? '');
+        $valid = ['scheduled', 'confirmed', 'completed', 'cancelled', 'no_show'];
+        if ($id > 0 && in_array($status, $valid, true)) {
+            $pdo->prepare('UPDATE appointments SET status = ? WHERE id = ?')->execute([$status, $id]);
+            $codeStmt = $pdo->prepare('SELECT appointment_code FROM appointments WHERE id = ?');
+            $codeStmt->execute([$id]);
+            $code = $codeStmt->fetchColumn();
+            logActivity(staffId(), 'Appointment Updated', 'Changed ' . ($code ?: "#$id") . " to $status");
+            appointmentFlashSet('success', 'Appointment status saved as ' . appointmentStatusLabel($status) . '.');
+        } else {
+            appointmentFlashSet('error', 'Could not update appointment status. Please try again.');
+        }
     }
+
     redirectWithAuth('appointment.php', ['date' => $viewDate]);
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_appointment'])) {
-    $id = (int) ($_POST['appointment_id'] ?? 0);
-    if ($id > 0) {
-        $codeStmt = $pdo->prepare('SELECT appointment_code FROM appointments WHERE id = ?');
-        $codeStmt->execute([$id]);
-        $code = $codeStmt->fetchColumn();
-        if ($code) {
-            $pdo->prepare('DELETE FROM appointments WHERE id = ?')->execute([$id]);
-            logActivity(staffId(), 'Appointment Deleted', "Deleted appointment $code");
-        }
-    }
-    redirectWithAuth('appointment.php', ['date' => $viewDate]);
-}
+$flash = appointmentFlashGet();
 
 $stmt = $pdo->prepare('SELECT * FROM appointments WHERE appointment_date = ? ORDER BY appointment_time ASC');
 $stmt->execute([$viewDate]);
@@ -70,6 +78,9 @@ $nextDate = date('Y-m-d', strtotime($viewDate . ' +1 day'));
     <main class="admin-main flex flex-col bg-[#fdfdfd]">
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
         <div class="px-10 pt-10 pb-6">
+            <a href="<?= htmlspecialchars(buildAuthUrl('dashboard.php')) ?>" class="text-blue-600 text-[11px] font-bold flex items-center mb-2 hover:underline">
+                <i data-lucide="chevron-left" class="w-3 h-3 mr-1"></i> Back to Dashboard
+            </a>
             <h1 class="text-2xl font-black text-slate-900 tracking-tight">Appointment Management</h1>
             <p class="text-gray-500 text-sm font-medium">Manage and track citizen appointments for document pickup.</p>
         </div>
@@ -86,6 +97,12 @@ $nextDate = date('Y-m-d', strtotime($viewDate . ' +1 day'));
             </div>
         </div>
         <div class="px-10 flex-1 pb-10">
+            <?php if ($flash): ?>
+            <div class="mb-6 p-4 <?= $flash[0] === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800' ?> border text-sm rounded-xl flex items-center gap-2">
+                <i data-lucide="<?= $flash[0] === 'success' ? 'check-circle' : 'alert-circle' ?>" class="w-5 h-5 shrink-0"></i>
+                <span><?= htmlspecialchars($flash[1]) ?></span>
+            </div>
+            <?php endif; ?>
             <?php if (empty($appointments)): ?>
             <div class="bg-white rounded-2xl border border-gray-100 shadow-sm min-h-[400px] flex flex-col items-center justify-center">
                 <div class="bg-gray-50 p-4 rounded-xl mb-6"><i data-lucide="calendar-off" class="w-10 h-10 text-gray-200"></i></div>
@@ -108,16 +125,17 @@ $nextDate = date('Y-m-d', strtotime($viewDate . ' +1 day'));
                             <td class="px-4 py-3"><span class="text-[10px] font-bold uppercase"><?= htmlspecialchars(appointmentStatusLabel($ap['status'])) ?></span></td>
                             <td class="px-4 py-3">
                                 <div class="flex gap-1 items-center">
-                                    <form method="POST" class="flex gap-1 items-center">
+                                    <form method="POST" action="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $viewDate])) ?>" class="flex gap-1 items-center">
                                         <?= authFormField() ?>
                                         <input type="hidden" name="redirect_date" value="<?= htmlspecialchars($viewDate) ?>">
                                         <input type="hidden" name="appointment_id" value="<?= (int) $ap['id'] ?>">
+                                        <input type="hidden" name="update_status" value="1">
                                         <select name="status" class="text-[10px] border rounded px-2 py-1">
                                             <?php foreach (['scheduled','confirmed','completed','cancelled','no_show'] as $s): ?>
-                                            <option value="<?= $s ?>" <?= $ap['status'] === $s ? 'selected' : '' ?>><?= ucfirst(str_replace('_', ' ', $s)) ?></option>
+                                            <option value="<?= $s ?>" <?= $ap['status'] === $s ? 'selected' : '' ?>><?= htmlspecialchars(appointmentStatusLabel($s)) ?></option>
                                             <?php endforeach; ?>
                                         </select>
-                                        <button type="submit" name="update_status" value="1" class="bg-blue-600 text-white px-2 py-1 rounded text-[10px] font-bold">Save</button>
+                                        <button type="submit" class="bg-blue-600 text-white px-2 py-1 rounded text-[10px] font-bold">Save</button>
                                     </form>
                                     <button type="button"
                                             class="delete-appointment-btn text-gray-300 hover:text-red-500 p-1 transition-colors"
@@ -137,7 +155,7 @@ $nextDate = date('Y-m-d', strtotime($viewDate . ' +1 day'));
         </div>
     </main>
 
-    <form id="deleteAppointmentForm" method="POST" class="hidden">
+    <form id="deleteAppointmentForm" method="POST" action="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $viewDate])) ?>" class="hidden">
         <?= authFormField() ?>
         <input type="hidden" name="redirect_date" value="<?= htmlspecialchars($viewDate) ?>">
         <input type="hidden" name="delete_appointment" value="1">

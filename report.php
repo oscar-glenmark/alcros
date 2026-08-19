@@ -32,6 +32,9 @@ $reportData = [
     <main class="admin-main flex flex-col bg-[#fdfdfd]">
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
         <div class="p-10">
+            <a href="<?= htmlspecialchars(buildAuthUrl('dashboard.php')) ?>" class="text-blue-600 text-[11px] font-bold flex items-center mb-2 hover:underline">
+                <i data-lucide="chevron-left" class="w-3 h-3 mr-1"></i> Back to Dashboard
+            </a>
             <h1 class="text-2xl font-black mb-2">Operational Reports</h1>
             <p class="text-gray-500 text-sm mb-8">Daily operational summary — <?= date('F j, Y') ?></p>
             <div class="grid grid-cols-3 gap-6">

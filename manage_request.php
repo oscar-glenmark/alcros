@@ -32,20 +32,22 @@ function updateDocumentRequestStatus(PDO $pdo, int $id, string $status): bool
     }
 
     $oldStatus = (string) $row['status'];
-    if ($oldStatus === 'completed') {
+    if ($oldStatus === $status) {
+        return true;
+    }
+
+    $stmt = $pdo->prepare('UPDATE document_requests SET status = ?, updated_at = NOW() WHERE id = ?');
+    $stmt->execute([$status, $id]);
+
+    $checkStmt = $pdo->prepare('SELECT status FROM document_requests WHERE id = ?');
+    $checkStmt->execute([$id]);
+    $savedStatus = (string) $checkStmt->fetchColumn();
+    if ($savedStatus !== $status) {
         return false;
     }
 
-    $stmt = $pdo->prepare('UPDATE document_requests SET status = ?, updated_at = NOW() WHERE id = ? AND status != ?');
-    $stmt->execute([$status, $id, 'completed']);
-    if ($stmt->rowCount() === 0) {
-        return false;
-    }
-
-    if ($oldStatus !== $status) {
-        notifyRequestStatusChange($pdo, $id, $status);
-        logActivity(staffId(), 'Request Updated', 'Changed ' . $row['tracking_code'] . ' to ' . $status);
-    }
+    notifyRequestStatusChange($pdo, $id, $status);
+    logActivity(staffId(), 'Request Updated', 'Changed ' . $row['tracking_code'] . ' to ' . $status);
 
     return true;
 }
@@ -54,34 +56,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $filters = manageRequestsRedirectFilters();
     $id = (int) ($_POST['request_id'] ?? 0);
 
-    if (isset($_POST['update_status'])) {
+    $isDelete = isset($_POST['delete_request']);
+    $isUpdate = isset($_POST['update_status']) || (!$isDelete && isset($_POST['status']));
+
+    if ($isUpdate) {
         $status = (string) ($_POST['status'] ?? '');
         if (updateDocumentRequestStatus($pdo, $id, $status)) {
             manageRequestsFlashSet('success', 'Request status saved as ' . requestStatusLabel($status) . '.');
         } else {
-            $currentStmt = $pdo->prepare('SELECT status FROM document_requests WHERE id = ?');
-            $currentStmt->execute([$id]);
-            $currentStatus = (string) $currentStmt->fetchColumn();
-            if ($currentStatus === 'completed') {
-                manageRequestsFlashSet('error', 'Completed requests cannot be changed.');
-            } else {
-                manageRequestsFlashSet('error', 'Could not update request status. Please try again.');
-            }
+            manageRequestsFlashSet('error', 'Could not update request status. Please try again.');
         }
-    } elseif (isset($_POST['advance_status'])) {
-        $currentStmt = $pdo->prepare('SELECT status FROM document_requests WHERE id = ?');
-        $currentStmt->execute([$id]);
-        $currentStatus = (string) $currentStmt->fetchColumn();
-        $nextStatus = nextRequestStatus($currentStatus);
-
-        if ($nextStatus && updateDocumentRequestStatus($pdo, $id, $nextStatus)) {
-            manageRequestsFlashSet('success', 'Request advanced to ' . requestStatusLabel($nextStatus) . '.');
-        } elseif ($currentStatus === 'completed') {
-            manageRequestsFlashSet('error', 'Completed requests cannot be changed.');
-        } else {
-            manageRequestsFlashSet('error', 'Could not advance request status.');
-        }
-    } elseif (isset($_POST['delete_request'])) {
+    } elseif ($isDelete) {
         if (deleteCompletedDocumentRequest($pdo, $id)) {
             manageRequestsFlashSet('success', 'Completed request deleted successfully.');
         } else {
@@ -160,7 +145,8 @@ $statusOptions = requestStatusOptions();
             </div>
             <?php endif; ?>
 
-            <form method="GET" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between mb-6">
+            <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between mb-6">
+                <?= authFormField() ?>
                 <div class="relative flex-1 max-w-2xl">
                     <i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-gray-400"></i>
                     <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search citizen name or tracking code..." class="w-full pl-10 pr-4 py-2 text-sm bg-gray-50 border-none rounded-lg focus:ring-0 text-slate-600 placeholder-gray-400">
@@ -213,43 +199,27 @@ $statusOptions = requestStatusOptions();
                                             data-request="<?= htmlspecialchars(json_encode(documentRequestViewData($req), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP), ENT_QUOTES, 'UTF-8') ?>">
                                         <i data-lucide="eye" class="w-4 h-4"></i>
                                     </button>
-                                    <?php $next = nextRequestStatus($req['status']); ?>
-                                    <?php if ($req['status'] === 'completed'): ?>
-                                    <select disabled class="text-[10px] border rounded px-2 py-1 bg-gray-100 text-gray-500 cursor-not-allowed" title="Completed requests cannot be changed">
-                                        <option selected><?= htmlspecialchars(requestStatusLabel($req['status'])) ?></option>
-                                    </select>
-                                    <?php else: ?>
-                                    <?php if ($next): ?>
-                                    <form method="POST" class="inline">
+                                    <form method="POST" action="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="flex gap-1 items-center">
                                         <?= authFormField() ?>
                                         <input type="hidden" name="redirect_status" value="<?= htmlspecialchars($filterStatus) ?>">
                                         <input type="hidden" name="redirect_q" value="<?= htmlspecialchars($search) ?>">
                                         <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
-                                        <button type="submit" name="advance_status" value="1" title="Advance to <?= htmlspecialchars(requestStatusLabel($next)) ?>" class="text-green-500 hover:text-green-700 p-1">
-                                            <i data-lucide="arrow-right-circle" class="w-4 h-4"></i>
-                                        </button>
-                                    </form>
-                                    <?php endif; ?>
-                                    <form method="POST" class="flex gap-1 items-center">
-                                        <?= authFormField() ?>
-                                        <input type="hidden" name="redirect_status" value="<?= htmlspecialchars($filterStatus) ?>">
-                                        <input type="hidden" name="redirect_q" value="<?= htmlspecialchars($search) ?>">
-                                        <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
+                                        <input type="hidden" name="update_status" value="1">
                                         <select name="status" class="text-[10px] border rounded px-2 py-1">
                                             <?php foreach ($statusOptions as $s): ?>
                                             <option value="<?= $s ?>" <?= $req['status'] === $s ? 'selected' : '' ?>><?= htmlspecialchars(requestStatusLabel($s)) ?></option>
                                             <?php endforeach; ?>
                                         </select>
-                                        <button type="submit" name="update_status" value="1" class="bg-blue-600 text-white px-2 py-1 rounded text-[10px] font-bold" data-loading-text="Saving…">Save</button>
+                                        <button type="submit" class="bg-blue-600 text-white px-2 py-1 rounded text-[10px] font-bold" data-loading-text="Saving…">Save</button>
                                     </form>
-                                    <?php endif; ?>
                                     <?php if ($req['status'] === 'completed'): ?>
-                                    <form method="POST" class="inline">
+                                    <form method="POST" action="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="inline">
                                         <?= authFormField() ?>
                                         <input type="hidden" name="redirect_status" value="<?= htmlspecialchars($filterStatus) ?>">
                                         <input type="hidden" name="redirect_q" value="<?= htmlspecialchars($search) ?>">
                                         <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
-                                        <button type="submit" name="delete_request" value="1" title="Delete completed request" class="text-gray-400 hover:text-red-500 p-1" data-loading-text="Deleting…" onclick="return confirm(<?= json_encode('Delete this completed request (' . $req['tracking_code'] . ')? This cannot be undone.') ?>)">
+                                        <input type="hidden" name="delete_request" value="1">
+                                        <button type="submit" title="Delete completed request" class="text-gray-400 hover:text-red-500 p-1" data-loading-text="Deleting…" onclick="return confirm(<?= json_encode('Delete this completed request (' . $req['tracking_code'] . ')? This cannot be undone.') ?>)">
                                             <i data-lucide="trash-2" class="w-4 h-4"></i>
                                         </button>
                                     </form>

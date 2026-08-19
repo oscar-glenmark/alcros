@@ -55,12 +55,14 @@ function validateStaffAuthToken(string $token): ?array
     return $data;
 }
 
-function staffSessionLogin(array $staff): void
+function staffSessionLogin(array $staff, bool $regenerate = false): void
 {
     $_SESSION['staff_id']   = (string) $staff['staff_id'];
     $_SESSION['staff_name'] = (string) ($staff['name'] ?? 'User');
     $_SESSION['staff_role'] = (string) ($staff['role'] ?? 'Staff');
-    session_regenerate_id(true);
+    if ($regenerate) {
+        session_regenerate_id(true);
+    }
 }
 
 function staffSessionLogout(): void
@@ -140,9 +142,24 @@ function getAuthenticatedStaff(): ?array
     return $staff;
 }
 
+function staffAuthToken(): ?string
+{
+    $fromRequest = authTokenFromRequest();
+    if ($fromRequest !== null && validateStaffAuthToken($fromRequest) !== null) {
+        return $fromRequest;
+    }
+
+    $staff = getStaffFromSession();
+    if (!$staff) {
+        return null;
+    }
+
+    return createStaffAuthToken($staff);
+}
+
 function authFormField(): string
 {
-    $token = authTokenFromRequest();
+    $token = staffAuthToken();
     if (!$token) {
         return '';
     }
@@ -152,7 +169,7 @@ function authFormField(): string
 
 function buildAuthUrl(string $path, array $query = []): string
 {
-    $token = authTokenFromRequest();
+    $token = staffAuthToken();
     if ($token) {
         $query['alcros_auth'] = $token;
     }

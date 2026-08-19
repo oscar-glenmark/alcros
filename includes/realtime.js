@@ -320,81 +320,14 @@
     }
 
     function initManageRequests() {
-        var status = document.body.dataset.filterStatus || 'all';
-        var q = document.body.dataset.filterQ || '';
-        var type = document.body.dataset.filterType || 'all';
-        AlcrosPoll.pollJson('api/manage_requests.php', { status: status, q: q, type: type }, 60000, function (data) {
-            var tbody = document.getElementById('requests-tbody');
-            if (!tbody || !data.requests) return;
-
-            var labels = data.document_labels || {};
-            var statuses = ['pending', 'verified', 'ready', 'completed', 'rejected'];
-            var nextMap = { pending: 'verified', verified: 'ready', ready: 'completed' };
-
-            tbody.innerHTML = data.requests.map(function (r) {
-                var options = statuses.map(function (s) {
-                    return '<option value="' + s + '"' + (r.status === s ? ' selected' : '') + '>' + s.charAt(0).toUpperCase() + s.slice(1) + '</option>';
-                }).join('');
-                var next = nextMap[r.status];
-                var advanceBtn = next ? '<form method="POST" class="inline">' + authInputHtml() + '<input type="hidden" name="advance_status" value="1"><input type="hidden" name="request_id" value="' + r.id + '"><button type="submit" title="Advance" class="text-green-500 hover:text-green-700 p-1"><i data-lucide="arrow-right-circle" class="w-4 h-4"></i></button></form>' : '';
-                var deleteBtn = r.status === 'completed'
-                    ? '<form method="POST" class="inline">' + authInputHtml() + '<input type="hidden" name="delete_request" value="1"><input type="hidden" name="request_id" value="' + r.id + '"><button type="submit" title="Delete completed request" class="delete-request-btn text-gray-400 hover:text-red-500 p-1" onclick="return confirm(\'Delete this completed request (' + r.tracking_code + ')? This cannot be undone.\')"><i data-lucide="trash-2" class="w-4 h-4"></i></button></form>'
-                    : '';
-                var json = JSON.stringify(r).replace(/'/g, '&#39;');
-                var contact = (r.email ? '<p class="truncate max-w-[140px]">' + r.email + '</p>' : '') + (r.phone ? '<p>' + r.phone + '</p>' : '') || '—';
-                var dob = r.date_of_birth ? '<p class="text-[10px] text-gray-400">DOB: ' + formatDateDisplay(r.date_of_birth.substring(0,10)) + '</p>' : '';
-
-                return '<tr class="hover:bg-gray-50/50" data-request-row="' + r.id + '">' +
-                    '<td class="px-4 py-3"><input type="checkbox" class="row-check rounded text-blue-600" value="' + r.id + '"></td>' +
-                    '<td class="px-4 py-3"><button type="button" class="view-request-btn text-left" data-request=\'' + json + '\'><span class="font-mono text-xs font-bold text-blue-600 hover:underline">' + r.tracking_code + '</span></button></td>' +
-                    '<td class="px-4 py-3"><p class="font-semibold text-slate-800">' + r.citizen_name + '</p>' + dob + '</td>' +
-                    '<td class="px-4 py-3 text-gray-500 text-xs">' + (labels[r.document_type] || r.document_type) + '</td>' +
-                    '<td class="px-4 py-3 text-[10px] text-gray-400">' + contact + '</td>' +
-                    '<td class="px-4 py-3"><span class="px-2 py-0.5 rounded text-[9px] font-bold uppercase ' + (data.status_classes[r.status] || '') + '">' + r.status + '</span></td>' +
-                    '<td class="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">' + formatDateDisplay(r.submitted_at) + '</td>' +
-                    '<td class="px-4 py-3"><div class="flex gap-1 items-center justify-end">' + advanceBtn +
-                    '<button type="button" class="view-request-btn text-gray-400 hover:text-blue-600 p-1" data-request=\'' + json + '\'><i data-lucide="eye" class="w-4 h-4"></i></button>' +
-                    '<button type="button" class="edit-request-btn text-gray-400 hover:text-slate-700 p-1" data-request=\'' + json + '\'><i data-lucide="edit-3" class="w-4 h-4"></i></button>' +
-                    deleteBtn + '</div></td></tr>';
-            }).join('');
-
-            if (typeof lucide !== 'undefined') lucide.createIcons();
-            document.dispatchEvent(new CustomEvent('alcros:requests-refreshed'));
-            AlcrosPoll.markLiveIndicator();
-        });
+        // Keep server-rendered Save/Advance/Delete forms. Replacing the table
+        // here previously dropped auth fields and the status dropdown.
+        return;
     }
 
     function initAppointments() {
-        var date = document.body.dataset.viewDate;
-        if (!date) return;
-        AlcrosPoll.pollJson('api/appointments.php', { date: date }, 60000, function (data) {
-            var tbody = document.getElementById('appointments-tbody');
-            if (!tbody || !data.appointments) return;
-            var statuses = ['scheduled', 'confirmed', 'completed', 'cancelled', 'no_show'];
-
-            tbody.innerHTML = data.appointments.map(function (a) {
-                var time = new Date('1970-01-01T' + a.appointment_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-                var options = statuses.map(function (s) {
-                    var label = s.replace('_', ' ');
-                    return '<option value="' + s + '"' + (a.status === s ? ' selected' : '') + '>' + label.charAt(0).toUpperCase() + label.slice(1) + '</option>';
-                }).join('');
-
-                return '<tr data-appointment-row="' + a.id + '">' +
-                    '<td class="px-4 py-3 font-mono text-xs font-bold text-blue-600">' + a.appointment_code + '</td>' +
-                    '<td class="px-4 py-3 font-semibold">' + a.citizen_name + '</td>' +
-                    '<td class="px-4 py-3 text-gray-500">' + a.service_type + '</td>' +
-                    '<td class="px-4 py-3">' + time + '</td>' +
-                    '<td class="px-4 py-3"><span class="text-[10px] font-bold uppercase">' + a.status + '</span></td>' +
-                    '<td class="px-4 py-3"><div class="flex gap-1 items-center"><form method="POST" class="flex gap-1 items-center">' + authInputHtml() +
-                    '<input type="hidden" name="appointment_id" value="' + a.id + '"><select name="status" class="text-[10px] border rounded px-2 py-1">' + options + '</select>' +
-                    '<button type="submit" name="update_status" value="1" class="bg-blue-600 text-white px-2 py-1 rounded text-[10px] font-bold">Save</button></form>' +
-                    '<button type="button" class="delete-appointment-btn text-gray-300 hover:text-red-500 p-1" data-appointment-id="' + a.id + '" data-code="' + a.appointment_code + '"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td></tr>';
-            }).join('');
-
-            if (typeof lucide !== 'undefined') lucide.createIcons();
-            document.dispatchEvent(new CustomEvent('alcros:appointments-refreshed'));
-            AlcrosPoll.markLiveIndicator();
-        });
+        // Keep server-rendered appointment action forms intact.
+        return;
     }
 
     function initHeaderStats() {

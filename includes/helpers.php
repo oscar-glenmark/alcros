@@ -811,6 +811,18 @@ function manageRequestsFlashGet(): ?array
     return $flash;
 }
 
+function appointmentFlashSet(string $type, string $message): void
+{
+    $_SESSION['appointment_flash'] = [$type, $message];
+}
+
+function appointmentFlashGet(): ?array
+{
+    $flash = $_SESSION['appointment_flash'] ?? null;
+    unset($_SESSION['appointment_flash']);
+    return $flash;
+}
+
 function queueFlashSet(string $type, string $message): void
 {
     $_SESSION['queue_flash'] = [$type, $message];
@@ -846,16 +858,6 @@ function documentRequestViewData(array $row): array
         'updated_at'     => !empty($row['updated_at']) ? formatDateDisplay($row['updated_at']) : '—',
         'notes'          => !empty($row['notes']) ? (string) $row['notes'] : null,
     ];
-}
-
-function nextRequestStatus(string $status): ?string
-{
-    return match (normalizeRequestStatus($status)) {
-        'pending'  => 'verified',
-        'verified' => 'ready',
-        'ready'    => 'completed',
-        default    => null,
-    };
 }
 
 function requestStatusLabel(string $status): string

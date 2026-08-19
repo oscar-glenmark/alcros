@@ -96,7 +96,8 @@
             var loadingText = btn.dataset.loadingText ||
                 (btn.name === 'action' && btn.value === 'next' ? 'Saving…' : 'Working…');
 
-            button(btn, true, loadingText);
+            // Do not disable the submitter here — some browsers abort the POST if the
+            // clicked button is disabled during the submit event.
             if (form.dataset.loadingOverlay !== 'false') {
                 page(true, loadingText);
             }

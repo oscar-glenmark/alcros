@@ -50,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $staff = $stmt->fetch();
 
             if ($staff && password_verify($password, $staff['password_hash'])) {
-                staffSessionLogin($staff);
+                staffSessionLogin($staff, true);
                 $token = createStaffAuthToken($staff);
                 logActivity($staff['staff_id'], 'Staff Login', 'Logged in to staff portal');
                 $joiner = str_contains($redirectTarget, '?') ? '&' : '?';

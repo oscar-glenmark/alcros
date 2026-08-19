@@ -104,6 +104,9 @@ $totalWaiting = array_sum(array_map(fn ($g) => count($g['waiting']), $grouped));
         <div class="p-5 lg:p-8 max-w-6xl">
             <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
                 <div>
+                    <a href="<?= htmlspecialchars(buildAuthUrl('dashboard.php')) ?>" class="text-blue-600 text-[11px] font-bold flex items-center mb-2 hover:underline">
+                        <i data-lucide="chevron-left" class="w-3 h-3 mr-1"></i> Back to Dashboard
+                    </a>
                     <h1 class="text-2xl font-black text-slate-900">Live Queue</h1>
                     <p class="text-sm text-slate-500 mt-0.5">One button per table — tap when you are ready for the next citizen.</p>
                 </div>

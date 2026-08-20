@@ -186,6 +186,78 @@ function migrateLegacyProcessingStatus(PDO $pdo): void
     }
 }
 
+function ensureCitizenNotifyColumns(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+
+    try {
+        $pdo->query('SELECT notify_email FROM document_requests LIMIT 1');
+    } catch (Throwable $e) {
+        try {
+            $pdo->exec('ALTER TABLE document_requests ADD COLUMN notify_email TINYINT(1) NOT NULL DEFAULT 0 AFTER privacy_agreed');
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    try {
+        $pdo->query('SELECT reminder_sent_at FROM document_requests LIMIT 1');
+    } catch (Throwable $e) {
+        try {
+            $pdo->exec('ALTER TABLE document_requests ADD COLUMN reminder_sent_at TIMESTAMP NULL DEFAULT NULL AFTER notify_email');
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    try {
+        $pdo->query('SELECT notify_email FROM appointments LIMIT 1');
+    } catch (Throwable $e) {
+        try {
+            $pdo->exec('ALTER TABLE appointments ADD COLUMN notify_email TINYINT(1) NOT NULL DEFAULT 0 AFTER phone');
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    try {
+        $pdo->query('SELECT reminder_sent_at FROM appointments LIMIT 1');
+    } catch (Throwable $e) {
+        try {
+            $pdo->exec('ALTER TABLE appointments ADD COLUMN reminder_sent_at TIMESTAMP NULL DEFAULT NULL AFTER notify_email');
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    try {
+        $pdo->query('SELECT source FROM appointments LIMIT 1');
+    } catch (Throwable $e) {
+        try {
+            $pdo->exec("ALTER TABLE appointments ADD COLUMN source VARCHAR(32) NOT NULL DEFAULT 'standalone' AFTER status");
+            $pdo->exec('ALTER TABLE appointments ADD COLUMN tracking_code VARCHAR(20) DEFAULT NULL AFTER source');
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    try {
+        $pdo->exec(
+            "UPDATE appointments a
+             INNER JOIN document_requests r
+                ON r.appointment_date = a.appointment_date
+               AND r.appointment_time = a.appointment_time
+               AND (
+                    (r.email IS NOT NULL AND r.email != '' AND r.email = a.email)
+                    OR (r.citizen_name = a.citizen_name)
+               )
+             SET a.source = 'document_request', a.tracking_code = r.tracking_code
+             WHERE a.source = 'standalone'
+               AND (a.tracking_code IS NULL OR a.tracking_code = '')"
+        );
+    } catch (Throwable $ignored) {
+    }
+}
+
 function deleteCompletedDocumentRequest(PDO $pdo, int $id): bool
 {
     $stmt = $pdo->prepare(
@@ -876,7 +948,7 @@ function requestStatusMessage(string $status): string
 {
     return match (normalizeRequestStatus($status)) {
         'pending'   => 'We received your request. Staff will review your documents soon.',
-        'verified'  => 'Your information has been verified. We are preparing your document.',
+        'verified'  => 'Your request has been verified. The civil registry office is now processing your document.',
         'ready'     => 'Your document is ready for pickup! Visit the office with your tracking code and valid ID.',
         'completed' => 'This request is complete. Thank you for using ALCROS.',
         'rejected'  => 'This request could not be approved. Please contact the registry office for help.',
@@ -901,12 +973,132 @@ function trackRequestUrl(string $trackingCode): string
     return appBaseUrl() . '/track.php?code=' . urlencode($trackingCode);
 }
 
+function citizenWantsEmailNotify(?array $row): bool
+{
+    if (!$row) {
+        return false;
+    }
+    $email = trim((string) ($row['email'] ?? ''));
+    if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return false;
+    }
+
+    return !empty($row['notify_email']);
+}
+
+function smtpRead($fp): string
+{
+    $data = '';
+    while (!feof($fp)) {
+        $line = fgets($fp, 515);
+        if ($line === false) {
+            break;
+        }
+        $data .= $line;
+        if (isset($line[3]) && $line[3] === ' ') {
+            break;
+        }
+    }
+    return $data;
+}
+
+function smtpCommand($fp, string $command, string $expectPrefix): bool
+{
+    fwrite($fp, $command . "\r\n");
+    $response = smtpRead($fp);
+    return str_starts_with($response, $expectPrefix);
+}
+
+function sendSmtpEmail(string $to, string $subject, string $body): bool
+{
+    $host = trim(getSetting('smtp_host', 'smtp.gmail.com')) ?: 'smtp.gmail.com';
+    $port = (int) getSetting('smtp_port', '587');
+    if ($port <= 0) {
+        $port = 587;
+    }
+    $user = trim(getSetting('smtp_user', getSetting('notification_email', '')));
+    $pass = (string) getSetting('smtp_pass', '');
+    if ($user === '' || $pass === '') {
+        return false;
+    }
+
+    $fromName = getSetting('site_name', 'ALCROS') . ' - ' . getSetting('office_name', 'Local Civil Registrar Office');
+    $encodedSubject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
+    $payload = 'From: "' . addcslashes($fromName, '"') . '" <' . $user . ">\r\n"
+        . 'To: <' . $to . ">\r\n"
+        . 'Reply-To: ' . $user . "\r\n"
+        . 'Subject: ' . $encodedSubject . "\r\n"
+        . "MIME-Version: 1.0\r\n"
+        . "Content-Type: text/plain; charset=UTF-8\r\n"
+        . "Content-Transfer-Encoding: 8bit\r\n"
+        . "\r\n"
+        . $body . "\r\n";
+
+    $errno = 0;
+    $errstr = '';
+    $remote = ($port === 465 ? 'ssl://' : 'tcp://') . $host . ':' . $port;
+    $fp = @stream_socket_client($remote, $errno, $errstr, 15, STREAM_CLIENT_CONNECT);
+    if (!$fp) {
+        return false;
+    }
+    stream_set_timeout($fp, 15);
+
+    if (!str_starts_with(smtpRead($fp), '220')) {
+        fclose($fp);
+        return false;
+    }
+
+    $ehloHost = $_SERVER['SERVER_NAME'] ?? 'localhost';
+    if (!smtpCommand($fp, 'EHLO ' . $ehloHost, '250')) {
+        fclose($fp);
+        return false;
+    }
+
+    if ($port !== 465) {
+        if (!smtpCommand($fp, 'STARTTLS', '220')) {
+            fclose($fp);
+            return false;
+        }
+        if (!@stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+            fclose($fp);
+            return false;
+        }
+        if (!smtpCommand($fp, 'EHLO ' . $ehloHost, '250')) {
+            fclose($fp);
+            return false;
+        }
+    }
+
+    if (!smtpCommand($fp, 'AUTH LOGIN', '334')
+        || !smtpCommand($fp, base64_encode($user), '334')
+        || !smtpCommand($fp, base64_encode($pass), '235')
+        || !smtpCommand($fp, 'MAIL FROM:<' . $user . '>', '250')
+        || !smtpCommand($fp, 'RCPT TO:<' . $to . '>', '250')
+        || !smtpCommand($fp, 'DATA', '354')
+    ) {
+        fclose($fp);
+        return false;
+    }
+
+    fwrite($fp, $payload . "\r\n.\r\n");
+    $dataOk = str_starts_with(smtpRead($fp), '250');
+    smtpCommand($fp, 'QUIT', '221');
+    fclose($fp);
+
+    return $dataOk;
+}
+
 function sendCitizenEmail(string $to, string $subject, string $body): bool
 {
     if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
         return false;
     }
-    $from    = getSetting('notification_email', getSetting('office_email', 'aloran@gov.ph'));
+
+    if (sendSmtpEmail($to, $subject, $body)) {
+        return true;
+    }
+
+    $from    = getSetting('smtp_user', getSetting('notification_email', getSetting('office_email', 'aloran@gov.ph')));
     $office  = getSetting('office_name', 'Local Civil Registrar Office');
     $headers = "From: ALCROS - $office <$from>\r\n"
         . "Reply-To: $from\r\n"
@@ -916,38 +1108,45 @@ function sendCitizenEmail(string $to, string $subject, string $body): bool
 
 function notifyRequestSubmitted(array $data): bool
 {
+    if (empty($data['notify_email']) || empty($data['email'])) {
+        return false;
+    }
+
     $trackUrl = trackRequestUrl($data['tracking_code']);
     $appt     = '';
     if (!empty($data['appointment_date']) && !empty($data['appointment_time'])) {
         $appt = "\nPreferred visit: " . formatDateDisplay($data['appointment_date'])
             . ' at ' . date('g:i A', strtotime($data['appointment_time'])) . "\n";
     }
+    $office = getSetting('office_name', 'Local Civil Registrar Office');
     $body = "Dear {$data['citizen_name']},\n\n"
-        . "Your document request was submitted successfully.\n\n"
+        . "Thank you for submitting your document request through ALCROS.\n\n"
         . "Tracking code: {$data['tracking_code']}\n"
         . "Document: {$data['document_label']}\n"
         . "Current status: Pending review\n"
         . $appt
-        . "\nTrack your request anytime:\n{$trackUrl}\n\n"
+        . "\nWe will email this Gmail address when staff verifies your request, when the status changes, and 5 hours before your preferred visit.\n\n"
+        . "Track your request anytime:\n{$trackUrl}\n\n"
         . "Keep this code safe — you will need it to check your status.\n\n"
-        . '— ALCROS, ' . getSetting('office_name', 'Local Civil Registrar Office');
+        . '— ALCROS, ' . $office;
 
     return sendCitizenEmail(
         $data['email'],
-        'ALCROS — Request Received (' . $data['tracking_code'] . ')',
+        'ALCROS — Request received (' . $data['tracking_code'] . ')',
         $body
     );
 }
 
 function notifyRequestStatusChange(PDO $pdo, int $requestId, string $newStatus): void
 {
+    ensureCitizenNotifyColumns($pdo);
     $stmt = $pdo->prepare(
-        'SELECT tracking_code, citizen_name, email, document_type, status, appointment_date, appointment_time
+        'SELECT tracking_code, citizen_name, email, document_type, status, appointment_date, appointment_time, notify_email
          FROM document_requests WHERE id = ? LIMIT 1'
     );
     $stmt->execute([$requestId]);
     $row = $stmt->fetch();
-    if (!$row || empty($row['email'])) {
+    if (!citizenWantsEmailNotify($row)) {
         return;
     }
 
@@ -955,21 +1154,231 @@ function notifyRequestStatusChange(PDO $pdo, int $requestId, string $newStatus):
     $label    = requestStatusLabel($newStatus);
     $message  = requestStatusMessage($newStatus);
     $doc      = documentTypeLabel($row['document_type']);
+    $office   = getSetting('office_name', 'Local Civil Registrar Office');
+
+    $intro = match (normalizeRequestStatus($newStatus)) {
+        'verified'  => 'The civil registry staff has verified your request. It is now being processed.',
+        'ready'     => 'Good news — your document is ready for pickup.',
+        'completed' => 'Your request has been completed.',
+        'rejected'  => 'There is an update on your document request.',
+        default     => 'There is an update on your document request.',
+    };
+
+    $subject = match (normalizeRequestStatus($newStatus)) {
+        'verified'  => 'ALCROS — Your request is being processed (' . $row['tracking_code'] . ')',
+        'ready'     => 'ALCROS — Ready for pickup (' . $row['tracking_code'] . ')',
+        default     => 'ALCROS — Request update (' . $row['tracking_code'] . ')',
+    };
 
     $body = "Dear {$row['citizen_name']},\n\n"
-        . "There is an update on your document request.\n\n"
+        . $intro . "\n\n"
         . "Tracking code: {$row['tracking_code']}\n"
         . "Document: {$doc}\n"
         . "New status: {$label}\n\n"
         . "{$message}\n\n"
         . "View full details:\n{$trackUrl}\n\n"
-        . '— ALCROS, ' . getSetting('office_name', 'Local Civil Registrar Office');
+        . '— ALCROS, ' . $office;
+
+    sendCitizenEmail($row['email'], $subject, $body);
+}
+
+function notifyAppointmentBooked(array $data): bool
+{
+    if (empty($data['notify_email']) || empty($data['email'])) {
+        return false;
+    }
+
+    $trackUrl = trackRequestUrl($data['appointment_code']);
+    $office = getSetting('office_name', 'Local Civil Registrar Office');
+    $when = formatAppointmentDisplay($data['appointment_date'] ?? null, $data['appointment_time'] ?? null);
+    $body = "Dear {$data['citizen_name']},\n\n"
+        . "Your appointment was booked successfully.\n\n"
+        . "Appointment code: {$data['appointment_code']}\n"
+        . "Service: {$data['service_label']}\n"
+        . "Schedule: {$when}\n"
+        . "Status: Scheduled\n\n"
+        . "We will email this Gmail address 5 hours before your appointment, and if staff updates the status.\n\n"
+        . "Track anytime:\n{$trackUrl}\n\n"
+        . '— ALCROS, ' . $office;
+
+    return sendCitizenEmail(
+        $data['email'],
+        'ALCROS — Appointment booked (' . $data['appointment_code'] . ')',
+        $body
+    );
+}
+
+function notifyAppointmentStatusChange(PDO $pdo, int $appointmentId, string $newStatus): void
+{
+    ensureCitizenNotifyColumns($pdo);
+    $stmt = $pdo->prepare(
+        'SELECT appointment_code, citizen_name, email, service_type, appointment_date, appointment_time, notify_email
+         FROM appointments WHERE id = ? LIMIT 1'
+    );
+    $stmt->execute([$appointmentId]);
+    $row = $stmt->fetch();
+    if (!citizenWantsEmailNotify($row)) {
+        return;
+    }
+
+    $trackUrl = trackRequestUrl($row['appointment_code']);
+    $office = getSetting('office_name', 'Local Civil Registrar Office');
+    $body = "Dear {$row['citizen_name']},\n\n"
+        . "There is an update on your appointment.\n\n"
+        . "Appointment code: {$row['appointment_code']}\n"
+        . "Service: " . appointmentServiceLabel((string) $row['service_type']) . "\n"
+        . "New status: " . appointmentStatusLabel($newStatus) . "\n\n"
+        . appointmentStatusMessage($newStatus) . "\n\n"
+        . "View full details:\n{$trackUrl}\n\n"
+        . '— ALCROS, ' . $office;
 
     sendCitizenEmail(
         $row['email'],
-        'ALCROS — Request Update (' . $row['tracking_code'] . ')',
+        'ALCROS — Appointment update (' . $row['appointment_code'] . ')',
         $body
     );
+}
+
+function notifyAppointmentReminder(array $row): bool
+{
+    if (!citizenWantsEmailNotify($row)) {
+        return false;
+    }
+
+    $trackUrl = trackRequestUrl((string) $row['appointment_code']);
+    $office = getSetting('office_name', 'Local Civil Registrar Office');
+    $when = formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
+    $body = "Dear {$row['citizen_name']},\n\n"
+        . "This is a reminder that your appointment is in about 5 hours.\n\n"
+        . "Appointment code: {$row['appointment_code']}\n"
+        . "Service: " . appointmentServiceLabel((string) ($row['service_type'] ?? '')) . "\n"
+        . "Schedule: {$when}\n\n"
+        . "Please arrive on time and bring a valid ID.\n\n"
+        . "View or track your appointment:\n{$trackUrl}\n\n"
+        . '— ALCROS, ' . $office;
+
+    return sendCitizenEmail(
+        (string) $row['email'],
+        'ALCROS — Appointment in 5 hours (' . $row['appointment_code'] . ')',
+        $body
+    );
+}
+
+function notifyRequestVisitReminder(array $row): bool
+{
+    if (!citizenWantsEmailNotify($row)) {
+        return false;
+    }
+
+    $trackUrl = trackRequestUrl((string) $row['tracking_code']);
+    $office = getSetting('office_name', 'Local Civil Registrar Office');
+    $when = formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
+    $status = requestStatusLabel((string) ($row['status'] ?? 'pending'));
+    $doc = documentTypeLabel((string) ($row['document_type'] ?? ''));
+    $body = "Dear {$row['citizen_name']},\n\n"
+        . "This is a reminder that your preferred visit for document pickup is in about 5 hours.\n\n"
+        . "Tracking code: {$row['tracking_code']}\n"
+        . "Document: {$doc}\n"
+        . "Current status: {$status}\n"
+        . "Preferred visit: {$when}\n\n"
+        . "Please arrive on time and bring your tracking code and a valid ID.\n\n"
+        . "Track your request:\n{$trackUrl}\n\n"
+        . '— ALCROS, ' . $office;
+
+    return sendCitizenEmail(
+        (string) $row['email'],
+        'ALCROS — Visit in 5 hours (' . $row['tracking_code'] . ')',
+        $body
+    );
+}
+
+function sendDueAppointmentReminders(PDO $pdo): int
+{
+    ensureCitizenNotifyColumns($pdo);
+
+    $lockDir = __DIR__ . '/../storage';
+    if (!is_dir($lockDir)) {
+        @mkdir($lockDir, 0755, true);
+    }
+    $lockFile = $lockDir . '/appointment_reminders.lock';
+    $lock = @fopen($lockFile, 'c');
+    if ($lock && !flock($lock, LOCK_EX | LOCK_NB)) {
+        fclose($lock);
+        return 0;
+    }
+
+    $sent = 0;
+    try {
+        $reqStmt = $pdo->query(
+            "SELECT id, tracking_code, citizen_name, email, document_type, status, appointment_date, appointment_time, notify_email
+             FROM document_requests
+             WHERE notify_email = 1
+               AND email IS NOT NULL AND email != ''
+               AND reminder_sent_at IS NULL
+               AND status IN ('pending', 'verified', 'ready')
+               AND appointment_date IS NOT NULL
+               AND appointment_time IS NOT NULL
+               AND TIMESTAMP(appointment_date, appointment_time) > NOW()
+               AND TIMESTAMP(appointment_date, appointment_time) <= DATE_ADD(NOW(), INTERVAL 5 HOUR)"
+        );
+        $requests = $reqStmt ? $reqStmt->fetchAll() : [];
+
+        $claimReq = $pdo->prepare('UPDATE document_requests SET reminder_sent_at = NOW() WHERE id = ? AND reminder_sent_at IS NULL');
+        $undoReq  = $pdo->prepare('UPDATE document_requests SET reminder_sent_at = NULL WHERE id = ?');
+        $markLinkedAppt = $pdo->prepare(
+            'UPDATE appointments SET reminder_sent_at = NOW()
+             WHERE email = ? AND appointment_date = ? AND appointment_time = ? AND reminder_sent_at IS NULL'
+        );
+
+        foreach ($requests as $row) {
+            $claimReq->execute([(int) $row['id']]);
+            if ($claimReq->rowCount() === 0) {
+                continue;
+            }
+            if (notifyRequestVisitReminder($row)) {
+                $sent++;
+                $markLinkedAppt->execute([$row['email'], $row['appointment_date'], $row['appointment_time']]);
+            } else {
+                $undoReq->execute([(int) $row['id']]);
+            }
+        }
+
+        $apptStmt = $pdo->query(
+            "SELECT id, appointment_code, citizen_name, email, service_type, appointment_date, appointment_time, notify_email
+             FROM appointments
+             WHERE notify_email = 1
+               AND email IS NOT NULL AND email != ''
+               AND reminder_sent_at IS NULL
+               AND status IN ('scheduled', 'confirmed')
+               AND TIMESTAMP(appointment_date, appointment_time) > NOW()
+               AND TIMESTAMP(appointment_date, appointment_time) <= DATE_ADD(NOW(), INTERVAL 5 HOUR)"
+        );
+        $appointments = $apptStmt ? $apptStmt->fetchAll() : [];
+
+        $claimAppt = $pdo->prepare('UPDATE appointments SET reminder_sent_at = NOW() WHERE id = ? AND reminder_sent_at IS NULL');
+        $undoAppt  = $pdo->prepare('UPDATE appointments SET reminder_sent_at = NULL WHERE id = ?');
+
+        foreach ($appointments as $row) {
+            $claimAppt->execute([(int) $row['id']]);
+            if ($claimAppt->rowCount() === 0) {
+                continue;
+            }
+            if (notifyAppointmentReminder($row)) {
+                $sent++;
+            } else {
+                $undoAppt->execute([(int) $row['id']]);
+            }
+        }
+    } catch (Throwable $e) {
+        $sent = 0;
+    }
+
+    if ($lock) {
+        flock($lock, LOCK_UN);
+        fclose($lock);
+    }
+
+    return $sent;
 }
 
 function formatAppointmentDisplay(?string $date, ?string $time): string

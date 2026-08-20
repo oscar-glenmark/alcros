@@ -220,5 +220,7 @@ $year = date('Y');
         lucide.createIcons();
     </script>
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>
+    <?php require __DIR__ . '/includes/notification_consent.php'; ?>
+    <script src="includes/reminders.js"></script>
 </body>
 </html> 

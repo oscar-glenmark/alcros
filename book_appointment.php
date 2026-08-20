@@ -19,6 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $serviceType = appointmentServiceLabel(trim($_POST['service_type'] ?? $service));
     $date        = $_POST['appointment_date'] ?? '';
     $time        = $_POST['appointment_time'] ?? '';
+    $notifyEmail = isset($_POST['notify_email']);
 
     if ($citizenName === '' || $serviceType === '' || $date === '' || $time === '') {
         $error = 'Please complete all required fields.';
@@ -29,12 +30,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         try {
             $pdo = getDB();
+            ensureCitizenNotifyColumns($pdo);
             $appointmentCode = generateAppointmentCode();
             $stmt = $pdo->prepare(
-                'INSERT INTO appointments (appointment_code, citizen_name, email, phone, service_type, appointment_date, appointment_time, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+                'INSERT INTO appointments (appointment_code, citizen_name, email, phone, notify_email, service_type, appointment_date, appointment_time, status, source)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
             );
-            $stmt->execute([$appointmentCode, $citizenName, $email ?: null, $phone ?: null, $serviceType, $date, $time, 'scheduled']);
+            $stmt->execute([$appointmentCode, $citizenName, $email ?: null, $phone ?: null, $notifyEmail ? 1 : 0, $serviceType, $date, $time, 'scheduled', 'standalone']);
+            if ($notifyEmail && $email !== '') {
+                notifyAppointmentBooked([
+                    'appointment_code'  => $appointmentCode,
+                    'citizen_name'      => $citizenName,
+                    'email'             => $email,
+                    'service_label'     => $serviceType,
+                    'appointment_date'  => $date,
+                    'appointment_time'  => $time,
+                    'notify_email'      => 1,
+                ]);
+            }
             $success = true;
         } catch (PDOException $e) {
             $error = 'Could not book appointment. ' . dbConnectionHelpMessage();
@@ -100,30 +113,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <div>
                 <label class="block text-[11px] font-bold mb-1">Email</label>
-                <input type="email" name="email" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
+                <input type="email" name="email" placeholder="example@gmail.com" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
             </div>
             <div>
                 <label class="block text-[11px] font-bold mb-1">Phone</label>
                 <input type="tel" name="phone" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
             </div>
+            <label class="flex items-start gap-2 cursor-pointer">
+                <input type="checkbox" name="notify_email" value="1" id="notifyEmailCheckbox" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                <span class="text-xs font-semibold text-slate-700">Send Gmail notifications for this appointment</span>
+            </label>
             <button type="submit" class="w-full bg-blue-600 text-white rounded-xl py-3 text-sm font-bold" data-loading-text="Booking…">Book Appointment</button>
         </form>
         <?php endif; ?>
     </main>
     <script src="includes/loading.js"></script>
-    <script>
-        lucide.createIcons();
-        (function () {
-            var codeEl = document.getElementById('booked-appt-code');
-            if (!codeEl) return;
-            try {
-                var codes = JSON.parse(localStorage.getItem('alcros_tracking_codes') || '[]');
-                var code = codeEl.textContent.trim();
-                if (code && codes.indexOf(code) === -1) codes.unshift(code);
-                localStorage.setItem('alcros_tracking_codes', JSON.stringify(codes.slice(0, 10)));
-            } catch (e) {}
-        })();
-    </script>
+    <script>lucide.createIcons();</script>
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>
+    <?php require __DIR__ . '/includes/notification_consent.php'; ?>
+    <script src="includes/reminders.js"></script>
 </body>
 </html>

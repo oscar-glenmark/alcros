@@ -71,7 +71,7 @@ $trackRealtime = $appointment ? 'track-appointment' : ($request ? 'track' : '');
             Enter your tracking code to see live status updates on your document request or appointment.
         </p>
 
-        <div class="w-full max-w-lg bg-white border border-gray-100 rounded-xl p-4 track-card mb-4">
+        <div class="w-full max-w-lg bg-white border border-gray-100 rounded-xl p-4 track-card mb-6">
             <form method="GET" class="flex gap-2">
                 <div class="relative flex-grow">
                     <div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
@@ -83,11 +83,6 @@ $trackRealtime = $appointment ? 'track-appointment' : ($request ? 'track' : '');
                 </div>
                 <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg text-sm font-bold transition shadow-sm shrink-0" data-loading-text="Tracking…">Track</button>
             </form>
-        </div>
-
-        <div id="recent-codes" class="w-full max-w-lg mb-6 hidden">
-            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Your recent codes</p>
-            <div id="recent-codes-list" class="flex flex-wrap gap-2"></div>
         </div>
 
         <?php if ($error): ?>
@@ -186,42 +181,13 @@ $trackRealtime = $appointment ? 'track-appointment' : ($request ? 'track' : '');
     </main>
 
     <script src="includes/loading.js"></script>
-    <script>
-        lucide.createIcons();
-        (function () {
-            var wrap = document.getElementById('recent-codes');
-            var list = document.getElementById('recent-codes-list');
-            if (!list) return;
-
-            var codes = [];
-            try {
-                codes = JSON.parse(localStorage.getItem('alcros_tracking_codes') || '[]');
-            } catch (e) {}
-
-            if (codes.length) {
-                wrap.classList.remove('hidden');
-                list.innerHTML = codes.map(function (c) {
-                    return '<a href="track.php?code=' + encodeURIComponent(c) + '" class="text-xs font-mono font-bold bg-white border border-gray-200 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-50">' + c + '</a>';
-                }).join('');
-            }
-
-            <?php if ($code !== '' && ($request || $appointment)): ?>
-            try {
-                var current = <?= json_encode($code) ?>;
-                if (codes.indexOf(current) === -1) codes.unshift(current);
-                localStorage.setItem('alcros_tracking_codes', JSON.stringify(codes.slice(0, 10)));
-                if (!codes.length) {
-                    wrap.classList.remove('hidden');
-                    list.innerHTML = '<a href="track.php?code=' + encodeURIComponent(current) + '" class="text-xs font-mono font-bold bg-white border border-gray-200 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-50">' + current + '</a>';
-                }
-            } catch (e) {}
-            <?php endif; ?>
-        })();
-    </script>
+    <script>lucide.createIcons();</script>
     <?php if ($request || $appointment): ?>
     <script src="includes/poll.js"></script>
     <script src="includes/realtime.js"></script>
     <?php endif; ?>
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>
+    <?php require __DIR__ . '/includes/notification_consent.php'; ?>
+    <script src="includes/reminders.js"></script>
 </body>
 </html>

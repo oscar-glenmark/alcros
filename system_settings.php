@@ -15,6 +15,7 @@ $adminSettingKeys = [
     'office_hours', 'office_head', 'overview_text', 'portal_title', 'portal_description',
     'queue_window', 'maintenance_mode', 'allow_public_requests', 'notification_email',
     'max_daily_appointments', 'privacy_policy_url', 'kiosk_welcome_message',
+    'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass',
 ];
 
 $defaults = [
@@ -35,6 +36,10 @@ $defaults = [
     'max_daily_appointments'  => '20',
     'privacy_policy_url'      => 'privacy.php',
     'kiosk_welcome_message'   => 'Welcome to ALCROS. Please get your queue number and wait to be served.',
+    'smtp_host'               => 'smtp.gmail.com',
+    'smtp_port'               => '587',
+    'smtp_user'               => '',
+    'smtp_pass'               => '',
 ];
 
 function currentStaffRow(PDO $pdo, string $staffId): ?array
@@ -99,6 +104,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ($adminSettingKeys as $key) {
                 if (in_array($key, ['maintenance_mode', 'allow_public_requests'], true)) {
                     setSetting($key, isset($_POST[$key]) ? '1' : '0');
+                } elseif ($key === 'smtp_pass') {
+                    $smtpPass = (string) ($_POST['smtp_pass'] ?? '');
+                    if ($smtpPass !== '') {
+                        setSetting($key, $smtpPass);
+                    }
                 } elseif (isset($_POST[$key])) {
                     setSetting($key, trim($_POST[$key]));
                 }
@@ -498,7 +508,11 @@ $staffInitial = strtoupper(substr($currentStaff['name'] ?? 'U', 0, 1));
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Queue Window Number</label><input type="number" name="queue_window" value="<?= htmlspecialchars($settings['queue_window']) ?>" min="1" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Max Daily Appointments</label><input type="number" name="max_daily_appointments" value="<?= htmlspecialchars($settings['max_daily_appointments']) ?>" min="1" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
-                                    <div class="sm:col-span-2"><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Notification Email</label><input type="email" name="notification_email" value="<?= htmlspecialchars($settings['notification_email']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Used for system alerts and request notifications.</p></div>
+                                    <div class="sm:col-span-2"><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Notification Email</label><input type="email" name="notification_email" value="<?= htmlspecialchars($settings['notification_email']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Fallback From address if Gmail SMTP is not used.</p></div>
+                                    <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Gmail SMTP Host</label><input type="text" name="smtp_host" value="<?= htmlspecialchars($settings['smtp_host'] ?: 'smtp.gmail.com') ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
+                                    <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Gmail SMTP Port</label><input type="number" name="smtp_port" value="<?= htmlspecialchars($settings['smtp_port'] ?: '587') ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">587 for STARTTLS, or 465 for SSL.</p></div>
+                                    <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Gmail Address (SMTP user)</label><input type="email" name="smtp_user" value="<?= htmlspecialchars($settings['smtp_user']) ?>" placeholder="youroffice@gmail.com" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
+                                    <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Gmail App Password</label><input type="password" name="smtp_pass" value="" autocomplete="new-password" placeholder="<?= $settings['smtp_pass'] !== '' ? 'Leave blank to keep the saved password' : 'App password from Google Account' ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Create an App Password in Google Account → Security. Required so citizens receive request and status emails.</p></div>
                                 </div>
                             </div>
 

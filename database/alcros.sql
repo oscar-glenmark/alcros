@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS document_requests (
     id_front_path VARCHAR(255) DEFAULT NULL,
     id_back_path VARCHAR(255) DEFAULT NULL,
     privacy_agreed TINYINT(1) NOT NULL DEFAULT 0,
+    notify_email TINYINT(1) NOT NULL DEFAULT 0,
+    reminder_sent_at TIMESTAMP NULL DEFAULT NULL,
     appointment_date DATE DEFAULT NULL,
     appointment_time TIME DEFAULT NULL,
     status ENUM('pending','verified','ready','completed','rejected') NOT NULL DEFAULT 'pending',
@@ -35,7 +37,7 @@ CREATE TABLE IF NOT EXISTS document_requests (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_status (status),
     INDEX idx_citizen (citizen_name)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB; 
 
 CREATE TABLE IF NOT EXISTS appointments (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -43,10 +45,14 @@ CREATE TABLE IF NOT EXISTS appointments (
     citizen_name VARCHAR(150) NOT NULL,
     email VARCHAR(150) DEFAULT NULL,
     phone VARCHAR(30) DEFAULT NULL,
+    notify_email TINYINT(1) NOT NULL DEFAULT 0,
+    reminder_sent_at TIMESTAMP NULL DEFAULT NULL,
     service_type VARCHAR(100) NOT NULL,
     appointment_date DATE NOT NULL,
     appointment_time TIME NOT NULL,
     status ENUM('scheduled','confirmed','completed','cancelled','no_show') NOT NULL DEFAULT 'scheduled',
+    source VARCHAR(32) NOT NULL DEFAULT 'standalone',
+    tracking_code VARCHAR(20) DEFAULT NULL,
     notes TEXT DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_date (appointment_date),
@@ -117,6 +123,8 @@ INSERT INTO system_settings (setting_key, setting_value) VALUES
 ('overview_text', 'This guide covers the requirements, steps, and fees for all core civil registration services handled by the <strong>{office}</strong>.'),
 ('portal_title', 'ALCROS Online Request Portal'),
 ('portal_description', 'Request document submissions or track application statuses online.'),
-('queue_window', '1')
+('queue_window', '1'),
+('smtp_host', 'smtp.gmail.com'),
+('smtp_port', '587')
 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value);
 

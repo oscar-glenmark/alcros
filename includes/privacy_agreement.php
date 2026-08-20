@@ -82,6 +82,7 @@ $privacyPolicyUrl = getSetting('privacy_policy_url', 'privacy.php');
             overlay.classList.add('hidden');
             document.body.classList.remove('overflow-hidden');
             overlay.remove();
+            document.dispatchEvent(new CustomEvent('alcros:privacy-accepted'));
         });
     }
 })();

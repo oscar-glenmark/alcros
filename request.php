@@ -71,6 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
         $purpose       = trim($_POST['purpose'] ?? '');
         $phone         = trim($_POST['phone'] ?? '');
         $privacyAgreed = isset($_POST['privacy_agreed']);
+        $notifyEmail   = isset($_POST['notify_email']);
 
         if (!isValidGmail($email)) {
             $error = 'Please enter a valid Gmail address (example@gmail.com).';
@@ -98,6 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                     $draft['purpose']         = $purpose;
                     $draft['phone']           = $phone;
                     $draft['privacy_agreed']  = 1;
+                    $draft['notify_email']    = $notifyEmail ? 1 : 0;
                     if ($frontPath) {
                         $draft['id_front_path'] = $frontPath;
                     }
@@ -127,13 +129,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
 
             try {
                 $pdo = getDB();
+                ensureCitizenNotifyColumns($pdo);
                 $trackingCode = generateTrackingCode();
                 $stmt = $pdo->prepare(
                     'INSERT INTO document_requests
                      (tracking_code, citizen_name, date_of_birth, sex, email, email_verified, phone,
-                      document_type, purpose, id_front_path, id_back_path, privacy_agreed,
+                      document_type, purpose, id_front_path, id_back_path, privacy_agreed, notify_email,
                       appointment_date, appointment_time, status)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
                 );
                 $stmt->execute([
                     $trackingCode,
@@ -148,6 +151,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                     $draft['id_front_path'] ?? null,
                     $draft['id_back_path'] ?? null,
                     (int) ($draft['privacy_agreed'] ?? 0),
+                    (int) ($draft['notify_email'] ?? 0),
                     $draft['appointment_date'],
                     $draft['appointment_time'],
                     'pending',
@@ -156,18 +160,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                 $apptCode = generateAppointmentCode();
                 $apptStmt = $pdo->prepare(
                     'INSERT INTO appointments
-                     (appointment_code, citizen_name, email, phone, service_type, appointment_date, appointment_time, status)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+                     (appointment_code, citizen_name, email, phone, notify_email, service_type, appointment_date, appointment_time, status, source, tracking_code)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
                 );
                 $apptStmt->execute([
                     $apptCode,
                     $draft['citizen_name'],
                     $draft['email'],
                     $draft['phone'],
+                    (int) ($draft['notify_email'] ?? 0),
                     documentTypeLabel($draft['document_type']),
                     $draft['appointment_date'],
                     $draft['appointment_time'],
                     'scheduled',
+                    'document_request',
+                    $trackingCode,
                 ]);
 
                 $emailSent = notifyRequestSubmitted([
@@ -177,6 +184,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                     'document_label'   => documentTypeLabel($draft['document_type']),
                     'appointment_date' => $draft['appointment_date'],
                     'appointment_time' => $draft['appointment_time'],
+                    'notify_email'     => (int) ($draft['notify_email'] ?? 0),
                 ]);
 
                 $_SESSION['request_success'] = [
@@ -187,6 +195,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                     'appointment_date' => $draft['appointment_date'],
                     'appointment_time' => $draft['appointment_time'],
                     'email_sent'       => $emailSent,
+                    'notify_email'     => (int) ($draft['notify_email'] ?? 0),
                 ];
                 unset($_SESSION['request_draft']);
                 header('Location: request.php?step=4&success=1');
@@ -283,7 +292,12 @@ $stepTitles = [
                 <?php if (!empty($successData['email_sent'])): ?>
                 <p class="flex items-start gap-2 text-green-700 bg-green-50 border border-green-100 rounded-lg p-3">
                     <i data-lucide="mail" class="w-4 h-4 shrink-0 mt-0.5"></i>
-                    A confirmation was sent to <strong><?= htmlspecialchars($successData['email']) ?></strong> with your tracking code and tracking link.
+                    A Gmail confirmation was sent to <strong><?= htmlspecialchars($successData['email']) ?></strong>. We will also email you when staff verifies your request and when the status changes.
+                </p>
+                <?php elseif (!empty($successData['notify_email'])): ?>
+                <p class="flex items-start gap-2 text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-3">
+                    <i data-lucide="alert-circle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                    We could not send the Gmail confirmation right now. Please save your tracking code and check Track Request. Staff can still email later updates once Gmail sending is configured.
                 </p>
                 <?php else: ?>
                 <p class="flex items-start gap-2 text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-3">
@@ -301,11 +315,6 @@ $stepTitles = [
         <script>
             (function () {
                 var code = <?= json_encode($successData['tracking_code']) ?>;
-                try {
-                    var saved = JSON.parse(localStorage.getItem('alcros_tracking_codes') || '[]');
-                    if (saved.indexOf(code) === -1) saved.unshift(code);
-                    localStorage.setItem('alcros_tracking_codes', JSON.stringify(saved.slice(0, 10)));
-                } catch (e) {}
                 var btn = document.getElementById('copy-tracking-btn');
                 if (btn) {
                     btn.addEventListener('click', function () {
@@ -425,7 +434,7 @@ $stepTitles = [
                             Verify Gmail
                         </button>
                     </div>
-                    <p class="text-[10px] text-gray-500 mt-1">We check with Google that your @gmail.com account is active — no email is sent to you.</p>
+                    <p class="text-[10px] text-gray-500 mt-1">We check that your @gmail.com account is active. If you agree to notifications, status updates are sent to this Gmail.</p>
                     <p id="gmailStatus" class="text-xs mt-2 hidden"></p>
                 </div>
                 <div>
@@ -475,6 +484,10 @@ $stepTitles = [
                     <label class="flex items-center gap-2 mt-3 cursor-pointer">
                         <input type="checkbox" name="privacy_agreed" value="1" class="rounded border-amber-300 text-blue-600 focus:ring-blue-500" required>
                         <span class="text-xs font-semibold text-amber-800">I Agree to Data Privacy Notice</span>
+                    </label>
+                    <label class="flex items-start gap-2 mt-3 cursor-pointer">
+                        <input type="checkbox" name="notify_email" value="1" id="notifyEmailCheckbox" class="mt-0.5 rounded border-amber-300 text-blue-600 focus:ring-blue-500" <?= !empty($draft['notify_email']) ? 'checked' : '' ?>>
+                        <span class="text-xs font-semibold text-amber-800">Send Gmail notifications when my request is received, verified, updated, and 5 hours before my visit</span>
                     </label>
                 </div>
                 <div class="flex justify-between items-center pt-4">
@@ -610,5 +623,7 @@ $stepTitles = [
         })();
     </script>
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>
+    <?php require __DIR__ . '/includes/notification_consent.php'; ?>
+    <script src="includes/reminders.js"></script>
 </body>
 </html>

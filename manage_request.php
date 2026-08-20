@@ -8,6 +8,7 @@ requirePageAccess('manage_request.php');
 $activePage = 'manage_request.php';
 $pdo = getDB();
 migrateLegacyProcessingStatus($pdo);
+ensureCitizenNotifyColumns($pdo);
 
 function manageRequestsRedirectFilters(): array
 {
@@ -46,7 +47,11 @@ function updateDocumentRequestStatus(PDO $pdo, int $id, string $status): bool
         return false;
     }
 
-    notifyRequestStatusChange($pdo, $id, $status);
+    try {
+        notifyRequestStatusChange($pdo, $id, $status);
+    } catch (Throwable $e) {
+        // Status is already saved; email failure should not block staff.
+    }
     logActivity(staffId(), 'Request Updated', 'Changed ' . $row['tracking_code'] . ' to ' . $status);
 
     return true;

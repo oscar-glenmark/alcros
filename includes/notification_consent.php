@@ -1,0 +1,143 @@
+<?php
+/**
+ * First-visit Gmail notification consent modal (shown once per browser via localStorage).
+ * Appears after the Privacy & Safety agreement so citizens can opt in to status emails.
+ */
+$notifySite = $site ?? getSiteSettings();
+?>
+<div id="alcros-notify-overlay" class="hidden fixed inset-0 z-[9998] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="alcros-notify-title">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden border border-gray-100">
+        <div class="px-6 pt-6 pb-4 border-b border-gray-100">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                </div>
+                <div>
+                    <h2 id="alcros-notify-title" class="text-lg font-extrabold text-slate-900">Gmail notifications</h2>
+                    <p class="text-[11px] text-gray-500"><?= htmlspecialchars($notifySite['name']) ?> — <?= htmlspecialchars($notifySite['office']) ?></p>
+                </div>
+            </div>
+        </div>
+        <div class="px-6 py-4 overflow-y-auto text-[12px] text-gray-600 leading-relaxed space-y-3 flex-1">
+            <p>Would you like to receive Gmail updates from this web app about your civil registry request or appointment?</p>
+            <ul class="list-disc pl-5 space-y-1.5">
+                <li>A confirmation when you finish sending a document request, including your tracking code.</li>
+                <li>A reminder when staff verifies your request and it is being processed.</li>
+                <li>A reminder 5 hours before your preferred visit or appointment.</li>
+                <li>Follow-up emails when the status changes (for example, ready for pickup).</li>
+            </ul>
+            <p>Emails are sent only to the Gmail address you provide. You can still use ALCROS if you choose not to receive notifications.</p>
+        </div>
+        <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 space-y-3">
+            <label class="flex items-start gap-2.5 cursor-pointer">
+                <input type="checkbox" id="alcros-notify-checkbox" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                <span class="text-xs font-semibold text-slate-800">I agree to receive Gmail notifications from this web app</span>
+            </label>
+            <div class="flex flex-col sm:flex-row gap-2">
+                <button type="button" id="alcros-notify-decline" class="flex-1 border border-gray-200 hover:bg-gray-50 text-slate-600 rounded-xl py-3 text-sm font-bold transition">
+                    No thanks
+                </button>
+                <button type="button" id="alcros-notify-accept" disabled class="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl py-3 text-sm font-bold transition">
+                    Yes, send me updates
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var STORAGE_KEY = 'alcros_notify_consent';
+    var STORAGE_VERSION = '1';
+    var PRIVACY_KEY = 'alcros_privacy_accepted';
+
+    var overlay = document.getElementById('alcros-notify-overlay');
+    if (!overlay) return;
+
+    function privacyAccepted() {
+        try {
+            var stored = JSON.parse(localStorage.getItem(PRIVACY_KEY) || 'null');
+            return !!(stored && stored.version && stored.accepted === true);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function alreadyDecided() {
+        try {
+            var stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+            return !!(stored && stored.version === STORAGE_VERSION && typeof stored.allowed === 'boolean');
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function saveDecision(allowed) {
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                allowed: !!allowed,
+                version: STORAGE_VERSION,
+                decidedAt: new Date().toISOString()
+            }));
+        } catch (e) {}
+        document.querySelectorAll('input[name="notify_email"]').forEach(function (input) {
+            if (input.type === 'checkbox') {
+                input.checked = !!allowed;
+            } else {
+                input.value = allowed ? '1' : '0';
+            }
+        });
+        document.dispatchEvent(new CustomEvent('alcros:notify-consent', { detail: { allowed: !!allowed } }));
+    }
+
+    function closeOverlay() {
+        overlay.classList.add('hidden');
+        document.body.classList.remove('overflow-hidden');
+        overlay.remove();
+    }
+
+    function showOverlay() {
+        if (alreadyDecided()) {
+            overlay.remove();
+            return;
+        }
+        overlay.classList.remove('hidden');
+        document.body.classList.add('overflow-hidden');
+    }
+
+    var checkbox = document.getElementById('alcros-notify-checkbox');
+    var acceptBtn = document.getElementById('alcros-notify-accept');
+    var declineBtn = document.getElementById('alcros-notify-decline');
+
+    if (checkbox && acceptBtn) {
+        checkbox.addEventListener('change', function () {
+            acceptBtn.disabled = !checkbox.checked;
+        });
+        acceptBtn.addEventListener('click', function () {
+            if (!checkbox.checked) return;
+            saveDecision(true);
+            closeOverlay();
+        });
+    }
+    if (declineBtn) {
+        declineBtn.addEventListener('click', function () {
+            saveDecision(false);
+            closeOverlay();
+        });
+    }
+
+    if (alreadyDecided()) {
+        try {
+            var stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+            saveDecision(!!(stored && stored.allowed));
+        } catch (e) {}
+        overlay.remove();
+        return;
+    }
+
+    if (privacyAccepted()) {
+        showOverlay();
+    } else {
+        document.addEventListener('alcros:privacy-accepted', showOverlay);
+    }
+})();
+</script>

@@ -193,3 +193,4 @@ $sidebarSubtitle = isAdmin() ? 'Registry Admin' : 'Staff Portal';
 <script src="includes/poll.js"></script>
 <script src="includes/realtime.js"></script>
 <script src="includes/notifications.js"></script>
+<script src="includes/reminders.js"></script>

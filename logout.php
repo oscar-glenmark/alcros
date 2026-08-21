@@ -16,6 +16,7 @@ staffSessionLogout();
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <title>Logging out...</title>
 </head>
 <body>

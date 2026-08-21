@@ -21,18 +21,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($isDelete) {
         if ($id > 0) {
-            $codeStmt = $pdo->prepare('SELECT appointment_code FROM appointments WHERE id = ?');
+            $codeStmt = $pdo->prepare('SELECT appointment_code, id_front_path, id_back_path FROM appointments WHERE id = ?');
             $codeStmt->execute([$id]);
-            $code = $codeStmt->fetchColumn();
-            if ($code) {
+            $row = $codeStmt->fetch();
+            if ($row) {
+                deleteIdUploadFiles($row['id_front_path'] ?? null, $row['id_back_path'] ?? null);
                 $pdo->prepare('DELETE FROM appointments WHERE id = ?')->execute([$id]);
-                logActivity(staffId(), 'Appointment Deleted', "Deleted appointment $code");
-                appointmentFlashSet('success', 'Appointment ' . $code . ' deleted.');
+                logActivity(staffId(), 'Appointment Deleted', 'Deleted appointment ' . $row['appointment_code']);
+                appointmentFlashSet('success', 'Appointment ' . $row['appointment_code'] . ' deleted.');
             }
         }
     } elseif ($isUpdate) {
         $status = (string) ($_POST['status'] ?? '');
-        $valid = ['scheduled', 'confirmed', 'completed', 'cancelled', 'no_show'];
+        $valid = appointmentStatusUpdateOptions();
         if ($id > 0 && in_array($status, $valid, true)) {
             $pdo->prepare('UPDATE appointments SET status = ? WHERE id = ?')->execute([$status, $id]);
             $codeStmt = $pdo->prepare('SELECT appointment_code FROM appointments WHERE id = ?');
@@ -82,19 +83,38 @@ function renderAppointmentRows(array $rows, string $viewDate): void
                                 <?php if (!empty($ap['tracking_code'])): ?>
                                 <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php', ['q' => $ap['tracking_code']])) ?>" class="text-[10px] font-mono font-bold text-blue-600 hover:underline"><?= htmlspecialchars($ap['tracking_code']) ?></a>
                                 <?php endif; ?>
+                                <?php if (!empty($ap['id_front_path']) || !empty($ap['id_back_path'])): ?>
+                                <p class="mt-1 flex flex-wrap gap-1.5">
+                                    <?php if (!empty($ap['id_front_path'])): ?>
+                                    <a href="<?= htmlspecialchars($ap['id_front_path']) ?>" target="_blank" rel="noopener noreferrer" class="text-[10px] font-bold text-blue-600 hover:underline">Front ID</a>
+                                    <?php endif; ?>
+                                    <?php if (!empty($ap['id_back_path'])): ?>
+                                    <a href="<?= htmlspecialchars($ap['id_back_path']) ?>" target="_blank" rel="noopener noreferrer" class="text-[10px] font-bold text-blue-600 hover:underline">Back ID</a>
+                                    <?php endif; ?>
+                                </p>
+                                <?php endif; ?>
                             </td>
                             <td class="px-4 py-3 text-gray-500"><?= htmlspecialchars(appointmentServiceLabel($ap['service_type'])) ?></td>
                             <td class="px-4 py-3"><?= date('g:i A', strtotime($ap['appointment_time'])) ?></td>
                             <td class="px-4 py-3"><span class="text-[10px] font-bold uppercase"><?= htmlspecialchars(appointmentStatusLabel($ap['status'])) ?></span></td>
                             <td class="px-4 py-3">
                                 <div class="flex gap-1 items-center">
+                                    <button type="button"
+                                            class="view-appointment-btn text-gray-400 hover:text-blue-600 p-1"
+                                            title="View appointment details"
+                                            data-appointment="<?= htmlspecialchars(json_encode(appointmentViewData($ap), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP), ENT_QUOTES, 'UTF-8') ?>">
+                                        <i data-lucide="eye" class="w-4 h-4"></i>
+                                    </button>
                                     <form method="POST" action="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $viewDate])) ?>" class="flex gap-1 items-center">
                                         <?= authFormField() ?>
                                         <input type="hidden" name="redirect_date" value="<?= htmlspecialchars($viewDate) ?>">
                                         <input type="hidden" name="appointment_id" value="<?= (int) $ap['id'] ?>">
                                         <input type="hidden" name="update_status" value="1">
-                                        <select name="status" class="text-[10px] border rounded px-2 py-1">
-                                            <?php foreach (['scheduled','confirmed','completed','cancelled','no_show'] as $s): ?>
+                                        <select name="status" required class="text-[10px] border rounded px-2 py-1">
+                                            <?php if (!in_array($ap['status'], appointmentStatusUpdateOptions(), true)): ?>
+                                            <option value="" selected disabled>Select status</option>
+                                            <?php endif; ?>
+                                            <?php foreach (appointmentStatusUpdateOptions() as $s): ?>
                                             <option value="<?= $s ?>" <?= $ap['status'] === $s ? 'selected' : '' ?>><?= htmlspecialchars(appointmentStatusLabel($s)) ?></option>
                                             <?php endforeach; ?>
                                         </select>
@@ -117,6 +137,7 @@ function renderAppointmentRows(array $rows, string $viewDate): void
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Appointment Management - ALCROS</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -232,8 +253,141 @@ function renderAppointmentRows(array $rows, string $viewDate): void
         <button type="button" id="deleteUndoBtn" class="text-amber-300 hover:text-amber-200 font-bold text-xs uppercase tracking-wide">Undo (<span id="deleteUndoCountdown">5</span>s)</button>
     </div>
 
+    <div id="appointmentViewModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-black/40" role="dialog" aria-modal="true" aria-labelledby="appointmentViewTitle">
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div class="px-6 py-4 border-b border-gray-100 flex items-start justify-between gap-4">
+                <div>
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-blue-600 mb-1">Appointment Details</p>
+                    <h2 id="appointmentViewTitle" class="text-lg font-black text-slate-900">Citizen Visit</h2>
+                    <p id="appointmentViewCode" class="text-xs font-mono font-bold text-blue-600 mt-1"></p>
+                </div>
+                <button type="button" id="appointmentViewClose" class="text-gray-400 hover:text-slate-700 p-1 rounded-lg hover:bg-gray-50" aria-label="Close">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="px-6 py-5 overflow-y-auto space-y-5 text-sm">
+                <div>
+                    <p class="text-[10px] font-bold uppercase text-gray-400 mb-2">Citizen Information</p>
+                    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div><dt class="text-[11px] text-gray-400">Full Name</dt><dd id="appt-view-name" class="font-semibold text-slate-800"></dd></div>
+                        <div><dt class="text-[11px] text-gray-400">Phone</dt><dd id="appt-view-phone" class="font-semibold text-slate-800"></dd></div>
+                        <div class="sm:col-span-2"><dt class="text-[11px] text-gray-400">Email</dt><dd id="appt-view-email" class="font-semibold text-slate-800"></dd></div>
+                    </dl>
+                </div>
+                <div>
+                    <p class="text-[10px] font-bold uppercase text-gray-400 mb-2">Visit Information</p>
+                    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div><dt class="text-[11px] text-gray-400">Service</dt><dd id="appt-view-service" class="font-semibold text-slate-800"></dd></div>
+                        <div><dt class="text-[11px] text-gray-400">Schedule</dt><dd id="appt-view-schedule" class="font-semibold text-slate-800"></dd></div>
+                        <div><dt class="text-[11px] text-gray-400">Status</dt><dd id="appt-view-status" class="font-semibold text-slate-800"></dd></div>
+                        <div><dt class="text-[11px] text-gray-400">Type</dt><dd id="appt-view-source" class="font-semibold text-slate-800"></dd></div>
+                        <div id="appt-view-tracking-wrap" class="hidden"><dt class="text-[11px] text-gray-400">Tracking Code</dt><dd id="appt-view-tracking" class="font-mono font-bold text-blue-600"></dd></div>
+                        <div><dt class="text-[11px] text-gray-400">Gmail Notifications</dt><dd id="appt-view-notify" class="font-semibold text-slate-800"></dd></div>
+                        <div><dt class="text-[11px] text-gray-400">Booked</dt><dd id="appt-view-created" class="font-semibold text-slate-800"></dd></div>
+                    </dl>
+                </div>
+                <div>
+                    <p class="text-[10px] font-bold uppercase text-gray-400 mb-2">Uploaded IDs</p>
+                    <div id="appt-view-id-files" class="flex flex-wrap gap-2"></div>
+                </div>
+                <div id="appt-view-notes-wrap" class="hidden">
+                    <p class="text-[10px] font-bold uppercase text-gray-400 mb-2">Staff Notes</p>
+                    <p id="appt-view-notes" class="text-sm text-slate-700 bg-gray-50 rounded-xl p-3 border border-gray-100"></p>
+                </div>
+            </div>
+            <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end">
+                <button type="button" id="appointmentViewCloseFooter" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold">Close</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         lucide.createIcons();
+
+        (function () {
+            var modal = document.getElementById('appointmentViewModal');
+            if (!modal) return;
+
+            function setText(id, value) {
+                var el = document.getElementById(id);
+                if (el) el.textContent = value || '—';
+            }
+
+            function idLink(label, path) {
+                if (!path) return '';
+                var isPdf = /\.pdf$/i.test(path);
+                return '<a href="' + path.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 bg-blue-50 border border-blue-100 px-3 py-2 rounded-lg hover:bg-blue-100">' +
+                    '<i data-lucide="' + (isPdf ? 'file-text' : 'image') + '" class="w-3.5 h-3.5"></i>' + label + '</a>';
+            }
+
+            function openAppointmentModal(data) {
+                setText('appointmentViewCode', data.appointment_code || '');
+                setText('appt-view-name', data.citizen_name);
+                setText('appt-view-phone', data.phone);
+                setText('appt-view-email', data.email);
+                setText('appt-view-service', data.service_type);
+                setText('appt-view-schedule', data.schedule);
+                setText('appt-view-status', data.status);
+                setText('appt-view-source', data.source);
+                setText('appt-view-notify', data.notify_email);
+                setText('appt-view-created', data.created_at);
+
+                var trackingWrap = document.getElementById('appt-view-tracking-wrap');
+                if (trackingWrap) {
+                    if (data.tracking_code) {
+                        setText('appt-view-tracking', data.tracking_code);
+                        trackingWrap.classList.remove('hidden');
+                    } else {
+                        trackingWrap.classList.add('hidden');
+                    }
+                }
+
+                var idFiles = document.getElementById('appt-view-id-files');
+                if (idFiles) {
+                    var html = idLink('Front ID', data.id_front_path) + idLink('Back ID', data.id_back_path);
+                    idFiles.innerHTML = html || '<span class="text-xs text-gray-400 italic">No ID files uploaded.</span>';
+                }
+
+                var notesWrap = document.getElementById('appt-view-notes-wrap');
+                var notesEl = document.getElementById('appt-view-notes');
+                if (notesWrap && notesEl) {
+                    if (data.notes) {
+                        notesEl.textContent = data.notes;
+                        notesWrap.classList.remove('hidden');
+                    } else {
+                        notesWrap.classList.add('hidden');
+                    }
+                }
+
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+
+            function closeAppointmentModal() {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+
+            document.addEventListener('click', function (e) {
+                var viewBtn = e.target.closest('.view-appointment-btn');
+                if (viewBtn) {
+                    var raw = viewBtn.getAttribute('data-appointment');
+                    if (!raw) return;
+                    try {
+                        openAppointmentModal(JSON.parse(raw));
+                    } catch (err) {}
+                    return;
+                }
+                if (e.target === modal) closeAppointmentModal();
+            });
+
+            document.getElementById('appointmentViewClose')?.addEventListener('click', closeAppointmentModal);
+            document.getElementById('appointmentViewCloseFooter')?.addEventListener('click', closeAppointmentModal);
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && modal.classList.contains('flex')) closeAppointmentModal();
+            });
+        })();
 
         (function () {
             const UNDO_SECONDS = 5;

@@ -156,6 +156,11 @@ function requestStatusOptions(): array
     return ['pending', 'verified', 'ready', 'completed', 'rejected'];
 }
 
+function requestStatusUpdateOptions(): array
+{
+    return ['verified', 'ready', 'completed', 'rejected'];
+}
+
 function normalizeRequestStatus(string $status): string
 {
     return $status === 'processing' ? 'verified' : $status;
@@ -241,6 +246,16 @@ function ensureCitizenNotifyColumns(PDO $pdo): void
     }
 
     try {
+        $pdo->query('SELECT id_front_path FROM appointments LIMIT 1');
+    } catch (Throwable $e) {
+        try {
+            $pdo->exec('ALTER TABLE appointments ADD COLUMN id_front_path VARCHAR(255) DEFAULT NULL AFTER tracking_code');
+            $pdo->exec('ALTER TABLE appointments ADD COLUMN id_back_path VARCHAR(255) DEFAULT NULL AFTER id_front_path');
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    try {
         $pdo->exec(
             "UPDATE appointments a
              INNER JOIN document_requests r
@@ -258,6 +273,20 @@ function ensureCitizenNotifyColumns(PDO $pdo): void
     }
 }
 
+function deleteIdUploadFiles(?string ...$paths): void
+{
+    foreach ($paths as $rel) {
+        $rel = trim((string) $rel);
+        if ($rel === '') {
+            continue;
+        }
+        $path = __DIR__ . '/../' . ltrim($rel, '/');
+        if (is_file($path)) {
+            @unlink($path);
+        }
+    }
+}
+
 function deleteCompletedDocumentRequest(PDO $pdo, int $id): bool
 {
     $stmt = $pdo->prepare(
@@ -269,15 +298,7 @@ function deleteCompletedDocumentRequest(PDO $pdo, int $id): bool
         return false;
     }
 
-    foreach (['id_front_path', 'id_back_path'] as $field) {
-        if (empty($row[$field])) {
-            continue;
-        }
-        $path = __DIR__ . '/../' . ltrim((string) $row[$field], '/');
-        if (is_file($path)) {
-            @unlink($path);
-        }
-    }
+    deleteIdUploadFiles($row['id_front_path'] ?? null, $row['id_back_path'] ?? null);
 
     $pdo->prepare('DELETE FROM document_requests WHERE id = ?')->execute([$id]);
     logActivity(staffId(), 'Request Deleted', 'Deleted completed request ' . $row['tracking_code']);
@@ -356,13 +377,18 @@ function appointmentStatusWorkflow(): array
     return ['scheduled', 'confirmed', 'completed'];
 }
 
+function appointmentStatusUpdateOptions(): array
+{
+    return ['confirmed', 'completed', 'cancelled', 'no_show'];
+}
+
 function appointmentStatusLabel(string $status): string
 {
     return match ($status) {
         'scheduled' => 'Scheduled',
         'confirmed' => 'Confirmed',
         'completed' => 'Completed',
-        'cancelled' => 'Cancelled',
+        'cancelled' => 'Rejected',
         'no_show'   => 'No Show',
         default     => ucfirst(str_replace('_', ' ', $status)),
     };
@@ -374,7 +400,7 @@ function appointmentStatusMessage(string $status): string
         'scheduled' => 'Your appointment is scheduled. Please arrive on time with a valid ID.',
         'confirmed' => 'Your appointment has been confirmed by our office.',
         'completed' => 'This appointment has been completed. Thank you for visiting ALCROS.',
-        'cancelled' => 'This appointment was cancelled. Contact the office to reschedule.',
+        'cancelled' => 'This appointment was rejected. Contact the office to reschedule.',
         'no_show'   => 'You were marked as a no-show. Please contact the office to reschedule.',
         default     => 'Track your appointment status below.',
     };
@@ -932,6 +958,28 @@ function documentRequestViewData(array $row): array
     ];
 }
 
+function appointmentViewData(array $row): array
+{
+    $isRequest = (($row['source'] ?? '') === 'document_request') || !empty($row['tracking_code']);
+
+    return [
+        'appointment_code' => (string) ($row['appointment_code'] ?? ''),
+        'citizen_name'     => (string) ($row['citizen_name'] ?? ''),
+        'email'            => !empty($row['email']) ? (string) $row['email'] : '—',
+        'phone'            => !empty($row['phone']) ? (string) $row['phone'] : '—',
+        'service_type'     => appointmentServiceLabel((string) ($row['service_type'] ?? '')),
+        'schedule'         => formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null) ?: '—',
+        'status'           => appointmentStatusLabel((string) ($row['status'] ?? 'scheduled')),
+        'source'           => $isRequest ? 'Document request visit' : 'Special service appointment',
+        'tracking_code'    => !empty($row['tracking_code']) ? (string) $row['tracking_code'] : '',
+        'notify_email'     => !empty($row['notify_email']) ? 'Yes' : 'No',
+        'id_front_path'    => !empty($row['id_front_path']) ? (string) $row['id_front_path'] : null,
+        'id_back_path'     => !empty($row['id_back_path']) ? (string) $row['id_back_path'] : null,
+        'created_at'       => !empty($row['created_at']) ? formatDateDisplay($row['created_at']) : '—',
+        'notes'            => !empty($row['notes']) ? (string) $row['notes'] : null,
+    ];
+}
+
 function requestStatusLabel(string $status): string
 {
     return match (normalizeRequestStatus($status)) {
@@ -1009,7 +1057,167 @@ function smtpCommand($fp, string $command, string $expectPrefix): bool
     return str_starts_with($response, $expectPrefix);
 }
 
-function sendSmtpEmail(string $to, string $subject, string $body): bool
+function citizenEmailText(string $value): string
+{
+    return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+}
+
+function citizenEmailPlain(array $mail): string
+{
+    $lines = [];
+    $name = trim((string) ($mail['name'] ?? ''));
+    $lines[] = $name !== '' ? 'Dear ' . $name . ',' : 'Hello,';
+    $lines[] = '';
+    $lines[] = trim((string) ($mail['intro'] ?? ''));
+    $lines[] = '';
+    if (!empty($mail['code'])) {
+        $lines[] = ($mail['code_label'] ?? 'Code') . ': ' . $mail['code'];
+    }
+    foreach ($mail['details'] ?? [] as $label => $value) {
+        $value = trim((string) $value);
+        if ($value === '') {
+            continue;
+        }
+        $lines[] = $label . ': ' . $value;
+    }
+    $lines[] = '';
+    if (!empty($mail['note'])) {
+        $lines[] = trim((string) $mail['note']);
+        $lines[] = '';
+    }
+    if (!empty($mail['button_url'])) {
+        $lines[] = ($mail['button_label'] ?? 'Open link') . ':';
+        $lines[] = (string) $mail['button_url'];
+        $lines[] = '';
+    }
+    $office = getSetting('office_name', 'Local Civil Registrar Office');
+    $lines[] = '— ALCROS, ' . $office;
+
+    return implode("\n", $lines);
+}
+
+function citizenEmailHtml(array $mail): string
+{
+    $site    = getSetting('site_name', 'ALCROS');
+    $office  = getSetting('office_name', 'Local Civil Registrar Office');
+    $phone   = getSetting('office_phone', '');
+    $hours   = getSetting('office_hours', '');
+    $accent  = (string) ($mail['accent'] ?? '#2563eb');
+    $heading = (string) ($mail['heading'] ?? 'Update from ALCROS');
+    $name    = trim((string) ($mail['name'] ?? ''));
+    $intro   = trim((string) ($mail['intro'] ?? ''));
+    $note    = trim((string) ($mail['note'] ?? ''));
+    $code    = trim((string) ($mail['code'] ?? ''));
+    $preheader = $intro !== '' ? $intro : $heading;
+
+    $detailRows = '';
+    foreach ($mail['details'] ?? [] as $label => $value) {
+        $value = trim((string) $value);
+        if ($value === '') {
+            continue;
+        }
+        $detailRows .= '<tr>'
+            . '<td style="padding:8px 0;font-size:11px;font-weight:bold;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;width:38%;vertical-align:top;">'
+            . citizenEmailText((string) $label) . '</td>'
+            . '<td style="padding:8px 0;font-size:14px;color:#0f172a;font-weight:600;">'
+            . citizenEmailText($value) . '</td>'
+            . '</tr>';
+    }
+
+    $codeBlock = '';
+    if ($code !== '') {
+        $codeBlock = '<p style="margin:0 0 4px;font-size:11px;font-weight:bold;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8;">'
+            . citizenEmailText((string) ($mail['code_label'] ?? 'Code')) . '</p>'
+            . '<p style="margin:0 0 16px;font-size:22px;letter-spacing:.12em;font-weight:800;color:' . citizenEmailText($accent) . ';font-family:Consolas,\'Courier New\',monospace;">'
+            . citizenEmailText($code) . '</p>';
+    }
+
+    $button = '';
+    if (!empty($mail['button_url'])) {
+        $label = citizenEmailText((string) ($mail['button_label'] ?? 'View details'));
+        $url   = citizenEmailText((string) $mail['button_url']);
+        $button = '<table cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 8px;">'
+            . '<tr><td style="background:' . citizenEmailText($accent) . ';border-radius:8px;">'
+            . '<a href="' . $url . '" style="display:inline-block;padding:12px 22px;color:#ffffff;text-decoration:none;font-size:13px;font-weight:bold;font-family:Arial,Helvetica,sans-serif;">'
+            . $label . '</a></td></tr></table>';
+    }
+
+    $introHtml = $intro !== ''
+        ? '<p style="margin:0 0 20px;font-size:14px;line-height:1.65;color:#475569;">' . nl2br(citizenEmailText($intro)) . '</p>'
+        : '';
+    $noteHtml = $note !== ''
+        ? '<p style="margin:18px 0 20px;font-size:14px;line-height:1.65;color:#475569;">' . nl2br(citizenEmailText($note)) . '</p>'
+        : '';
+    $hello = $name !== '' ? 'Hello, ' . $name : 'Hello';
+    $footerBits = array_filter([$hours !== '' ? 'Office hours: ' . $hours : '', $phone !== '' ? 'Contact: ' . $phone : '']);
+    $footer = implode(' · ', $footerBits);
+
+    return '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"></head>'
+        . '<body style="margin:0;padding:0;background-color:#f1f5f9;font-family:Arial,Helvetica,sans-serif;">'
+        . '<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">' . citizenEmailText($preheader) . '</div>'
+        . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f1f5f9;padding:24px 12px;">'
+        . '<tr><td align="center">'
+        . '<table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">'
+        . '<tr><td style="background:' . citizenEmailText($accent) . ';padding:22px 28px;">'
+        . '<p style="margin:0;color:#ffffff;font-size:11px;letter-spacing:.18em;font-weight:bold;">' . citizenEmailText($site) . '</p>'
+        . '<p style="margin:6px 0 0;color:#ffffff;font-size:13px;opacity:.9;">' . citizenEmailText($office) . '</p>'
+        . '</td></tr>'
+        . '<tr><td style="padding:28px;">'
+        . '<p style="margin:0 0 6px;font-size:11px;font-weight:bold;letter-spacing:.08em;text-transform:uppercase;color:' . citizenEmailText($accent) . ';">'
+        . citizenEmailText($heading) . '</p>'
+        . '<h1 style="margin:0 0 14px;font-size:22px;line-height:1.3;color:#0f172a;">' . citizenEmailText($hello) . '</h1>'
+        . $introHtml
+        . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">'
+        . '<tr><td style="padding:18px 20px;">' . $codeBlock
+        . ($detailRows !== '' ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">' . $detailRows . '</table>' : '')
+        . '</td></tr></table>'
+        . $noteHtml
+        . $button
+        . '</td></tr>'
+        . '<tr><td style="padding:16px 28px 24px;border-top:1px solid #e2e8f0;">'
+        . '<p style="margin:0;font-size:12px;line-height:1.6;color:#94a3b8;">'
+        . citizenEmailText($footer) . ($footer !== '' ? '<br>' : '')
+        . 'This is an automated message from ALCROS. Please do not reply to this email.'
+        . '</p></td></tr>'
+        . '</table></td></tr></table></body></html>';
+}
+
+function sendCitizenNotice(string $to, string $subject, array $mail): bool
+{
+    return sendCitizenEmail($to, $subject, citizenEmailPlain($mail), citizenEmailHtml($mail));
+}
+
+function buildEmailMime(string $fromName, string $fromEmail, string $body, ?string $html = null): array
+{
+    $fromHeader = 'From: "' . addcslashes($fromName, '"') . '" <' . $fromEmail . '>';
+    $headers = $fromHeader . "\r\n"
+        . 'Reply-To: ' . $fromEmail . "\r\n"
+        . "MIME-Version: 1.0\r\n";
+
+    $plain = str_replace(["\r\n", "\r"], "\n", $body);
+    if ($html === null || $html === '') {
+        $headers .= "Content-Type: text/plain; charset=UTF-8\r\n"
+            . "Content-Transfer-Encoding: 8bit\r\n";
+        return [$headers, $plain];
+    }
+
+    $boundary = 'alcros_' . bin2hex(random_bytes(8));
+    $headers .= 'Content-Type: multipart/alternative; boundary="' . $boundary . "\"\r\n";
+    $htmlNorm = str_replace(["\r\n", "\r"], "\n", $html);
+    $mime = "--{$boundary}\n"
+        . "Content-Type: text/plain; charset=UTF-8\n"
+        . "Content-Transfer-Encoding: 8bit\n\n"
+        . $plain . "\n\n"
+        . "--{$boundary}\n"
+        . "Content-Type: text/html; charset=UTF-8\n"
+        . "Content-Transfer-Encoding: 8bit\n\n"
+        . $htmlNorm . "\n\n"
+        . "--{$boundary}--";
+
+    return [$headers, $mime];
+}
+
+function sendSmtpEmail(string $to, string $subject, string $body, ?string $html = null): bool
 {
     $host = trim(getSetting('smtp_host', 'smtp.gmail.com')) ?: 'smtp.gmail.com';
     $port = (int) getSetting('smtp_port', '587');
@@ -1024,15 +1232,12 @@ function sendSmtpEmail(string $to, string $subject, string $body): bool
 
     $fromName = getSetting('site_name', 'ALCROS') . ' - ' . getSetting('office_name', 'Local Civil Registrar Office');
     $encodedSubject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
-    $payload = 'From: "' . addcslashes($fromName, '"') . '" <' . $user . ">\r\n"
+    [$headers, $mimeBody] = buildEmailMime($fromName, $user, $body, $html);
+    $payload = $headers
         . 'To: <' . $to . ">\r\n"
-        . 'Reply-To: ' . $user . "\r\n"
-        . 'Subject: ' . $encodedSubject . "\r\n"
-        . "MIME-Version: 1.0\r\n"
-        . "Content-Type: text/plain; charset=UTF-8\r\n"
-        . "Content-Transfer-Encoding: 8bit\r\n"
-        . "\r\n"
-        . $body . "\r\n";
+        . 'Subject: ' . $encodedSubject . "\r\n\r\n"
+        . str_replace("\n", "\r\n", $mimeBody) . "\r\n";
+    $payload = preg_replace('/^\./m', '..', $payload);
 
     $errno = 0;
     $errstr = '';
@@ -1088,22 +1293,20 @@ function sendSmtpEmail(string $to, string $subject, string $body): bool
     return $dataOk;
 }
 
-function sendCitizenEmail(string $to, string $subject, string $body): bool
+function sendCitizenEmail(string $to, string $subject, string $body, ?string $html = null): bool
 {
     if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
         return false;
     }
 
-    if (sendSmtpEmail($to, $subject, $body)) {
+    if (sendSmtpEmail($to, $subject, $body, $html)) {
         return true;
     }
 
     $from    = getSetting('smtp_user', getSetting('notification_email', getSetting('office_email', 'aloran@gov.ph')));
     $office  = getSetting('office_name', 'Local Civil Registrar Office');
-    $headers = "From: ALCROS - $office <$from>\r\n"
-        . "Reply-To: $from\r\n"
-        . "Content-Type: text/plain; charset=UTF-8\r\n";
-    return @mail($to, $subject, $body, $headers);
+    [$headers, $mimeBody] = buildEmailMime('ALCROS - ' . $office, $from, $body, $html);
+    return @mail($to, $subject, str_replace("\n", "\r\n", $mimeBody), $headers);
 }
 
 function notifyRequestSubmitted(array $data): bool
@@ -1112,28 +1315,30 @@ function notifyRequestSubmitted(array $data): bool
         return false;
     }
 
-    $trackUrl = trackRequestUrl($data['tracking_code']);
-    $appt     = '';
+    $details = [
+        'Document'       => (string) ($data['document_label'] ?? ''),
+        'Current status' => 'Pending review',
+    ];
     if (!empty($data['appointment_date']) && !empty($data['appointment_time'])) {
-        $appt = "\nPreferred visit: " . formatDateDisplay($data['appointment_date'])
-            . ' at ' . date('g:i A', strtotime($data['appointment_time'])) . "\n";
+        $details['Preferred visit'] = formatDateDisplay($data['appointment_date'])
+            . ' at ' . date('g:i A', strtotime($data['appointment_time']));
     }
-    $office = getSetting('office_name', 'Local Civil Registrar Office');
-    $body = "Dear {$data['citizen_name']},\n\n"
-        . "Thank you for submitting your document request through ALCROS.\n\n"
-        . "Tracking code: {$data['tracking_code']}\n"
-        . "Document: {$data['document_label']}\n"
-        . "Current status: Pending review\n"
-        . $appt
-        . "\nWe will email this Gmail address when staff verifies your request, when the status changes, and 5 hours before your preferred visit.\n\n"
-        . "Track your request anytime:\n{$trackUrl}\n\n"
-        . "Keep this code safe — you will need it to check your status.\n\n"
-        . '— ALCROS, ' . $office;
 
-    return sendCitizenEmail(
+    return sendCitizenNotice(
         $data['email'],
         'ALCROS — Request received (' . $data['tracking_code'] . ')',
-        $body
+        [
+            'heading'      => 'Request received',
+            'name'         => $data['citizen_name'],
+            'intro'        => 'Thank you for submitting your document request through ALCROS.',
+            'code_label'   => 'Tracking code',
+            'code'         => $data['tracking_code'],
+            'details'      => $details,
+            'note'         => "We will email this Gmail address when staff verifies your request, when the status changes, and 5 hours before your preferred visit.\n\nKeep this code safe — you will need it to check your status.",
+            'button_label' => 'Track your request',
+            'button_url'   => trackRequestUrl($data['tracking_code']),
+            'accent'       => '#2563eb',
+        ]
     );
 }
 
@@ -1150,36 +1355,48 @@ function notifyRequestStatusChange(PDO $pdo, int $requestId, string $newStatus):
         return;
     }
 
-    $trackUrl = trackRequestUrl($row['tracking_code']);
-    $label    = requestStatusLabel($newStatus);
-    $message  = requestStatusMessage($newStatus);
-    $doc      = documentTypeLabel($row['document_type']);
-    $office   = getSetting('office_name', 'Local Civil Registrar Office');
-
-    $intro = match (normalizeRequestStatus($newStatus)) {
+    $status = normalizeRequestStatus($newStatus);
+    $intro = match ($status) {
         'verified'  => 'The civil registry staff has verified your request. It is now being processed.',
         'ready'     => 'Good news — your document is ready for pickup.',
         'completed' => 'Your request has been completed.',
         'rejected'  => 'There is an update on your document request.',
         default     => 'There is an update on your document request.',
     };
-
-    $subject = match (normalizeRequestStatus($newStatus)) {
+    $subject = match ($status) {
         'verified'  => 'ALCROS — Your request is being processed (' . $row['tracking_code'] . ')',
         'ready'     => 'ALCROS — Ready for pickup (' . $row['tracking_code'] . ')',
         default     => 'ALCROS — Request update (' . $row['tracking_code'] . ')',
     };
+    $accent = match ($status) {
+        'ready'     => '#16a34a',
+        'completed' => '#475569',
+        'rejected'  => '#dc2626',
+        default     => '#2563eb',
+    };
+    $heading = match ($status) {
+        'verified'  => 'Now being processed',
+        'ready'     => 'Ready for pickup',
+        'completed' => 'Request completed',
+        'rejected'  => 'Request update',
+        default     => 'Request update',
+    };
 
-    $body = "Dear {$row['citizen_name']},\n\n"
-        . $intro . "\n\n"
-        . "Tracking code: {$row['tracking_code']}\n"
-        . "Document: {$doc}\n"
-        . "New status: {$label}\n\n"
-        . "{$message}\n\n"
-        . "View full details:\n{$trackUrl}\n\n"
-        . '— ALCROS, ' . $office;
-
-    sendCitizenEmail($row['email'], $subject, $body);
+    sendCitizenNotice($row['email'], $subject, [
+        'heading'      => $heading,
+        'name'         => $row['citizen_name'],
+        'intro'        => $intro,
+        'code_label'   => 'Tracking code',
+        'code'         => $row['tracking_code'],
+        'details'      => [
+            'Document'   => documentTypeLabel($row['document_type']),
+            'New status' => requestStatusLabel($newStatus),
+        ],
+        'note'         => requestStatusMessage($newStatus),
+        'button_label' => 'View full details',
+        'button_url'   => trackRequestUrl($row['tracking_code']),
+        'accent'       => $accent,
+    ]);
 }
 
 function notifyAppointmentBooked(array $data): bool
@@ -1188,23 +1405,25 @@ function notifyAppointmentBooked(array $data): bool
         return false;
     }
 
-    $trackUrl = trackRequestUrl($data['appointment_code']);
-    $office = getSetting('office_name', 'Local Civil Registrar Office');
-    $when = formatAppointmentDisplay($data['appointment_date'] ?? null, $data['appointment_time'] ?? null);
-    $body = "Dear {$data['citizen_name']},\n\n"
-        . "Your appointment was booked successfully.\n\n"
-        . "Appointment code: {$data['appointment_code']}\n"
-        . "Service: {$data['service_label']}\n"
-        . "Schedule: {$when}\n"
-        . "Status: Scheduled\n\n"
-        . "We will email this Gmail address 5 hours before your appointment, and if staff updates the status.\n\n"
-        . "Track anytime:\n{$trackUrl}\n\n"
-        . '— ALCROS, ' . $office;
-
-    return sendCitizenEmail(
+    return sendCitizenNotice(
         $data['email'],
         'ALCROS — Appointment booked (' . $data['appointment_code'] . ')',
-        $body
+        [
+            'heading'      => 'Appointment booked',
+            'name'         => $data['citizen_name'],
+            'intro'        => 'Your appointment was booked successfully.',
+            'code_label'   => 'Appointment code',
+            'code'         => $data['appointment_code'],
+            'details'      => [
+                'Service'  => (string) ($data['service_label'] ?? ''),
+                'Schedule' => formatAppointmentDisplay($data['appointment_date'] ?? null, $data['appointment_time'] ?? null),
+                'Status'   => 'Scheduled',
+            ],
+            'note'         => 'We will email this Gmail address 5 hours before your appointment, and if staff updates the status.',
+            'button_label' => 'Track appointment',
+            'button_url'   => trackRequestUrl($data['appointment_code']),
+            'accent'       => '#2563eb',
+        ]
     );
 }
 
@@ -1221,21 +1440,31 @@ function notifyAppointmentStatusChange(PDO $pdo, int $appointmentId, string $new
         return;
     }
 
-    $trackUrl = trackRequestUrl($row['appointment_code']);
-    $office = getSetting('office_name', 'Local Civil Registrar Office');
-    $body = "Dear {$row['citizen_name']},\n\n"
-        . "There is an update on your appointment.\n\n"
-        . "Appointment code: {$row['appointment_code']}\n"
-        . "Service: " . appointmentServiceLabel((string) $row['service_type']) . "\n"
-        . "New status: " . appointmentStatusLabel($newStatus) . "\n\n"
-        . appointmentStatusMessage($newStatus) . "\n\n"
-        . "View full details:\n{$trackUrl}\n\n"
-        . '— ALCROS, ' . $office;
+    $accent = match ($newStatus) {
+        'completed' => '#16a34a',
+        'cancelled', 'no_show' => '#dc2626',
+        'confirmed' => '#2563eb',
+        default => '#2563eb',
+    };
 
-    sendCitizenEmail(
+    sendCitizenNotice(
         $row['email'],
         'ALCROS — Appointment update (' . $row['appointment_code'] . ')',
-        $body
+        [
+            'heading'      => 'Appointment update',
+            'name'         => $row['citizen_name'],
+            'intro'        => 'There is an update on your appointment.',
+            'code_label'   => 'Appointment code',
+            'code'         => $row['appointment_code'],
+            'details'      => [
+                'Service'    => appointmentServiceLabel((string) $row['service_type']),
+                'New status' => appointmentStatusLabel($newStatus),
+            ],
+            'note'         => appointmentStatusMessage($newStatus),
+            'button_label' => 'View full details',
+            'button_url'   => trackRequestUrl($row['appointment_code']),
+            'accent'       => $accent,
+        ]
     );
 }
 
@@ -1245,22 +1474,24 @@ function notifyAppointmentReminder(array $row): bool
         return false;
     }
 
-    $trackUrl = trackRequestUrl((string) $row['appointment_code']);
-    $office = getSetting('office_name', 'Local Civil Registrar Office');
-    $when = formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
-    $body = "Dear {$row['citizen_name']},\n\n"
-        . "This is a reminder that your appointment is in about 5 hours.\n\n"
-        . "Appointment code: {$row['appointment_code']}\n"
-        . "Service: " . appointmentServiceLabel((string) ($row['service_type'] ?? '')) . "\n"
-        . "Schedule: {$when}\n\n"
-        . "Please arrive on time and bring a valid ID.\n\n"
-        . "View or track your appointment:\n{$trackUrl}\n\n"
-        . '— ALCROS, ' . $office;
-
-    return sendCitizenEmail(
+    return sendCitizenNotice(
         (string) $row['email'],
         'ALCROS — Appointment in 5 hours (' . $row['appointment_code'] . ')',
-        $body
+        [
+            'heading'      => 'Appointment reminder',
+            'name'         => $row['citizen_name'],
+            'intro'        => 'This is a reminder that your appointment is in about 5 hours.',
+            'code_label'   => 'Appointment code',
+            'code'         => $row['appointment_code'],
+            'details'      => [
+                'Service'  => appointmentServiceLabel((string) ($row['service_type'] ?? '')),
+                'Schedule' => formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
+            ],
+            'note'         => 'Please arrive on time and bring a valid ID.',
+            'button_label' => 'View appointment',
+            'button_url'   => trackRequestUrl((string) $row['appointment_code']),
+            'accent'       => '#d97706',
+        ]
     );
 }
 
@@ -1270,25 +1501,25 @@ function notifyRequestVisitReminder(array $row): bool
         return false;
     }
 
-    $trackUrl = trackRequestUrl((string) $row['tracking_code']);
-    $office = getSetting('office_name', 'Local Civil Registrar Office');
-    $when = formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
-    $status = requestStatusLabel((string) ($row['status'] ?? 'pending'));
-    $doc = documentTypeLabel((string) ($row['document_type'] ?? ''));
-    $body = "Dear {$row['citizen_name']},\n\n"
-        . "This is a reminder that your preferred visit for document pickup is in about 5 hours.\n\n"
-        . "Tracking code: {$row['tracking_code']}\n"
-        . "Document: {$doc}\n"
-        . "Current status: {$status}\n"
-        . "Preferred visit: {$when}\n\n"
-        . "Please arrive on time and bring your tracking code and a valid ID.\n\n"
-        . "Track your request:\n{$trackUrl}\n\n"
-        . '— ALCROS, ' . $office;
-
-    return sendCitizenEmail(
+    return sendCitizenNotice(
         (string) $row['email'],
         'ALCROS — Visit in 5 hours (' . $row['tracking_code'] . ')',
-        $body
+        [
+            'heading'      => 'Visit reminder',
+            'name'         => $row['citizen_name'],
+            'intro'        => 'This is a reminder that your preferred visit for document pickup is in about 5 hours.',
+            'code_label'   => 'Tracking code',
+            'code'         => $row['tracking_code'],
+            'details'      => [
+                'Document'        => documentTypeLabel((string) ($row['document_type'] ?? '')),
+                'Current status'  => requestStatusLabel((string) ($row['status'] ?? 'pending')),
+                'Preferred visit' => formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
+            ],
+            'note'         => 'Please arrive on time and bring your tracking code and a valid ID.',
+            'button_label' => 'Track your request',
+            'button_url'   => trackRequestUrl((string) $row['tracking_code']),
+            'accent'       => '#d97706',
+        ]
     );
 }
 

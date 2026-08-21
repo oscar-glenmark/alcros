@@ -187,7 +187,7 @@ function redirectWithAuth(string $path, array $query = []): void
 function outputAuthBootstrap(): void
 {
     $redirect = basename($_SERVER['PHP_SELF']);
-    echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Loading...</title><script>
+    echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><link rel="icon" type="image/png" href="images/favicon.png?v=2"><title>Loading...</title><script>
     (function () {
         var token = sessionStorage.getItem("alcros_auth");
         if (token) {

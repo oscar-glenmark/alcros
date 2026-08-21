@@ -20,7 +20,7 @@ function manageRequestsRedirectFilters(): array
 
 function updateDocumentRequestStatus(PDO $pdo, int $id, string $status): bool
 {
-    $valid = requestStatusOptions();
+    $valid = requestStatusUpdateOptions();
     if ($id <= 0 || !in_array($status, $valid, true)) {
         return false;
     }
@@ -103,12 +103,13 @@ $stmt->execute($params);
 $requests = $stmt->fetchAll();
 
 $statusFilters = ['all' => 'All', 'pending' => 'Pending', 'verified' => 'Verified', 'ready' => 'Ready', 'completed' => 'Completed', 'rejected' => 'Rejected'];
-$statusOptions = requestStatusOptions();
+$statusOptions = requestStatusUpdateOptions();
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Requests - ALCROS</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -210,7 +211,10 @@ $statusOptions = requestStatusOptions();
                                         <input type="hidden" name="redirect_q" value="<?= htmlspecialchars($search) ?>">
                                         <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
                                         <input type="hidden" name="update_status" value="1">
-                                        <select name="status" class="text-[10px] border rounded px-2 py-1">
+                                        <select name="status" required class="text-[10px] border rounded px-2 py-1">
+                                            <?php if (!in_array($req['status'], $statusOptions, true)): ?>
+                                            <option value="" selected disabled>Select status</option>
+                                            <?php endif; ?>
                                             <?php foreach ($statusOptions as $s): ?>
                                             <option value="<?= $s ?>" <?= $req['status'] === $s ? 'selected' : '' ?>><?= htmlspecialchars(requestStatusLabel($s)) ?></option>
                                             <?php endforeach; ?>

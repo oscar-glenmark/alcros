@@ -22,6 +22,7 @@ $year = date('Y');
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>All Services - <?= htmlspecialchars($site['name']) ?></title>
     <script src="https://cdn.tailwindcss.com"></script>

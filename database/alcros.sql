@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS appointments (
     status ENUM('scheduled','confirmed','completed','cancelled','no_show') NOT NULL DEFAULT 'scheduled',
     source VARCHAR(32) NOT NULL DEFAULT 'standalone',
     tracking_code VARCHAR(20) DEFAULT NULL,
+    id_front_path VARCHAR(255) DEFAULT NULL,
+    id_back_path VARCHAR(255) DEFAULT NULL,
     notes TEXT DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_date (appointment_date),

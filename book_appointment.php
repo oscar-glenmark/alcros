@@ -52,38 +52,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $pdo = getDB();
                 ensureCitizenNotifyColumns($pdo);
-                $appointmentCode = generateAppointmentCode();
-                $stmt = $pdo->prepare(
-                    'INSERT INTO appointments (appointment_code, citizen_name, email, phone, notify_email, service_type, appointment_date, appointment_time, status, source, id_front_path, id_back_path)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-                );
-                $stmt->execute([
-                    $appointmentCode,
-                    $citizenName,
-                    $email,
-                    $phone ?: null,
-                    $notifyEmail ? 1 : 0,
-                    $serviceType,
-                    $date,
-                    $time,
-                    'scheduled',
-                    'standalone',
-                    $frontPath,
-                    $backPath,
-                ]);
-                if ($notifyEmail) {
-                    notifyAppointmentBooked([
-                        'appointment_code'  => $appointmentCode,
-                        'citizen_name'      => $citizenName,
-                        'email'             => $email,
-                        'service_label'     => $serviceType,
-                        'appointment_date'  => $date,
-                        'appointment_time'  => $time,
-                        'notify_email'      => 1,
+                $pdo->beginTransaction();
+
+                $bookingError = validateAppointmentBooking($pdo, $date, $time, $email, true);
+                if ($bookingError !== null) {
+                    $pdo->rollBack();
+                    deleteIdUploadFiles($frontPath, $backPath);
+                    $error = $bookingError;
+                } else {
+                    $appointmentCode = generateAppointmentCode();
+                    $stmt = $pdo->prepare(
+                        'INSERT INTO appointments (appointment_code, citizen_name, email, phone, notify_email, service_type, appointment_date, appointment_time, status, source, id_front_path, id_back_path)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                    );
+                    $stmt->execute([
+                        $appointmentCode,
+                        $citizenName,
+                        $email,
+                        $phone ?: null,
+                        $notifyEmail ? 1 : 0,
+                        $serviceType,
+                        $date,
+                        normalizeAppointmentTime($time),
+                        'scheduled',
+                        'standalone',
+                        $frontPath,
+                        $backPath,
                     ]);
+                    $pdo->commit();
+
+                    if ($notifyEmail) {
+                        notifyAppointmentBooked([
+                            'appointment_code'  => $appointmentCode,
+                            'citizen_name'      => $citizenName,
+                            'email'             => $email,
+                            'service_label'     => $serviceType,
+                            'appointment_date'  => $date,
+                            'appointment_time'  => $time,
+                            'notify_email'      => 1,
+                        ]);
+                    }
+                    $success = true;
                 }
-                $success = true;
             } catch (PDOException $e) {
+                if (isset($pdo) && $pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
                 deleteIdUploadFiles($frontPath, $backPath);
                 $error = 'Could not book appointment. ' . dbConnectionHelpMessage();
             }
@@ -147,13 +161,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="block text-[11px] font-bold mb-1">Date *</label>
-                    <input type="date" name="appointment_date" required min="<?= date('Y-m-d') ?>" value="<?= htmlspecialchars($date) ?>" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
+                    <input type="date" id="appointmentDateInput" name="appointment_date" required min="<?= date('Y-m-d') ?>" value="<?= htmlspecialchars($date) ?>" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
                 </div>
                 <div>
                     <label class="block text-[11px] font-bold mb-1">Time *</label>
-                    <input type="time" name="appointment_time" required value="<?= htmlspecialchars($time) ?>" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
+                    <input type="time" id="appointmentTimeInput" name="appointment_time" required min="08:00" max="17:00" value="<?= htmlspecialchars($time) ?>" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
                 </div>
             </div>
+            <p class="text-[10px] text-gray-500">Office hours: 8:00 AM – 5:00 PM (Monday to Friday). One booking per time slot.</p>
+            <p id="slotAvailabilityStatus" class="hidden text-xs mt-2"></p>
             <div>
                 <label class="flex items-center gap-2 text-[11px] font-bold mb-1">
                     <i data-lucide="mail" class="w-3.5 h-3.5 text-blue-500"></i> Active Gmail Account *
@@ -199,6 +215,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
     </main>
     <script src="includes/loading.js"></script>
+    <script src="includes/appointment_slots.js"></script>
     <script>
         lucide.createIcons();
         (function () {

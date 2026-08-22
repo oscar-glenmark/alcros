@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/helpers.php';
 
 requireStaffLogin();
 
@@ -112,9 +113,7 @@ requireStaffLogin();
                 </p>
             </div>
 
-            <div class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center border border-gray-200">
-                <i data-lucide="user" class="w-5 h-5 text-gray-400"></i>
-            </div>
+            <?= renderStaffAvatar(staffPhotoPath(), staffName()) ?>
 
         </div>
 

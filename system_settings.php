@@ -7,6 +7,7 @@ requirePageAccess('system_settings.php');
 
 $activePage = 'system_settings.php';
 $pdo = getDB();
+ensureStaffProfileColumns($pdo);
 $isAdmin = isAdmin();
 $currentStaffId = staffId();
 
@@ -44,7 +45,7 @@ $defaults = [
 
 function currentStaffRow(PDO $pdo, string $staffId): ?array
 {
-    $stmt = $pdo->prepare('SELECT staff_id, name, role, created_at FROM staff WHERE staff_id = ? LIMIT 1');
+    $stmt = $pdo->prepare('SELECT staff_id, name, role, created_at, profile_photo_path FROM staff WHERE staff_id = ? LIMIT 1');
     $stmt->execute([$staffId]);
     $row = $stmt->fetch();
     return $row ?: null;
@@ -168,6 +169,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('UPDATE staff SET password_hash = ? WHERE staff_id = ?')->execute([password_hash($newPass, PASSWORD_DEFAULT), $targetId]);
             logActivity($currentStaffId, 'Password Reset', "Reset password for $targetId");
             settingsFlashSet('success', "Password reset for $targetId.");
+        } elseif ($action === 'upload_staff_photo' && $isAdmin) {
+            $targetId = strtoupper(trim($_POST['target_staff_id'] ?? ''));
+            if ($targetId === '') {
+                throw new InvalidArgumentException('Staff ID is required.');
+            }
+            $exists = $pdo->prepare('SELECT profile_photo_path FROM staff WHERE staff_id = ?');
+            $exists->execute([$targetId]);
+            $existing = $exists->fetch();
+            if (!$existing) {
+                throw new InvalidArgumentException('Staff account not found.');
+            }
+            $newPath = saveStaffPhotoUpload($_FILES['staff_photo'] ?? [], $targetId);
+            if (!$newPath) {
+                throw new InvalidArgumentException('Invalid photo. Use JPG, PNG, or WEBP (max upload size allowed by server).');
+            }
+            deleteStaffPhotoFile($existing['profile_photo_path'] ?? null);
+            $pdo->prepare('UPDATE staff SET profile_photo_path = ? WHERE staff_id = ?')->execute([$newPath, $targetId]);
+            logActivity($currentStaffId, 'Staff Photo Updated', "Updated profile photo for $targetId");
+            settingsFlashSet('success', "Profile photo updated for $targetId.");
+        } elseif ($action === 'remove_staff_photo' && $isAdmin) {
+            $targetId = strtoupper(trim($_POST['target_staff_id'] ?? ''));
+            if ($targetId === '') {
+                throw new InvalidArgumentException('Staff ID is required.');
+            }
+            $photoStmt = $pdo->prepare('SELECT profile_photo_path FROM staff WHERE staff_id = ?');
+            $photoStmt->execute([$targetId]);
+            $photo = $photoStmt->fetchColumn();
+            if (!$photo) {
+                throw new InvalidArgumentException('Staff account not found.');
+            }
+            deleteStaffPhotoFile($photo ?: null);
+            $pdo->prepare('UPDATE staff SET profile_photo_path = NULL WHERE staff_id = ?')->execute([$targetId]);
+            logActivity($currentStaffId, 'Staff Photo Removed', "Removed profile photo for $targetId");
+            settingsFlashSet('success', "Profile photo removed for $targetId.");
         } elseif ($action === 'remove_staff' && $isAdmin) {
             $targetId = strtoupper(trim($_POST['target_staff_id'] ?? ''));
             if ($targetId === '') {
@@ -185,6 +220,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (in_array($targetRole, ['Administrator', 'Registrar'], true) && adminCount($pdo) <= 1) {
                 throw new InvalidArgumentException('Cannot remove the last administrator account.');
             }
+            $photoStmt = $pdo->prepare('SELECT profile_photo_path FROM staff WHERE staff_id = ?');
+            $photoStmt->execute([$targetId]);
+            deleteStaffPhotoFile($photoStmt->fetchColumn() ?: null);
             $pdo->prepare('DELETE FROM staff WHERE staff_id = ?')->execute([$targetId]);
             logActivity($currentStaffId, 'Staff Removed', "Removed staff account $targetId");
             settingsFlashSet('success', "Staff account $targetId removed.");
@@ -212,7 +250,7 @@ foreach ($adminSettingKeys as $key) {
 }
 
 $currentStaff = currentStaffRow($pdo, $currentStaffId);
-$staffMembers = $pdo->query('SELECT staff_id, name, role, created_at FROM staff ORDER BY created_at ASC')->fetchAll();
+$staffMembers = $pdo->query('SELECT staff_id, name, role, created_at, profile_photo_path FROM staff ORDER BY created_at ASC')->fetchAll();
 $systemStats = $isAdmin ? getSystemStats($pdo) : [];
 $recentLogs = $isAdmin
     ? $pdo->query('SELECT staff_id, action, details, created_at FROM activity_logs ORDER BY created_at DESC LIMIT 8')->fetchAll()
@@ -233,7 +271,7 @@ if (!in_array($activeTab, $validTabs, true)) {
 }
 
 $flash = settingsFlashGet();
-$staffInitial = strtoupper(substr($currentStaff['name'] ?? 'U', 0, 1));
+$currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -299,7 +337,7 @@ $staffInitial = strtoupper(substr($currentStaff['name'] ?? 'U', 0, 1));
                     <!-- MY ACCOUNT -->
                     <div id="tab-my-account" class="tab-content bg-white border border-slate-100 rounded-2xl p-8 shadow-sm <?= $activeTab !== 'my-account' ? 'hidden' : '' ?>">
                         <div class="flex items-center gap-5 mb-8">
-                            <div class="w-20 h-20 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center text-3xl font-black shrink-0"><?= htmlspecialchars($staffInitial) ?></div>
+                            <?= renderStaffAvatar($currentStaffPhoto, $currentStaff['name'] ?? staffName(), 'w-20 h-20 text-3xl', 'rounded-2xl') ?>
                             <div>
                                 <h2 class="text-2xl font-bold text-slate-900"><?= htmlspecialchars($currentStaff['name'] ?? staffName()) ?></h2>
                                 <p class="text-sm text-slate-400 font-mono"><?= htmlspecialchars($currentStaffId) ?></p>
@@ -387,7 +425,7 @@ $staffInitial = strtoupper(substr($currentStaff['name'] ?? 'U', 0, 1));
                         <div class="flex justify-between items-start mb-6">
                             <div>
                                 <h2 class="text-lg font-bold text-slate-900 mb-1">Staff Members</h2>
-                                <p class="text-xs text-slate-500">Manage who can access the staff portal. Staff role sees Dashboard, Requests, Appointments, Records, Queue, and My Settings.</p>
+                                <p class="text-xs text-slate-500">Manage who can access the staff portal. Upload a profile photo for each account — it appears in the header and dashboard after they sign in.</p>
                             </div>
                             <span class="text-[10px] font-bold uppercase bg-slate-100 text-slate-600 px-3 py-1 rounded-full"><?= count($staffMembers) ?> accounts</span>
                         </div>
@@ -424,6 +462,7 @@ $staffInitial = strtoupper(substr($currentStaff['name'] ?? 'U', 0, 1));
                             <table class="w-full text-sm text-left">
                                 <thead class="bg-slate-50 text-[10px] font-bold uppercase text-slate-400 border-b border-slate-200">
                                     <tr>
+                                        <th class="px-4 py-3">Photo</th>
                                         <th class="px-4 py-3">Staff ID</th>
                                         <th class="px-4 py-3">Name</th>
                                         <th class="px-4 py-3">Role</th>
@@ -434,6 +473,26 @@ $staffInitial = strtoupper(substr($currentStaff['name'] ?? 'U', 0, 1));
                                 <tbody class="divide-y divide-slate-100">
                                     <?php foreach ($staffMembers as $member): ?>
                                     <tr class="hover:bg-slate-50/50">
+                                        <td class="px-4 py-3">
+                                            <div class="flex items-center gap-2">
+                                                <?= renderStaffAvatar($member['profile_photo_path'] ?? null, $member['name'], 'w-10 h-10 text-sm') ?>
+                                                <form method="POST" enctype="multipart/form-data" class="flex flex-col gap-1 min-w-[120px]">
+                                                    <input type="hidden" name="settings_action" value="upload_staff_photo">
+                                                    <input type="hidden" name="active_tab" value="account-management">
+                                                    <input type="hidden" name="target_staff_id" value="<?= htmlspecialchars($member['staff_id']) ?>">
+                                                    <input type="file" name="staff_photo" accept="image/jpeg,image/png,image/webp" required class="text-[10px] w-full file:mr-1 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-blue-50 file:text-blue-600">
+                                                    <button type="submit" class="text-[10px] font-bold text-blue-600 hover:underline text-left">Upload photo</button>
+                                                </form>
+                                                <?php if (!empty($member['profile_photo_path'])): ?>
+                                                <form method="POST" class="inline">
+                                                    <input type="hidden" name="settings_action" value="remove_staff_photo">
+                                                    <input type="hidden" name="active_tab" value="account-management">
+                                                    <input type="hidden" name="target_staff_id" value="<?= htmlspecialchars($member['staff_id']) ?>">
+                                                    <button type="submit" class="text-[10px] font-bold text-red-500 hover:underline" onclick="return confirm('Remove profile photo for this account?');">Remove</button>
+                                                </form>
+                                                <?php endif; ?>
+                                            </div>
+                                        </td>
                                         <td class="px-4 py-3 font-mono text-xs font-bold text-blue-600"><?= htmlspecialchars($member['staff_id']) ?></td>
                                         <td class="px-4 py-3 font-semibold text-slate-800">
                                     <?= htmlspecialchars($member['name']) ?>

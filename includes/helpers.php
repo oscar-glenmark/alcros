@@ -406,6 +406,159 @@ function appointmentStatusMessage(string $status): string
     };
 }
 
+function activeAppointmentSlotStatuses(): array
+{
+    return ['scheduled', 'confirmed'];
+}
+
+function normalizeAppointmentTime(string $time): string
+{
+    $time = trim($time);
+    if ($time === '') {
+        return '';
+    }
+    $ts = strtotime('1970-01-01 ' . $time);
+    if ($ts === false) {
+        return '';
+    }
+
+    return date('H:i:s', $ts);
+}
+
+function maxDailyAppointmentsLimit(): int
+{
+    return max(1, (int) getSetting('max_daily_appointments', '20'));
+}
+
+function isOfficeAppointmentDate(string $date): bool
+{
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        return false;
+    }
+
+    $dow = (int) date('N', strtotime($date));
+
+    return $dow >= 1 && $dow <= 5;
+}
+
+function isWithinOfficeHours(string $time): bool
+{
+    $normalized = normalizeAppointmentTime($time);
+    if ($normalized === '') {
+        return false;
+    }
+
+    return $normalized >= '08:00:00' && $normalized <= '17:00:00';
+}
+
+function getBookedAppointmentTimes(PDO $pdo, string $date): array
+{
+    ensureCitizenNotifyColumns($pdo);
+    $statuses = activeAppointmentSlotStatuses();
+    $placeholders = implode(',', array_fill(0, count($statuses), '?'));
+    $stmt = $pdo->prepare(
+        "SELECT TIME_FORMAT(appointment_time, '%H:%i') AS slot_time
+         FROM appointments
+         WHERE appointment_date = ? AND status IN ($placeholders)
+         ORDER BY appointment_time ASC"
+    );
+    $stmt->execute(array_merge([$date], $statuses));
+
+    return array_column($stmt->fetchAll(), 'slot_time');
+}
+
+function countActiveAppointmentsOnDate(PDO $pdo, string $date): int
+{
+    $statuses = activeAppointmentSlotStatuses();
+    $placeholders = implode(',', array_fill(0, count($statuses), '?'));
+    $stmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM appointments WHERE appointment_date = ? AND status IN ($placeholders)"
+    );
+    $stmt->execute(array_merge([$date], $statuses));
+
+    return (int) $stmt->fetchColumn();
+}
+
+function isAppointmentSlotTaken(PDO $pdo, string $date, string $time, ?int $excludeId = null): bool
+{
+    $normalized = normalizeAppointmentTime($time);
+    if ($normalized === '') {
+        return true;
+    }
+
+    $statuses = activeAppointmentSlotStatuses();
+    $placeholders = implode(',', array_fill(0, count($statuses), '?'));
+    $sql = "SELECT COUNT(*) FROM appointments
+            WHERE appointment_date = ? AND appointment_time = ? AND status IN ($placeholders)";
+    $params = array_merge([$date, $normalized], $statuses);
+    if ($excludeId !== null) {
+        $sql .= ' AND id != ?';
+        $params[] = $excludeId;
+    }
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+
+    return (int) $stmt->fetchColumn() > 0;
+}
+
+function validateAppointmentBooking(PDO $pdo, string $date, string $time, ?string $email = null, bool $lockRows = false): ?string
+{
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        return 'Please choose a valid appointment date.';
+    }
+    if ($date < date('Y-m-d')) {
+        return 'Appointment date cannot be in the past.';
+    }
+    if (!isOfficeAppointmentDate($date)) {
+        return 'Appointments are available Monday to Friday only.';
+    }
+    if (!isWithinOfficeHours($time)) {
+        return 'Please choose a time within office hours (8:00 AM – 5:00 PM).';
+    }
+
+    $normalized = normalizeAppointmentTime($time);
+    if ($normalized === '') {
+        return 'Please choose a valid appointment time.';
+    }
+
+    $statuses = activeAppointmentSlotStatuses();
+    $statusList = "'" . implode("','", $statuses) . "'";
+    $lock = $lockRows ? ' FOR UPDATE' : '';
+
+    $slotStmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM appointments
+         WHERE appointment_date = ? AND appointment_time = ? AND status IN ($statusList)$lock"
+    );
+    $slotStmt->execute([$date, $normalized]);
+    if ((int) $slotStmt->fetchColumn() > 0) {
+        return 'This time slot is already booked. Please choose another date or time.';
+    }
+
+    $maxDaily = maxDailyAppointmentsLimit();
+    $dailyStmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM appointments
+         WHERE appointment_date = ? AND status IN ($statusList)$lock"
+    );
+    $dailyStmt->execute([$date]);
+    if ((int) $dailyStmt->fetchColumn() >= $maxDaily) {
+        return 'No appointment slots remain on this date. Please choose another day.';
+    }
+
+    if ($email !== null && $email !== '') {
+        $emailStmt = $pdo->prepare(
+            "SELECT appointment_code FROM appointments
+             WHERE appointment_date = ? AND appointment_time = ? AND email = ?
+               AND status IN ($statusList) LIMIT 1"
+        );
+        $emailStmt->execute([$date, $normalized, normalizeGmail($email)]);
+        if ($emailStmt->fetchColumn()) {
+            return 'You already have an appointment at this date and time.';
+        }
+    }
+
+    return null;
+}
+
 function appointmentStatusBadge(string $status): string
 {
     $classes = [
@@ -815,6 +968,102 @@ function isGmailVerifiedInSession(string $email): bool
     return true;
 }
 
+function normalizePersonName(string $name): string
+{
+    $name = strtolower(trim($name));
+    $name = preg_replace('/[.,]+/', ' ', $name);
+    $name = preg_replace('/\s+/', ' ', $name);
+
+    return $name;
+}
+
+function findCivilRecordMatch(PDO $pdo, string $citizenName, string $dateOfBirth): ?array
+{
+    $normalized = normalizePersonName($citizenName);
+    if ($normalized === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfBirth)) {
+        return null;
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT id, record_type, person_name, birth_date, registry_number
+         FROM civil_records
+         WHERE deleted_at IS NULL AND birth_date = ?
+         ORDER BY person_name ASC'
+    );
+    $stmt->execute([$dateOfBirth]);
+    while ($row = $stmt->fetch()) {
+        if (normalizePersonName((string) $row['person_name']) === $normalized) {
+            return $row;
+        }
+    }
+
+    return null;
+}
+
+function markCivilRecordVerified(string $citizenName, string $dateOfBirth): void
+{
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    $_SESSION['alcros_civil_record_verified'] = [
+        'name'    => normalizePersonName($citizenName),
+        'dob'     => $dateOfBirth,
+        'expires' => time() + 7200,
+    ];
+}
+
+function isCivilRecordVerifiedInSession(string $citizenName, string $dateOfBirth): bool
+{
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+
+    if ($citizenName === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfBirth)) {
+        return false;
+    }
+
+    $verified = $_SESSION['alcros_civil_record_verified'] ?? null;
+    if (!$verified) {
+        return false;
+    }
+    if (normalizePersonName($citizenName) !== ($verified['name'] ?? '')
+        || $dateOfBirth !== ($verified['dob'] ?? '')) {
+        return false;
+    }
+    if (time() > (int) ($verified['expires'] ?? 0)) {
+        unset($_SESSION['alcros_civil_record_verified']);
+        return false;
+    }
+
+    return true;
+}
+
+function verifyCitizenCivilRecord(PDO $pdo, string $citizenName, string $dateOfBirth): array
+{
+    $citizenName = trim($citizenName);
+    if ($citizenName === '') {
+        return ['ok' => false, 'error' => 'Enter your full name on record first.'];
+    }
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfBirth)) {
+        return ['ok' => false, 'error' => 'Enter your date of birth first.'];
+    }
+
+    $row = findCivilRecordMatch($pdo, $citizenName, $dateOfBirth);
+    if ($row) {
+        markCivilRecordVerified($citizenName, $dateOfBirth);
+        return [
+            'ok'          => true,
+            'message'     => 'Record found — you are registered with the Local Civil Registry Office.',
+            'record_type' => civilRecordTypeLabel((string) $row['record_type']),
+        ];
+    }
+
+    return [
+        'ok'    => false,
+        'error' => 'No civil registry record was found for this name and date of birth. Please visit the Local Civil Registry Office (LCRO) in person to register before submitting an online request.',
+    ];
+}
+
 function ensureDocumentRequestSchema(?PDO $pdo = null): void
 {
     // Schema is created by install.php only — no runtime ALTER TABLE (safer for XAMPP MySQL).
@@ -852,6 +1101,93 @@ function saveIdUpload(array $file, string $prefix): ?string
     }
 
     return 'uploads/ids/' . $filename;
+}
+
+function ensureStaffProfileColumns(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+
+    try {
+        $pdo->query('SELECT profile_photo_path FROM staff LIMIT 1');
+    } catch (Throwable $e) {
+        try {
+            $pdo->exec('ALTER TABLE staff ADD COLUMN profile_photo_path VARCHAR(255) DEFAULT NULL AFTER role');
+        } catch (Throwable $ignored) {
+        }
+    }
+}
+
+function saveStaffPhotoUpload(array $file, string $staffId): ?string
+{
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        return null;
+    }
+
+    $allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    $mime = mime_content_type($file['tmp_name']);
+    if (!in_array($mime, $allowed, true)) {
+        return null;
+    }
+
+    $ext = match ($mime) {
+        'image/jpeg' => 'jpg',
+        'image/png'  => 'png',
+        'image/webp' => 'webp',
+        default      => 'bin',
+    };
+
+    $dir = __DIR__ . '/../uploads/staff';
+    if (!is_dir($dir)) {
+        mkdir($dir, 0755, true);
+    }
+
+    $safeId = preg_replace('/[^A-Z0-9\-]/', '', strtoupper($staffId));
+    $filename = 'staff_' . ($safeId !== '' ? $safeId : 'USER') . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
+    $dest = $dir . '/' . $filename;
+    if (!move_uploaded_file($file['tmp_name'], $dest)) {
+        return null;
+    }
+
+    return 'uploads/staff/' . $filename;
+}
+
+function deleteStaffPhotoFile(?string $path): void
+{
+    deleteIdUploadFiles($path);
+}
+
+function staffInitial(string $name): string
+{
+    $name = trim($name);
+    return $name !== '' ? strtoupper(substr($name, 0, 1)) : 'U';
+}
+
+function staffPhotoExists(?string $photoPath): bool
+{
+    $photoPath = trim((string) $photoPath);
+    if ($photoPath === '') {
+        return false;
+    }
+
+    return is_file(__DIR__ . '/../' . ltrim($photoPath, '/'));
+}
+
+function renderStaffAvatar(?string $photoPath, string $name, string $classes = 'w-8 h-8', string $rounded = 'rounded-full'): string
+{
+    $initial = staffInitial($name);
+    if (staffPhotoExists($photoPath)) {
+        return '<img src="' . htmlspecialchars($photoPath, ENT_QUOTES, 'UTF-8') . '" alt="" class="'
+            . htmlspecialchars($classes, ENT_QUOTES, 'UTF-8') . ' ' . htmlspecialchars($rounded, ENT_QUOTES, 'UTF-8')
+            . ' border border-gray-200 object-cover shrink-0">';
+    }
+
+    return '<div class="' . htmlspecialchars($classes, ENT_QUOTES, 'UTF-8') . ' ' . htmlspecialchars($rounded, ENT_QUOTES, 'UTF-8')
+        . ' bg-gray-100 flex items-center justify-center border border-gray-200 text-xs font-bold text-gray-500 shrink-0">'
+        . htmlspecialchars($initial, ENT_QUOTES, 'UTF-8') . '</div>';
 }
 
 function civilRecordTypeLabel(string $type): string
@@ -1657,4 +1993,445 @@ function getSystemStats(PDO $pdo): array
         }
     }
     return $stats;
+}
+
+function resolveReportDateRange(string $range, ?string $from = null, ?string $to = null): array
+{
+    $today = date('Y-m-d');
+
+    if ($range === 'week') {
+        return [date('Y-m-d', strtotime('-6 days')), $today];
+    }
+
+    if ($range === 'month') {
+        return [date('Y-m-01'), $today];
+    }
+
+    if ($range === 'custom' && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $from) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $to)) {
+        if ($from > $to) {
+            return [$to, $from];
+        }
+
+        return [$from, $to];
+    }
+
+    return [$today, $today];
+}
+
+function reportRangeLabel(string $range, string $from, string $to): string
+{
+    if ($from === $to) {
+        return formatDateDisplay($from);
+    }
+
+    return formatDateDisplay($from) . ' – ' . formatDateDisplay($to);
+}
+
+function buildOperationalReport(PDO $pdo, string $from, string $to): array
+{
+    $summaryStmt = $pdo->prepare(
+        "SELECT
+            SUM(CASE WHEN DATE(submitted_at) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS requests_submitted,
+            SUM(CASE WHEN status = 'completed' AND DATE(updated_at) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS requests_completed
+         FROM document_requests"
+    );
+    $summaryStmt->execute([$from, $to, $from, $to]);
+    $requestSummary = $summaryStmt->fetch() ?: [];
+
+    $apptSummaryStmt = $pdo->prepare(
+        "SELECT
+            SUM(CASE WHEN appointment_date BETWEEN ? AND ? THEN 1 ELSE 0 END) AS appointments_scheduled,
+            SUM(CASE WHEN status = 'completed' AND appointment_date BETWEEN ? AND ? THEN 1 ELSE 0 END) AS appointments_completed
+         FROM appointments"
+    );
+    $apptSummaryStmt->execute([$from, $to, $from, $to]);
+    $apptSummary = $apptSummaryStmt->fetch() ?: [];
+
+    $queueSummaryStmt = $pdo->prepare(
+        "SELECT
+            SUM(CASE WHEN status = 'completed' AND DATE(created_at) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS queue_served,
+            SUM(CASE WHEN status = 'waiting' AND DATE(created_at) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS queue_waiting,
+            SUM(CASE WHEN status = 'skipped' AND DATE(created_at) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS queue_skipped
+         FROM queue_tickets"
+    );
+    $queueSummaryStmt->execute([$from, $to, $from, $to, $from, $to]);
+    $queueSummary = $queueSummaryStmt->fetch() ?: [];
+
+    $statusRows = $pdo->prepare(
+        "SELECT status, COUNT(*) AS cnt FROM document_requests
+         WHERE DATE(submitted_at) BETWEEN ? AND ?
+         GROUP BY status ORDER BY cnt DESC"
+    );
+    $statusRows->execute([$from, $to]);
+    $requestsByStatus = [];
+    foreach ($statusRows->fetchAll() as $row) {
+        $requestsByStatus[$row['status']] = (int) $row['cnt'];
+    }
+
+    $typeRows = $pdo->prepare(
+        "SELECT document_type, COUNT(*) AS cnt FROM document_requests
+         WHERE DATE(submitted_at) BETWEEN ? AND ?
+         GROUP BY document_type ORDER BY cnt DESC"
+    );
+    $typeRows->execute([$from, $to]);
+    $requestsByType = [];
+    foreach ($typeRows->fetchAll() as $row) {
+        $requestsByType[$row['document_type']] = (int) $row['cnt'];
+    }
+
+    $requestList = $pdo->prepare(
+        "SELECT tracking_code, citizen_name, document_type, status, submitted_at, updated_at
+         FROM document_requests
+         WHERE DATE(submitted_at) BETWEEN ? AND ?
+         ORDER BY submitted_at DESC"
+    );
+    $requestList->execute([$from, $to]);
+
+    $apptStatusRows = $pdo->prepare(
+        "SELECT status, COUNT(*) AS cnt FROM appointments
+         WHERE appointment_date BETWEEN ? AND ?
+         GROUP BY status ORDER BY cnt DESC"
+    );
+    $apptStatusRows->execute([$from, $to]);
+    $appointmentsByStatus = [];
+    foreach ($apptStatusRows->fetchAll() as $row) {
+        $appointmentsByStatus[$row['status']] = (int) $row['cnt'];
+    }
+
+    $appointmentList = $pdo->prepare(
+        "SELECT appointment_code, citizen_name, service_type, appointment_date, appointment_time, status, source, created_at
+         FROM appointments
+         WHERE appointment_date BETWEEN ? AND ?
+         ORDER BY appointment_date ASC, appointment_time ASC"
+    );
+    $appointmentList->execute([$from, $to]);
+
+    $queuePurposeRows = $pdo->prepare(
+        "SELECT purpose, COUNT(*) AS cnt FROM queue_tickets
+         WHERE DATE(created_at) BETWEEN ? AND ?
+         GROUP BY purpose ORDER BY cnt DESC"
+    );
+    $queuePurposeRows->execute([$from, $to]);
+    $queueByPurpose = [];
+    foreach ($queuePurposeRows->fetchAll() as $row) {
+        $queueByPurpose[$row['purpose']] = (int) $row['cnt'];
+    }
+
+    $queueList = $pdo->prepare(
+        "SELECT ticket_number, purpose, status, citizen_name, reference_code, window_number, created_at, called_at
+         FROM queue_tickets
+         WHERE DATE(created_at) BETWEEN ? AND ?
+         ORDER BY created_at DESC"
+    );
+    $queueList->execute([$from, $to]);
+
+    $activityList = $pdo->prepare(
+        "SELECT staff_id, action, details, created_at
+         FROM activity_logs
+         WHERE DATE(created_at) BETWEEN ? AND ?
+         ORDER BY created_at DESC
+         LIMIT 500"
+    );
+    $activityList->execute([$from, $to]);
+
+    return [
+        'from' => $from,
+        'to' => $to,
+        'generated_at' => date('Y-m-d H:i:s'),
+        'office_name' => getSetting('office_name', 'Local Civil Registrar Office'),
+        'site_name' => getSetting('site_name', 'ALCROS'),
+        'summary' => [
+            'requests_submitted'   => (int) ($requestSummary['requests_submitted'] ?? 0),
+            'requests_completed'   => (int) ($requestSummary['requests_completed'] ?? 0),
+            'appointments_scheduled' => (int) ($apptSummary['appointments_scheduled'] ?? 0),
+            'appointments_completed' => (int) ($apptSummary['appointments_completed'] ?? 0),
+            'queue_served'         => (int) ($queueSummary['queue_served'] ?? 0),
+            'queue_waiting'        => (int) ($queueSummary['queue_waiting'] ?? 0),
+            'queue_skipped'        => (int) ($queueSummary['queue_skipped'] ?? 0),
+            'pending_requests'     => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'pending'")->fetchColumn(),
+            'ready_for_pickup'     => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'ready'")->fetchColumn(),
+            'total_records'        => (int) $pdo->query('SELECT COUNT(*) FROM civil_records WHERE deleted_at IS NULL')->fetchColumn(),
+        ],
+        'requests_by_status' => $requestsByStatus,
+        'requests_by_type' => $requestsByType,
+        'requests' => $requestList->fetchAll(),
+        'appointments_by_status' => $appointmentsByStatus,
+        'appointments' => $appointmentList->fetchAll(),
+        'queue_by_purpose' => $queueByPurpose,
+        'queue_tickets' => $queueList->fetchAll(),
+        'activities' => $activityList->fetchAll(),
+    ];
+}
+
+function reportSummaryMetricLabels(): array
+{
+    return [
+        'requests_submitted'     => 'New document requests received',
+        'requests_completed'     => 'Document requests marked completed',
+        'appointments_scheduled' => 'Appointments scheduled',
+        'appointments_completed' => 'Appointments completed',
+        'queue_served'           => 'Citizens served from queue',
+        'queue_waiting'          => 'Queue tickets still waiting',
+        'queue_skipped'          => 'Queue no-shows (skipped)',
+        'pending_requests'       => 'Pending requests right now',
+        'ready_for_pickup'       => 'Documents ready for pickup right now',
+        'total_records'          => 'Civil registry records on file',
+    ];
+}
+
+function formatReportDateTime(?string $value): string
+{
+    if ($value === null || trim($value) === '') {
+        return 'Not recorded';
+    }
+
+    $ts = strtotime($value);
+
+    return $ts ? date('M j, Y g:i A', $ts) : $value;
+}
+
+function formatReportTime(?string $time): string
+{
+    if ($time === null || trim($time) === '') {
+        return 'Not set';
+    }
+
+    $ts = strtotime($time);
+
+    return $ts ? date('g:i A', $ts) : $time;
+}
+
+function queuePurposeLabel(string $purpose): string
+{
+    return match ($purpose) {
+        'walk_in'         => 'Walk-in visit',
+        'appointment'     => 'Appointment check-in',
+        'document_claim'  => 'Document pickup / claim',
+        default           => ucwords(str_replace('_', ' ', $purpose)),
+    };
+}
+
+function queueStatusLabel(string $status): string
+{
+    return match ($status) {
+        'waiting'   => 'Waiting in line',
+        'serving'   => 'Currently being served',
+        'completed' => 'Served / completed',
+        'skipped'   => 'No-show (skipped)',
+        default     => ucfirst($status),
+    };
+}
+
+function appointmentSourceLabel(string $source): string
+{
+    return $source === 'document_request'
+        ? 'Document request visit'
+        : 'Special service appointment';
+}
+
+function exportOperationalReportCsv(array $report, string $type): void
+{
+    $from = $report['from'];
+    $to = $report['to'];
+    $periodLabel = reportRangeLabel('custom', $from, $to);
+    $filename = 'ALCROS_Operational_Report_' . $from . ($from !== $to ? '_to_' . $to : '') . '.csv';
+
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+
+    $out = fopen('php://output', 'w');
+    fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
+
+    $writeSection = static function (string $title, ?string $description = null) use ($out): void {
+        fputcsv($out, []);
+        fputcsv($out, ['--- ' . strtoupper($title) . ' ---']);
+        if ($description !== null && $description !== '') {
+            fputcsv($out, [$description]);
+        }
+    };
+
+    $writeEmpty = static function (string $message) use ($out): void {
+        fputcsv($out, [$message]);
+    };
+
+    if ($type === 'full' || $type === 'summary') {
+        fputcsv($out, ['ALCROS Operational Report']);
+        fputcsv($out, ['Report title', 'Daily operations summary for the Local Civil Registry office']);
+        fputcsv($out, ['System name', $report['site_name']]);
+        fputcsv($out, ['Office', $report['office_name']]);
+        fputcsv($out, ['Reporting period', $periodLabel]);
+        fputcsv($out, ['Report generated on', formatReportDateTime($report['generated_at'])]);
+
+        if ($type === 'full') {
+            $writeSection('Report guide', 'This file is organized by section. Each section starts with a heading row, followed by column names, then the data rows.');
+            fputcsv($out, ['Section order']);
+            fputcsv($out, ['1', 'Summary — key counts for the selected period']);
+            fputcsv($out, ['2', 'Document requests — status summary, type summary, and full request list']);
+            fputcsv($out, ['3', 'Appointments — status summary and full appointment list']);
+            fputcsv($out, ['4', 'Queue — purpose summary and ticket list']);
+            fputcsv($out, ['5', 'Staff activity — actions logged by staff accounts']);
+        }
+
+        $writeSection('Summary', 'Headline numbers for the reporting period. Items marked “right now” show the current live count, not just the selected dates.');
+        fputcsv($out, ['Description', 'Count']);
+        foreach (reportSummaryMetricLabels() as $key => $label) {
+            if (!array_key_exists($key, $report['summary'])) {
+                continue;
+            }
+            fputcsv($out, [$label, $report['summary'][$key]]);
+        }
+    }
+
+    if ($type === 'full' || $type === 'requests') {
+        $writeSection('Document requests — status summary', 'How many requests fall under each processing status during the reporting period.');
+        fputcsv($out, ['Request status', 'Number of requests']);
+        if (empty($report['requests_by_status'])) {
+            $writeEmpty('No document requests were submitted during this period.');
+        } else {
+            foreach ($report['requests_by_status'] as $status => $count) {
+                fputcsv($out, [requestStatusLabel($status), $count]);
+            }
+        }
+
+        $writeSection('Document requests — document type summary', 'Breakdown of certificate types requested during the reporting period.');
+        fputcsv($out, ['Document type', 'Number of requests']);
+        if (empty($report['requests_by_type'])) {
+            $writeEmpty('No document types to show for this period.');
+        } else {
+            foreach ($report['requests_by_type'] as $docType => $count) {
+                fputcsv($out, [documentTypeLabel($docType), $count]);
+            }
+        }
+
+        $writeSection('Document requests — full list', 'One row per online document request submitted in the reporting period.');
+        fputcsv($out, [
+            'Tracking code',
+            'Citizen full name',
+            'Document requested',
+            'Current status',
+            'Date submitted',
+            'Last status update',
+        ]);
+        if (empty($report['requests'])) {
+            $writeEmpty('No document requests were submitted during this period.');
+        } else {
+            foreach ($report['requests'] as $row) {
+                fputcsv($out, [
+                    $row['tracking_code'],
+                    $row['citizen_name'],
+                    documentTypeLabel($row['document_type']),
+                    requestStatusLabel($row['status']),
+                    formatReportDateTime($row['submitted_at']),
+                    formatReportDateTime($row['updated_at']),
+                ]);
+            }
+        }
+    }
+
+    if ($type === 'full' || $type === 'appointments') {
+        $writeSection('Appointments — status summary', 'How many visits are scheduled, confirmed, completed, or rejected in the reporting period.');
+        fputcsv($out, ['Appointment status', 'Number of appointments']);
+        if (empty($report['appointments_by_status'])) {
+            $writeEmpty('No appointments were scheduled during this period.');
+        } else {
+            foreach ($report['appointments_by_status'] as $status => $count) {
+                fputcsv($out, [appointmentStatusLabel($status), $count]);
+            }
+        }
+
+        $writeSection('Appointments — full list', 'One row per appointment scheduled within the reporting period.');
+        fputcsv($out, [
+            'Appointment code',
+            'Citizen full name',
+            'Service or document',
+            'Visit date',
+            'Visit time',
+            'Status',
+            'Appointment type',
+            'Date booked online',
+        ]);
+        if (empty($report['appointments'])) {
+            $writeEmpty('No appointments were scheduled during this period.');
+        } else {
+            foreach ($report['appointments'] as $row) {
+                fputcsv($out, [
+                    $row['appointment_code'],
+                    $row['citizen_name'],
+                    appointmentServiceLabel($row['service_type']),
+                    formatRecordDate($row['appointment_date']),
+                    formatReportTime($row['appointment_time']),
+                    appointmentStatusLabel($row['status']),
+                    appointmentSourceLabel((string) ($row['source'] ?? '')),
+                    formatReportDateTime($row['created_at']),
+                ]);
+            }
+        }
+    }
+
+    if ($type === 'full' || $type === 'queue') {
+        $writeSection('Queue — purpose summary', 'Why citizens took a queue number during the reporting period.');
+        fputcsv($out, ['Queue purpose', 'Number of tickets']);
+        if (empty($report['queue_by_purpose'])) {
+            $writeEmpty('No queue tickets were created during this period.');
+        } else {
+            foreach ($report['queue_by_purpose'] as $purpose => $count) {
+                fputcsv($out, [queuePurposeLabel($purpose), $count]);
+            }
+        }
+
+        $writeSection('Queue tickets — full list', 'One row per queue ticket issued during the reporting period.');
+        fputcsv($out, [
+            'Ticket number',
+            'Purpose of visit',
+            'Ticket status',
+            'Citizen name (if provided)',
+            'Reference code (tracking / appointment)',
+            'Service window / table',
+            'Ticket issued on',
+            'Called to window on',
+        ]);
+        if (empty($report['queue_tickets'])) {
+            $writeEmpty('No queue tickets were created during this period.');
+        } else {
+            foreach ($report['queue_tickets'] as $row) {
+                fputcsv($out, [
+                    $row['ticket_number'],
+                    queuePurposeLabel((string) $row['purpose']),
+                    queueStatusLabel((string) $row['status']),
+                    $row['citizen_name'] ?: 'Not provided',
+                    $row['reference_code'] ?: 'None',
+                    $row['window_number'] ? 'Window ' . $row['window_number'] : 'Not assigned',
+                    formatReportDateTime($row['created_at']),
+                    formatReportDateTime($row['called_at'] ?? null),
+                ]);
+            }
+        }
+    }
+
+    if ($type === 'full' || $type === 'activity') {
+        $writeSection('Staff activity log', 'Actions recorded from staff accounts during the reporting period (latest 500 entries).');
+        fputcsv($out, [
+            'Staff account ID',
+            'Action performed',
+            'Additional details',
+            'Date and time',
+        ]);
+        if (empty($report['activities'])) {
+            $writeEmpty('No staff activity was logged during this period.');
+        } else {
+            foreach ($report['activities'] as $row) {
+                fputcsv($out, [
+                    $row['staff_id'] ?: 'System',
+                    $row['action'],
+                    $row['details'] ?: 'No extra details',
+                    formatReportDateTime($row['created_at']),
+                ]);
+            }
+        }
+    }
+
+    fputcsv($out, []);
+    fputcsv($out, ['End of report']);
+
+    fclose($out);
 }

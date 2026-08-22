@@ -210,8 +210,6 @@ $year = date('Y');
         </div>
         <div class="flex gap-4">
             <a href="track.php" class="hover:text-white">Track</a>
-            <a href="kiosk.php" class="hover:text-white">Kiosk</a>
-            <a href="queue_display.php" class="hover:text-white">Queue Display</a>
             <a href="privacy.php" class="hover:text-white">Privacy & Safety</a>
             <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="hover:text-white">Staff</a>
         </div>

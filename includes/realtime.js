@@ -326,8 +326,34 @@
     }
 
     function initAppointments() {
-        // Keep server-rendered appointment action forms intact.
-        return;
+        var viewDate = document.body.dataset.appointmentDate;
+        if (!viewDate) return;
+
+        AlcrosPoll.pollJson('api/appointments.php', { date: viewDate }, 15000, function (data) {
+            var appts = data.appointments || [];
+            var domIds = new Set();
+            document.querySelectorAll('[data-appointment-row]').forEach(function (row) {
+                domIds.add(String(row.getAttribute('data-appointment-row')));
+            });
+
+            var hasNew = appts.some(function (ap) {
+                return !domIds.has(String(ap.id));
+            });
+
+            if (!hasNew) {
+                AlcrosPoll.markLiveIndicator();
+                return;
+            }
+
+            var active = document.activeElement;
+            var editing = active && active.closest('[data-appointment-row]');
+            if (!editing) {
+                window.location.reload();
+                return;
+            }
+
+            AlcrosPoll.markLiveIndicator();
+        });
     }
 
     function initHeaderStats() {

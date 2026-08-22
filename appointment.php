@@ -151,7 +151,7 @@ function renderAppointmentRows(array $rows, string $viewDate): void
         .row-pending-delete { opacity: 0.45; pointer-events: none; }
     </style>
 </head>
-<body class="flex min-h-screen">
+<body class="flex min-h-screen" data-realtime="appointments" data-appointment-date="<?= htmlspecialchars($viewDate) ?>">
     <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
     <main class="admin-main flex flex-col bg-[#fdfdfd]">
         <?php require __DIR__ . '/includes/admin_header.php'; ?>

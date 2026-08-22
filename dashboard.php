@@ -104,10 +104,13 @@ function activityIcon(string $action): string
 
             <!-- Header -->
             <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-                <div>
-                    <p class="text-[10px] font-bold uppercase tracking-widest text-blue-600 mb-1"><?= $isAdminUser ? 'Registry Admin' : 'Staff Portal' ?></p>
-                    <h1 class="text-2xl lg:text-3xl font-black text-slate-900">Good day, <?= htmlspecialchars(explode(' ', $staffDisplayName)[0]) ?>!</h1>
-                    <p class="text-gray-500 text-sm mt-1"><?= htmlspecialchars($todayLabel) ?> · <?= htmlspecialchars(staffId()) ?> · <?= htmlspecialchars($staffRole) ?></p>
+                <div class="flex items-start gap-4">
+                    <?= renderStaffAvatar(staffPhotoPath(), $staffDisplayName, 'w-16 h-16 text-xl', 'rounded-2xl') ?>
+                    <div>
+                        <p class="text-[10px] font-bold uppercase tracking-widest text-blue-600 mb-1"><?= $isAdminUser ? 'Registry Admin' : 'Staff Portal' ?></p>
+                        <h1 class="text-2xl lg:text-3xl font-black text-slate-900">Good day, <?= htmlspecialchars(explode(' ', $staffDisplayName)[0]) ?>!</h1>
+                        <p class="text-gray-500 text-sm mt-1"><?= htmlspecialchars($todayLabel) ?> · <?= htmlspecialchars(staffId()) ?> · <?= htmlspecialchars($staffRole) ?></p>
+                    </div>
                 </div>
                 <div class="flex flex-wrap gap-2">
                     <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold inline-flex items-center gap-2">

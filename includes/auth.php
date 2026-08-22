@@ -231,6 +231,38 @@ function staffId(): string
     return (string) (getAuthenticatedStaff()['staff_id'] ?? '');
 }
 
+function staffPhotoPath(?string $staffId = null): ?string
+{
+    $staffId = $staffId ?? staffId();
+    if ($staffId === '') {
+        return null;
+    }
+
+    static $cache = [];
+    if (array_key_exists($staffId, $cache)) {
+        return $cache[$staffId];
+    }
+
+    try {
+        if (!function_exists('getDB')) {
+            require_once __DIR__ . '/../config/database.php';
+        }
+        if (!function_exists('ensureStaffProfileColumns')) {
+            require_once __DIR__ . '/helpers.php';
+        }
+        $pdo = getDB();
+        ensureStaffProfileColumns($pdo);
+        $stmt = $pdo->prepare('SELECT profile_photo_path FROM staff WHERE staff_id = ? LIMIT 1');
+        $stmt->execute([$staffId]);
+        $path = $stmt->fetchColumn();
+        $cache[$staffId] = ($path && trim((string) $path) !== '') ? (string) $path : null;
+    } catch (Throwable $e) {
+        $cache[$staffId] = null;
+    }
+
+    return $cache[$staffId];
+}
+
 function isAdmin(): bool
 {
     return in_array(staffRole(), ['Administrator', 'Registrar'], true);

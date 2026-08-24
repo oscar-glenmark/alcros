@@ -76,6 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="includes/password_toggle.css">
+    <link rel="stylesheet" href="includes/back_home.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
         body { 
@@ -91,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <div class="w-full max-w-[420px] bg-white rounded-[2rem] overflow-hidden login-card border border-gray-100">
         
-        <div class="p-10 pb-8 text-center">
+        <div class="p-6 sm:p-10 pb-8 text-center">
             <div class="inline-flex items-center justify-center w-14 h-14 bg-blue-600 rounded-2xl mb-6 shadow-lg shadow-blue-200">
                 <span class="text-white text-2xl font-black">A</span>
             </div>
@@ -163,8 +164,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
 
         <div class="bg-gray-50/50 py-6 border-t border-gray-50 text-center">
-            <a href="index.php" class="text-[10px] font-bold text-gray-500 hover:text-blue-600 flex items-center justify-center gap-2">
-                <i data-lucide="chevron-left" class="w-3 h-3"></i> Back to Citizen Portal
+            <a href="index.php" class="back-home back-home--center">
+                <i data-lucide="chevron-left" class="back-home__icon w-3 h-3"></i>
+                <span>Back to Citizen Portal</span>
             </a>
         </div>
     </div>

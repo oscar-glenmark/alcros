@@ -114,6 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Schedule Appointment - ALCROS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="includes/back_home.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
         body { font-family: 'Inter', sans-serif; }
@@ -122,12 +123,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
-    <nav class="flex items-center justify-between px-8 py-3 border-b border-gray-100 bg-white">
-        <div class="flex items-center gap-2">
-            <div class="bg-blue-600 text-white p-1 rounded font-bold text-[10px] w-5 h-5 flex items-center justify-center">A</div>
-            <span class="font-bold tracking-tight text-blue-900">ALCROS</span>
+    <nav class="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-gray-100 bg-white">
+        <div class="flex items-center gap-2 min-w-0">
+            <div class="bg-blue-600 text-white p-1 rounded font-bold text-[10px] w-5 h-5 flex items-center justify-center shrink-0">A</div>
+            <span class="font-bold tracking-tight text-blue-900 truncate">ALCROS</span>
         </div>
-        <a href="index.php" class="text-gray-400 text-[10px] hover:text-gray-600">Back to Home</a>
+        <a href="index.php" class="back-home back-home--nav shrink-0">Back to Home</a>
     </nav>
     <main class="max-w-lg mx-auto px-4 py-16">
         <?php if ($success): ?>

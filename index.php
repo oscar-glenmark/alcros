@@ -16,8 +16,8 @@ $staffPortalUrl  = 'login.php';
 $currentPage = basename($_SERVER['PHP_SELF']);
 function navClass($page, $current) {
     return $page === $current
-        ? 'text-blue-700 font-semibold bg-blue-50'
-        : 'text-slate-600 hover:text-blue-700 hover:bg-slate-50';
+        ? 'nav-link nav-link-active'
+        : 'nav-link';
 }
 
 $documentTypes = getDocumentTypes();
@@ -48,6 +48,100 @@ $year = date('Y');
                 radial-gradient(circle at 80% 0%, rgba(14, 165, 233, 0.1), transparent 40%),
                 linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
         }
+        .site-header {
+            transition: box-shadow 0.25s ease, border-color 0.25s ease;
+        }
+        .site-header:hover {
+            box-shadow: 0 4px 24px rgba(37, 99, 235, 0.08);
+            border-color: rgba(191, 219, 254, 0.9);
+        }
+        .brand-link {
+            transition: transform 0.2s ease, opacity 0.2s ease;
+        }
+        .brand-link:hover {
+            transform: translateY(-1px);
+        }
+        .brand-logo {
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+        }
+        .brand-link:hover .brand-logo {
+            transform: scale(1.06) rotate(-2deg);
+            box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35);
+        }
+        .brand-link:hover .brand-title {
+            color: #1d4ed8;
+        }
+        .brand-title {
+            transition: color 0.2s ease;
+        }
+        .nav-link {
+            position: relative;
+            color: #475569;
+            font-weight: 500;
+            padding: 0.5rem 0.875rem;
+            border-radius: 0.625rem;
+            transition: color 0.2s ease, background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            left: 0.875rem;
+            right: 0.875rem;
+            bottom: 0.35rem;
+            height: 2px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #1d4ed8, #0ea5e9);
+            transform: scaleX(0);
+            transform-origin: center;
+            transition: transform 0.25s ease;
+        }
+        .nav-link:hover {
+            color: #1d4ed8;
+            background-color: rgba(239, 246, 255, 0.9);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
+        }
+        .nav-link:hover::after {
+            transform: scaleX(1);
+        }
+        .nav-link-active {
+            color: #1d4ed8;
+            font-weight: 600;
+            background-color: #eff6ff;
+            box-shadow: inset 0 0 0 1px rgba(191, 219, 254, 0.8);
+        }
+        .nav-link-active::after {
+            transform: scaleX(1);
+        }
+        .nav-staff-btn {
+            transition: transform 0.2s ease, box-shadow 0.25s ease, opacity 0.2s ease;
+        }
+        .nav-staff-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 24px rgba(37, 99, 235, 0.35);
+            opacity: 1;
+        }
+        .nav-staff-btn:active {
+            transform: translateY(0);
+        }
+        .nav-mobile-btn {
+            transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+        }
+        .nav-mobile-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+        }
+        .nav-mobile-btn:active {
+            transform: scale(0.97);
+        }
+        .nav-mobile-btn-light:hover {
+            background-color: #dbeafe;
+            color: #1d4ed8;
+        }
+        .nav-mobile-btn-dark:hover {
+            background-color: #1e40af;
+            box-shadow: 0 6px 16px rgba(29, 78, 216, 0.4);
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
@@ -58,29 +152,30 @@ $year = date('Y');
     </div>
     <?php endif; ?>
 
-    <header class="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200/80">
+    <header class="site-header sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200/80">
         <nav class="max-w-6xl mx-auto flex items-center justify-between px-4 sm:px-6 py-3">
-            <a href="index.php" class="group flex items-center gap-3 rounded-xl pr-2 -ml-1 py-1 transition hover:opacity-90">
-                <div class="flex items-center justify-center w-9 h-9 bg-gradient-to-br from-blue-700 to-sky-600 rounded-xl shadow-md shadow-blue-200/70 group-hover:shadow-lg transition-shadow">
+            <a href="index.php" class="brand-link group flex items-center gap-3 rounded-xl pr-2 -ml-1 py-1">
+                <div class="brand-logo flex items-center justify-center w-9 h-9 bg-gradient-to-br from-blue-700 to-sky-600 rounded-xl shadow-md shadow-blue-200/70">
                     <span class="text-white text-sm font-black">A</span>
                 </div>
                 <div class="flex flex-col leading-none">
-                    <span class="font-black text-base tracking-tight text-slate-900"><?= htmlspecialchars($site['name']) ?></span>
-                    <span class="text-[9px] font-bold text-sky-600 tracking-widest uppercase mt-1">Civil Registry Portal</span>
+                    <span class="brand-title font-black text-base tracking-tight text-slate-900"><?= htmlspecialchars($site['name']) ?></span>
+                    <span class="text-[9px] font-bold text-sky-600 tracking-widest uppercase mt-1 group-hover:text-blue-500 transition-colors duration-200">Civil Registry Portal</span>
                 </div>
             </a>
 
             <div class="hidden md:flex items-center gap-1 text-sm font-medium">
-                <a href="track.php" class="<?= navClass('track.php', $currentPage) ?> px-3 py-2 rounded-lg transition">Track</a>
-                <a href="#contact" class="px-3 py-2 rounded-lg transition text-slate-600 hover:text-blue-700 hover:bg-slate-50">Contact</a>
-                <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="ml-2 bg-gradient-to-r from-blue-700 to-sky-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:opacity-95 transition shadow-sm shadow-blue-200">
+                <a href="index.php" class="<?= navClass('index.php', $currentPage) ?>">Home</a>
+                <a href="track.php" class="<?= navClass('track.php', $currentPage) ?>">Track</a>
+                <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="nav-staff-btn ml-2 bg-gradient-to-r from-blue-700 to-sky-600 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm shadow-blue-200">
                     <?= $isStaffLoggedIn ? 'Staff Dashboard' : 'Staff Portal' ?>
                 </a>
             </div>
 
             <div class="md:hidden flex items-center gap-2">
-                <a href="track.php" class="text-xs font-semibold text-blue-700 px-3 py-2 rounded-lg bg-blue-50">Track</a>
-                <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="text-xs font-bold text-white px-3 py-2 rounded-lg bg-blue-700">Staff</a>
+                <a href="index.php" class="nav-mobile-btn nav-mobile-btn-light text-xs font-semibold text-blue-700 px-3 py-2 rounded-lg bg-blue-50">Home</a>
+                <a href="track.php" class="nav-mobile-btn nav-mobile-btn-light text-xs font-semibold text-blue-700 px-3 py-2 rounded-lg bg-blue-50">Track</a>
+                <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="nav-mobile-btn nav-mobile-btn-dark text-xs font-bold text-white px-3 py-2 rounded-lg bg-blue-700">Staff</a>
             </div>
         </nav>
     </header>

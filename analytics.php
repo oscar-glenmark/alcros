@@ -204,7 +204,7 @@ $chartPayload = [
                 <div class="bg-white rounded-xl border border-gray-100 p-5 flex flex-col justify-center">
                     <h2 class="text-sm font-bold text-slate-900">Queue today</h2>
                     <p class="text-[11px] text-gray-400 mb-4">Live ticket counts</p>
-                    <div class="grid grid-cols-3 gap-3 text-center">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
                         <div class="rounded-lg bg-amber-50 py-4 px-2">
                             <p class="text-2xl font-black text-amber-700"><?= $queueWaiting ?></p>
                             <p class="text-[10px] font-bold text-amber-800/70 mt-1 uppercase">Waiting</p>

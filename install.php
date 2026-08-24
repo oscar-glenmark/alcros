@@ -48,6 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ALCROS Database Setup</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="includes/back_home.css">
 </head>
 <body class="bg-gray-50 min-h-screen flex items-center justify-center p-6">
     <div class="max-w-md w-full bg-white rounded-2xl shadow p-8 border border-gray-100">
@@ -66,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <p class="text-sm font-bold text-green-800 mb-1">Already installed</p>
             <p class="text-xs text-green-700">Database <code class="bg-white px-1 rounded">alcros_db</code> is ready. You do <strong>not</strong> need to install again when restarting XAMPP — just start MySQL.</p>
         </div>
-        <a href="index.php" class="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 text-sm font-bold mb-3">Go to ALCROS Home</a>
+        <a href="index.php" class="back-home back-home--primary block mb-3">Go to ALCROS Home</a>
         <a href="login.php" class="block w-full text-center border border-gray-200 text-gray-600 rounded-xl py-3 text-sm font-bold">Staff Login</a>
         <details class="mt-4">
             <summary class="text-xs text-gray-400 cursor-pointer hover:text-gray-600">Re-run setup anyway</summary>
@@ -92,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </form>
         <?php else: ?>
         <a href="login.php" class="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 text-sm font-bold mt-2">Staff Login</a>
-        <a href="index.php" class="block w-full text-center border border-gray-200 text-gray-600 rounded-xl py-3 text-sm font-bold mt-2">Go to ALCROS Home</a>
+        <a href="index.php" class="back-home back-home--outline block mt-2">Go to ALCROS Home</a>
         <?php endif; ?>
         <?php endif; ?>
     </div>

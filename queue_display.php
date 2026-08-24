@@ -52,7 +52,7 @@ $purposeLabels = queuePurposeLabels();
         </div>
     </header>
 
-    <div id="display-tables" class="grid grid-cols-3 gap-3 mb-3">
+    <div id="display-tables" class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
         <?php foreach ($tables as $purpose => $cfg):
             $slot = $tableSlots[$purpose] ?? ['serving' => null, 'waiting' => []];
         ?>

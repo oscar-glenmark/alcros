@@ -312,7 +312,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
     <main class="admin-main flex-1 flex flex-col bg-[#f8fafc]">
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
 
-        <div class="p-8 max-w-7xl w-full mx-auto">
+        <div class="p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
             <div class="mb-6">
                 <a href="dashboard.php" class="text-xs text-gray-500 hover:text-blue-600 inline-flex items-center gap-1 mb-2 font-medium">
                     <i data-lucide="chevron-left" class="w-4 h-4"></i> Back to Dashboard
@@ -329,7 +329,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
             <?php endif; ?>
 
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                <aside class="settings-tab-nav lg:col-span-3 bg-white border border-slate-100 rounded-2xl p-3 shadow-sm space-y-1 sticky top-6 self-start z-10">
+                <aside class="settings-tab-nav lg:col-span-3 bg-white border border-slate-100 rounded-2xl p-3 shadow-sm space-y-1 lg:sticky lg:top-6 self-start z-10">
                     <?php
                     $tabs = [
                         'my-account'           => ['label' => 'My Account', 'icon' => 'user'],
@@ -352,7 +352,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
 
                 <section class="lg:col-span-9 space-y-6">
                     <!-- MY ACCOUNT -->
-                    <div id="tab-my-account" class="tab-content bg-white border border-slate-100 rounded-2xl p-8 shadow-sm <?= $activeTab !== 'my-account' ? 'hidden' : '' ?>">
+                    <div id="tab-my-account" class="tab-content bg-white border border-slate-100 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-sm <?= $activeTab !== 'my-account' ? 'hidden' : '' ?>">
                         <div class="flex items-center gap-5 mb-8">
                             <?= renderStaffAvatar($currentStaffPhoto, $currentStaff['name'] ?? staffName(), 'w-20 h-20 text-3xl', 'rounded-2xl') ?>
                             <div>
@@ -402,7 +402,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                     </div>
 
                     <!-- SECURITY -->
-                    <div id="tab-security" class="tab-content bg-white border border-slate-100 rounded-2xl p-8 shadow-sm <?= $activeTab !== 'security' ? 'hidden' : '' ?>">
+                    <div id="tab-security" class="tab-content bg-white border border-slate-100 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-sm <?= $activeTab !== 'security' ? 'hidden' : '' ?>">
                         <h2 class="text-lg font-bold text-slate-900 mb-1">Security & Credentials</h2>
                         <p class="text-xs text-slate-500 mb-6">Change your password and review account security policies.</p>
 
@@ -438,7 +438,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
 
                     <?php if ($isAdmin): ?>
                     <!-- ACCOUNT MANAGEMENT -->
-                    <div id="tab-account-management" class="tab-content bg-white border border-slate-100 rounded-2xl p-8 shadow-sm <?= $activeTab !== 'account-management' ? 'hidden' : '' ?>">
+                    <div id="tab-account-management" class="tab-content bg-white border border-slate-100 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-sm <?= $activeTab !== 'account-management' ? 'hidden' : '' ?>">
                         <div class="flex justify-between items-start mb-6">
                             <div>
                                 <h2 class="text-lg font-bold text-slate-900 mb-1">Staff Members</h2>
@@ -545,7 +545,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                     </div>
 
                     <!-- SYSTEM CONFIGURATION -->
-                    <div id="tab-system-configuration" class="tab-content bg-white border border-slate-100 rounded-2xl p-8 shadow-sm <?= $activeTab !== 'system-configuration' ? 'hidden' : '' ?>">
+                    <div id="tab-system-configuration" class="tab-content bg-white border border-slate-100 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-sm <?= $activeTab !== 'system-configuration' ? 'hidden' : '' ?>">
                         <form method="POST" class="space-y-8">
                             <input type="hidden" name="settings_action" value="save_settings">
                             <input type="hidden" name="active_tab" value="system-configuration">
@@ -623,7 +623,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
 
                     <!-- ADMIN TOOLS -->
                     <div id="tab-admin-tools" class="tab-content space-y-6 <?= $activeTab !== 'admin-tools' ? 'hidden' : '' ?>">
-                        <div class="bg-white border border-slate-100 rounded-2xl p-8 shadow-sm">
+                        <div class="bg-white border border-slate-100 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-sm">
                             <h2 class="text-lg font-bold text-slate-900 mb-1">System Overview</h2>
                             <p class="text-xs text-slate-500 mb-6">Database statistics and environment information.</p>
                             <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
@@ -641,7 +641,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                             </div>
                         </div>
 
-                        <div class="bg-white border border-slate-100 rounded-2xl p-8 shadow-sm">
+                        <div class="bg-white border border-slate-100 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-sm">
                             <div class="flex justify-between items-center mb-4">
                                 <h3 class="text-base font-bold text-slate-900">Recent Activity</h3>
                                 <a href="Activity-log.php" class="text-[10px] font-bold text-blue-600 hover:underline uppercase">View Full Log</a>
@@ -663,7 +663,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                             <?php endif; ?>
                         </div>
 
-                        <div class="bg-white border border-slate-100 rounded-2xl p-8 shadow-sm">
+                        <div class="bg-white border border-slate-100 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-sm">
                             <h3 class="text-base font-bold text-slate-900 mb-1">Maintenance Actions</h3>
                             <p class="text-xs text-slate-500 mb-6">Export logs or clean up old data. Use with caution.</p>
                             <div class="flex flex-wrap gap-3">

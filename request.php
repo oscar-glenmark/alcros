@@ -255,6 +255,7 @@ $stepTitles = [
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="includes/loading.js" defer></script>
+    <link rel="stylesheet" href="includes/back_home.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
         body { font-family: 'Inter', sans-serif; }
@@ -267,12 +268,12 @@ $stepTitles = [
 </head>
 <body class="bg-gray-50 min-h-screen">
 
-    <nav class="flex items-center justify-between px-8 py-3 border-b border-gray-100 bg-white">
-        <div class="flex items-center gap-2">
-            <div class="bg-blue-600 text-white p-1 rounded font-bold text-[10px] w-5 h-5 flex items-center justify-center">A</div>
-            <span class="font-bold tracking-tight text-blue-900">ALCROS</span>
+    <nav class="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-gray-100 bg-white">
+        <div class="flex items-center gap-2 min-w-0">
+            <div class="bg-blue-600 text-white p-1 rounded font-bold text-[10px] w-5 h-5 flex items-center justify-center shrink-0">A</div>
+            <span class="font-bold tracking-tight text-blue-900 truncate">ALCROS</span>
         </div>
-        <a href="index.php" class="text-gray-400 text-[10px] hover:text-gray-600">Back to Home</a>
+        <a href="index.php" class="back-home back-home--nav shrink-0">Back to Home</a>
     </nav>
 
     <main class="max-w-2xl mx-auto px-4 py-10">
@@ -335,7 +336,7 @@ $stepTitles = [
 
             <div class="flex flex-col sm:flex-row justify-center gap-3">
                 <a href="track.php?code=<?= urlencode($successData['tracking_code']) ?>" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full text-xs font-bold text-center">Track My Request</a>
-                <a href="index.php" class="border border-gray-200 text-gray-600 px-6 py-3 rounded-full text-xs font-bold hover:bg-gray-50 text-center">Back to Home</a>
+                <a href="index.php" class="back-home back-home--btn">Back to Home</a>
             </div>
         </div>
         <script>
@@ -366,10 +367,10 @@ $stepTitles = [
 
         <?php else: ?>
         <!-- Progress bar -->
-        <div class="flex justify-center mb-10 px-4">
+        <div class="flex justify-center mb-10 px-2 sm:px-4 overflow-x-auto">
             <?php foreach ($stepLabels as $i => $s): ?>
             <?php if ($i <= 3): ?>
-            <div class="flex items-center flex-1 last:flex-none">
+            <div class="flex items-center flex-1 last:flex-none min-w-[4.5rem]">
                 <div class="flex flex-col items-center">
                     <div class="w-8 h-8 rounded-full flex items-center justify-center border-2
                         <?= $i < $step ? 'bg-blue-600 border-blue-600 text-white' : ($i === $step ? 'border-blue-600 text-blue-600 bg-white' : 'border-gray-200 text-gray-300 bg-white') ?>">
@@ -379,10 +380,10 @@ $stepTitles = [
                         <i data-lucide="<?= $s['icon'] ?>" class="w-4 h-4"></i>
                         <?php endif; ?>
                     </div>
-                    <span class="text-[9px] font-bold uppercase mt-1.5 tracking-wide <?= $i <= $step ? 'step-active' : 'step-pending' ?>"><?= $s['label'] ?></span>
+                    <span class="hidden sm:block text-[9px] font-bold uppercase mt-1.5 tracking-wide text-center <?= $i <= $step ? 'step-active' : 'step-pending' ?>"><?= $s['label'] ?></span>
                 </div>
                 <?php if ($i < 3): ?>
-                <div class="flex-1 h-0.5 mx-3 mb-5 <?= $i < $step ? 'bg-blue-600' : 'bg-gray-200' ?>"></div>
+                <div class="flex-1 h-0.5 mx-2 sm:mx-3 mb-0 sm:mb-5 <?= $i < $step ? 'bg-blue-600' : 'bg-gray-200' ?>"></div>
                 <?php endif; ?>
             </div>
             <?php endif; ?>

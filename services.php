@@ -27,6 +27,7 @@ $year = date('Y');
     <title>All Services - <?= htmlspecialchars($site['name']) ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="includes/back_home.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
         body { font-family: 'Inter', sans-serif; }
@@ -34,23 +35,28 @@ $year = date('Y');
 </head>
 <body class="bg-gray-50 text-gray-900">
 
-    <nav class="flex items-center justify-between px-8 py-3 border-b border-gray-100 bg-white">
-        <div class="flex items-center gap-2">
-            <div class="bg-blue-600 text-white p-1 rounded font-bold text-[10px] w-5 h-5 flex items-center justify-center">A</div>
-            <span class="font-bold tracking-tight text-blue-900"><?= htmlspecialchars($site['name']) ?></span>
+    <nav class="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-gray-100 bg-white">
+        <div class="flex items-center gap-2 min-w-0">
+            <div class="bg-blue-600 text-white p-1 rounded font-bold text-[10px] w-5 h-5 flex items-center justify-center shrink-0">A</div>
+            <span class="font-bold tracking-tight text-blue-900 truncate"><?= htmlspecialchars($site['name']) ?></span>
         </div>
-        <div class="flex items-center gap-8 text-sm font-medium text-gray-600">
+        <div class="hidden md:flex items-center gap-8 text-sm font-medium text-gray-600">
             <a href="index.php" class="<?= navClass('index.php', $currentPage) ?>">Home</a>
             <a href="track.php" class="<?= navClass('track.php', $currentPage) ?>">Track Request</a>
             <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="bg-blue-600 text-white px-4 py-1.5 rounded-md text-xs hover:bg-blue-700 transition">
                 <?= $isStaffLoggedIn ? 'Staff Dashboard' : 'Staff Portal' ?>
             </a>
         </div>
+        <div class="md:hidden flex items-center gap-2 shrink-0">
+            <a href="track.php" class="text-xs font-semibold text-blue-700 px-3 py-2 rounded-lg bg-blue-50">Track</a>
+            <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="text-xs font-bold text-white px-3 py-2 rounded-lg bg-blue-700">Staff</a>
+        </div>
     </nav>
 
     <header class="max-w-6xl mx-auto px-6 pt-14 pb-8 text-center">
-        <a href="index.php" class="text-blue-600 text-[11px] font-bold inline-flex items-center gap-1 mb-4 hover:underline">
-            <i data-lucide="chevron-left" class="w-3 h-3"></i> Back to Home
+        <a href="index.php" class="back-home back-home--inline is-centered mb-4">
+            <i data-lucide="chevron-left" class="back-home__icon w-3 h-3"></i>
+            <span>Back to Home</span>
         </a>
         <h1 class="text-3xl font-extrabold text-slate-900 mb-2">All Civil Registry Services</h1>
         <p class="text-gray-500 text-sm max-w-xl mx-auto"><?= renderOverviewText($site['overview'], $site['office']) ?></p>

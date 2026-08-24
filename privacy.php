@@ -69,6 +69,7 @@ $sections = [
     <title>Privacy &amp; Safety - <?= htmlspecialchars($site['name']) ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="includes/back_home.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
         body { font-family: 'Inter', sans-serif; }
@@ -82,29 +83,34 @@ $sections = [
 </head>
 <body class="bg-gray-50 text-gray-900">
 
-    <nav class="flex items-center justify-between px-8 py-3 border-b border-gray-100 bg-white">
-        <a href="index.php" class="group flex items-center gap-3 rounded-xl pr-2 -ml-1 py-1 transition hover:opacity-90">
-            <div class="flex items-center justify-center w-9 h-9 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl shadow-md shadow-blue-200/70 group-hover:shadow-lg group-hover:shadow-blue-200/80 transition-shadow">
+    <nav class="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-gray-100 bg-white">
+        <a href="index.php" class="group flex items-center gap-3 rounded-xl pr-2 -ml-1 py-1 transition hover:opacity-90 min-w-0">
+            <div class="flex items-center justify-center w-9 h-9 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl shadow-md shadow-blue-200/70 group-hover:shadow-lg group-hover:shadow-blue-200/80 transition-shadow shrink-0">
                 <span class="text-white text-sm font-black">A</span>
             </div>
-            <div class="flex flex-col leading-none">
-                <span class="font-black text-base tracking-tight text-slate-900"><?= htmlspecialchars($site['name']) ?></span>
+            <div class="flex flex-col leading-none min-w-0">
+                <span class="font-black text-base tracking-tight text-slate-900 truncate"><?= htmlspecialchars($site['name']) ?></span>
                 <span class="text-[9px] font-bold text-blue-600 tracking-widest uppercase mt-1">Civil Registry Portal</span>
             </div>
         </a>
-        <div class="flex items-center gap-8 text-sm font-medium text-gray-600">
+        <div class="hidden md:flex items-center gap-8 text-sm font-medium text-gray-600">
             <a href="index.php" class="<?= navClass('index.php', $currentPage) ?>">Home</a>
             <a href="track.php" class="<?= navClass('track.php', $currentPage) ?>">Track Request</a>
             <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="bg-blue-600 text-white px-4 py-1.5 rounded-md text-xs hover:bg-blue-700 transition">
                 <?= $isStaffLoggedIn ? 'Staff Dashboard' : 'Staff Portal' ?>
             </a>
         </div>
+        <div class="md:hidden flex items-center gap-2 shrink-0">
+            <a href="track.php" class="text-xs font-semibold text-blue-700 px-3 py-2 rounded-lg bg-blue-50">Track</a>
+            <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="text-xs font-bold text-white px-3 py-2 rounded-lg bg-blue-700">Staff</a>
+        </div>
     </nav>
 
     <header class="bg-white border-b border-gray-100">
         <div class="max-w-5xl mx-auto px-6 py-12">
-            <a href="index.php" class="text-blue-600 text-[11px] font-bold inline-flex items-center gap-1 mb-6 hover:underline">
-                <i data-lucide="chevron-left" class="w-3 h-3"></i> Back to Home
+            <a href="index.php" class="back-home back-home--inline mb-6">
+                <i data-lucide="chevron-left" class="back-home__icon w-3 h-3"></i>
+                <span>Back to Home</span>
             </a>
             <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
                 <div class="max-w-2xl">

@@ -128,17 +128,17 @@ $statusOptions = requestStatusUpdateOptions();
 
     <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
 
-    <main class="flex-1 ml-64 flex flex-col min-h-screen">
+    <main class="admin-main flex flex-col min-h-screen">
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
 
-        <div class="p-10 max-w-7xl mx-auto w-full">
+        <div class="p-4 sm:p-6 lg:p-10 max-w-7xl mx-auto w-full">
             <div class="mb-8">
                 <a href="<?= htmlspecialchars(buildAuthUrl('dashboard.php')) ?>" class="text-blue-600 text-[11px] font-bold flex items-center mb-2 hover:underline">
                     <i data-lucide="chevron-left" class="w-3 h-3 mr-1"></i> Back to Dashboard
                 </a>
                 <div class="flex justify-between items-start">
                     <div>
-                        <h1 class="text-3xl font-black text-slate-900 tracking-tight">Manage Requests</h1>
+                        <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Manage Requests</h1>
                         <p class="text-gray-500 text-sm font-medium mt-1">Review, verify, and track citizen certificate requests.</p>
                     </div>
                 </div>
@@ -151,21 +151,21 @@ $statusOptions = requestStatusUpdateOptions();
             </div>
             <?php endif; ?>
 
-            <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between mb-6">
+            <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col lg:flex-row lg:items-center gap-3 mb-6">
                 <?= authFormField() ?>
-                <div class="relative flex-1 max-w-2xl">
+                <div class="relative flex-1 w-full lg:max-w-2xl">
                     <i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-gray-400"></i>
                     <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search citizen name or tracking code..." class="w-full pl-10 pr-4 py-2 text-sm bg-gray-50 border-none rounded-lg focus:ring-0 text-slate-600 placeholder-gray-400">
                 </div>
-                <div class="flex items-center bg-gray-50 p-1 rounded-lg border border-gray-100 ml-4">
+                <div class="flex items-center bg-gray-50 p-1 rounded-lg border border-gray-100 overflow-x-auto flex-nowrap lg:ml-0">
                     <?php foreach ($statusFilters as $key => $label): ?>
-                    <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php', array_filter(['status' => $key !== 'all' ? $key : null, 'q' => $search !== '' ? $search : null]))) ?>" class="status-btn <?= $filterStatus === $key ? 'status-btn-active' : 'status-btn-inactive px-4' ?>"><?= $label ?></a>
+                    <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php', array_filter(['status' => $key !== 'all' ? $key : null, 'q' => $search !== '' ? $search : null]))) ?>" class="status-btn whitespace-nowrap shrink-0 <?= $filterStatus === $key ? 'status-btn-active' : 'status-btn-inactive px-4' ?>"><?= $label ?></a>
                     <?php endforeach; ?>
                 </div>
                 <?php if ($filterStatus !== 'all'): ?>
                 <input type="hidden" name="status" value="<?= htmlspecialchars($filterStatus) ?>">
                 <?php endif; ?>
-                <button type="submit" class="ml-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold" data-loading-text="Searching…">Search</button>
+                <button type="submit" class="w-full lg:w-auto bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold" data-loading-text="Searching…">Search</button>
             </form>
 
             <?php if (empty($requests)): ?>
@@ -178,7 +178,8 @@ $statusOptions = requestStatusUpdateOptions();
             </div>
             <?php else: ?>
             <div class="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-                <table class="w-full text-left text-sm">
+                <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm min-w-[720px]">
                     <thead class="bg-gray-50 text-[10px] font-bold uppercase text-gray-400">
                         <tr>
                             <th class="px-4 py-3">Tracking</th>
@@ -239,6 +240,7 @@ $statusOptions = requestStatusUpdateOptions();
                         <?php endforeach; ?>
                     </tbody>
                 </table>
+                </div>
             </div>
             <?php endif; ?>
         </div>

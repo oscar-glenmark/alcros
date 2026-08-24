@@ -109,6 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clear Test Data - ALCROS</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="includes/back_home.css">
 </head>
 <body class="bg-gray-50 min-h-screen flex items-center justify-center p-6">
     <div class="max-w-md w-full bg-white rounded-2xl shadow p-8 border border-gray-100">
@@ -140,7 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
         </form>
         <?php endif; ?>
 
-        <a href="index.php" class="block mt-4 text-center text-blue-600 text-sm font-bold hover:underline">Back to Home</a>
+        <a href="index.php" class="back-home back-home--center block mt-4">Back to Home</a>
         <p class="mt-4 text-[11px] text-gray-400">Delete <code>clear_test_data.php</code> when testing is finished.</p>
     </div>
 </body>

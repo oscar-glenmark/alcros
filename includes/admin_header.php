@@ -7,22 +7,32 @@ requireStaffLogin();
 
 ?>
 
-<header class="h-16 border-b border-gray-100 flex items-center justify-between px-8 bg-white sticky top-0 z-20">
+<header class="min-h-16 border-b border-gray-100 flex items-center justify-between gap-3 px-4 sm:px-6 lg:px-8 py-2 bg-white sticky top-0 z-20">
 
-    <!-- Search -->
-    <div class="relative w-96">
-        <i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-gray-400"></i>
-
-        <input
-            type="text"
-            placeholder="SEARCH CIVIL RECORDS OR TRACKING ID..."
-            class="w-full pl-10 pr-4 py-2 text-[10px] bg-gray-50 border border-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 font-bold uppercase tracking-tight"
+    <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+        <button
+            type="button"
+            id="sidebarToggleBtn"
+            class="lg:hidden shrink-0 p-2 rounded-lg text-slate-600 hover:bg-slate-100"
+            aria-label="Open menu"
+            onclick="window.toggleAdminSidebar && window.toggleAdminSidebar()"
         >
+            <i data-lucide="menu" class="w-5 h-5"></i>
+        </button>
+
+        <!-- Search -->
+        <div class="relative hidden md:block flex-1 max-w-md lg:max-w-lg min-w-0">
+            <i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-gray-400"></i>
+            <input
+                type="text"
+                placeholder="SEARCH CIVIL RECORDS OR TRACKING ID..."
+                class="w-full pl-10 pr-4 py-2 text-[10px] bg-gray-50 border border-gray-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 font-bold uppercase tracking-tight"
+            >
+        </div>
     </div>
 
-
     <!-- Right Side -->
-    <div class="flex items-center space-x-4">
+    <div class="flex items-center space-x-2 sm:space-x-4 shrink-0">
 
         <!-- Notification Bell -->
         <div class="relative" id="notif-wrapper" data-staff-id="<?= htmlspecialchars(staffId()) ?>">
@@ -51,7 +61,7 @@ requireStaffLogin();
             <!-- Notification Dropdown -->
             <div
                 id="notif-dropdown"
-                class="hidden absolute right-0 top-full mt-2 w-80 sm:w-96 bg-white rounded-xl border border-gray-100 shadow-xl z-50 overflow-hidden"
+                class="hidden fixed sm:absolute left-4 right-4 sm:left-auto sm:right-0 top-16 sm:top-full sm:mt-2 w-auto sm:w-80 lg:w-96 bg-white rounded-xl border border-gray-100 shadow-xl z-50 overflow-hidden"
             >
 
                 <div class="px-4 py-3 border-b border-gray-50 flex justify-between items-center bg-white gap-2">
@@ -101,10 +111,10 @@ requireStaffLogin();
 
 
         <!-- Staff Name + Profile -->
-        <div class="flex items-center space-x-3">
+        <div class="flex items-center space-x-2 sm:space-x-3">
 
-            <div class="text-right">
-                <p class="text-xs font-bold text-slate-900 leading-none">
+            <div class="text-right hidden sm:block">
+                <p class="text-xs font-bold text-slate-900 leading-none truncate max-w-[120px] lg:max-w-none">
                     <?= htmlspecialchars(staffName()) ?>
                 </p>
 

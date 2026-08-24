@@ -36,15 +36,46 @@ $sidebarSubtitle = isAdmin() ? 'Registry Admin' : 'Staff Portal';
         width: 16rem;
         height: 100vh;
         height: 100dvh;
-        z-index: 30;
+        z-index: 50;
         display: flex;
         flex-direction: column;
         background-color: #ffffff;
         border-right: 1px solid #e2e8f0;
-        transform: translateZ(0);
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
         backface-visibility: hidden;
         will-change: transform;
         contain: layout style;
+    }
+    @media (min-width: 1024px) {
+        .admin-sidebar {
+            transform: translateX(0);
+            z-index: 30;
+        }
+    }
+    .admin-sidebar.is-open {
+        transform: translateX(0);
+    }
+    .admin-sidebar-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 40;
+        background: rgba(15, 23, 42, 0.45);
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.25s ease, visibility 0.25s ease;
+    }
+    .admin-sidebar-backdrop.is-open {
+        opacity: 1;
+        visibility: visible;
+    }
+    @media (min-width: 1024px) {
+        .admin-sidebar-backdrop {
+            display: none;
+        }
+    }
+    body.admin-sidebar-open {
+        overflow: hidden;
     }
     .admin-sidebar-nav {
         flex: 1 1 auto;
@@ -56,12 +87,19 @@ $sidebarSubtitle = isAdmin() ? 'Registry Admin' : 'Staff Portal';
         flex-shrink: 0;
     }
     .admin-main {
-        margin-left: 16rem;
-        width: calc(100vw - 16rem);
+        margin-left: 0;
+        width: 100%;
+        min-width: 0;
         min-height: 100vh;
         min-height: 100dvh;
         display: flex;
         flex-direction: column;
+    }
+    @media (min-width: 1024px) {
+        .admin-main {
+            margin-left: 16rem;
+            width: calc(100vw - 16rem);
+        }
     }
     .admin-content {
         flex: 1 1 auto;
@@ -102,9 +140,11 @@ $sidebarSubtitle = isAdmin() ? 'Registry Admin' : 'Staff Portal';
     }
 </style>
 
-<aside class="admin-sidebar" id="mainAdminSidebar">
-    <div class="flex-shrink-0 p-6 border-b border-gray-50">
-        <a href="<?= htmlspecialchars(buildAuthUrl('dashboard.php')) ?>" class="group flex items-center gap-3 rounded-xl transition hover:opacity-90">
+<div id="adminSidebarBackdrop" class="admin-sidebar-backdrop" aria-hidden="true"></div>
+
+<aside class="admin-sidebar" id="mainAdminSidebar" aria-label="Admin navigation">
+    <div class="flex-shrink-0 p-4 sm:p-6 border-b border-gray-50 flex items-center justify-between gap-3">
+        <a href="<?= htmlspecialchars(buildAuthUrl('dashboard.php')) ?>" class="group flex items-center gap-3 rounded-xl transition hover:opacity-90 min-w-0 flex-1">
             <div class="flex items-center justify-center w-9 h-9 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl shadow-md shadow-blue-200/70 group-hover:shadow-lg group-hover:shadow-blue-200/80 transition-shadow shrink-0">
                 <span class="text-white text-sm font-black">A</span>
             </div>
@@ -113,6 +153,9 @@ $sidebarSubtitle = isAdmin() ? 'Registry Admin' : 'Staff Portal';
                 <span class="text-[9px] font-bold text-blue-600 tracking-widest uppercase mt-1"><?= htmlspecialchars($sidebarSubtitle) ?></span>
             </div>
         </a>
+        <button type="button" id="sidebarCloseBtn" class="lg:hidden shrink-0 p-2 rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Close menu">
+            <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
     </div>
     <nav class="admin-sidebar-nav px-4 py-4 space-y-1" id="sidebarNavScroll">
         <?= sidebarLink('dashboard.php', 'Dashboard', 'layout-dashboard', $activePage) ?>
@@ -154,6 +197,40 @@ $sidebarSubtitle = isAdmin() ? 'Registry Admin' : 'Staff Portal';
 
 <script>
 (function () {
+    const sidebar = document.getElementById('mainAdminSidebar');
+    const backdrop = document.getElementById('adminSidebarBackdrop');
+    const closeBtn = document.getElementById('sidebarCloseBtn');
+
+    function setSidebarOpen(open) {
+        if (!sidebar || !backdrop) return;
+        sidebar.classList.toggle('is-open', open);
+        backdrop.classList.toggle('is-open', open);
+        document.body.classList.toggle('admin-sidebar-open', open);
+        backdrop.setAttribute('aria-hidden', open ? 'false' : 'true');
+    }
+
+    window.toggleAdminSidebar = function (force) {
+        const next = typeof force === 'boolean' ? force : !sidebar.classList.contains('is-open');
+        setSidebarOpen(next);
+    };
+
+    window.closeAdminSidebar = function () {
+        if (window.matchMedia('(min-width: 1024px)').matches) return;
+        setSidebarOpen(false);
+    };
+
+    backdrop?.addEventListener('click', () => setSidebarOpen(false));
+    closeBtn?.addEventListener('click', () => setSidebarOpen(false));
+    sidebar?.querySelectorAll('a').forEach(link => {
+        link.addEventListener('click', () => window.closeAdminSidebar());
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && sidebar?.classList.contains('is-open')) setSidebarOpen(false);
+    });
+    window.addEventListener('resize', function () {
+        if (window.matchMedia('(min-width: 1024px)').matches) setSidebarOpen(false);
+    });
+
     // Preserve sidebar navigation scroll position across page transitions
     const navScroll = document.getElementById('sidebarNavScroll');
     if (navScroll) {

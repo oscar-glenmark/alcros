@@ -50,6 +50,7 @@ $trackRealtime = $appointment ? 'track-appointment' : ($request ? 'track' : '');
     <title>Track Your Request - ALCROS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="includes/back_home.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
         body { font-family: 'Inter', sans-serif; }
@@ -63,7 +64,7 @@ $trackRealtime = $appointment ? 'track-appointment' : ($request ? 'track' : '');
             <div class="bg-blue-600 text-white p-1 rounded font-bold text-[10px] w-5 h-5 flex items-center justify-center">A</div>
             <span class="font-bold tracking-tight text-blue-900 text-xs">ALCROS</span>
         </div>
-        <a href="index.php" class="text-gray-400 text-[10px] hover:text-gray-600 transition">Back to Home</a>
+        <a href="index.php" class="back-home back-home--nav">Back to Home</a>
     </nav>
 
     <main class="flex-grow flex flex-col items-center justify-start pt-12 md:pt-16 px-4 pb-16">

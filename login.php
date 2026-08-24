@@ -75,6 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Staff Portal Login - ALCROS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="includes/password_toggle.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
         body { 
@@ -84,19 +85,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .login-card {
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.04);
         }
-        /* Hide Edge/IE native password-reveal so it doesn't stack on the custom eye */
-        #passwordInput::-ms-reveal,
-        #passwordInput::-ms-clear {
-            display: none;
-        }
-        #togglePassword svg {
-            width: 1rem;
-            height: 1rem;
-            pointer-events: none;
-        }
-        #togglePassword .eye-show { display: none; }
-        #togglePassword.is-revealed .eye-hide { display: none; }
-        #togglePassword.is-revealed .eye-show { display: block; }
     </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-6">
@@ -144,27 +132,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <label class="block text-[11px] font-bold text-gray-700 mb-2 flex items-center gap-2">
                         <i data-lucide="lock" class="w-3.5 h-3.5 text-gray-400"></i> Password
                     </label>
-                    <div class="relative">
+                    <div>
                         <input 
                             type="password" 
                             name="password"
                             id="passwordInput"
                             placeholder="••••••••"
-                            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 pr-12 text-xs font-semibold text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs font-semibold text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                             required
                         >
-                        <button type="button" id="togglePassword" class="absolute right-3 top-1/2 -translate-y-1/2 z-10 inline-flex items-center justify-center p-1 text-gray-400 hover:text-gray-600" aria-label="Show password" aria-pressed="false">
-                            <svg class="eye-show w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path>
-                                <circle cx="12" cy="12" r="3"></circle>
-                            </svg>
-                            <svg class="eye-hide w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"></path>
-                                <path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"></path>
-                                <path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"></path>
-                                <path d="m2 2 20 20"></path>
-                            </svg>
-                        </button>
                     </div>
                 </div>
 
@@ -194,27 +170,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 
     <script src="includes/loading.js"></script>
+    <script src="includes/password_toggle.js"></script>
     <script>
         if (typeof lucide !== 'undefined') lucide.createIcons();
-
-        (function () {
-            const toggleBtn = document.getElementById('togglePassword');
-            const passwordInput = document.getElementById('passwordInput');
-            if (!toggleBtn || !passwordInput) return;
-
-            function setPasswordVisible(visible) {
-                passwordInput.setAttribute('type', visible ? 'text' : 'password');
-                toggleBtn.classList.toggle('is-revealed', visible);
-                toggleBtn.setAttribute('aria-pressed', visible ? 'true' : 'false');
-                toggleBtn.setAttribute('aria-label', visible ? 'Hide password' : 'Show password');
-            }
-
-            toggleBtn.addEventListener('click', function (e) {
-                e.preventDefault();
-                const hidden = passwordInput.getAttribute('type') !== 'text';
-                setPasswordVisible(hidden);
-            });
-        })();
     </script>
 </body>
 </html>

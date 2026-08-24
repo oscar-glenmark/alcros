@@ -2,45 +2,26 @@
 /**
  * ALCROS - Local Civil Registry of Aloran
  * Landing page (index.php)
- *
- * Functional additions (design untouched):
- *  - Session-aware "Staff Portal" button (routes to dashboard.php if logged in, login.php if not)
- *  - Active-page highlighting in the nav bar
- *  - Document request buttons wired to request.php with the document type pre-filled
- *  - "Schedule Appointment" links wired to appointment.php with the service type pre-filled
- *  - Dynamic copyright year
- *  - Contact details pulled from a single config array so they only need to be edited once
  */
-
 session_start();
 require_once __DIR__ . '/includes/helpers.php';
 
-// ---- Simple config you can edit in one place ----------------------------
 $site = getSiteSettings();
 $maintenanceMode = isMaintenanceMode();
 $publicRequestsAllowed = arePublicRequestsAllowed();
 
-// ---- Staff login state ----------------------------------------------------
 $isStaffLoggedIn = isset($_SESSION['staff_id']);
-// Staff Portal always goes to login.php. If the staff member is already
-// logged in, login.php itself detects the session and redirects them
-// straight to dashboard.php — so this link never needs to branch here.
 $staffPortalUrl  = 'login.php';
 
-// ---- Nav helper: highlight the current page --------------------------------
 $currentPage = basename($_SERVER['PHP_SELF']);
 function navClass($page, $current) {
     return $page === $current
-        ? 'text-blue-600 font-semibold'
-        : 'hover:text-blue-600';
+        ? 'text-blue-700 font-semibold bg-blue-50'
+        : 'text-slate-600 hover:text-blue-700 hover:bg-slate-50';
 }
 
-// ---- Document types offered (drives the top request cards) ----------------
 $documentTypes = getDocumentTypes();
-
-// ---- Special / appointment-based services ----------------------------------
 $appointmentServices = getAppointmentServices();
-
 $year = date('Y');
 ?>
 <!DOCTYPE html>
@@ -53,16 +34,23 @@ $year = date('Y');
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        html { scroll-behavior: smooth; }
         body { font-family: 'Inter', sans-serif; }
         .gradient-text {
-            background: linear-gradient(90deg, #2563eb, #3b82f6);
+            background: linear-gradient(135deg, #1d4ed8, #0ea5e9);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
+        .hero-glow {
+            background:
+                radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.12), transparent 45%),
+                radial-gradient(circle at 80% 0%, rgba(14, 165, 233, 0.1), transparent 40%),
+                linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+        }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-900">
+<body class="bg-slate-50 text-slate-900">
 
     <?php if ($maintenanceMode): ?>
     <div class="bg-amber-500 text-white text-center text-xs font-bold py-2 px-4">
@@ -70,156 +58,235 @@ $year = date('Y');
     </div>
     <?php endif; ?>
 
-    <nav class="flex items-center justify-between px-8 py-3 border-b border-gray-100 bg-white">
-        <div class="flex items-center gap-2">
-            <div class="bg-blue-600 text-white p-1 rounded font-bold text-[10px] w-5 h-5 flex items-center justify-center">A</div>
-            <span class="font-bold tracking-tight text-blue-900"><?= htmlspecialchars($site['name']) ?></span>
-        </div>
-        <div class="flex items-center gap-8 text-sm font-medium text-gray-600">
-            <a href="index.php" class="<?= navClass('index.php', $currentPage) ?>">Home</a>
-            <a href="track.php" class="<?= navClass('track.php', $currentPage) ?>">Track Request</a>
-            <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="bg-blue-600 text-white px-4 py-1.5 rounded-md text-xs hover:bg-blue-700 transition">
-                <?= $isStaffLoggedIn ? 'Staff Dashboard' : 'Staff Portal' ?>
+    <header class="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200/80">
+        <nav class="max-w-6xl mx-auto flex items-center justify-between px-4 sm:px-6 py-3">
+            <a href="index.php" class="group flex items-center gap-3 rounded-xl pr-2 -ml-1 py-1 transition hover:opacity-90">
+                <div class="flex items-center justify-center w-9 h-9 bg-gradient-to-br from-blue-700 to-sky-600 rounded-xl shadow-md shadow-blue-200/70 group-hover:shadow-lg transition-shadow">
+                    <span class="text-white text-sm font-black">A</span>
+                </div>
+                <div class="flex flex-col leading-none">
+                    <span class="font-black text-base tracking-tight text-slate-900"><?= htmlspecialchars($site['name']) ?></span>
+                    <span class="text-[9px] font-bold text-sky-600 tracking-widest uppercase mt-1">Civil Registry Portal</span>
+                </div>
             </a>
-        </div>
-    </nav>
 
-    <section class="text-center py-20 px-4">
-        <p class="text-[10px] uppercase tracking-widest text-blue-600 font-bold mb-4"><?= htmlspecialchars($site['office']) ?></p>
-        <h1 class="text-5xl font-extrabold text-slate-900 mb-2">Efficient Civil Registry</h1>
-        <h2 class="text-5xl font-extrabold gradient-text mb-6">Rightsizing Public Service</h2>
-        <p class="text-gray-500 max-w-lg mx-auto mb-10 text-sm">
-            Request, track, and receive your vital documents with 100% digital transparency and speed.
-        </p>
-        <div class="flex justify-center gap-4">
-            <?php if ($publicRequestsAllowed && !$maintenanceMode): ?>
-            <a href="request.php" class="bg-blue-600 text-white px-8 py-3 rounded-full font-semibold text-sm flex items-center gap-2 hover:bg-blue-700 transition">
-                Request Now <i data-lucide="arrow-right" class="w-3 h-3"></i>
-            </a>
-            <?php else: ?>
-            <span class="bg-gray-300 text-gray-500 px-8 py-3 rounded-full font-semibold text-sm cursor-not-allowed">Requests Unavailable</span>
-            <?php endif; ?>
-            <a href="track.php" class="border border-gray-300 text-gray-700 px-8 py-3 rounded-full font-semibold text-sm hover:bg-gray-50 transition">
-                Track Status
-            </a>
+            <div class="hidden md:flex items-center gap-1 text-sm font-medium">
+                <a href="track.php" class="<?= navClass('track.php', $currentPage) ?> px-3 py-2 rounded-lg transition">Track</a>
+                <a href="#contact" class="px-3 py-2 rounded-lg transition text-slate-600 hover:text-blue-700 hover:bg-slate-50">Contact</a>
+                <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="ml-2 bg-gradient-to-r from-blue-700 to-sky-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:opacity-95 transition shadow-sm shadow-blue-200">
+                    <?= $isStaffLoggedIn ? 'Staff Dashboard' : 'Staff Portal' ?>
+                </a>
+            </div>
+
+            <div class="md:hidden flex items-center gap-2">
+                <a href="track.php" class="text-xs font-semibold text-blue-700 px-3 py-2 rounded-lg bg-blue-50">Track</a>
+                <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="text-xs font-bold text-white px-3 py-2 rounded-lg bg-blue-700">Staff</a>
+            </div>
+        </nav>
+    </header>
+
+    <section class="hero-glow border-b border-slate-100">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 py-16 md:py-20 text-center">
+            <p class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold uppercase tracking-wider mb-5">
+                <i data-lucide="building-2" class="w-3.5 h-3.5"></i>
+                <?= htmlspecialchars($site['office']) ?>
+            </p>
+            <h1 class="text-4xl md:text-5xl font-extrabold text-slate-900 mb-2 leading-tight">Efficient Civil Registry</h1>
+            <h2 class="text-4xl md:text-5xl font-extrabold gradient-text mb-5 leading-tight">Rightsizing Public Service</h2>
+            <p class="text-slate-500 max-w-xl mx-auto mb-8 text-sm md:text-base leading-relaxed">
+                Request, track, and receive your vital documents online fast, transparent, and secure.
+            </p>
+
+            <div class="flex flex-col sm:flex-row justify-center gap-3">
+                <?php if ($publicRequestsAllowed && !$maintenanceMode): ?>
+                <a href="request.php" class="bg-gradient-to-r from-blue-700 to-sky-600 text-white px-8 py-3.5 rounded-xl font-semibold text-sm inline-flex items-center justify-center gap-2 hover:opacity-95 transition shadow-lg shadow-blue-200/60">
+                    Start a Request <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </a>
+                <?php else: ?>
+                <span class="bg-slate-200 text-slate-500 px-8 py-3.5 rounded-xl font-semibold text-sm cursor-not-allowed">Requests Unavailable</span>
+                <?php endif; ?>
+                <a href="track.php" class="bg-white border border-slate-200 text-slate-700 px-8 py-3.5 rounded-xl font-semibold text-sm inline-flex items-center justify-center gap-2 hover:border-blue-200 hover:text-blue-700 transition shadow-sm">
+                    <i data-lucide="search" class="w-4 h-4"></i> Track My Request
+                </a>
+            </div>
         </div>
     </section>
 
-    <section class="max-w-6xl mx-auto px-6 py-12">
-        <p class="text-[10px] uppercase tracking-widest text-blue-600 font-bold mb-6 text-center">Fast-Track Online Services</p>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <section class="max-w-6xl mx-auto px-4 sm:px-6 py-10">
+        <div class="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
+            <div class="text-center mb-8">
+                <p class="text-[10px] uppercase tracking-widest text-blue-600 font-bold mb-2">Simple Process</p>
+                <h3 class="text-xl font-extrabold text-slate-900">How It Works</h3>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="text-center md:text-left flex flex-col md:flex-row items-center md:items-start gap-4">
+                    <div class="w-10 h-10 rounded-full bg-blue-600 text-white font-black text-sm flex items-center justify-center shrink-0">1</div>
+                    <div>
+                        <h4 class="font-bold text-sm text-slate-800 mb-1">Submit Online</h4>
+                        <p class="text-slate-500 text-xs leading-relaxed">Fill out the request form and upload required documents.</p>
+                    </div>
+                </div>
+                <div class="text-center md:text-left flex flex-col md:flex-row items-center md:items-start gap-4">
+                    <div class="w-10 h-10 rounded-full bg-sky-500 text-white font-black text-sm flex items-center justify-center shrink-0">2</div>
+                    <div>
+                        <h4 class="font-bold text-sm text-slate-800 mb-1">Track Progress</h4>
+                        <p class="text-slate-500 text-xs leading-relaxed">Use your tracking code to monitor status in real time.</p>
+                    </div>
+                </div>
+                <div class="text-center md:text-left flex flex-col md:flex-row items-center md:items-start gap-4">
+                    <div class="w-10 h-10 rounded-full bg-emerald-500 text-white font-black text-sm flex items-center justify-center shrink-0">3</div>
+                    <div>
+                        <h4 class="font-bold text-sm text-slate-800 mb-1">Pick Up Document</h4>
+                        <p class="text-slate-500 text-xs leading-relaxed">Get notified when your document is ready for release.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="services" class="max-w-6xl mx-auto px-4 sm:px-6 py-12 scroll-mt-24">
+        <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
+            <div>
+                <p class="text-[10px] uppercase tracking-widest text-blue-600 font-bold mb-2">Online Requests</p>
+                <h3 class="text-2xl font-extrabold text-slate-900">Fast-Track Document Services</h3>
+                <p class="text-slate-500 text-sm mt-1">Select a document type to begin your application.</p>
+            </div>
+            <a href="services.php" class="text-xs font-bold text-blue-700 inline-flex items-center gap-1 hover:underline shrink-0">
+                View all services <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+            </a>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
             <?php foreach ($documentTypes as $doc): ?>
             <a href="request.php?type=<?= urlencode($doc['slug']) ?>"
-               class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 text-center hover:shadow-md transition block">
-                <div class="w-12 h-12 <?= $doc['iconBg'] ?> rounded-lg flex items-center justify-center mx-auto mb-4 text-xl">
+               class="group bg-white p-6 rounded-2xl border border-slate-200 hover:border-blue-200 hover:shadow-md transition flex flex-col">
+                <div class="w-11 h-11 bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white rounded-xl flex items-center justify-center mb-4 transition-colors">
                     <i data-lucide="<?= htmlspecialchars($doc['icon']) ?>" class="w-5 h-5"></i>
                 </div>
-                <h3 class="font-bold text-sm mb-2"><?= htmlspecialchars($doc['label']) ?></h3>
-                <p class="text-gray-400 text-[11px] leading-relaxed"><?= htmlspecialchars($doc['desc']) ?></p>
+                <h4 class="font-bold text-sm text-slate-900 mb-2"><?= htmlspecialchars($doc['label']) ?></h4>
+                <p class="text-slate-500 text-xs leading-relaxed mb-4 flex-1"><?= htmlspecialchars($doc['desc']) ?></p>
+                <span class="text-[10px] font-bold text-blue-700 inline-flex items-center gap-1 group-hover:gap-2 transition-all">
+                    Apply now <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                </span>
             </a>
             <?php endforeach; ?>
         </div>
     </section>
 
-    <section class="max-w-6xl mx-auto px-6 py-12 text-center">
-        <h3 class="font-bold text-lg mb-1">Special Services & Consultations</h3>
-        <p class="text-gray-400 text-xs mb-10 italic">"Schedule an appointment for record updates and civil registry consultations."</p>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <?php foreach ($appointmentServices as $svc): ?>
-            <div class="bg-white p-6 rounded-xl border border-gray-100 flex flex-col items-start text-left relative">
-                <span class="absolute top-4 right-4 text-[9px] font-bold text-orange-400 border border-orange-200 px-2 py-0.5 rounded uppercase">Appointment</span>
-                <div class="w-8 h-8 <?= $svc['iconBg'] ?> rounded flex items-center justify-center mb-4">
-                    <i data-lucide="<?= htmlspecialchars($svc['icon']) ?>" class="w-4 h-4"></i>
-                </div>
-                <h4 class="font-bold text-xs mb-1 uppercase"><?= htmlspecialchars($svc['label']) ?></h4>
-                <p class="text-gray-400 text-[10px] mb-4"><?= htmlspecialchars($svc['desc']) ?></p>
-                <a href="book_appointment.php?service=<?= urlencode($svc['slug']) ?>" class="text-blue-600 text-[10px] font-bold border-b border-blue-600 pb-0.5 inline-flex items-center gap-0.5">SCHEDULE APPOINTMENT <i data-lucide="chevron-right" class="w-3 h-3"></i></a>
+    <section id="appointments" class="bg-white border-y border-slate-200 scroll-mt-24">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 py-12">
+            <div class="text-center mb-8">
+                <p class="text-[10px] uppercase tracking-widest text-sky-600 font-bold mb-2">By Appointment</p>
+                <h3 class="text-2xl font-extrabold text-slate-900">Special Services & Consultations</h3>
+                <p class="text-slate-500 text-sm mt-2 max-w-lg mx-auto">Schedule a visit for record updates, consultations, and other civil registry services.</p>
             </div>
-            <?php endforeach; ?>
-        </div>
-        <a href="services.php" class="border border-gray-300 text-gray-600 px-6 py-2 rounded-lg text-xs font-medium hover:bg-gray-50 inline-flex items-center gap-1">View More Services <i data-lucide="chevron-right" class="w-3 h-3"></i></a>
-    </section>
-
-    <section class="max-w-6xl mx-auto px-6 py-20 text-center">
-        <h3 class="text-2xl font-extrabold text-slate-800 mb-2">A System You Can Trust</h3>
-        <p class="text-gray-400 text-xs mb-12">We prioritize your privacy and security. Our system is designed to provide official and <br>verified civil registry documents with complete transparency.</p>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-12 px-12">
-            <div class="text-center">
-                <div class="w-10 h-10 bg-blue-50 text-blue-500 rounded-lg flex items-center justify-center mx-auto mb-4">
-                    <i data-lucide="search" class="w-4 h-4"></i>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <?php foreach ($appointmentServices as $svc): ?>
+                <div class="bg-slate-50 p-6 rounded-2xl border border-slate-200 flex flex-col relative hover:border-sky-200 hover:shadow-sm transition">
+                    <span class="absolute top-4 right-4 text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full uppercase">Appointment</span>
+                    <div class="w-10 h-10 bg-sky-50 text-sky-600 rounded-xl flex items-center justify-center mb-4">
+                        <i data-lucide="<?= htmlspecialchars($svc['icon']) ?>" class="w-4 h-4"></i>
+                    </div>
+                    <h4 class="font-bold text-sm text-slate-900 mb-1"><?= htmlspecialchars($svc['label']) ?></h4>
+                    <p class="text-slate-500 text-xs mb-5 flex-1"><?= htmlspecialchars($svc['desc']) ?></p>
+                    <a href="book_appointment.php?service=<?= urlencode($svc['slug']) ?>" class="text-sky-700 text-[10px] font-bold inline-flex items-center gap-1 hover:gap-2 transition-all">
+                        Schedule appointment <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                    </a>
                 </div>
-                <h4 class="font-bold text-xs mb-2">Real-Time Tracking</h4>
-                <p class="text-gray-400 text-[10px] leading-relaxed">Monitor your request status from submission to pickup with a unique code.</p>
-            </div>
-            <div class="text-center">
-                <div class="w-10 h-10 bg-green-50 text-green-500 rounded-lg flex items-center justify-center mx-auto mb-4">
-                    <i data-lucide="shield-check" class="w-4 h-4"></i>
-                </div>
-                <h4 class="font-bold text-xs mb-2">Secure Verification</h4>
-                <p class="text-gray-400 text-[10px] leading-relaxed">Verified through official channels ensuring authenticity. Compliant with Data Privacy Act.</p>
-            </div>
-            <div class="text-center">
-                <div class="w-10 h-10 bg-purple-50 text-purple-500 rounded-lg flex items-center justify-center mx-auto mb-4">
-                    <i data-lucide="hand-heart" class="w-4 h-4"></i>
-                </div>
-                <h4 class="font-bold text-xs mb-2">Priority Service</h4>
-                <p class="text-gray-400 text-[10px] leading-relaxed">Special priority queues for Senior Citizens and PWDs for inclusive service.</p>
+                <?php endforeach; ?>
             </div>
         </div>
     </section>
 
-    <section class="max-w-4xl mx-auto px-6 mb-20">
-        <div class="bg-[#0f172a] rounded-3xl p-12 text-white relative overflow-hidden">
-            <div class="relative z-10 text-center">
-                <h2 class="text-3xl font-bold mb-10">Contact Us</h2>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    <div>
-                        <i data-lucide="map-pin" class="w-4 h-4 text-blue-400 mb-3 mx-auto"></i>
-                        <h5 class="text-[10px] font-bold text-gray-400 uppercase mb-1">Location</h5>
-                        <p class="text-xs"><?= htmlspecialchars($site['address']) ?></p>
-                    </div>
-                    <div>
-                        <i data-lucide="phone" class="w-4 h-4 text-blue-400 mb-3 mx-auto"></i>
-                        <h5 class="text-[10px] font-bold text-gray-400 uppercase mb-1">Phone</h5>
-                        <p class="text-xs">
-                            <a href="tel:<?= htmlspecialchars($site['phone']) ?>" class="hover:text-blue-300"><?= htmlspecialchars($site['phone']) ?></a>
-                        </p>
-                    </div>
-                    <div>
-                        <i data-lucide="mail" class="w-4 h-4 text-blue-400 mb-3 mx-auto"></i>
-                        <h5 class="text-[10px] font-bold text-gray-400 uppercase mb-1">Email</h5>
-                        <p class="text-xs">
-                            <a href="mailto:<?= htmlspecialchars($site['email']) ?>" class="hover:text-blue-300"><?= htmlspecialchars($site['email']) ?></a>
-                        </p>
-                    </div>
+    <section id="trust" class="max-w-6xl mx-auto px-4 sm:px-6 py-16 scroll-mt-24">
+        <div class="text-center mb-10">
+            <p class="text-[10px] uppercase tracking-widest text-emerald-600 font-bold mb-2">Why ALCROS</p>
+            <h3 class="text-2xl font-extrabold text-slate-900 mb-2">A System You Can Trust</h3>
+            <p class="text-slate-500 text-sm max-w-xl mx-auto">Official, verified civil registry services with privacy and transparency at the core.</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 text-center hover:shadow-sm transition">
+                <div class="w-11 h-11 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+                    <i data-lucide="search" class="w-5 h-5"></i>
                 </div>
+                <h4 class="font-bold text-sm text-slate-900 mb-2">Real-Time Tracking</h4>
+                <p class="text-slate-500 text-xs leading-relaxed">Monitor your request from submission to pickup with a unique tracking code.</p>
             </div>
-            <i data-lucide="phone" class="absolute -right-10 -bottom-10 text-gray-800 w-40 h-40 opacity-20 rotate-12"></i>
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 text-center hover:shadow-sm transition">
+                <div class="w-11 h-11 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+                    <i data-lucide="shield-check" class="w-5 h-5"></i>
+                </div>
+                <h4 class="font-bold text-sm text-slate-900 mb-2">Secure & Compliant</h4>
+                <p class="text-slate-500 text-xs leading-relaxed">Verified through official channels. Compliant with the Data Privacy Act (RA 10173).</p>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 text-center hover:shadow-sm transition">
+                <div class="w-11 h-11 bg-violet-50 text-violet-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+                    <i data-lucide="hand-heart" class="w-5 h-5"></i>
+                </div>
+                <h4 class="font-bold text-sm text-slate-900 mb-2">Inclusive Service</h4>
+                <p class="text-slate-500 text-xs leading-relaxed">Priority queues for Senior Citizens and PWDs for fair, accessible public service.</p>
+            </div>
         </div>
     </section>
 
-    <footer class="bg-[#0b1120] text-gray-500 py-6 px-12 text-[10px] flex justify-between items-center border-t border-gray-800">
-        <div class="flex items-center gap-6">
-            <div class="flex items-center gap-1">
-                <div class="bg-blue-600 text-white p-0.5 rounded text-[8px] font-bold">A</div>
-                <span class="font-bold text-white text-[11px]"><?= htmlspecialchars($site['name']) ?></span>
+    <section id="contact" class="max-w-6xl mx-auto px-4 sm:px-6 pb-16 scroll-mt-24">
+        <div class="bg-gradient-to-br from-slate-900 via-slate-800 to-blue-950 rounded-3xl p-8 md:p-12 text-white relative overflow-hidden shadow-xl">
+            <div class="absolute -right-16 -bottom-16 w-56 h-56 bg-blue-500/10 rounded-full blur-2xl"></div>
+            <div class="relative z-10">
+                <div class="text-center mb-10">
+                    <p class="text-[10px] uppercase tracking-widest text-sky-300 font-bold mb-2">Get In Touch</p>
+                    <h2 class="text-2xl md:text-3xl font-extrabold">Contact Our Office</h2>
+                    <p class="text-slate-300 text-sm mt-2"><?= htmlspecialchars($site['hours']) ?></p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-white/5 border border-white/10 rounded-2xl p-5 text-center">
+                        <div class="w-10 h-10 bg-sky-500/20 text-sky-300 rounded-xl flex items-center justify-center mx-auto mb-3">
+                            <i data-lucide="map-pin" class="w-4 h-4"></i>
+                        </div>
+                        <h5 class="text-[10px] font-bold text-slate-400 uppercase mb-1">Location</h5>
+                        <p class="text-xs text-slate-100 leading-relaxed"><?= htmlspecialchars($site['address']) ?></p>
+                    </div>
+                    <div class="bg-white/5 border border-white/10 rounded-2xl p-5 text-center">
+                        <div class="w-10 h-10 bg-sky-500/20 text-sky-300 rounded-xl flex items-center justify-center mx-auto mb-3">
+                            <i data-lucide="phone" class="w-4 h-4"></i>
+                        </div>
+                        <h5 class="text-[10px] font-bold text-slate-400 uppercase mb-1">Phone</h5>
+                        <a href="tel:<?= htmlspecialchars($site['phone']) ?>" class="text-sm text-sky-300 hover:text-white transition"><?= htmlspecialchars($site['phone']) ?></a>
+                    </div>
+                    <div class="bg-white/5 border border-white/10 rounded-2xl p-5 text-center">
+                        <div class="w-10 h-10 bg-sky-500/20 text-sky-300 rounded-xl flex items-center justify-center mx-auto mb-3">
+                            <i data-lucide="mail" class="w-4 h-4"></i>
+                        </div>
+                        <h5 class="text-[10px] font-bold text-slate-400 uppercase mb-1">Email</h5>
+                        <a href="mailto:<?= htmlspecialchars($site['email']) ?>" class="text-sm text-sky-300 hover:text-white transition break-all"><?= htmlspecialchars($site['email']) ?></a>
+                    </div>
+                </div>
             </div>
+        </div>
+    </section>
+
+    <footer class="bg-slate-950 text-slate-400 py-6 px-4 sm:px-12 text-[10px] flex flex-wrap justify-between items-center gap-4 border-t border-slate-800">
+        <div class="flex flex-wrap items-center gap-6">
+            <a href="index.php" class="group flex items-center gap-2.5 transition hover:opacity-90">
+                <div class="flex items-center justify-center w-7 h-7 bg-gradient-to-br from-blue-600 to-sky-500 rounded-lg shadow-md shadow-blue-900/40 shrink-0">
+                    <span class="text-white text-[10px] font-black">A</span>
+                </div>
+                <div class="flex flex-col leading-none">
+                    <span class="font-bold text-white text-[11px]"><?= htmlspecialchars($site['name']) ?></span>
+                    <span class="text-[8px] font-semibold text-sky-400 tracking-wider uppercase mt-0.5">Civil Registry Portal</span>
+                </div>
+            </a>
             <span>&copy; <?= htmlspecialchars($year) ?> Aloran Civil Registry Office. All rights reserved.</span>
         </div>
-        <div class="flex gap-4">
-            <a href="track.php" class="hover:text-white">Track</a>
-            <a href="privacy.php" class="hover:text-white">Privacy & Safety</a>
-            <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="hover:text-white">Staff</a>
+        <div class="flex flex-wrap gap-4">
+            <a href="track.php" class="hover:text-white transition">Track</a>
+            <button type="button" data-open-privacy class="hover:text-white transition">Privacy &amp; Safety</button>
+            <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="hover:text-white transition">Staff</a>
         </div>
     </footer>
 
-    <script>
-        lucide.createIcons();
-    </script>
+    <script>lucide.createIcons();</script>
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>
     <?php require __DIR__ . '/includes/notification_consent.php'; ?>
     <script src="includes/reminders.js"></script>
 </body>
-</html> 
+</html>

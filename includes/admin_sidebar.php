@@ -1,8 +1,10 @@
 <?php
 /** @var string $activePage current page filename e.g. dashboard.php */
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/helpers.php';
 
 $activePage = $activePage ?? basename($_SERVER['PHP_SELF']);
+$siteName = getSiteSettings()['name'];
 
 function sidebarLink(string $page, string $label, string $icon, string $active, bool $liveBadge = false): string
 {
@@ -101,12 +103,16 @@ $sidebarSubtitle = isAdmin() ? 'Registry Admin' : 'Staff Portal';
 </style>
 
 <aside class="admin-sidebar" id="mainAdminSidebar">
-    <div class="flex-shrink-0 p-6 flex items-center space-x-2 border-b border-gray-50">
-        <div class="bg-blue-600 text-white rounded font-bold text-xs w-6 h-6 flex items-center justify-center">A</div>
-        <div class="flex flex-col leading-none">
-            <span class="font-black text-xl tracking-tighter text-slate-900">ALCROS</span>
-            <span class="text-[9px] font-bold text-blue-600 tracking-widest uppercase"><?= htmlspecialchars($sidebarSubtitle) ?></span>
-        </div>
+    <div class="flex-shrink-0 p-6 border-b border-gray-50">
+        <a href="<?= htmlspecialchars(buildAuthUrl('dashboard.php')) ?>" class="group flex items-center gap-3 rounded-xl transition hover:opacity-90">
+            <div class="flex items-center justify-center w-9 h-9 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl shadow-md shadow-blue-200/70 group-hover:shadow-lg group-hover:shadow-blue-200/80 transition-shadow shrink-0">
+                <span class="text-white text-sm font-black">A</span>
+            </div>
+            <div class="flex flex-col leading-none min-w-0">
+                <span class="font-black text-base tracking-tight text-slate-900 truncate"><?= htmlspecialchars($siteName) ?></span>
+                <span class="text-[9px] font-bold text-blue-600 tracking-widest uppercase mt-1"><?= htmlspecialchars($sidebarSubtitle) ?></span>
+            </div>
+        </a>
     </div>
     <nav class="admin-sidebar-nav px-4 py-4 space-y-1" id="sidebarNavScroll">
         <?= sidebarLink('dashboard.php', 'Dashboard', 'layout-dashboard', $activePage) ?>

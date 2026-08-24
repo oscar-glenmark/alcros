@@ -282,12 +282,28 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
     <title><?= $isAdmin ? 'System Settings' : 'My Settings' ?> - ALCROS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="includes/password_toggle.css">
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
         .tab-btn.active { background-color: #2563eb; color: #ffffff; }
         .tab-btn.active i { color: #ffffff; }
         .toggle-dot { transition: transform 0.2s; }
+
+        .settings-tab-nav .tab-btn {
+            cursor: pointer;
+            overflow: visible;
+            transition: background-color 0.15s ease;
+        }
+        .settings-tab-nav .tab-btn:hover:not(.active) {
+            background-color: #f8fafc;
+        }
+        .settings-tab-nav .tab-label {
+            opacity: 1;
+            visibility: visible;
+            display: inline;
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body class="flex min-h-screen">
@@ -313,7 +329,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
             <?php endif; ?>
 
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                <aside class="lg:col-span-3 bg-white border border-slate-100 rounded-2xl p-3 shadow-sm space-y-1 sticky top-6 self-start z-10">
+                <aside class="settings-tab-nav lg:col-span-3 bg-white border border-slate-100 rounded-2xl p-3 shadow-sm space-y-1 sticky top-6 self-start z-10">
                     <?php
                     $tabs = [
                         'my-account'           => ['label' => 'My Account', 'icon' => 'user'],
@@ -327,8 +343,9 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                     foreach ($tabs as $id => $tab):
                     ?>
                     <button type="button" onclick="switchTab('<?= $id ?>')" id="btn-<?= $id ?>"
-                        class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors <?= $activeTab === $id ? 'active' : '' ?>">
-                        <i data-lucide="<?= $tab['icon'] ?>" class="w-4 h-4 text-slate-500 shrink-0"></i> <?= $tab['label'] ?>
+                        class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-slate-600 <?= $activeTab === $id ? 'active' : '' ?>">
+                        <i data-lucide="<?= $tab['icon'] ?>" class="w-4 h-4 text-slate-500 shrink-0"></i>
+                        <span class="tab-label"><?= htmlspecialchars($tab['label']) ?></span>
                     </button>
                     <?php endforeach; ?>
                 </aside>
@@ -425,7 +442,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                         <div class="flex justify-between items-start mb-6">
                             <div>
                                 <h2 class="text-lg font-bold text-slate-900 mb-1">Staff Members</h2>
-                                <p class="text-xs text-slate-500">Manage who can access the staff portal. Upload a profile photo for each account — it appears in the header and dashboard after they sign in.</p>
+                                <p class="text-xs text-slate-500">Manage staff portal access and profile photos.</p>
                             </div>
                             <span class="text-[10px] font-bold uppercase bg-slate-100 text-slate-600 px-3 py-1 rounded-full"><?= count($staffMembers) ?> accounts</span>
                         </div>
@@ -474,51 +491,51 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                     <?php foreach ($staffMembers as $member): ?>
                                     <tr class="hover:bg-slate-50/50">
                                         <td class="px-4 py-3">
-                                            <div class="flex items-center gap-2">
+                                            <div class="flex flex-col items-center gap-1">
                                                 <?= renderStaffAvatar($member['profile_photo_path'] ?? null, $member['name'], 'w-10 h-10 text-sm') ?>
-                                                <form method="POST" enctype="multipart/form-data" class="flex flex-col gap-1 min-w-[120px]">
+                                                <form method="POST" enctype="multipart/form-data" class="staff-photo-form">
                                                     <input type="hidden" name="settings_action" value="upload_staff_photo">
                                                     <input type="hidden" name="active_tab" value="account-management">
                                                     <input type="hidden" name="target_staff_id" value="<?= htmlspecialchars($member['staff_id']) ?>">
-                                                    <input type="file" name="staff_photo" accept="image/jpeg,image/png,image/webp" required class="text-[10px] w-full file:mr-1 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-blue-50 file:text-blue-600">
-                                                    <button type="submit" class="text-[10px] font-bold text-blue-600 hover:underline text-left">Upload photo</button>
+                                                    <input type="file" name="staff_photo" accept="image/jpeg,image/png,image/webp" class="hidden staff-photo-input">
+                                                    <button type="button" class="staff-photo-trigger text-[10px] font-semibold text-blue-600 hover:underline">Change</button>
                                                 </form>
                                                 <?php if (!empty($member['profile_photo_path'])): ?>
-                                                <form method="POST" class="inline">
+                                                <form method="POST">
                                                     <input type="hidden" name="settings_action" value="remove_staff_photo">
                                                     <input type="hidden" name="active_tab" value="account-management">
                                                     <input type="hidden" name="target_staff_id" value="<?= htmlspecialchars($member['staff_id']) ?>">
-                                                    <button type="submit" class="text-[10px] font-bold text-red-500 hover:underline" onclick="return confirm('Remove profile photo for this account?');">Remove</button>
+                                                    <button type="submit" class="text-[10px] text-slate-400 hover:text-red-500" onclick="return confirm('Remove profile photo for this account?');">Remove</button>
                                                 </form>
                                                 <?php endif; ?>
                                             </div>
                                         </td>
-                                        <td class="px-4 py-3 font-mono text-xs font-bold text-blue-600"><?= htmlspecialchars($member['staff_id']) ?></td>
-                                        <td class="px-4 py-3 font-semibold text-slate-800">
-                                    <?= htmlspecialchars($member['name']) ?>
-                                    <?php if ($member['staff_id'] === $currentStaffId): ?><span class="text-[9px] text-blue-500">(You)</span><?php endif; ?>
-                                </td>
+                                        <td class="px-4 py-3 font-mono text-xs font-bold text-blue-600 whitespace-nowrap"><?= htmlspecialchars($member['staff_id']) ?></td>
+                                        <td class="px-4 py-3 font-semibold text-slate-800 whitespace-nowrap">
+                                            <?= htmlspecialchars($member['name']) ?>
+                                            <?php if ($member['staff_id'] === $currentStaffId): ?><span class="text-[9px] text-blue-500 font-normal"> (You)</span><?php endif; ?>
+                                        </td>
                                         <td class="px-4 py-3">
-                                            <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded <?= $member['role'] === 'Staff' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700' ?>"><?= htmlspecialchars($member['role']) ?></span>
+                                            <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded whitespace-nowrap <?= $member['role'] === 'Staff' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700' ?>"><?= htmlspecialchars($member['role']) ?></span>
                                         </td>
-                                        <td class="px-4 py-3 text-slate-400 text-xs"><?= formatDateDisplay($member['created_at']) ?></td>
-                                        <td class="px-4 py-3 text-right">
-                                            <div class="inline-flex gap-2">
-                                                <button type="button" class="edit-staff-btn text-[10px] font-bold text-blue-600 hover:underline"
-                                                    data-staff-id="<?= htmlspecialchars($member['staff_id']) ?>"
-                                                    data-staff-name="<?= htmlspecialchars($member['name']) ?>"
-                                                    data-staff-role="<?= htmlspecialchars($member['role']) ?>">Edit</button>
-                                                <button type="button" class="reset-staff-btn text-[10px] font-bold text-amber-600 hover:underline"
-                                                    data-staff-id="<?= htmlspecialchars($member['staff_id']) ?>">Reset PW</button>
-                                                <?php if ($member['staff_id'] !== $currentStaffId): ?>
-                                                <form method="POST" class="inline" onsubmit="return confirm('Remove this staff account permanently?');">
-                                                    <input type="hidden" name="settings_action" value="remove_staff">
-                                                    <input type="hidden" name="active_tab" value="account-management">
-                                                    <input type="hidden" name="target_staff_id" value="<?= htmlspecialchars($member['staff_id']) ?>">
-                                                    <button type="submit" class="text-[10px] font-bold text-red-500 hover:underline">Remove</button>
-                                                </form>
-                                                <?php endif; ?>
-                                            </div>
+                                        <td class="px-4 py-3 text-slate-400 text-xs whitespace-nowrap"><?= formatDateDisplay($member['created_at']) ?></td>
+                                        <td class="px-4 py-3 text-right whitespace-nowrap">
+                                            <button type="button" class="edit-staff-btn text-[10px] font-semibold text-blue-600 hover:underline"
+                                                data-staff-id="<?= htmlspecialchars($member['staff_id']) ?>"
+                                                data-staff-name="<?= htmlspecialchars($member['name']) ?>"
+                                                data-staff-role="<?= htmlspecialchars($member['role']) ?>">Edit</button>
+                                            <span class="text-slate-200 mx-1">·</span>
+                                            <button type="button" class="reset-staff-btn text-[10px] font-semibold text-amber-600 hover:underline"
+                                                data-staff-id="<?= htmlspecialchars($member['staff_id']) ?>">Reset</button>
+                                            <?php if ($member['staff_id'] !== $currentStaffId): ?>
+                                            <span class="text-slate-200 mx-1">·</span>
+                                            <form method="POST" class="inline" onsubmit="return confirm('Remove this staff account permanently?');">
+                                                <input type="hidden" name="settings_action" value="remove_staff">
+                                                <input type="hidden" name="active_tab" value="account-management">
+                                                <input type="hidden" name="target_staff_id" value="<?= htmlspecialchars($member['staff_id']) ?>">
+                                                <button type="submit" class="text-[10px] font-semibold text-red-500 hover:underline">Delete</button>
+                                            </form>
+                                            <?php endif; ?>
                                         </td>
                                     </tr>
                                     <?php endforeach; ?>
@@ -773,6 +790,17 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
             });
         });
 
+        document.querySelectorAll('.staff-photo-form').forEach(form => {
+            const input = form.querySelector('.staff-photo-input');
+            const trigger = form.querySelector('.staff-photo-trigger');
+            if (!input || !trigger) return;
+
+            trigger.addEventListener('click', () => input.click());
+            input.addEventListener('change', () => {
+                if (input.files && input.files.length > 0) form.submit();
+            });
+        });
+
         document.querySelectorAll('.close-modal').forEach(btn => btn.addEventListener('click', closeModals));
 
         setTimeout(() => {
@@ -783,5 +811,6 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
             }
         }, 5000);
     </script>
+    <script src="includes/password_toggle.js"></script>
 </body>
 </html>

@@ -140,9 +140,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Your Appointment Code</p>
             <p class="text-blue-600 text-2xl font-black tracking-widest mb-4" id="booked-appt-code"><?= htmlspecialchars($appointmentCode) ?></p>
             <p class="text-gray-500 text-sm mb-6">Save this code to track your appointment status anytime.</p>
-            <a href="track.php?code=<?= urlencode($appointmentCode) ?>" class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full text-sm font-bold">
+            <button type="button" data-open-track data-track-code="<?= htmlspecialchars($appointmentCode, ENT_QUOTES) ?>" class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full text-sm font-bold">
                 Track Appointment <i data-lucide="arrow-right" class="w-4 h-4"></i>
-            </a>
+            </button>
         </div>
         <?php else: ?>
         <h1 class="text-2xl font-black mb-2">Schedule Appointment</h1>
@@ -307,6 +307,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             });
         })();
     </script>
+    <?php require __DIR__ . '/includes/track_floating.php'; ?>
+    <script src="includes/track_floating.js"></script>
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>
     <?php require __DIR__ . '/includes/notification_consent.php'; ?>
     <script src="includes/reminders.js"></script>

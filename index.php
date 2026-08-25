@@ -166,7 +166,7 @@ $year = date('Y');
 
             <div class="hidden md:flex items-center gap-1 text-sm font-medium">
                 <a href="index.php" class="<?= navClass('index.php', $currentPage) ?>">Home</a>
-                <a href="track.php" class="<?= navClass('track.php', $currentPage) ?>">Track</a>
+                <button type="button" data-open-track class="nav-link cursor-pointer border-0 bg-transparent">Track</button>
                 <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="nav-staff-btn ml-2 bg-gradient-to-r from-blue-700 to-sky-600 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm shadow-blue-200">
                     <?= $isStaffLoggedIn ? 'Staff Dashboard' : 'Staff Portal' ?>
                 </a>
@@ -174,7 +174,7 @@ $year = date('Y');
 
             <div class="md:hidden flex items-center gap-2">
                 <a href="index.php" class="nav-mobile-btn nav-mobile-btn-light text-xs font-semibold text-blue-700 px-3 py-2 rounded-lg bg-blue-50">Home</a>
-                <a href="track.php" class="nav-mobile-btn nav-mobile-btn-light text-xs font-semibold text-blue-700 px-3 py-2 rounded-lg bg-blue-50">Track</a>
+                <button type="button" data-open-track class="nav-mobile-btn nav-mobile-btn-light text-xs font-semibold text-blue-700 px-3 py-2 rounded-lg bg-blue-50">Track</button>
                 <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="nav-mobile-btn nav-mobile-btn-dark text-xs font-bold text-white px-3 py-2 rounded-lg bg-blue-700">Staff</a>
             </div>
         </nav>
@@ -200,9 +200,9 @@ $year = date('Y');
                 <?php else: ?>
                 <span class="bg-slate-200 text-slate-500 px-8 py-3.5 rounded-xl font-semibold text-sm cursor-not-allowed">Requests Unavailable</span>
                 <?php endif; ?>
-                <a href="track.php" class="bg-white border border-slate-200 text-slate-700 px-8 py-3.5 rounded-xl font-semibold text-sm inline-flex items-center justify-center gap-2 hover:border-blue-200 hover:text-blue-700 transition shadow-sm">
+                <button type="button" data-open-track class="bg-white border border-slate-200 text-slate-700 px-8 py-3.5 rounded-xl font-semibold text-sm inline-flex items-center justify-center gap-2 hover:border-blue-200 hover:text-blue-700 transition shadow-sm">
                     <i data-lucide="search" class="w-4 h-4"></i> Track My Request
-                </a>
+                </button>
             </div>
         </div>
     </section>
@@ -373,13 +373,15 @@ $year = date('Y');
             <span>&copy; <?= htmlspecialchars($year) ?> Aloran Civil Registry Office. All rights reserved.</span>
         </div>
         <div class="flex flex-wrap gap-4">
-            <a href="track.php" class="hover:text-white transition">Track</a>
+            <button type="button" data-open-track class="hover:text-white transition bg-transparent border-0 p-0 cursor-pointer">Track</button>
             <button type="button" data-open-privacy class="hover:text-white transition">Privacy &amp; Safety</button>
             <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="hover:text-white transition">Staff</a>
         </div>
     </footer>
 
     <script>lucide.createIcons();</script>
+    <?php require __DIR__ . '/includes/track_floating.php'; ?>
+    <script src="includes/track_floating.js"></script>
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>
     <?php require __DIR__ . '/includes/notification_consent.php'; ?>
     <script src="includes/reminders.js"></script>

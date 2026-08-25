@@ -95,13 +95,13 @@ $sections = [
         </a>
         <div class="hidden md:flex items-center gap-8 text-sm font-medium text-gray-600">
             <a href="index.php" class="<?= navClass('index.php', $currentPage) ?>">Home</a>
-            <a href="track.php" class="<?= navClass('track.php', $currentPage) ?>">Track Request</a>
+            <button type="button" data-open-track class="text-gray-600 hover:text-blue-600 font-medium bg-transparent border-0 cursor-pointer p-0">Track Request</button>
             <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="bg-blue-600 text-white px-4 py-1.5 rounded-md text-xs hover:bg-blue-700 transition">
                 <?= $isStaffLoggedIn ? 'Staff Dashboard' : 'Staff Portal' ?>
             </a>
         </div>
         <div class="md:hidden flex items-center gap-2 shrink-0">
-            <a href="track.php" class="text-xs font-semibold text-blue-700 px-3 py-2 rounded-lg bg-blue-50">Track</a>
+            <button type="button" data-open-track class="text-xs font-semibold text-blue-700 px-3 py-2 rounded-lg bg-blue-50">Track</button>
             <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="text-xs font-bold text-white px-3 py-2 rounded-lg bg-blue-700">Staff</a>
         </div>
     </nav>
@@ -214,12 +214,14 @@ $sections = [
         </div>
         <div class="flex gap-4">
             <a href="index.php" class="hover:text-white transition">Home</a>
-            <a href="track.php" class="hover:text-white transition">Track</a>
+            <button type="button" data-open-track class="hover:text-white transition bg-transparent border-0 p-0 cursor-pointer">Track</button>
             <button type="button" data-open-privacy class="hover:text-white transition">Privacy &amp; Safety</button>
         </div>
     </footer>
 
     <script>lucide.createIcons();</script>
+    <?php require __DIR__ . '/includes/track_floating.php'; ?>
+    <script src="includes/track_floating.js"></script>
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>
     <?php require __DIR__ . '/includes/notification_consent.php'; ?>
 </body>

@@ -92,6 +92,20 @@ function ensureCivilRecordExtendedColumns(PDO $pdo): void
 
 ensureCivilRecordExtendedColumns($pdo);
 
+// Keep birth key date available as event_date for list/detail views.
+$pdo->exec(
+    "UPDATE civil_records SET event_date = birth_date
+     WHERE record_type = 'birth' AND birth_date IS NOT NULL
+     AND (event_date IS NULL OR event_date = '')"
+);
+
+// Death imports often land in code_number — mirror into registry_number for display/search.
+$pdo->exec(
+    "UPDATE civil_records SET registry_number = code_number
+     WHERE (registry_number IS NULL OR registry_number = '')
+     AND code_number IS NOT NULL AND code_number != ''"
+);
+
 $validTypes = ['birth', 'death', 'marriage'];
 $validSorts = ['name' => 'person_name', 'type' => 'record_type', 'date' => 'COALESCE(event_date, birth_date)', 'created' => 'created_at'];
 
@@ -250,8 +264,16 @@ function normalizeCsvHeaderRow(array $headers): array
 function csvRowLooksLikeHeader(array $row): bool
 {
     $normalized = array_map('normalizeCsvHeader', $row);
-    return in_array('person_name', $normalized, true)
-        || in_array('registry_number', $normalized, true);
+    $headerKeys = [
+        'person_name', 'registry_number', 'birth_date', 'death_date', 'marriage_date',
+        'husband_name', 'wife_name', 'record_type',
+    ];
+    foreach ($headerKeys as $key) {
+        if (in_array($key, $normalized, true)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 function isCsvRowEmpty(array $row): bool
@@ -328,15 +350,59 @@ function readCsvRow($handle, string $delimiter): array|false
     if (isset($row[0])) {
         $row[0] = preg_replace('/^\xEF\xBB\xBF/u', '', (string) $row[0]);
     }
+    return trimLeadingEmptyCsvCells(expandCsvRowIfMerged($row, $delimiter));
+}
+
+function trimLeadingEmptyCsvCells(array $row): array
+{
+    while ($row !== [] && trim((string) ($row[0] ?? '')) === '') {
+        array_shift($row);
+    }
+
     return $row;
+}
+
+function expandCsvRowIfMerged(array $row, string $delimiter): array
+{
+    if (count($row) !== 1) {
+        return $row;
+    }
+
+    $cell = (string) ($row[0] ?? '');
+    if ($cell === '') {
+        return $row;
+    }
+
+    foreach (array_unique([$delimiter, ',', ';', "\t"]) as $sep) {
+        if (substr_count($cell, $sep) < 1) {
+            continue;
+        }
+        $parsed = str_getcsv($cell, $sep);
+        if (count($parsed) > 1) {
+            if (isset($parsed[0])) {
+                $parsed[0] = preg_replace('/^\xEF\xBB\xBF/u', '', (string) $parsed[0]);
+            }
+            return $parsed;
+        }
+    }
+
+    return $row;
+}
+
+function csvRowLooksMergedIntoOneCell(array $row): bool
+{
+    if (count($row) !== 1) {
+        return false;
+    }
+    $cell = (string) ($row[0] ?? '');
+    return str_contains($cell, ',') || str_contains($cell, ';') || str_contains($cell, "\t");
 }
 
 function buildCsvInputFromRow(array $headers, array $row, string $importType): array
 {
     $input = ['record_type' => $importType];
     $normalizedHeaders = array_map('normalizeCsvHeader', normalizeCsvHeaderRow($headers));
-    $hasKnownHeader = in_array('person_name', $normalizedHeaders, true)
-        || in_array('registry_number', $normalizedHeaders, true);
+    $hasKnownHeader = csvRowLooksLikeHeader($headers);
 
     if ($hasKnownHeader) {
         foreach ($normalizedHeaders as $i => $key) {
@@ -432,7 +498,12 @@ function civilRecordCsvSampleRow(string $type): array
 
 function normalizeCsvHeader(?string $header): string
 {
-    $key = strtolower(trim(str_replace([' ', '-'], '_', (string) ($header ?? ''))));
+    $key = strtolower(trim((string) ($header ?? '')));
+    $key = str_replace([' ', '-'], '_', $key);
+    $key = preg_replace('/[^a-z0-9_]/', '', $key);
+    $key = preg_replace('/_+/', '_', $key);
+    $key = trim($key, '_');
+
     return match ($key) {
         'date_of_birth', 'dob' => 'birth_date',
         'date_of_death', 'dod' => 'death_date',
@@ -441,9 +512,20 @@ function normalizeCsvHeader(?string $header): string
         'name_of_deceased', 'deceased_name', 'full_name', 'name' => 'person_name',
         'place_of_marriage' => 'marriage_place',
         'time_of_marriage' => 'marriage_time',
-        'registry_no', 'registry' => 'registry_number',
+        'registry_no', 'registry', 'registry_num', 'registry_id' => 'registry_number',
         default => $key,
     };
+}
+
+function civilRecordRegistryNumber(array $record): ?string
+{
+    $registry = trim((string) ($record['registry_number'] ?? ''));
+    if ($registry !== '') {
+        return $registry;
+    }
+
+    $code = trim((string) ($record['code_number'] ?? ''));
+    return $code !== '' ? $code : null;
 }
 
 function civilRecordCsvSkipColumns(): array
@@ -474,6 +556,33 @@ function prepareCsvImportFile(string $filePath): array
     return [$filePath, $tempPath];
 }
 
+function csvUploadErrorMessage(int $code): string
+{
+    return match ($code) {
+        UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'CSV file is too large. Use a smaller file or increase upload_max_filesize in php.ini.',
+        UPLOAD_ERR_PARTIAL => 'Upload was interrupted. Please try again.',
+        UPLOAD_ERR_NO_FILE => 'Please choose a CSV file to import.',
+        default => 'File upload failed (error code ' . $code . '). Please try again.',
+    };
+}
+
+function csvRowMatchesSampleRow(array $headers, array $row, string $importType): bool
+{
+    $columns = civilRecordCsvColumns($importType);
+    $sample = civilRecordCsvSampleRow($importType);
+    $input = buildCsvInputFromRow($headers, $row, $importType);
+
+    foreach ($columns as $i => $column) {
+        $actual = trim((string) ($input[$column] ?? ''));
+        $expected = trim((string) ($sample[$i] ?? ''));
+        if ($actual !== $expected) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 function parseCsvRecordRow(array $headers, array $row, string $importType, ?string &$error = null): ?array
 {
     $error = null;
@@ -493,7 +602,11 @@ function parseCsvRecordRow(array $headers, array $row, string $importType, ?stri
     }
 
     if (trim($input['person_name'] ?? '') === '') {
-        $error = 'person_name is required (or husband_name and wife_name for marriage).';
+        if (csvRowLooksMergedIntoOneCell($row)) {
+            $error = 'This row is in one Excel column. Open the CSV template, paste each value in its own column (A, B, C…), then Save As → CSV UTF-8.';
+        } else {
+            $error = 'person_name is required (or husband_name and wife_name for marriage).';
+        }
         return null;
     }
 
@@ -523,6 +636,7 @@ function importCsvRecords(PDO $pdo, string $filePath, string $importType): array
 
     $imported = 0;
     $skipped = 0;
+    $sampleSkipped = 0;
     $errors = [];
     $headers = [];
     $lineNum = 0;
@@ -534,18 +648,22 @@ function importCsvRecords(PDO $pdo, string $filePath, string $importType): array
             if (csvRowLooksLikeHeader($firstRow)) {
                 $headers = normalizeCsvHeaderRow($firstRow);
             } else {
-                $rowError = null;
-                $parsed = parseCsvRecordRow([], $firstRow, $importType, $rowError);
-                if ($parsed === null) {
-                    $skipped++;
-                    $errors[] = 'Row 1: ' . ($rowError ?: 'invalid data.');
+                if (csvRowMatchesSampleRow([], $firstRow, $importType)) {
+                    $sampleSkipped++;
                 } else {
-                    try {
-                        insertCivilRecord($pdo, $parsed);
-                        $imported++;
-                    } catch (PDOException) {
+                    $rowError = null;
+                    $parsed = parseCsvRecordRow([], $firstRow, $importType, $rowError);
+                    if ($parsed === null) {
                         $skipped++;
-                        $errors[] = 'Row 1: could not save record.';
+                        $errors[] = 'Row 1: ' . ($rowError ?: 'invalid data.');
+                    } else {
+                        try {
+                            insertCivilRecord($pdo, $parsed);
+                            $imported++;
+                        } catch (PDOException) {
+                            $skipped++;
+                            $errors[] = 'Row 1: could not save record.';
+                        }
                     }
                 }
             }
@@ -554,6 +672,11 @@ function importCsvRecords(PDO $pdo, string $filePath, string $importType): array
         while (($row = readCsvRow($handle, $delimiter)) !== false) {
             $lineNum++;
             if (isCsvRowEmpty($row)) {
+                continue;
+            }
+
+            if (csvRowMatchesSampleRow($headers, $row, $importType)) {
+                $sampleSkipped++;
                 continue;
             }
 
@@ -580,7 +703,7 @@ function importCsvRecords(PDO $pdo, string $filePath, string $importType): array
         }
     }
 
-    return compact('imported', 'skipped', 'errors');
+    return compact('imported', 'skipped', 'errors') + ['sample_skipped' => $sampleSkipped];
 }
 
 function insertCivilRecord(PDO $pdo, array $data): void
@@ -590,6 +713,110 @@ function insertCivilRecord(PDO $pdo, array $data): void
         'INSERT INTO civil_records (' . implode(', ', $cols) . ') VALUES (' . implode(', ', array_fill(0, count($cols), '?')) . ')'
     );
     $stmt->execute(array_map(static fn ($col) => $data[$col], $cols));
+}
+
+function civilRecordExportCellValue(array $row, string $type, string $column): ?string
+{
+    if ($column === 'registry_number') {
+        $registry = civilRecordRegistryNumber($row);
+        return $registry ?? null;
+    }
+    if ($type === 'death' && $column === 'death_date') {
+        $value = $row['event_date'] ?? null;
+        return ($value === null || $value === '') ? null : (string) $value;
+    }
+    if ($type === 'marriage' && $column === 'marriage_date') {
+        $value = $row['event_date'] ?? null;
+        return ($value === null || $value === '') ? null : (string) $value;
+    }
+    if ($type === 'marriage' && $column === 'marriage_place') {
+        $value = $row['place'] ?? null;
+        return ($value === null || $value === '') ? null : (string) $value;
+    }
+    if ($column === 'stillbirth') {
+        return !empty($row['stillbirth']) ? '1' : '0';
+    }
+
+    $value = $row[$column] ?? null;
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    return (string) $value;
+}
+
+function civilRecordExportRowValues(array $row, string $type): array
+{
+    return array_map(
+        static fn (string $column) => civilRecordExportCellValue($row, $type, $column),
+        civilRecordCsvColumns($type)
+    );
+}
+
+function exportCivilRecordsCsv(PDO $pdo, array $filters): void
+{
+    global $validTypes;
+
+    [$where, $params] = buildRecordsWhere($filters);
+    $exportType = $filters['type'] ?? 'all';
+    $types = ($exportType !== 'all' && in_array($exportType, $validTypes, true))
+        ? [$exportType]
+        : $validTypes;
+
+    $stmt = $pdo->prepare("SELECT * FROM civil_records WHERE $where ORDER BY record_type ASC, person_name ASC");
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll();
+
+    $grouped = array_fill_keys($validTypes, []);
+    foreach ($rows as $row) {
+        $recordType = (string) ($row['record_type'] ?? '');
+        if (isset($grouped[$recordType])) {
+            $grouped[$recordType][] = $row;
+        }
+    }
+
+    $filename = 'alcros_civil_records_'
+        . ($exportType !== 'all' ? $exportType . '_' : 'all_')
+        . date('Y-m-d') . '.csv';
+
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    $out = fopen('php://output', 'w');
+    if ($out === false) {
+        throw new RuntimeException('Could not create export file.');
+    }
+
+    fprintf($out, "\xEF\xBB\xBF");
+
+    if (count($types) === 1) {
+        $type = $types[0];
+        fputcsv($out, civilRecordCsvColumns($type));
+        foreach ($grouped[$type] as $row) {
+            fputcsv($out, civilRecordExportRowValues($row, $type));
+        }
+    } else {
+        fputcsv($out, ['ALCROS Civil Records Export']);
+        fputcsv($out, ['Generated on', date('Y-m-d g:i A')]);
+        if (($filters['q'] ?? '') !== '') {
+            fputcsv($out, ['Search filter', $filters['q']]);
+        }
+        fputcsv($out, ['Total records', (string) count($rows)]);
+        fputcsv($out, []);
+
+        foreach ($types as $type) {
+            $sectionRows = $grouped[$type];
+            fputcsv($out, ['--- ' . strtoupper(civilRecordTypeLabel($type)) . ' RECORDS (' . count($sectionRows) . ') ---']);
+            fputcsv($out, civilRecordCsvColumns($type));
+            foreach ($sectionRows as $row) {
+                fputcsv($out, civilRecordExportRowValues($row, $type));
+            }
+            fputcsv($out, []);
+        }
+
+        fputcsv($out, ['End of export']);
+    }
+
+    fclose($out);
 }
 
 function civilRecordExportColumns(): array
@@ -642,6 +869,7 @@ function normalizeRecordInput(array $input): array
         $data['father_religion'] = trim($input['father_religion'] ?? '') ?: null;
         $data['parents_marriage_date'] = trim($input['parents_marriage_date'] ?? '') ?: null;
         $data['parents_marriage_place'] = trim($input['parents_marriage_place'] ?? '') ?: null;
+        $data['event_date'] = $data['birth_date'];
     }
 
     if ($type === 'death') {
@@ -700,6 +928,13 @@ function normalizeRecordInput(array $input): array
         $data['witnesses'] = trim($input['witnesses'] ?? '') ?: null;
     }
 
+    if (trim((string) ($data['registry_number'] ?? '')) === '') {
+        $fallbackRegistry = trim((string) ($data['code_number'] ?? ''));
+        if ($fallbackRegistry !== '') {
+            $data['registry_number'] = $fallbackRegistry;
+        }
+    }
+
     return $data;
 }
 
@@ -732,20 +967,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'template') {
 // Export filtered records
 if (isset($_GET['action']) && $_GET['action'] === 'export') {
     $filters = currentRecordsFilters();
-    [$where, $params] = buildRecordsWhere($filters);
-    $stmt = $pdo->prepare("SELECT * FROM civil_records WHERE $where ORDER BY person_name ASC");
-    $stmt->execute($params);
-    $rows = $stmt->fetchAll();
-    $exportCols = array_merge(['id', 'created_at'], civilRecordExportColumns());
-
-    header('Content-Type: text/csv');
-    header('Content-Disposition: attachment; filename="alcros_civil_records_' . date('Y-m-d') . '.csv"');
-    $out = fopen('php://output', 'w');
-    fputcsv($out, $exportCols);
-    foreach ($rows as $row) {
-        fputcsv($out, array_map(static fn ($col) => $row[$col] ?? null, $exportCols));
-    }
-    fclose($out);
+    exportCivilRecordsCsv($pdo, $filters);
+    logActivity(staffId(), 'CSV Export', 'Exported civil records (' . ($filters['type'] ?? 'all') . ')');
     exit;
 }
 
@@ -771,7 +994,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new InvalidArgumentException('Please choose a CSV file to import.');
             }
             if (($_FILES['csv_file']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-                throw new InvalidArgumentException('File upload failed. Please try again.');
+                throw new InvalidArgumentException(csvUploadErrorMessage((int) ($_FILES['csv_file']['error'] ?? UPLOAD_ERR_NO_FILE)));
             }
             $importType = $_POST['import_type'] ?? '';
             if (!in_array($importType, $validTypes, true)) {
@@ -781,6 +1004,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $imported = $result['imported'];
             $skipped = $result['skipped'];
             $errors = $result['errors'];
+            $sampleSkipped = $result['sample_skipped'] ?? 0;
 
             if ($imported > 0) {
                 logActivity(staffId(), 'CSV Import', "Imported $imported $importType records");
@@ -788,6 +1012,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($imported === 0) {
                 $msg = 'No records were imported.';
+                if ($sampleSkipped > 0) {
+                    $msg .= " $sampleSkipped template sample row(s) skipped — add your own data rows below the header.";
+                }
                 if ($skipped > 0) {
                     $msg .= " $skipped row(s) skipped.";
                 }
@@ -797,8 +1024,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 recordsFlashSet('error', $msg);
             } else {
                 $msg = "Successfully imported $imported " . ucfirst($importType) . ' record(s).';
+                if ($sampleSkipped > 0) {
+                    $msg .= " Skipped $sampleSkipped template sample row(s).";
+                }
                 if ($skipped > 0) {
-                    $msg .= " Skipped $skipped row(s).";
+                    $msg .= " Skipped $skipped invalid row(s).";
                     if (!empty($errors)) {
                         $msg .= ' ' . implode(' ', array_slice($errors, 0, 2));
                     }
@@ -811,7 +1041,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } catch (PDOException $e) {
         recordsFlashSet('error', 'Could not complete the action. Please try again.');
     } catch (Throwable $e) {
-        recordsFlashSet('error', 'Import failed. Please use a CSV file saved as UTF-8 (Comma delimited) and match the template headers.');
+        error_log('ALCROS CSV import failed: ' . $e->getMessage());
+        recordsFlashSet('error', 'Import failed: ' . $e->getMessage());
     }
 
     redirectWithAuth('records.php', currentRecordsFilters());
@@ -911,8 +1142,9 @@ function sortUrl(string $column): string
                 </div>
                 <div class="flex flex-wrap gap-2 sm:gap-3 items-start">
                     <a href="<?= htmlspecialchars(buildAuthUrl('records.php', array_filter(['action' => 'export', 'type' => $type !== 'all' ? $type : null, 'q' => $search ?: null]))) ?>"
+                       title="<?= $type === 'all' ? 'Download all records grouped by Birth, Death, and Marriage' : 'Download ' . civilRecordTypeLabel($type) . ' records (re-importable CSV)' ?>"
                        class="border border-gray-200 text-slate-700 px-4 py-2 rounded-lg text-[11px] font-bold uppercase flex items-center bg-white shadow-sm hover:bg-gray-50">
-                        <i data-lucide="download" class="w-4 h-4 mr-2"></i> Export CSV
+                        <i data-lucide="download" class="w-4 h-4 mr-2"></i> Export CSV<?= $type !== 'all' ? ' (' . civilRecordTypeLabel($type) . ')' : '' ?>
                     </a>
                     <div class="relative" id="newEntryWrapper">
                         <button type="button" id="newEntryBtn"
@@ -1000,14 +1232,15 @@ function sortUrl(string $column): string
                         ?>
                         <tr class="hover:bg-gray-50/50 transition-colors">
                             <td class="p-4">
-                                <button type="button" class="view-record-btn text-left w-full" data-record="<?= htmlspecialchars(json_encode($r), ENT_QUOTES, 'UTF-8') ?>">
+                                <button type="button" class="view-record-btn text-left w-full" data-record="<?= htmlspecialchars(json_encode($r, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), ENT_QUOTES, 'UTF-8') ?>">
                                     <div class="flex items-center space-x-3">
                                         <div class="w-8 h-8 bg-blue-100 rounded flex items-center justify-center text-blue-600 font-bold text-xs"><?= htmlspecialchars(recordInitial($r['person_name'])) ?></div>
                                         <div>
                                             <div class="flex items-center space-x-2">
                                                 <span class="text-sm font-bold text-slate-800 hover:text-blue-600"><?= htmlspecialchars($r['person_name']) ?></span>
-                                                <?php if ($r['registry_number']): ?>
-                                                <span class="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 font-bold">#<?= htmlspecialchars($r['registry_number']) ?></span>
+                                                <?php $displayRegistry = civilRecordRegistryNumber($r); ?>
+                                                <?php if ($displayRegistry): ?>
+                                                <span class="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 font-bold">#<?= htmlspecialchars($displayRegistry) ?></span>
                                                 <?php endif; ?>
                                             </div>
                                             <p class="text-[10px] text-gray-400 font-medium">ID: <?= (int) $r['id'] ?> • Added <?= formatRecordDate(substr($r['created_at'], 0, 10)) ?></p>
@@ -1022,7 +1255,7 @@ function sortUrl(string $column): string
                             </td>
                             <td class="p-4 text-right">
                                 <div class="inline-flex items-center space-x-2">
-                                    <button type="button" class="view-record-btn text-gray-300 hover:text-blue-600" title="View" data-record="<?= htmlspecialchars(json_encode($r), ENT_QUOTES, 'UTF-8') ?>">
+                                    <button type="button" class="view-record-btn text-gray-300 hover:text-blue-600" title="View" data-record="<?= htmlspecialchars(json_encode($r, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), ENT_QUOTES, 'UTF-8') ?>">
                                         <i data-lucide="eye" class="w-4 h-4"></i>
                                     </button>
                                     <a href="<?= buildRecordsUrl(['edit' => $r['id']]) ?>" class="text-gray-300 hover:text-slate-600" title="Edit"><i data-lucide="edit-3" class="w-4 h-4"></i></a>
@@ -1476,7 +1709,7 @@ function sortUrl(string $column): string
                 <?= authFormField() ?>
                 <input type="hidden" name="action" value="import_csv">
                 <input type="hidden" name="import_type" id="importType" value="">
-                <p class="text-xs text-gray-500" id="importColumnsHelp">Download the matching CSV template below. Keep the header row, add your data (delete the sample row if present), and use dates as <strong>YYYY-MM-DD</strong> or <strong>MM/DD/YYYY</strong>. In Excel, use <strong>Save As → CSV UTF-8 (Comma delimited)</strong>. Required: <strong>person_name</strong>.</p>
+                <p class="text-xs text-gray-500" id="importColumnsHelp">Download the matching CSV template below. Enter each value in its own column (do not paste an entire row into cell A). Template sample rows are skipped automatically. Use dates as <strong>YYYY-MM-DD</strong> or <strong>MM/DD/YYYY</strong>. In Excel, use <strong>Save As → CSV UTF-8 (Comma delimited)</strong>. Required: <strong>person_name</strong>.</p>
                 <div>
                     <label class="block text-[11px] font-bold text-gray-700 mb-1">CSV File *</label>
                     <input type="file" name="csv_file" accept=".csv,text/csv,text/plain" required class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-600 file:font-bold file:text-xs">
@@ -1518,9 +1751,29 @@ function sortUrl(string $column): string
         }
 
         function formatDate(val) {
-            if (!val) return '—';
-            const d = new Date(val + 'T00:00:00');
-            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            if (val === null || val === undefined || val === '') return '—';
+            const raw = String(val).substring(0, 10);
+            const d = new Date(raw + 'T00:00:00');
+            return Number.isNaN(d.getTime()) ? raw : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+
+        function displayValue(val) {
+            if (val === null || val === undefined || String(val).trim() === '') return '—';
+            return String(val);
+        }
+
+        function recordRegistryNumber(r) {
+            const registry = (r.registry_number ?? '').toString().trim();
+            if (registry !== '') return registry;
+            const code = (r.code_number ?? '').toString().trim();
+            return code !== '' ? code : '';
+        }
+
+        function recordEventDate(r) {
+            if (r.record_type === 'birth') {
+                return r.birth_date || r.event_date;
+            }
+            return r.event_date || r.birth_date;
         }
 
         newEntryBtn.addEventListener('click', (e) => {
@@ -1638,7 +1891,9 @@ function sortUrl(string $column): string
                 document.getElementById('importTemplateLink').download = 'alcros_' + type + '_template.csv';
                 const cols = csvTemplateColumns[type] || [];
                 document.getElementById('importColumnsHelp').innerHTML =
-                    'Upload a CSV with the template headers for <strong>' + type + '</strong> records. Required: <strong>person_name</strong>. Dates: YYYY-MM-DD or MM/DD/YYYY.<br><span class="text-[10px] text-gray-400 mt-1 inline-block">' + cols.join(', ') + '</span>';
+                    'Upload a CSV with the template headers for <strong>' + type + '</strong> records. Put each value in its own column — do not paste a whole row into cell A. Required: <strong>person_name</strong> (or <strong>husband_name</strong> + <strong>wife_name</strong> for marriage). Dates: YYYY-MM-DD or MM/DD/YYYY. Template sample rows are skipped automatically.<br><span class="text-[10px] text-gray-400 mt-1 inline-block">' + cols.join(', ') + '</span>';
+                const fileInput = document.querySelector('#importForm input[name="csv_file"]');
+                if (fileInput) fileInput.value = '';
                 openModal('importModal');
             });
         });
@@ -1647,6 +1902,12 @@ function sortUrl(string $column): string
             if (!document.getElementById('importType').value) {
                 e.preventDefault();
                 alert('Please choose an import type from New Entry → Import.');
+                return;
+            }
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Importing…';
             }
         });
 
@@ -1691,81 +1952,89 @@ function sortUrl(string $column): string
         document.querySelectorAll('.view-record-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const r = JSON.parse(btn.dataset.record);
-                let rows = [
-                    ['Type', r.record_type],
-                    ['Registry #', r.registry_number || '—'],
-                    ['Person Name', r.person_name],
-                    ['Birth Date', formatDate(r.birth_date)],
-                    ['Event Date', formatDate(r.event_date)],
-                    ['Place', r.place || '—'],
-                    ['Father', r.father_name || '—'],
-                    ['Mother', r.mother_name || '—'],
-                    ['Created', formatDate((r.created_at || '').substring(0, 10))],
-                ];
+                let rows = [];
+
                 if (r.record_type === 'birth') {
-                    rows.splice(4, 0,
-                        ['Sex', r.sex || '—'],
-                        ['Time of Birth', r.birth_time || '—'],
-                        ['Type of Birth', r.birth_type || '—'],
-                        ['Birth Order', r.birth_order || '—']
-                    );
+                    rows = [
+                        ['Type', displayValue(r.record_type)],
+                        ['Registry Number', displayValue(recordRegistryNumber(r))],
+                        ['Full Name', displayValue(r.person_name)],
+                        ['Date of Birth', formatDate(r.birth_date)],
+                        ['Sex', displayValue(r.sex)],
+                        ['Time of Birth', displayValue(r.birth_time)],
+                        ['Type of Birth', displayValue(r.birth_type)],
+                        ['Birth Order', displayValue(r.birth_order)],
+                        ['Place of Birth', displayValue(r.place)],
+                    ];
                     if (r.birth_type === 'Single' || !r.birth_type) {
                         rows.push(
-                            ['Mother Age', r.mother_age ?? '—'],
-                            ['Mother Nationality', r.mother_nationality || '—'],
-                            ['Mother Religion', r.mother_religion || '—'],
-                            ['Father Age', r.father_age ?? '—'],
-                            ['Father Nationality', r.father_nationality || '—'],
-                            ['Father Religion', r.father_religion || '—'],
+                            ['Mother', displayValue(r.mother_name)],
+                            ['Mother Age', displayValue(r.mother_age)],
+                            ['Mother Nationality', displayValue(r.mother_nationality)],
+                            ['Mother Religion', displayValue(r.mother_religion)],
+                            ['Father', displayValue(r.father_name)],
+                            ['Father Age', displayValue(r.father_age)],
+                            ['Father Nationality', displayValue(r.father_nationality)],
+                            ['Father Religion', displayValue(r.father_religion)],
                             ['Parents Marriage Date', formatDate(r.parents_marriage_date)],
-                            ['Parents Marriage Place', r.parents_marriage_place || '—']
+                            ['Parents Marriage Place', displayValue(r.parents_marriage_place)]
                         );
                     }
-                }
-                if (r.record_type === 'death') {
+                    rows.push(['Created', formatDate((r.created_at || '').substring(0, 10))]);
+                } else if (r.record_type === 'death') {
                     rows = [
-                        ['Type', r.record_type],
-                        ['Registry #', r.registry_number || '—'],
-                        ['Name of Deceased', r.person_name],
+                        ['Type', displayValue(r.record_type)],
+                        ['Registry Number', displayValue(recordRegistryNumber(r))],
+                        ['Name of Deceased', displayValue(r.person_name)],
                         ['Date of Birth', formatDate(r.birth_date)],
-                        ['Sex', r.sex || '—'],
+                        ['Sex', displayValue(r.sex)],
                         ['Date of Registration', formatDate(r.registration_date)],
-                        ['Residence', r.residence_deceased || '—'],
-                        ['Residence (Place of Death)', r.residence_length_place || '—'],
-                        ['Residence (Philippines)', r.residence_length_ph || '—'],
-                        ['Nationality', r.nationality || '—'],
-                        ['Civil Status', r.civil_status || '—'],
+                        ['Residence', displayValue(r.residence_deceased)],
+                        ['Residence (Place of Death)', displayValue(r.residence_length_place)],
+                        ['Residence (Philippines)', displayValue(r.residence_length_ph)],
+                        ['Nationality', displayValue(r.nationality)],
+                        ['Civil Status', displayValue(r.civil_status)],
                         ['Age at Death', formatAgeAtDeath(r)],
-                        ['Occupation', r.occupation || '—'],
-                        ['Surviving Spouse', r.surviving_spouse_name || '—'],
-                        ['Spouse Address', r.surviving_spouse_address || '—'],
-                        ['Place of Burial', r.place_of_burial || '—'],
-                        ['Date of Death', formatDate(r.event_date)],
-                        ['Time of Death', (r.death_time || '—') + (r.death_time_period ? ' ' + r.death_time_period : '')],
-                        ['Immediate Cause', r.immediate_cause || '—'],
-                        ['Contributory Cause', r.contributory_cause || '—'],
-                        ['Attending Physician', r.attending_physician || '—'],
-                        ['Autopsy Performed', r.autopsy_performed || '—'],
-                        ['Code Number', r.code_number || '—'],
+                        ['Occupation', displayValue(r.occupation)],
+                        ['Surviving Spouse', displayValue(r.surviving_spouse_name)],
+                        ['Spouse Address', displayValue(r.surviving_spouse_address)],
+                        ['Place of Burial', displayValue(r.place_of_burial)],
+                        ['Date of Death', formatDate(recordEventDate(r))],
+                        ['Time of Death', (displayValue(r.death_time) === '—' ? '—' : displayValue(r.death_time) + (r.death_time_period ? ' ' + r.death_time_period : ''))],
+                        ['Immediate Cause', displayValue(r.immediate_cause)],
+                        ['Contributory Cause', displayValue(r.contributory_cause)],
+                        ['Attending Physician', displayValue(r.attending_physician)],
+                        ['Autopsy Performed', displayValue(r.autopsy_performed)],
+                        ['Code Number', displayValue(r.code_number)],
                         ['Created', formatDate((r.created_at || '').substring(0, 10))],
                     ];
-                }
-                if (r.record_type === 'marriage') {
+                } else if (r.record_type === 'marriage') {
                     rows = [
-                        ['Type', r.record_type],
-                        ['Registry #', r.registry_number || '—'],
-                        ['Full Name', r.person_name],
+                        ['Type', displayValue(r.record_type)],
+                        ['Registry Number', displayValue(recordRegistryNumber(r))],
+                        ['Full Name', displayValue(r.person_name)],
                         ['Date of Birth', formatDate(r.birth_date)],
                         ...marriageSpouseRows(r, 'husband', 'Husband'),
                         ...marriageSpouseRows(r, 'wife', 'Wife'),
-                        ['Date of Marriage', formatDate(r.event_date)],
-                        ['Time of Marriage', r.marriage_time || '—'],
-                        ['Place of Marriage', r.place || '—'],
-                        ['Solemnized By', r.solemnized_by || '—'],
-                        ['Witnesses', r.witnesses || '—'],
+                        ['Date of Marriage', formatDate(recordEventDate(r))],
+                        ['Time of Marriage', displayValue(r.marriage_time)],
+                        ['Place of Marriage', displayValue(r.place)],
+                        ['Solemnized By', displayValue(r.solemnized_by)],
+                        ['Witnesses', displayValue(r.witnesses)],
+                        ['Created', formatDate((r.created_at || '').substring(0, 10))],
+                    ];
+                } else {
+                    rows = [
+                        ['Type', displayValue(r.record_type)],
+                        ['Registry Number', displayValue(recordRegistryNumber(r))],
+                        ['Person Name', displayValue(r.person_name)],
+                        ['Birth Date', formatDate(r.birth_date)],
+                        ['Event Date', formatDate(recordEventDate(r))],
+                        ['Place', displayValue(r.place)],
                         ['Created', formatDate((r.created_at || '').substring(0, 10))],
                     ];
                 }
+
                 document.getElementById('viewContent').innerHTML = rows.map(([k, v]) =>
                     '<div class="flex justify-between gap-4 border-b border-gray-50 pb-2"><span class="text-gray-400 text-xs font-bold uppercase">' + k + '</span><span class="text-slate-800 text-xs font-semibold text-right">' + String(v).replace(/</g, '&lt;') + '</span></div>'
                 ).join('');

@@ -1354,7 +1354,7 @@ function appBaseUrl(): string
 
 function trackRequestUrl(string $trackingCode): string
 {
-    return appBaseUrl() . '/track.php?code=' . urlencode($trackingCode);
+    return appBaseUrl() . '/index.php?track=' . urlencode($trackingCode);
 }
 
 function citizenWantsEmailNotify(?array $row): bool

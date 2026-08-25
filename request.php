@@ -329,13 +329,13 @@ $stepTitles = [
                 <?php else: ?>
                 <p class="flex items-start gap-2 text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-3">
                     <i data-lucide="alert-circle" class="w-4 h-4 shrink-0 mt-0.5"></i>
-                    Please save your tracking code. You can always check status at the Track Request page.
+                    Please save your tracking code. You can check status anytime using the <strong>Track</strong> button in the header.
                 </p>
                 <?php endif; ?>
             </div>
 
             <div class="flex flex-col sm:flex-row justify-center gap-3">
-                <a href="track.php?code=<?= urlencode($successData['tracking_code']) ?>" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full text-xs font-bold text-center">Track My Request</a>
+                <button type="button" data-open-track data-track-code="<?= htmlspecialchars($successData['tracking_code'], ENT_QUOTES) ?>" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full text-xs font-bold text-center">Track My Request</button>
                 <a href="index.php" class="back-home back-home--btn">Back to Home</a>
             </div>
         </div>
@@ -741,6 +741,8 @@ $stepTitles = [
             });
         })();
     </script>
+    <?php require __DIR__ . '/includes/track_floating.php'; ?>
+    <script src="includes/track_floating.js"></script>
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>
     <?php require __DIR__ . '/includes/notification_consent.php'; ?>
     <?php if ($step === 3): ?><script src="includes/appointment_slots.js"></script><?php endif; ?>

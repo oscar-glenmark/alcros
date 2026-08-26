@@ -1,10 +1,12 @@
 <?php
 /**
  * Sends Gmail reminders for appointments that start in the next 5 hours.
- * Safe to call often (from the website or Windows Task Scheduler).
+ * Requires cron secret — use storage/cron_secret.txt value.
  */
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/api_helpers.php';
+
+requireCronSecret();
 
 try {
     $pdo = getDB();

@@ -2,7 +2,6 @@
 /**
  * Civil record lookup — checks if the citizen is registered in LCRO records.
  */
-session_start();
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/api_helpers.php';
@@ -10,6 +9,8 @@ require_once __DIR__ . '/../includes/api_helpers.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     apiError('POST required.', 405);
 }
+
+rateLimitOrAbort(rateLimitKey('civil_record_check'), 20, 900, 'Too many verification attempts. Please try again later.');
 
 $citizenName = trim($_POST['citizen_name'] ?? '');
 $dateOfBirth = trim($_POST['date_of_birth'] ?? '');

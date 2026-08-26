@@ -120,15 +120,17 @@
 
         container.innerHTML = tickets.map(function (t) {
             var border = t.status === 'serving' ? 'border-green-400' : 'border-yellow-400';
-            var label = purposeLabels[t.purpose] || t.purpose;
-            var windowBadge = t.window_number ? '<span class="bg-blue-50 text-blue-600 text-[10px] font-bold px-3 py-1 rounded">WINDOW ' + t.window_number + '</span>' : '';
+            var label = escapeHtml(purposeLabels[t.purpose] || t.purpose);
+            var ticketNum = escapeHtml(t.ticket_number);
+            var ticketId = escapeHtml(String(t.id));
+            var windowBadge = t.window_number ? '<span class="bg-blue-50 text-blue-600 text-[10px] font-bold px-3 py-1 rounded">WINDOW ' + escapeHtml(String(t.window_number)) + '</span>' : '';
             var actions = t.status === 'waiting'
-                ? '<form method="POST">' + authInputHtml() + '<input type="hidden" name="ticket_id" value="' + t.id + '"><button type="submit" name="action" value="serve" class="w-full bg-blue-600 text-white py-3 rounded-2xl font-bold flex items-center justify-center gap-2"><i data-lucide="play" class="w-4 h-4"></i> SERVE</button></form>'
-                : '<form method="POST" class="flex gap-2">' + authInputHtml() + '<input type="hidden" name="ticket_id" value="' + t.id + '"><button type="submit" name="action" value="complete" class="flex-1 bg-green-600 text-white py-3 rounded-2xl font-bold text-xs">DONE</button><button type="submit" name="action" value="skip" class="bg-red-50 text-red-500 py-3 px-4 rounded-2xl"><i data-lucide="x-circle" class="w-5 h-5"></i></button></form>';
+                ? '<form method="POST">' + authInputHtml() + '<input type="hidden" name="ticket_id" value="' + ticketId + '"><button type="submit" name="action" value="serve" class="w-full bg-blue-600 text-white py-3 rounded-2xl font-bold flex items-center justify-center gap-2"><i data-lucide="play" class="w-4 h-4"></i> SERVE</button></form>'
+                : '<form method="POST" class="flex gap-2">' + authInputHtml() + '<input type="hidden" name="ticket_id" value="' + ticketId + '"><button type="submit" name="action" value="complete" class="flex-1 bg-green-600 text-white py-3 rounded-2xl font-bold text-xs">DONE</button><button type="submit" name="action" value="skip" class="bg-red-50 text-red-500 py-3 px-4 rounded-2xl"><i data-lucide="x-circle" class="w-5 h-5"></i></button></form>';
 
             return '<div class="w-72 bg-white rounded-[40px] border-2 ' + border + ' shadow-xl p-8">' +
                 '<span class="bg-purple-100 text-purple-600 text-[10px] font-black px-2 py-0.5 rounded-full uppercase">' + label + '</span>' +
-                '<div class="text-center my-6"><h2 class="text-5xl font-black text-slate-900 mb-1">' + t.ticket_number + '</h2>' + windowBadge + '</div>' +
+                '<div class="text-center my-6"><h2 class="text-5xl font-black text-slate-900 mb-1">' + ticketNum + '</h2>' + windowBadge + '</div>' +
                 actions + '</div>';
         }).join('');
 
@@ -174,9 +176,9 @@
             var serving = data.display && data.display.serving ? data.display.serving : null;
 
             if (serving) {
-                var purpose = purposeLabels[serving.purpose] || serving.purpose;
-                var tableNum = serving.window_number || 1;
-                servingEl.innerHTML = '<p class="text-8xl font-black text-white mb-2">' + serving.ticket_number + '</p>' +
+                var purpose = escapeHtml(purposeLabels[serving.purpose] || serving.purpose);
+                var tableNum = escapeHtml(String(serving.window_number || 1));
+                servingEl.innerHTML = '<p class="text-8xl font-black text-white mb-2">' + escapeHtml(serving.ticket_number) + '</p>' +
                     '<p class="text-blue-400 text-lg font-bold uppercase">Table ' + tableNum + '</p>' +
                     '<p class="text-gray-500 text-sm mt-2">' + purpose + '</p>';
             } else {
@@ -203,7 +205,7 @@
 
             if (data.display && data.display.waiting && data.display.waiting.length) {
                 waitingEl.innerHTML = data.display.waiting.map(function (n) {
-                    return '<p class="text-2xl font-black text-gray-400">' + n + '</p>';
+                    return '<p class="text-2xl font-black text-gray-400">' + escapeHtml(n) + '</p>';
                 }).join('');
             } else {
                 waitingEl.innerHTML = '<p class="text-[10px] italic text-gray-700 text-center pt-8">No one in line.</p>';
@@ -237,16 +239,16 @@
                 var labels = data.document_labels || {};
                 recentEl.innerHTML = data.recent_requests.length ? data.recent_requests.map(function (r) {
                     var date = (r.submitted_at || '').split(' ')[0];
-                    return '<div class="px-5 py-3.5 flex items-center justify-between gap-4 hover:bg-gray-50/50"><div class="min-w-0 flex-1"><p class="text-sm font-semibold text-slate-800 truncate">' + r.citizen_name + '</p><p class="text-[11px] text-gray-400 mt-0.5">' + (labels[r.document_type] || r.document_type) + ' · <span class="font-mono text-blue-600">' + r.tracking_code + '</span>' + (date ? ' · ' + formatDateDisplay(date) : '') + '</p></div><span class="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-gray-100 text-gray-600">' + r.status + '</span></div>';
+                    return '<div class="px-5 py-3.5 flex items-center justify-between gap-4 hover:bg-gray-50/50"><div class="min-w-0 flex-1"><p class="text-sm font-semibold text-slate-800 truncate">' + escapeHtml(r.citizen_name) + '</p><p class="text-[11px] text-gray-400 mt-0.5">' + escapeHtml(labels[r.document_type] || r.document_type) + ' · <span class="font-mono text-blue-600">' + escapeHtml(r.tracking_code) + '</span>' + (date ? ' · ' + escapeHtml(formatDateDisplay(date)) : '') + '</p></div><span class="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-gray-100 text-gray-600">' + escapeHtml(r.status) + '</span></div>';
                 }).join('') : '';
             }
 
             var actEl = document.getElementById('activity-feed-list');
             if (actEl && data.activities) {
                 actEl.innerHTML = data.activities.length ? data.activities.map(function (a) {
-                    var details = a.details ? '<p class="text-[10px] text-gray-500 mt-0.5 line-clamp-2">' + a.details + '</p>' : '';
-                    var who = isAdmin ? (a.staff_id || 'System') + ' · ' : '';
-                    return '<div class="flex items-start gap-3 p-3 rounded-xl bg-gray-50/80 border border-gray-100"><div class="bg-white p-2 rounded-lg text-blue-600 border border-gray-100 shrink-0"><i data-lucide="activity" class="w-4 h-4"></i></div><div class="min-w-0"><p class="text-xs font-bold text-slate-800">' + a.action + '</p>' + details + '<p class="text-[10px] text-gray-400 mt-1">' + who + formatTimeAgo(a.created_at) + '</p></div></div>';
+                    var details = a.details ? '<p class="text-[10px] text-gray-500 mt-0.5 line-clamp-2">' + escapeHtml(a.details) + '</p>' : '';
+                    var who = isAdmin ? escapeHtml(a.staff_id || 'System') + ' · ' : '';
+                    return '<div class="flex items-start gap-3 p-3 rounded-xl bg-gray-50/80 border border-gray-100"><div class="bg-white p-2 rounded-lg text-blue-600 border border-gray-100 shrink-0"><i data-lucide="activity" class="w-4 h-4"></i></div><div class="min-w-0"><p class="text-xs font-bold text-slate-800">' + escapeHtml(a.action) + '</p>' + details + '<p class="text-[10px] text-gray-400 mt-1">' + who + escapeHtml(formatTimeAgo(a.created_at)) + '</p></div></div>';
                 }).join('') : '<div class="p-10 text-center text-gray-400 text-xs col-span-full">No activity recorded yet.</div>';
                 if (typeof lucide !== 'undefined') lucide.createIcons();
             }
@@ -257,8 +259,8 @@
                     var d = new Date('1970-01-01T' + a.appointment_time);
                     var h = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
                     var ampm = d.toLocaleTimeString([], { hour: 'numeric', hour12: true }).split(' ')[1] || '';
-                    var status = a.status ? '<span class="text-[9px] font-bold uppercase text-gray-400 shrink-0">' + a.status + '</span>' : '';
-                    return '<div class="px-5 py-3 flex items-center gap-3"><div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex flex-col items-center justify-center shrink-0 leading-none"><span class="text-[9px] font-bold">' + h.replace(/ [AP]M/i, '') + '</span><span class="text-[8px] uppercase">' + ampm + '</span></div><div class="min-w-0 flex-1"><p class="text-sm font-semibold text-slate-800 truncate">' + a.citizen_name + '</p><p class="text-[10px] text-gray-400 truncate">' + a.service_type + '</p></div>' + status + '</div>';
+                    var status = a.status ? '<span class="text-[9px] font-bold uppercase text-gray-400 shrink-0">' + escapeHtml(a.status) + '</span>' : '';
+                    return '<div class="px-5 py-3 flex items-center gap-3"><div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex flex-col items-center justify-center shrink-0 leading-none"><span class="text-[9px] font-bold">' + escapeHtml(h.replace(/ [AP]M/i, '')) + '</span><span class="text-[8px] uppercase">' + escapeHtml(ampm) + '</span></div><div class="min-w-0 flex-1"><p class="text-sm font-semibold text-slate-800 truncate">' + escapeHtml(a.citizen_name) + '</p><p class="text-[10px] text-gray-400 truncate">' + escapeHtml(a.service_type) + '</p></div>' + status + '</div>';
                 }).join('') : '';
                 if (typeof lucide !== 'undefined') lucide.createIcons();
             }

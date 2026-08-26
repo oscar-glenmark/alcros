@@ -8,6 +8,8 @@ if ($code === '') {
     apiError('Tracking code is required.');
 }
 
+rateLimitOrAbort(rateLimitKey('track_request', $code), 30, 300, 'Too many tracking lookups. Please wait a few minutes.');
+
 try {
     $pdo = getDB();
     migrateLegacyProcessingStatus($pdo);
@@ -31,7 +33,7 @@ try {
 
     apiJsonResponse([
         'found'          => true,
-        'request'        => $request,
+        'request'        => publicTrackingRequest($request),
         'document'       => documentTypeLabel($request['document_type']),
         'status_html'    => requestStatusBadge($request['status']),
         'status_label'   => requestStatusLabel($request['status']),

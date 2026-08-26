@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
+require_once __DIR__ . '/includes/scripts.php';
 requireAdmin();
 
 $activePage = 'Activity-log.php';
@@ -51,6 +52,6 @@ $logs = $pdo->query('SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 
             </div>
         </div>
     </main>
-    <script>lucide.createIcons();</script>
+    <?= lucideInitScript() ?>
 </body>
 </html>

@@ -63,49 +63,16 @@ requireStaffLogin();
                 id="notif-dropdown"
                 class="hidden fixed sm:absolute left-4 right-4 sm:left-auto sm:right-0 top-16 sm:top-full sm:mt-2 w-auto sm:w-80 lg:w-96 bg-white rounded-xl border border-gray-100 shadow-xl z-50 overflow-hidden"
             >
-
-                <div class="px-4 py-3 border-b border-gray-50 flex justify-between items-center bg-white gap-2">
-                    <p class="text-xs font-bold uppercase tracking-wider text-slate-800">
-                        Notifications
-                    </p>
-
-                    <div class="flex items-center gap-3 shrink-0">
-                        <button
-                            type="button"
-                            id="notif-clear-all"
-                            class="text-[10px] font-bold text-slate-400 hover:text-red-500 uppercase tracking-wide"
-                        >
-                            Clear all
-                        </button>
-                        <button
-                            type="button"
-                            id="notif-mark-read"
-                            class="text-[10px] font-bold text-blue-600 hover:text-blue-700 uppercase tracking-wide"
-                        >
-                            Mark all read
-                        </button>
-                    </div>
-                </div>
-
-                <div
-                    id="notif-list"
-                    class="max-h-96 overflow-y-auto bg-white"
-                >
-                    <p class="text-gray-300 text-xs italic p-8 text-center">
-                        Loading notifications...
-                    </p>
-                </div>
-
-                <div class="px-4 py-2.5 border-t border-gray-50 bg-gray-50">
-                    <a
-                        id="notif-view-all"
-                        href="dashboard.php"
-                        class="text-[10px] font-bold text-blue-600 hover:text-blue-700 uppercase tracking-wide"
-                    >
-                        Open dashboard
-                    </a>
-                </div>
-
+                <?php
+                $notifPanel = [
+                    'context'       => 'dropdown',
+                    'listId'        => 'notif-list',
+                    'listClass'     => 'max-h-96 overflow-y-auto',
+                    'showFooter'    => true,
+                    'toolbarPrefix' => '',
+                ];
+                require __DIR__ . '/notifications_panel.php';
+                ?>
             </div>
         </div>
 

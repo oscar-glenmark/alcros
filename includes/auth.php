@@ -1,14 +1,10 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once __DIR__ . '/security.php';
+bootstrapSecurity();
 
 function staffTokenSecret(): string
 {
-    if (!defined('DB_NAME')) {
-        require_once __DIR__ . '/../config/database.php';
-    }
-    return hash('sha256', DB_NAME . DB_HOST . 'alcros_staff_auth_v1');
+    return authSecretKey();
 }
 
 function authTokenFromRequest(): ?string
@@ -67,7 +63,12 @@ function staffSessionLogin(array $staff, bool $regenerate = false): void
 
 function staffSessionLogout(): void
 {
-    unset($_SESSION['staff_id'], $_SESSION['staff_name'], $_SESSION['staff_role']);
+    $_SESSION = [];
+    if (ini_get('session.use_cookies')) {
+        $params = session_get_cookie_params();
+        setcookie(session_name(), '', time() - 42000, $params['path'], $params['domain'], $params['secure'], $params['httponly']);
+    }
+    session_destroy();
 }
 
 function getStaffFromSession(): ?array
@@ -160,11 +161,12 @@ function staffAuthToken(): ?string
 function authFormField(): string
 {
     $token = staffAuthToken();
-    if (!$token) {
-        return '';
+    $html = '';
+    if ($token) {
+        $html .= '<input type="hidden" name="alcros_auth" value="' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '">';
     }
 
-    return '<input type="hidden" name="alcros_auth" value="' . htmlspecialchars($token, ENT_QUOTES, 'UTF-8') . '">';
+    return $html . csrfField();
 }
 
 function buildAuthUrl(string $path, array $query = []): string
@@ -205,6 +207,7 @@ function outputAuthBootstrap(): void
 function requireStaffLogin(): void
 {
     if (getAuthenticatedStaff()) {
+        requireStaffPostCsrf();
         return;
     }
 
@@ -265,7 +268,7 @@ function staffPhotoPath(?string $staffId = null): ?string
 
 function isAdmin(): bool
 {
-    return in_array(staffRole(), ['Administrator', 'Registrar'], true);
+    return staffRole() === 'Administrator';
 }
 
 function isStaffMember(): bool
@@ -277,6 +280,7 @@ function staffMenuPages(): array
 {
     return [
         'dashboard.php',
+        'notifications.php',
         'manage_request.php',
         'appointment.php',
         'records.php',

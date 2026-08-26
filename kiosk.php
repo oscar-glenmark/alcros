@@ -4,12 +4,14 @@
  */
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
+require_once __DIR__ . '/includes/scripts.php';
 
 $ticket = null;
 $error = null;
 $tables = queuePurposeConfig();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    requirePublicPostCsrf();
     $purpose = (string) ($_POST['purpose'] ?? '');
     $tablePurposeMap = ['1' => 'walk_in', '2' => 'appointment', '3' => 'document_claim'];
     if (isset($tablePurposeMap[$purpose])) {
@@ -73,6 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <?php foreach ($tables as $purpose => $cfg): ?>
             <form method="POST" class="contents">
+                <?= publicCsrfField() ?>
                 <input type="hidden" name="purpose" value="<?= htmlspecialchars($purpose) ?>">
                 <button type="submit"
                     data-loading-text="Getting your number…"
@@ -90,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
     </div>
 
-    <script src="includes/loading.js"></script>
-    <script>lucide.createIcons();</script>
+    <?= scriptTag('core/loading.js') ?>
+    <?= lucideInitScript() ?>
 </body>
 </html>

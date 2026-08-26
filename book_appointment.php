@@ -2,9 +2,9 @@
 /**
  * Citizen appointment booking — saves to MySQL appointments table.
  */
-session_start();
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
+require_once __DIR__ . '/includes/scripts.php';
 
 $service = $_GET['service'] ?? $_POST['service'] ?? '';
 $serviceLabel = appointmentServiceLabel($service);
@@ -22,6 +22,7 @@ $notifyEmail = isset($_POST['notify_email']);
 $gmailVerified = isGmailVerifiedInSession($email);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    requirePublicPostCsrf();
     if ($citizenName === '' || $serviceType === '' || $date === '' || $time === '') {
         $error = 'Please complete all required fields.';
     } elseif (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
@@ -122,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .upload-box:hover { border-color: #93c5fd; }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
+<body class="bg-gray-50 min-h-screen" data-gmail-form="bookAppointmentForm">
     <nav class="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-gray-100 bg-white">
         <div class="flex items-center gap-2 min-w-0">
             <div class="bg-blue-600 text-white p-1 rounded font-bold text-[10px] w-5 h-5 flex items-center justify-center shrink-0">A</div>
@@ -149,6 +150,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <p class="text-gray-500 text-sm mb-6">Book a consultation for special civil registry services.</p>
         <?php if ($error): ?><div class="mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg"><?= htmlspecialchars($error) ?></div><?php endif; ?>
         <form method="POST" enctype="multipart/form-data" class="bg-white rounded-2xl border p-6 space-y-4 shadow-sm" id="bookAppointmentForm">
+            <?= publicCsrfField() ?>
             <input type="hidden" name="service" value="<?= htmlspecialchars($service) ?>">
             <input type="hidden" name="email_verified" id="emailVerified" value="<?= $gmailVerified ? '1' : '0' ?>">
             <div>
@@ -215,102 +217,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </form>
         <?php endif; ?>
     </main>
-    <script src="includes/loading.js"></script>
-    <script src="includes/appointment_slots.js"></script>
-    <script>
-        lucide.createIcons();
-        (function () {
-            var verifyBtn = document.getElementById('verifyGmailBtn');
-            var gmailInput = document.getElementById('gmailInput');
-            var emailVerified = document.getElementById('emailVerified');
-            var gmailStatus = document.getElementById('gmailStatus');
-            var submitBtn = document.getElementById('bookSubmitBtn');
-            var form = document.getElementById('bookAppointmentForm');
-
-            function setStatus(text, type) {
-                if (!gmailStatus) return;
-                gmailStatus.classList.remove('hidden');
-                gmailStatus.textContent = text;
-                gmailStatus.className = 'text-xs mt-2 font-semibold ' + (
-                    type === 'ok' ? 'text-green-600' : 'text-red-600'
-                );
-            }
-
-            function setVerified(ok, email) {
-                if (emailVerified) emailVerified.value = ok ? '1' : '0';
-                if (submitBtn) submitBtn.disabled = !ok;
-                if (ok && email && gmailInput) gmailInput.value = email;
-            }
-
-            if (verifyBtn && gmailInput) {
-                verifyBtn.addEventListener('click', function () {
-                    var email = gmailInput.value.trim();
-                    if (!email) {
-                        setStatus('Enter your Gmail address first.', 'err');
-                        return;
-                    }
-                    setVerified(false);
-                    verifyBtn.disabled = true;
-                    verifyBtn.textContent = 'Checking…';
-
-                    var body = new FormData();
-                    body.append('email', email);
-
-                    fetch('api/verify_email.php', { method: 'POST', body: body, credentials: 'same-origin' })
-                        .then(function (r) { return r.json(); })
-                        .then(function (data) {
-                            if (data.ok) {
-                                setVerified(true, data.email);
-                                setStatus(data.message || 'Gmail verified.', 'ok');
-                            } else {
-                                setVerified(false);
-                                setStatus(data.error || 'Verification failed.', 'err');
-                            }
-                        })
-                        .catch(function () {
-                            setVerified(false);
-                            setStatus('Network error. Try again.', 'err');
-                        })
-                        .finally(function () {
-                            verifyBtn.disabled = false;
-                            verifyBtn.textContent = 'Verify Gmail';
-                        });
-                });
-            }
-
-            if (gmailInput) {
-                gmailInput.addEventListener('input', function () {
-                    setVerified(false);
-                    if (gmailStatus) gmailStatus.classList.add('hidden');
-                });
-            }
-
-            if (form) {
-                form.addEventListener('submit', function (e) {
-                    if (emailVerified && emailVerified.value !== '1') {
-                        e.preventDefault();
-                        setStatus('Click Verify Gmail before continuing.', 'err');
-                    }
-                });
-            }
-
-            ['idFront', 'idBack'].forEach(function (id) {
-                var input = document.getElementById(id);
-                var label = document.getElementById(id + 'Label');
-                if (input && label) {
-                    input.addEventListener('change', function () {
-                        if (input.files && input.files[0]) {
-                            label.textContent = input.files[0].name;
-                        }
-                    });
-                }
-            });
-        })();
-    </script>
+    <?= scriptTag('core/loading.js') ?>
+    <?= scriptTag('public/appointment-slots.js') ?>
+    <?= scriptTag('public/forms.js') ?>
     <?php require __DIR__ . '/includes/track_floating.php'; ?>
-    <script src="includes/track_floating.js"></script>
+    <?= scriptTag('public/track-floating.js') ?>
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>
     <?php require __DIR__ . '/includes/notification_consent.php'; ?>
-    <script src="includes/reminders.js"></script>
+    <?= scriptTag('core/reminders.js') ?>
+    <?= lucideInitScript() ?>
 </body>
 </html>

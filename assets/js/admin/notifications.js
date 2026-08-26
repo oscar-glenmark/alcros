@@ -8,8 +8,13 @@
         appointment:     { icon: 'calendar', bg: 'bg-purple-100', text: 'text-purple-600' }
     };
 
+    function staffRoot() {
+        return document.getElementById('notif-wrapper') ||
+            document.querySelector('[data-staff-id]');
+    }
+
     function staffKey(suffix) {
-        var el = document.getElementById('notif-wrapper');
+        var el = staffRoot();
         var id = el ? el.getAttribute('data-staff-id') : 'staff';
         return 'alcros_notif_' + id + '_' + suffix;
     }
@@ -93,8 +98,11 @@
             ts.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     }
 
-    function updateBadge(count) {
-        var badge = document.getElementById('notif-badge');
+    function buildHref(href) {
+        return window.AlcrosPoll ? AlcrosPoll.buildUrl(href || 'dashboard.php', {}) : (href || 'dashboard.php');
+    }
+
+    function updateBadgeEl(badge, count) {
         if (!badge) return;
         if (count > 0) {
             badge.textContent = count > 9 ? '9+' : String(count);
@@ -104,32 +112,58 @@
         }
     }
 
-    function renderList(all) {
-        var listEl = document.getElementById('notif-list');
+    function updateBadges(unreadCount, suppressHeader) {
+        updateBadgeEl(document.getElementById('notif-badge'), suppressHeader ? 0 : unreadCount);
+        updateBadgeEl(document.getElementById('sidebar-notif-badge'), unreadCount);
+    }
+
+    function renderListEl(listEl, all, options) {
         if (!listEl) return;
 
+        options = options || {};
         var items = visibleList(all);
+        var emptyText = listEl.getAttribute('data-notif-empty') || 'No notifications';
+
         if (!items.length) {
-            listEl.innerHTML = '<p class="text-gray-400 text-xs italic p-8 text-center">No notifications</p>';
+            listEl.innerHTML = '<p class="text-gray-400 text-xs italic p-8 text-center">' + escapeHtml(emptyText) + '</p>';
             return;
         }
 
+        var showDetail = options.showDetail !== false;
         listEl.innerHTML = items.map(function (n) {
             var s = STYLES[n.type] || { icon: 'bell', bg: 'bg-gray-100', text: 'text-gray-500' };
-            var href = window.AlcrosPoll ? AlcrosPoll.buildUrl(n.href || 'dashboard.php', {}) : (n.href || 'dashboard.php');
+            var href = buildHref(n.href);
             var faded = isUnread(n) ? '' : ' opacity-60';
+            var detail = showDetail && n.detail
+                ? '<p class="text-[10px] text-gray-400 font-mono truncate mt-0.5">' + escapeHtml(n.detail) + '</p>'
+                : '';
+
             return '<div class="notif-item group flex gap-2 px-3 py-3 border-b border-gray-50' + faded + '">' +
                 '<a href="' + href + '" class="flex gap-3 min-w-0 flex-1">' +
                 '<div class="w-9 h-9 rounded-full ' + s.bg + ' ' + s.text + ' flex items-center justify-center shrink-0">' +
                 '<i data-lucide="' + s.icon + '" class="w-4 h-4"></i></div>' +
-                '<div class="min-w-0 flex-1"><p class="text-xs font-bold text-slate-800 truncate">' + escapeHtml(n.title) + '</p>' +
-                '<p class="text-[11px] text-gray-500 truncate">' + escapeHtml(n.message) + '</p></div>' +
-                '<span class="text-[9px] text-gray-400 shrink-0">' + formatTime(n.created_at) + '</span></a>' +
-                '<button type="button" class="notif-delete p-1.5 rounded-lg text-gray-300 hover:text-red-500" data-id="' + escapeHtml(n.id) + '" title="Remove">' +
+                '<div class="min-w-0 flex-1">' +
+                '<p class="text-xs font-bold text-slate-800 truncate">' + escapeHtml(n.title) + '</p>' +
+                '<p class="text-[11px] text-gray-500 truncate">' + escapeHtml(n.message) + '</p>' +
+                detail +
+                '</div>' +
+                '<span class="text-[9px] text-gray-400 shrink-0 self-start pt-0.5">' + formatTime(n.created_at) + '</span>' +
+                '</a>' +
+                '<button type="button" class="notif-delete p-1.5 rounded-lg text-gray-300 hover:text-red-500 self-start" data-id="' + escapeHtml(n.id) + '" title="Remove">' +
                 '<i data-lucide="x" class="w-3.5 h-3.5"></i></button></div>';
         }).join('');
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    function renderAllLists(all) {
+        document.querySelectorAll('.alcros-notif-list').forEach(function (listEl) {
+            var isPage = listEl.id === 'notif-page-list';
+            if (isPage && all.length >= 0) {
+                listEl.setAttribute('data-notif-empty', 'No notifications');
+            }
+            renderListEl(listEl, all, { showDetail: isPage });
+        });
     }
 
     function flashButton(btn, text) {
@@ -143,61 +177,31 @@
         }, 600);
     }
 
-    function init() {
-        if (!window.AlcrosPoll) return;
-
-        var wrapper = document.getElementById('notif-wrapper');
-        var bellBtn = document.getElementById('notif-bell-btn');
-        var dropdown = document.getElementById('notif-dropdown');
-        var markReadBtn = document.getElementById('notif-mark-read');
-        var clearAllBtn = document.getElementById('notif-clear-all');
-        var listEl = document.getElementById('notif-list');
-        if (!wrapper || !bellBtn || !dropdown) return;
-
-        var isOpen = false;
-        var latest = [];
-
-        function refresh() {
-            renderList(latest);
-            updateBadge(isOpen ? 0 : countUnread(latest));
-        }
-
-        bellBtn.addEventListener('click', function (e) {
-            e.stopPropagation();
-            isOpen = !isOpen;
-            dropdown.classList.toggle('hidden', !isOpen);
-            bellBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-            if (isOpen) {
-                setSeenAt(Date.now());
-                updateBadge(0);
-            }
-            refresh();
-        });
-
-        if (markReadBtn) {
-            markReadBtn.addEventListener('click', function (e) {
+    function bindPanelActions(refresh, latestGetter) {
+        document.querySelectorAll('.alcros-notif-mark-read').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
                 setSeenAt(Date.now());
                 refresh();
-                flashButton(markReadBtn, 'Done');
+                flashButton(btn, 'Done');
             });
-        }
+        });
 
-        if (clearAllBtn) {
-            clearAllBtn.addEventListener('click', function (e) {
+        document.querySelectorAll('.alcros-notif-clear').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
                 var now = Date.now();
-                visibleList(latest).forEach(function (n) { dismissId(n.id); });
+                visibleList(latestGetter()).forEach(function (n) { dismissId(n.id); });
                 setClearedAt(now);
                 setSeenAt(now);
                 refresh();
-                flashButton(clearAllBtn, 'Cleared');
+                flashButton(btn, 'Cleared');
             });
-        }
+        });
 
-        if (listEl) {
+        document.querySelectorAll('.alcros-notif-list').forEach(function (listEl) {
             listEl.addEventListener('click', function (e) {
                 var btn = e.target.closest('.notif-delete');
                 if (!btn) return;
@@ -206,18 +210,63 @@
                 dismissId(btn.getAttribute('data-id'));
                 refresh();
             });
-        }
+        });
+    }
+
+    function initHeaderDropdown(refresh, latestGetter) {
+        var wrapper = document.getElementById('notif-wrapper');
+        var bellBtn = document.getElementById('notif-bell-btn');
+        var dropdown = document.getElementById('notif-dropdown');
+        if (!wrapper || !bellBtn || !dropdown) return null;
+
+        var isOpen = false;
+
+        bellBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            isOpen = !isOpen;
+            dropdown.classList.toggle('hidden', !isOpen);
+            bellBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            if (isOpen) {
+                setSeenAt(Date.now());
+                updateBadges(0, true);
+            }
+            refresh();
+        });
 
         document.addEventListener('click', function (e) {
             if (isOpen && !wrapper.contains(e.target)) {
                 isOpen = false;
                 dropdown.classList.add('hidden');
                 bellBtn.setAttribute('aria-expanded', 'false');
-                updateBadge(countUnread(latest));
+                updateBadges(countUnread(latestGetter()), false);
             }
         });
 
-        AlcrosPoll.pollJson('api/notifications.php', {}, 60000, function (data) {
+        return function () { return isOpen; };
+    }
+
+    function init() {
+        if (!window.AlcrosPoll) return;
+
+        var latest = [];
+        var headerOpen = initHeaderDropdown(refresh, function () { return latest; });
+
+        function refresh() {
+            renderAllLists(latest);
+            var unread = countUnread(latest);
+            updateBadges(unread, headerOpen && headerOpen());
+        }
+
+        bindPanelActions(refresh, function () { return latest; });
+
+        var isPage = !!document.getElementById('notif-page-list');
+        var pollParams = isPage ? { limit: 50 } : {};
+
+        if (isPage) {
+            setSeenAt(Date.now());
+        }
+
+        AlcrosPoll.pollJson('api/notifications.php', pollParams, 60000, function (data) {
             latest = data.notifications || [];
             refresh();
             AlcrosPoll.markLiveIndicator();

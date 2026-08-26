@@ -8,6 +8,8 @@ if ($code === '') {
     apiError('Appointment code is required.');
 }
 
+rateLimitOrAbort(rateLimitKey('track_appointment', $code), 30, 300, 'Too many tracking lookups. Please wait a few minutes.');
+
 try {
     $pdo = getDB();
     $stmt = $pdo->prepare(
@@ -29,7 +31,7 @@ try {
 
     apiJsonResponse([
         'found'          => true,
-        'appointment'    => $appointment,
+        'appointment'    => publicTrackingAppointment($appointment),
         'service'        => appointmentServiceLabel($appointment['service_type']),
         'status_html'    => appointmentStatusBadge($appointment['status']),
         'status_label'   => appointmentStatusLabel($appointment['status']),

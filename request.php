@@ -2,9 +2,9 @@
 /**
  * Citizen document request — multi-step wizard.
  */
-session_start();
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
+require_once __DIR__ . '/includes/scripts.php';
 
 if (isMaintenanceMode() || !arePublicRequestsAllowed()) {
     header('Location: index.php');
@@ -40,6 +40,7 @@ $recordVerified = isCivilRecordVerifiedInSession(
 );
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
+    requirePublicPostCsrf();
     $action = $_POST['action'] ?? 'next';
 
     if ($action === 'back') {
@@ -254,7 +255,7 @@ $stepTitles = [
     <title>Request Document - ALCROS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="includes/loading.js" defer></script>
+    <?= scriptTag('core/loading.js', ['defer' => 'defer']) ?>
     <link rel="stylesheet" href="includes/back_home.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
@@ -339,31 +340,9 @@ $stepTitles = [
                 <a href="index.php" class="back-home back-home--btn">Back to Home</a>
             </div>
         </div>
-        <script>
-            (function () {
-                var code = <?= json_encode($successData['tracking_code']) ?>;
-                var btn = document.getElementById('copy-tracking-btn');
-                if (btn) {
-                    btn.addEventListener('click', function () {
-                        btn.disabled = true;
-                        var orig = btn.innerHTML;
-                        btn.innerHTML = 'Copying…';
-                        navigator.clipboard.writeText(code).then(function () {
-                            btn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5"></i> Copied!';
-                            lucide.createIcons();
-                            setTimeout(function () {
-                                btn.disabled = false;
-                                btn.innerHTML = orig;
-                                lucide.createIcons();
-                            }, 2000);
-                        }).catch(function () {
-                            btn.disabled = false;
-                            btn.innerHTML = orig;
-                        });
-                    });
-                }
-            })();
-        </script>
+        <?= pageConfigJson(['trackingCode' => $successData['tracking_code']], 'request-success-config') ?>
+        <?= scriptTag('core/page-config.js') ?>
+        <?= scriptTag('public/request-success.js') ?>
 
         <?php else: ?>
         <!-- Progress bar -->
@@ -400,6 +379,7 @@ $stepTitles = [
 
             <?php if ($step === 1): ?>
             <form method="POST" class="space-y-5" id="identificationForm">
+                <?= publicCsrfField() ?>
                 <input type="hidden" name="step" value="1">
                 <input type="hidden" name="record_verified" id="recordVerified" value="<?= $recordVerified ? '1' : '0' ?>">
                 <div>
@@ -455,6 +435,7 @@ $stepTitles = [
 
             <?php elseif ($step === 2): ?>
             <form method="POST" enctype="multipart/form-data" class="space-y-5" id="requirementsForm">
+                <?= publicCsrfField() ?>
                 <input type="hidden" name="step" value="2">
                 <input type="hidden" name="email_verified" id="emailVerified" value="<?= isGmailVerifiedInSession($draft['email'] ?? '') ? '1' : '0' ?>">
                 <div>
@@ -533,6 +514,7 @@ $stepTitles = [
 
             <?php elseif ($step === 3): ?>
             <form method="POST" class="space-y-5">
+                <?= publicCsrfField() ?>
                 <input type="hidden" name="step" value="3">
                 <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-2">
                     <p class="text-xs text-blue-800"><strong><?= htmlspecialchars($draft['citizen_name'] ?? '') ?></strong> — <?= htmlspecialchars(documentTypeLabel($draft['document_type'] ?? '')) ?></p>
@@ -567,185 +549,14 @@ $stepTitles = [
         <?php endif; ?>
     </main>
 
-    <script>
-        lucide.createIcons();
-
-        (function () {
-            var checkBtn = document.getElementById('checkRecordBtn');
-            var nameInput = document.getElementById('citizenNameInput');
-            var dobInput = document.getElementById('dateOfBirthInput');
-            var recordVerified = document.getElementById('recordVerified');
-            var recordStatus = document.getElementById('recordStatus');
-            var continueBtn = document.getElementById('step1ContinueBtn');
-            var form = document.getElementById('identificationForm');
-
-            function setRecordStatus(text, type) {
-                if (!recordStatus) return;
-                recordStatus.classList.remove('hidden');
-                recordStatus.textContent = text;
-                recordStatus.className = 'text-xs mt-2 font-semibold ' + (
-                    type === 'ok' ? 'text-green-600' : 'text-red-600'
-                );
-            }
-
-            function setRecordVerified(ok) {
-                if (recordVerified) recordVerified.value = ok ? '1' : '0';
-                if (continueBtn) continueBtn.disabled = !ok;
-            }
-
-            function resetRecordCheck() {
-                setRecordVerified(false);
-                if (recordStatus) recordStatus.classList.add('hidden');
-            }
-
-            if (checkBtn && nameInput && dobInput) {
-                checkBtn.addEventListener('click', function () {
-                    var name = nameInput.value.trim();
-                    var dob = dobInput.value.trim();
-                    if (!name) {
-                        setRecordStatus('Enter your full name on record first.', 'err');
-                        return;
-                    }
-                    if (!dob) {
-                        setRecordStatus('Enter your date of birth first.', 'err');
-                        return;
-                    }
-                    setRecordVerified(false);
-                    checkBtn.disabled = true;
-                    checkBtn.textContent = 'Checking…';
-
-                    var body = new FormData();
-                    body.append('citizen_name', name);
-                    body.append('date_of_birth', dob);
-
-                    fetch('api/check_civil_record.php', { method: 'POST', body: body, credentials: 'same-origin' })
-                        .then(function (r) { return r.json(); })
-                        .then(function (data) {
-                            if (data.ok) {
-                                setRecordVerified(true);
-                                setRecordStatus(data.message || 'Record found.', 'ok');
-                            } else {
-                                setRecordVerified(false);
-                                setRecordStatus(data.error || 'Record not found.', 'err');
-                            }
-                        })
-                        .catch(function () {
-                            setRecordVerified(false);
-                            setRecordStatus('Network error. Try again.', 'err');
-                        })
-                        .finally(function () {
-                            checkBtn.disabled = false;
-                            checkBtn.textContent = 'Check Record';
-                        });
-                });
-            }
-
-            if (nameInput) nameInput.addEventListener('input', resetRecordCheck);
-            if (dobInput) dobInput.addEventListener('input', resetRecordCheck);
-
-            if (form) {
-                form.addEventListener('submit', function (e) {
-                    if (recordVerified && recordVerified.value !== '1') {
-                        e.preventDefault();
-                        setRecordStatus('Click Check Record before continuing.', 'err');
-                    }
-                });
-            }
-        })();
-
-        (function () {
-            var verifyBtn = document.getElementById('verifyGmailBtn');
-            var gmailInput = document.getElementById('gmailInput');
-            var emailVerified = document.getElementById('emailVerified');
-            var gmailStatus = document.getElementById('gmailStatus');
-            var continueBtn = document.getElementById('step2ContinueBtn');
-            var form = document.getElementById('requirementsForm');
-
-            function setStatus(text, type) {
-                if (!gmailStatus) return;
-                gmailStatus.classList.remove('hidden');
-                gmailStatus.textContent = text;
-                gmailStatus.className = 'text-xs mt-2 font-semibold ' + (
-                    type === 'ok' ? 'text-green-600' : 'text-red-600'
-                );
-            }
-
-            function setVerified(ok, email) {
-                if (emailVerified) emailVerified.value = ok ? '1' : '0';
-                if (continueBtn) continueBtn.disabled = !ok;
-                if (ok && email && gmailInput) gmailInput.value = email;
-            }
-
-            if (verifyBtn && gmailInput) {
-                verifyBtn.addEventListener('click', function () {
-                    var email = gmailInput.value.trim();
-                    if (!email) {
-                        setStatus('Enter your Gmail address first.', 'err');
-                        return;
-                    }
-                    setVerified(false);
-                    verifyBtn.disabled = true;
-                    verifyBtn.textContent = 'Checking…';
-
-                    var body = new FormData();
-                    body.append('email', email);
-
-                    fetch('api/verify_email.php', { method: 'POST', body: body, credentials: 'same-origin' })
-                        .then(function (r) { return r.json(); })
-                        .then(function (data) {
-                            if (data.ok) {
-                                setVerified(true, data.email);
-                                setStatus(data.message || 'Gmail verified.', 'ok');
-                            } else {
-                                setVerified(false);
-                                setStatus(data.error || 'Verification failed.', 'err');
-                            }
-                        })
-                        .catch(function () {
-                            setVerified(false);
-                            setStatus('Network error. Try again.', 'err');
-                        })
-                        .finally(function () {
-                            verifyBtn.disabled = false;
-                            verifyBtn.textContent = 'Verify Gmail';
-                        });
-                });
-            }
-
-            if (gmailInput) {
-                gmailInput.addEventListener('input', function () {
-                    setVerified(false);
-                    if (gmailStatus) gmailStatus.classList.add('hidden');
-                });
-            }
-
-            if (form) {
-                form.addEventListener('submit', function (e) {
-                    if (emailVerified && emailVerified.value !== '1') {
-                        e.preventDefault();
-                        setStatus('Click Verify Gmail before continuing.', 'err');
-                    }
-                });
-            }
-
-            ['idFront', 'idBack'].forEach(function (id) {
-                var input = document.getElementById(id);
-                var label = document.getElementById(id + 'Label');
-                if (input && label) {
-                    input.addEventListener('change', function () {
-                        if (input.files && input.files[0]) {
-                            label.textContent = input.files[0].name;
-                        }
-                    });
-                }
-            });
-        })();
-    </script>
+    <?= scriptTag('core/loading.js', ['defer' => 'defer']) ?>
+    <?= scriptTag('public/forms.js') ?>
     <?php require __DIR__ . '/includes/track_floating.php'; ?>
-    <script src="includes/track_floating.js"></script>
+    <?= scriptTag('public/track-floating.js') ?>
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>
     <?php require __DIR__ . '/includes/notification_consent.php'; ?>
-    <?php if ($step === 3): ?><script src="includes/appointment_slots.js"></script><?php endif; ?>
-    <script src="includes/reminders.js"></script>
+    <?php if ($step === 3): ?><?= scriptTag('public/appointment-slots.js') ?><?php endif; ?>
+    <?= scriptTag('core/reminders.js') ?>
+    <?= lucideInitScript() ?>
 </body>
 </html>

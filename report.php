@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
+require_once __DIR__ . '/includes/scripts.php';
 requireAdmin();
 
 $activePage = 'report.php';
@@ -368,25 +369,7 @@ $rangeOptions = [
             </div>
         </div>
     </main>
-    <script>
-        lucide.createIcons();
-        (function () {
-            var btn = document.getElementById('reportDownloadBtn');
-            var panel = document.getElementById('reportDownloadPanel');
-            var menu = document.getElementById('reportDownloadMenu');
-            if (!btn || !panel) return;
-
-            btn.addEventListener('click', function (e) {
-                e.stopPropagation();
-                panel.classList.toggle('hidden');
-            });
-
-            document.addEventListener('click', function (e) {
-                if (menu && !menu.contains(e.target)) {
-                    panel.classList.add('hidden');
-                }
-            });
-        })();
-    </script>
+    <?= scriptTag('admin/report.js') ?>
+    <?= lucideInitScript() ?>
 </body>
 </html>

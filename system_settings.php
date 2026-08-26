@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
+require_once __DIR__ . '/includes/scripts.php';
 requireStaffLogin();
 requirePageAccess('system_settings.php');
 
@@ -53,7 +54,7 @@ function currentStaffRow(PDO $pdo, string $staffId): ?array
 
 function adminCount(PDO $pdo): int
 {
-    return (int) $pdo->query("SELECT COUNT(*) FROM staff WHERE role IN ('Administrator', 'Registrar')")->fetchColumn();
+    return (int) $pdo->query("SELECT COUNT(*) FROM staff WHERE role = 'Administrator'")->fetchColumn();
 }
 
 // Export activity logs (admin)
@@ -95,6 +96,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (strlen($newPass) < 6) {
                 throw new InvalidArgumentException('New password must be at least 6 characters.');
             }
+            if ($passwordError = validatePasswordStrength($newPass)) {
+                throw new InvalidArgumentException($passwordError);
+            }
             if ($newPass !== $confirm) {
                 throw new InvalidArgumentException('New passwords do not match.');
             }
@@ -110,6 +114,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($smtpPass !== '') {
                         setSetting($key, $smtpPass);
                     }
+                } elseif ($key === 'privacy_policy_url') {
+                    setSetting($key, sanitizeExternalUrl(trim((string) ($_POST[$key] ?? '')), 'privacy.php'));
                 } elseif (isset($_POST[$key])) {
                     setSetting($key, trim($_POST[$key]));
                 }
@@ -121,7 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $newStaffId = strtoupper(trim($_POST['staff_id_new'] ?? ''));
             $password = $_POST['staff_password'] ?? '';
             $role = $_POST['staff_role'] ?? 'Staff';
-            $validRoles = ['Staff', 'Registrar', 'Administrator'];
+            $validRoles = ['Staff', 'Administrator'];
             if (!in_array($role, $validRoles, true)) {
                 $role = 'Staff';
             }
@@ -130,6 +136,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if (strlen($password) < 6) {
                 throw new InvalidArgumentException('Password must be at least 6 characters.');
+            }
+            if ($passwordError = validatePasswordStrength($password)) {
+                throw new InvalidArgumentException($passwordError);
             }
             if (!preg_match('/^[A-Z0-9\-]+$/', $newStaffId)) {
                 throw new InvalidArgumentException('Staff ID may only contain letters, numbers, and hyphens.');
@@ -147,14 +156,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $targetId = strtoupper(trim($_POST['target_staff_id'] ?? ''));
             $name = trim($_POST['edit_staff_name'] ?? '');
             $role = $_POST['edit_staff_role'] ?? 'Staff';
-            $validRoles = ['Staff', 'Registrar', 'Administrator'];
+            $validRoles = ['Staff', 'Administrator'];
             if (!in_array($role, $validRoles, true)) {
                 $role = 'Staff';
             }
             if ($targetId === '' || $name === '') {
                 throw new InvalidArgumentException('Staff ID and name are required.');
             }
-            if ($targetId === $currentStaffId && !in_array($role, ['Administrator', 'Registrar'], true) && adminCount($pdo) <= 1) {
+            if ($targetId === $currentStaffId && $role !== 'Administrator' && adminCount($pdo) <= 1) {
                 throw new InvalidArgumentException('Cannot demote the last administrator account.');
             }
             $pdo->prepare('UPDATE staff SET name = ?, role = ? WHERE staff_id = ?')->execute([$name, $role, $targetId]);
@@ -165,6 +174,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $newPass = $_POST['reset_password'] ?? '';
             if ($targetId === '' || strlen($newPass) < 6) {
                 throw new InvalidArgumentException('Staff ID and a password of at least 6 characters are required.');
+            }
+            if ($passwordError = validatePasswordStrength($newPass)) {
+                throw new InvalidArgumentException($passwordError);
             }
             $pdo->prepare('UPDATE staff SET password_hash = ? WHERE staff_id = ?')->execute([password_hash($newPass, PASSWORD_DEFAULT), $targetId]);
             logActivity($currentStaffId, 'Password Reset', "Reset password for $targetId");
@@ -217,7 +229,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$targetRole) {
                 throw new InvalidArgumentException('Staff account not found.');
             }
-            if (in_array($targetRole, ['Administrator', 'Registrar'], true) && adminCount($pdo) <= 1) {
+            if ($targetRole === 'Administrator' && adminCount($pdo) <= 1) {
                 throw new InvalidArgumentException('Cannot remove the last administrator account.');
             }
             $photoStmt = $pdo->prepare('SELECT profile_photo_path FROM staff WHERE staff_id = ?');
@@ -378,6 +390,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                         </div>
 
                         <form method="POST" class="space-y-4 border-t border-slate-100 pt-6">
+                            <?= authFormField() ?>
                             <input type="hidden" name="settings_action" value="update_profile">
                             <input type="hidden" name="active_tab" value="my-account">
                             <h3 class="text-sm font-bold text-slate-900">Update Display Name</h3>
@@ -413,6 +426,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                         </div>
 
                         <form method="POST" class="space-y-4 max-w-lg">
+                            <?= authFormField() ?>
                             <input type="hidden" name="settings_action" value="change_password">
                             <input type="hidden" name="active_tab" value="security">
                             <div>
@@ -448,6 +462,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                         </div>
 
                         <form method="POST" class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 pb-8 border-b border-slate-100">
+                            <?= authFormField() ?>
                             <input type="hidden" name="settings_action" value="add_staff">
                             <input type="hidden" name="active_tab" value="account-management">
                             <div>
@@ -462,7 +477,6 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                 <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Role</label>
                                 <select name="staff_role" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
                                     <option value="Staff">Staff</option>
-                                    <option value="Registrar">Registrar</option>
                                     <option value="Administrator">Administrator</option>
                                 </select>
                             </div>
@@ -494,6 +508,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                             <div class="flex flex-col items-center gap-1">
                                                 <?= renderStaffAvatar($member['profile_photo_path'] ?? null, $member['name'], 'w-10 h-10 text-sm') ?>
                                                 <form method="POST" enctype="multipart/form-data" class="staff-photo-form">
+                                                    <?= authFormField() ?>
                                                     <input type="hidden" name="settings_action" value="upload_staff_photo">
                                                     <input type="hidden" name="active_tab" value="account-management">
                                                     <input type="hidden" name="target_staff_id" value="<?= htmlspecialchars($member['staff_id']) ?>">
@@ -502,6 +517,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                                 </form>
                                                 <?php if (!empty($member['profile_photo_path'])): ?>
                                                 <form method="POST">
+                                                    <?= authFormField() ?>
                                                     <input type="hidden" name="settings_action" value="remove_staff_photo">
                                                     <input type="hidden" name="active_tab" value="account-management">
                                                     <input type="hidden" name="target_staff_id" value="<?= htmlspecialchars($member['staff_id']) ?>">
@@ -530,6 +546,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                             <?php if ($member['staff_id'] !== $currentStaffId): ?>
                                             <span class="text-slate-200 mx-1">·</span>
                                             <form method="POST" class="inline" onsubmit="return confirm('Remove this staff account permanently?');">
+                                                <?= authFormField() ?>
                                                 <input type="hidden" name="settings_action" value="remove_staff">
                                                 <input type="hidden" name="active_tab" value="account-management">
                                                 <input type="hidden" name="target_staff_id" value="<?= htmlspecialchars($member['staff_id']) ?>">
@@ -547,6 +564,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                     <!-- SYSTEM CONFIGURATION -->
                     <div id="tab-system-configuration" class="tab-content bg-white border border-slate-100 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-sm <?= $activeTab !== 'system-configuration' ? 'hidden' : '' ?>">
                         <form method="POST" class="space-y-8">
+                            <?= authFormField() ?>
                             <input type="hidden" name="settings_action" value="save_settings">
                             <input type="hidden" name="active_tab" value="system-configuration">
 
@@ -675,6 +693,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                 </a>
                             </div>
                             <form method="POST" class="mt-6 pt-6 border-t border-slate-100 flex flex-wrap items-end gap-4" onsubmit="return confirm('Delete old activity logs permanently?');">
+                                <?= authFormField() ?>
                                 <input type="hidden" name="settings_action" value="clear_old_logs">
                                 <input type="hidden" name="active_tab" value="admin-tools">
                                 <div>
@@ -701,6 +720,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
             <h3 class="text-lg font-black text-slate-900 mb-4">Edit Staff Account</h3>
             <form method="POST" class="space-y-4">
+                <?= authFormField() ?>
                 <input type="hidden" name="settings_action" value="update_staff">
                 <input type="hidden" name="active_tab" value="account-management">
                 <input type="hidden" name="target_staff_id" id="editStaffId">
@@ -712,7 +732,6 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                     <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Role</label>
                     <select name="edit_staff_role" id="editStaffRole" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
                         <option value="Staff">Staff</option>
-                        <option value="Registrar">Registrar</option>
                         <option value="Administrator">Administrator</option>
                     </select>
                 </div>
@@ -730,6 +749,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
             <h3 class="text-lg font-black text-slate-900 mb-1">Reset Staff Password</h3>
             <p class="text-xs text-slate-500 mb-4">Set a new password for <strong id="resetStaffLabel"></strong>.</p>
             <form method="POST" class="space-y-4">
+                <?= authFormField() ?>
                 <input type="hidden" name="settings_action" value="reset_staff_password">
                 <input type="hidden" name="active_tab" value="account-management">
                 <input type="hidden" name="target_staff_id" id="resetStaffId">
@@ -745,72 +765,8 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
         </div>
     </div>
 
-    <script>
-        lucide.createIcons();
-
-        function switchTab(tabId) {
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            const target = document.getElementById('tab-' + tabId);
-            const btn = document.getElementById('btn-' + tabId);
-            if (target) target.classList.remove('hidden');
-            if (btn) btn.classList.add('active');
-            const url = new URL(window.location);
-            if (tabId === 'my-account') url.searchParams.delete('tab');
-            else url.searchParams.set('tab', tabId);
-            window.history.replaceState({}, '', url);
-        }
-
-        function openModal(id) {
-            document.getElementById(id).classList.remove('hidden');
-            document.getElementById(id).classList.add('flex');
-        }
-
-        function closeModals() {
-            document.querySelectorAll('#editStaffModal, #resetStaffModal').forEach(el => {
-                el.classList.add('hidden');
-                el.classList.remove('flex');
-            });
-        }
-
-        document.querySelectorAll('.edit-staff-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.getElementById('editStaffId').value = btn.dataset.staffId;
-                document.getElementById('editStaffName').value = btn.dataset.staffName;
-                document.getElementById('editStaffRole').value = btn.dataset.staffRole;
-                openModal('editStaffModal');
-            });
-        });
-
-        document.querySelectorAll('.reset-staff-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.getElementById('resetStaffId').value = btn.dataset.staffId;
-                document.getElementById('resetStaffLabel').textContent = btn.dataset.staffId;
-                openModal('resetStaffModal');
-            });
-        });
-
-        document.querySelectorAll('.staff-photo-form').forEach(form => {
-            const input = form.querySelector('.staff-photo-input');
-            const trigger = form.querySelector('.staff-photo-trigger');
-            if (!input || !trigger) return;
-
-            trigger.addEventListener('click', () => input.click());
-            input.addEventListener('change', () => {
-                if (input.files && input.files.length > 0) form.submit();
-            });
-        });
-
-        document.querySelectorAll('.close-modal').forEach(btn => btn.addEventListener('click', closeModals));
-
-        setTimeout(() => {
-            const alert = document.getElementById('alert-banner');
-            if (alert) {
-                alert.style.opacity = '0';
-                setTimeout(() => alert.remove(), 500);
-            }
-        }, 5000);
-    </script>
-    <script src="includes/password_toggle.js"></script>
+    <?= scriptTag('admin/system-settings.js') ?>
+    <?= scriptTag('core/password-toggle.js') ?>
+    <?= lucideInitScript() ?>
 </body>
 </html>

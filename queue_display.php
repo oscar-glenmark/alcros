@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
+require_once __DIR__ . '/includes/scripts.php';
 require_once __DIR__ . '/includes/api_helpers.php';
 
 $pdo = getDB();
@@ -117,17 +118,10 @@ $purposeLabels = queuePurposeLabels();
         </div>
     </div>
 
-    <script>
-        setInterval(function () {
-            var now = new Date();
-            var h = now.getHours() % 12 || 12;
-            var m = now.getMinutes().toString().padStart(2, '0');
-            document.getElementById('clock').textContent = h.toString().padStart(2, '0') + ':' + m + ' ' + (now.getHours() >= 12 ? 'PM' : 'AM');
-        }, 1000);
-        lucide.createIcons();
-    </script>
-    <script src="includes/poll.js"></script>
-    <script src="includes/queue_voice.js"></script>
-    <script src="includes/realtime.js"></script>
+    <?= scriptTag('public/queue-display.js') ?>
+    <?= scriptTag('core/poll.js') ?>
+    <?= scriptTag('public/queue-voice.js') ?>
+    <?= scriptTag('core/realtime.js') ?>
+    <?= lucideInitScript() ?>
 </body>
 </html>

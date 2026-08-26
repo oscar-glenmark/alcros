@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
+require_once __DIR__ . '/includes/scripts.php';
 require_once __DIR__ . '/includes/api_helpers.php';
 requireStaffLogin();
 requirePageAccess('live-queue.php');
@@ -229,8 +230,8 @@ $totalWaiting = array_sum(array_map(fn ($g) => count($g['waiting']), $grouped));
             </p>
         </div>
     </main>
-    <script src="includes/poll.js"></script>
-    <script src="includes/realtime.js"></script>
-    <script>lucide.createIcons();</script>
+    <?= scriptTag('core/poll.js') ?>
+    <?= scriptTag('core/realtime.js') ?>
+    <?= lucideInitScript() ?>
 </body>
 </html>

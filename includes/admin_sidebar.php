@@ -2,26 +2,38 @@
 /** @var string $activePage current page filename e.g. dashboard.php */
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/scripts.php';
 
 $activePage = $activePage ?? basename($_SERVER['PHP_SELF']);
 $siteName = getSiteSettings()['name'];
 
-function sidebarLink(string $page, string $label, string $icon, string $active, bool $liveBadge = false): string
+function sidebarLink(string $page, string $label, string $icon, string $active, bool $liveBadge = false, ?string $countBadgeId = null): string
 {
     $isActive = ($page === $active);
     $class = $isActive ? 'active-nav' : 'sidebar-item text-slate-600';
     $badge = $liveBadge
         ? '<span class="bg-white text-blue-600 text-[10px] px-1.5 py-0.5 rounded font-bold">LIVE</span>'
         : '';
-    $justify = $liveBadge ? ' justify-between' : '';
+    $countBadge = $countBadgeId
+        ? '<span id="' . htmlspecialchars($countBadgeId) . '" class="hidden ml-auto min-w-[18px] h-5 px-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none">0</span>'
+        : '';
+    $hasTrailing = $liveBadge || $countBadgeId;
+    $justify = $hasTrailing ? ' justify-between' : '';
     $href = buildAuthUrl($page);
 
     // Pre-sizing icon wrapper prevents reflow layout flickering when JS icons initialize
     $iconHtml = '<i data-lucide="' . $icon . '" class="w-4 h-4 mr-3 shrink-0 inline-block align-middle"></i>';
 
+    if ($liveBadge) {
+        $inner = '<div class="flex items-center">' . $iconHtml . htmlspecialchars($label) . '</div>' . $badge;
+    } elseif ($countBadgeId) {
+        $inner = '<div class="flex items-center min-w-0 flex-1">' . $iconHtml . htmlspecialchars($label) . '</div>' . $countBadge;
+    } else {
+        $inner = $iconHtml . htmlspecialchars($label);
+    }
+
     return '<a href="' . htmlspecialchars($href) . '" class="' . $class . ' flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-150' . $justify . '">'
-        . ($liveBadge ? '<div class="flex items-center">' . $iconHtml . htmlspecialchars($label) . '</div>' . $badge
-            : $iconHtml . htmlspecialchars($label))
+        . $inner
         . '</a>';
 }
 
@@ -116,6 +128,10 @@ $sidebarSubtitle = isAdmin() ? 'Registry Admin' : 'Staff Portal';
         background-color: #2563eb !important; 
         color: #ffffff !important; 
     }
+    .active-nav #sidebar-notif-badge {
+        background-color: #ffffff;
+        color: #dc2626;
+    }
     
     /* Touch & Focus Normalization to stop blue flash boxes */
     .admin-sidebar a,
@@ -159,6 +175,7 @@ $sidebarSubtitle = isAdmin() ? 'Registry Admin' : 'Staff Portal';
     </div>
     <nav class="admin-sidebar-nav px-4 py-4 space-y-1" id="sidebarNavScroll">
         <?= sidebarLink('dashboard.php', 'Dashboard', 'layout-dashboard', $activePage) ?>
+        <?= sidebarLink('notifications.php', 'Notifications', 'bell', $activePage, false, 'sidebar-notif-badge') ?>
         <?= sidebarLink('manage_request.php', 'Manage Requests', 'file-text', $activePage) ?>
         <?= sidebarLink('appointment.php', 'Appointments', 'calendar', $activePage) ?>
         <?= sidebarLink('records.php', 'Civil records', 'book-open', $activePage) ?>
@@ -195,85 +212,4 @@ $sidebarSubtitle = isAdmin() ? 'Registry Admin' : 'Staff Portal';
     </div>
 </div>
 
-<script>
-(function () {
-    const sidebar = document.getElementById('mainAdminSidebar');
-    const backdrop = document.getElementById('adminSidebarBackdrop');
-    const closeBtn = document.getElementById('sidebarCloseBtn');
-
-    function setSidebarOpen(open) {
-        if (!sidebar || !backdrop) return;
-        sidebar.classList.toggle('is-open', open);
-        backdrop.classList.toggle('is-open', open);
-        document.body.classList.toggle('admin-sidebar-open', open);
-        backdrop.setAttribute('aria-hidden', open ? 'false' : 'true');
-    }
-
-    window.toggleAdminSidebar = function (force) {
-        const next = typeof force === 'boolean' ? force : !sidebar.classList.contains('is-open');
-        setSidebarOpen(next);
-    };
-
-    window.closeAdminSidebar = function () {
-        if (window.matchMedia('(min-width: 1024px)').matches) return;
-        setSidebarOpen(false);
-    };
-
-    backdrop?.addEventListener('click', () => setSidebarOpen(false));
-    closeBtn?.addEventListener('click', () => setSidebarOpen(false));
-    sidebar?.querySelectorAll('a').forEach(link => {
-        link.addEventListener('click', () => window.closeAdminSidebar());
-    });
-    document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape' && sidebar?.classList.contains('is-open')) setSidebarOpen(false);
-    });
-    window.addEventListener('resize', function () {
-        if (window.matchMedia('(min-width: 1024px)').matches) setSidebarOpen(false);
-    });
-
-    // Preserve sidebar navigation scroll position across page transitions
-    const navScroll = document.getElementById('sidebarNavScroll');
-    if (navScroll) {
-        const savedScroll = sessionStorage.getItem('sidebar_scroll_pos');
-        if (savedScroll !== null) {
-            navScroll.scrollTop = parseInt(savedScroll, 10);
-        }
-        navScroll.addEventListener('scroll', function () {
-            sessionStorage.setItem('sidebar_scroll_pos', navScroll.scrollTop);
-        });
-    }
-
-    // Modal behavior logic
-    const modal = document.getElementById('logoutConfirmModal');
-    const openBtn = document.getElementById('logoutOpenBtn');
-    const cancelBtn = document.getElementById('logoutCancelBtn');
-    if (!modal || !openBtn || !cancelBtn) return;
-
-    function openModal() {
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-        if (typeof lucide !== 'undefined') lucide.createIcons();
-    }
-
-    function closeModal() {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-    }
-
-    openBtn.addEventListener('click', openModal);
-    cancelBtn.addEventListener('click', closeModal);
-    modal.addEventListener('click', function (e) {
-        if (e.target === modal) closeModal();
-    });
-    document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape' && modal.classList.contains('flex')) closeModal();
-    });
-})();
-</script>
-
-<script src="includes/admin_auth.js"></script>
-<script src="includes/loading.js"></script>
-<script src="includes/poll.js"></script>
-<script src="includes/realtime.js"></script>
-<script src="includes/notifications.js"></script>
-<script src="includes/reminders.js"></script>
+<?= adminCoreScripts() ?>

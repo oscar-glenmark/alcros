@@ -4,6 +4,7 @@
  */
 session_start();
 require_once __DIR__ . '/includes/helpers.php';
+require_once __DIR__ . '/includes/scripts.php';
 
 $site = getSiteSettings();
 $isStaffLoggedIn = isset($_SESSION['staff_id']);
@@ -219,10 +220,10 @@ $sections = [
         </div>
     </footer>
 
-    <script>lucide.createIcons();</script>
     <?php require __DIR__ . '/includes/track_floating.php'; ?>
-    <script src="includes/track_floating.js"></script>
+    <?= scriptTag('public/track-floating.js') ?>
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>
     <?php require __DIR__ . '/includes/notification_consent.php'; ?>
+    <?= lucideInitScript() ?>
 </body>
 </html>

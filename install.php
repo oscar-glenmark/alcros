@@ -4,6 +4,7 @@
  * Creates empty tables with default administrator — no other sample records.
  */
 require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/includes/helpers.php';
 
 $sqlFile = __DIR__ . '/database/alcros.sql';
 $messages = [];
@@ -11,6 +12,9 @@ $error = null;
 $alreadyInstalled = databaseIsInstalled();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if ($alreadyInstalled) {
+        $error = 'Database is already installed. Re-running setup from the web is disabled for security.';
+    } else {
     try {
         if (!mysqlServerUp()) {
             throw new RuntimeException('MySQL is not running. Start it in the XAMPP Control Panel first.');
@@ -33,10 +37,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $messages[] = $alreadyInstalled
             ? 'Database refreshed successfully.'
             : 'Database installed successfully.';
-        $messages[] = 'Default login: Staff ID <strong>ALORAN-001</strong>, Password <strong>aloran2024</strong>';
+        $messages[] = 'Sign in at the staff portal and change the default administrator password immediately.';
         $alreadyInstalled = true;
     } catch (Throwable $e) {
         $error = $e->getMessage();
+    }
     }
 }
 ?>
@@ -71,10 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <a href="login.php" class="block w-full text-center border border-gray-200 text-gray-600 rounded-xl py-3 text-sm font-bold">Staff Login</a>
         <details class="mt-4">
             <summary class="text-xs text-gray-400 cursor-pointer hover:text-gray-600">Re-run setup anyway</summary>
-            <form method="POST" class="mt-3">
-                <p class="text-[11px] text-gray-500 mb-3">Safe to run again — uses IF NOT EXISTS. Use only if tables are missing.</p>
-                <button type="submit" class="w-full bg-gray-800 hover:bg-gray-900 text-white rounded-xl py-2.5 text-xs font-bold">Refresh database</button>
-            </form>
+            <p class="text-[11px] text-amber-700 mt-3">Web re-install is disabled after the first setup. Use phpMyAdmin or CLI if you need to rebuild the database.</p>
         </details>
         <?php else: ?>
 

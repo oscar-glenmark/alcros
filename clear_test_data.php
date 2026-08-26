@@ -1,10 +1,12 @@
 <?php
 /**
- * Temporary test-data cleaner. Open in the browser and click once.
- * Deletes citizen sample records only — staff accounts and office settings stay.
- * Remove this file when you no longer need it.
+ * Temporary test-data cleaner. Admin only.
  */
+require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/includes/helpers.php';
+
+requireAdmin();
 
 $messages = [];
 $error = null;
@@ -55,6 +57,7 @@ if ($pdo) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
+    requireStaffPostCsrf();
     if (trim((string) ($_POST['confirm'] ?? '')) !== 'CLEAR') {
         $error = 'Type CLEAR in the box to confirm.';
     } else {
@@ -135,6 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
         </ul>
 
         <form method="POST" onsubmit="return confirm('This will permanently delete all sample citizen data. Continue?')">
+            <?= authFormField() ?>
             <label class="block text-[11px] font-bold text-gray-500 mb-1">Type CLEAR to confirm</label>
             <input type="text" name="confirm" autocomplete="off" class="w-full mb-4 border border-gray-200 rounded-xl px-3 py-2 text-sm" placeholder="CLEAR">
             <button type="submit" class="w-full bg-rose-600 hover:bg-rose-700 text-white rounded-xl py-3 text-sm font-bold">Clear all sample data</button>

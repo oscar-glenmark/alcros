@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS staff (
     staff_id VARCHAR(50) NOT NULL UNIQUE,
     name VARCHAR(100) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(50) NOT NULL DEFAULT 'Registrar',
+    role VARCHAR(50) NOT NULL DEFAULT 'Staff',
     profile_photo_path VARCHAR(255) DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
@@ -165,6 +165,51 @@ CREATE TABLE IF NOT EXISTS system_settings (
     setting_key VARCHAR(100) PRIMARY KEY,
     setting_value TEXT,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- Persisted admin alerts (sidebar / bell notifications).
+CREATE TABLE IF NOT EXISTS staff_notifications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    notif_key VARCHAR(80) NOT NULL UNIQUE,
+    type ENUM('pending_request','ready_pickup','queue','appointment','system') NOT NULL DEFAULT 'system',
+    title VARCHAR(150) NOT NULL,
+    message VARCHAR(255) NOT NULL,
+    detail VARCHAR(100) DEFAULT NULL,
+    href VARCHAR(255) DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_type_created (type, created_at)
+) ENGINE=InnoDB;
+
+-- Citizen Gmail delivery audit trail.
+CREATE TABLE IF NOT EXISTS email_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    recipient VARCHAR(150) NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    email_type VARCHAR(50) NOT NULL DEFAULT 'general',
+    reference_code VARCHAR(30) DEFAULT NULL,
+    success TINYINT(1) NOT NULL DEFAULT 0,
+    error_message VARCHAR(255) DEFAULT NULL,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_recipient (recipient),
+    INDEX idx_reference (reference_code),
+    INDEX idx_sent (sent_at)
+) ENGINE=InnoDB;
+
+-- Document request status change history.
+CREATE TABLE IF NOT EXISTS request_status_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    request_id INT NOT NULL,
+    tracking_code VARCHAR(20) NOT NULL,
+    old_status VARCHAR(20) DEFAULT NULL,
+    new_status VARCHAR(20) NOT NULL,
+    changed_by VARCHAR(50) DEFAULT NULL,
+    notes TEXT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_request (request_id),
+    INDEX idx_tracking (tracking_code),
+    INDEX idx_created (created_at),
+    CONSTRAINT fk_status_history_request
+        FOREIGN KEY (request_id) REFERENCES document_requests(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- Default administrator (change password after first login in System Settings).

@@ -14,9 +14,9 @@
  *    since real Google sign-in requires OAuth client credentials you'll need to supply
  */
 
-session_start();
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
+require_once __DIR__ . '/includes/scripts.php';
 require_once __DIR__ . '/includes/auth.php';
 
 $redirectTarget = isset($_GET['redirect']) ? $_GET['redirect'] : 'dashboard.php';
@@ -26,8 +26,8 @@ if (!preg_match('/^[a-zA-Z0-9_\-\.]+\.php(\?.*)?$/', $redirectTarget)) {
 }
 
 // CSRF token
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    rateLimitOrAbort(rateLimitKey('login', strtoupper(trim($_POST['staff_id'] ?? ''))), 8, 900, 'Too many login attempts. Please wait 15 minutes and try again.');
 }
 
 $error = '';
@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password          = $_POST['password'] ?? '';
     $csrf               = $_POST['csrf_token'] ?? '';
 
-    if (!hash_equals($_SESSION['csrf_token'], $csrf)) {
+    if (!validateCsrf($csrf)) {
         $error = 'Your session expired. Please try again.';
     } elseif ($submittedStaffId === '' || $password === '') {
         $error = 'Please enter both your Staff ID and password.';
@@ -114,7 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
 
             <form class="text-left space-y-5" method="POST" action="login.php?redirect=<?= urlencode($redirectTarget) ?>" autocomplete="off">
-                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
 
                 <div>
                     <label class="block text-[11px] font-bold text-gray-700 mb-2 flex items-center gap-2">
@@ -171,10 +171,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </div>
 
-    <script src="includes/loading.js"></script>
-    <script src="includes/password_toggle.js"></script>
-    <script>
-        if (typeof lucide !== 'undefined') lucide.createIcons();
-    </script>
+    <?= scriptTag('core/loading.js') ?>
+    <?= scriptTag('core/password-toggle.js') ?>
+    <?= lucideInitScript() ?>
 </body>
 </html>

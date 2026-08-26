@@ -1,5 +1,7 @@
 <?php
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/security.php';
+bootstrapSecurity();
 
 function generateCode(string $prefix, int $length = 6): string
 {
@@ -87,6 +89,150 @@ function logActivity(?string $staffId, string $action, string $details = ''): vo
     }
 }
 
+function ensureExtendedSchema(PDO $pdo): void
+{
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+    $ensured = true;
+
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS staff_notifications (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            notif_key VARCHAR(80) NOT NULL UNIQUE,
+            type ENUM('pending_request','ready_pickup','queue','appointment','system') NOT NULL DEFAULT 'system',
+            title VARCHAR(150) NOT NULL,
+            message VARCHAR(255) NOT NULL,
+            detail VARCHAR(100) DEFAULT NULL,
+            href VARCHAR(255) DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_type_created (type, created_at)
+        ) ENGINE=InnoDB"
+    );
+
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS email_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            recipient VARCHAR(150) NOT NULL,
+            subject VARCHAR(255) NOT NULL,
+            email_type VARCHAR(50) NOT NULL DEFAULT 'general',
+            reference_code VARCHAR(30) DEFAULT NULL,
+            success TINYINT(1) NOT NULL DEFAULT 0,
+            error_message VARCHAR(255) DEFAULT NULL,
+            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_recipient (recipient),
+            INDEX idx_reference (reference_code),
+            INDEX idx_sent (sent_at)
+        ) ENGINE=InnoDB"
+    );
+
+    try {
+        $pdo->query('SELECT 1 FROM request_status_history LIMIT 1');
+    } catch (PDOException) {
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS request_status_history (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                request_id INT NOT NULL,
+                tracking_code VARCHAR(20) NOT NULL,
+                old_status VARCHAR(20) DEFAULT NULL,
+                new_status VARCHAR(20) NOT NULL,
+                changed_by VARCHAR(50) DEFAULT NULL,
+                notes TEXT DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_request (request_id),
+                INDEX idx_tracking (tracking_code),
+                INDEX idx_created (created_at),
+                CONSTRAINT fk_status_history_request
+                    FOREIGN KEY (request_id) REFERENCES document_requests(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB"
+        );
+    }
+
+    try {
+        $pdo->exec("UPDATE staff SET role = 'Administrator' WHERE role = 'Registrar'");
+    } catch (PDOException $e) {
+        // Non-fatal if migration fails
+    }
+}
+
+function logEmailDelivery(
+    string $recipient,
+    string $subject,
+    string $emailType = 'general',
+    ?string $referenceCode = null,
+    bool $success = true,
+    ?string $errorMessage = null
+): void {
+    try {
+        ensureExtendedSchema(getDB());
+        $stmt = getDB()->prepare(
+            'INSERT INTO email_logs (recipient, subject, email_type, reference_code, success, error_message)
+             VALUES (?, ?, ?, ?, ?, ?)'
+        );
+        $stmt->execute([
+            $recipient,
+            $subject,
+            $emailType,
+            $referenceCode,
+            $success ? 1 : 0,
+            $errorMessage,
+        ]);
+    } catch (PDOException $e) {
+        // Non-fatal if logging fails
+    }
+}
+
+function logRequestStatusChange(
+    PDO $pdo,
+    int $requestId,
+    string $trackingCode,
+    ?string $oldStatus,
+    string $newStatus,
+    ?string $changedBy = null,
+    ?string $notes = null
+): void {
+    try {
+        ensureExtendedSchema($pdo);
+        $stmt = $pdo->prepare(
+            'INSERT INTO request_status_history (request_id, tracking_code, old_status, new_status, changed_by, notes)
+             VALUES (?, ?, ?, ?, ?, ?)'
+        );
+        $stmt->execute([$requestId, $trackingCode, $oldStatus, $newStatus, $changedBy, $notes]);
+    } catch (PDOException $e) {
+        // Non-fatal if logging fails
+    }
+}
+
+function upsertStaffNotification(array $item): void
+{
+    try {
+        ensureExtendedSchema(getDB());
+        $stmt = getDB()->prepare(
+            'INSERT INTO staff_notifications (notif_key, type, title, message, detail, href, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+                type = VALUES(type),
+                title = VALUES(title),
+                message = VALUES(message),
+                detail = VALUES(detail),
+                href = VALUES(href),
+                created_at = VALUES(created_at)'
+        );
+        $stmt->execute([
+            $item['id'] ?? $item['notif_key'] ?? '',
+            $item['type'] ?? 'system',
+            $item['title'] ?? '',
+            $item['message'] ?? '',
+            $item['detail'] ?? null,
+            $item['href'] ?? null,
+            $item['created_at'] ?? date('Y-m-d H:i:s'),
+        ]);
+    } catch (PDOException $e) {
+        // Non-fatal if sync fails
+    }
+}
+
 function getSetting(string $key, string $default = ''): string
 {
     try {
@@ -129,10 +275,11 @@ function getSiteSettings(): array
 function renderOverviewText(string $template, string $officeName): string
 {
     $text = str_replace('{office}', htmlspecialchars($officeName), $template);
-    if (strpos($text, '<') !== false) {
-        return $text;
+    if (strpos($text, '<') === false) {
+        return nl2br(htmlspecialchars($text));
     }
-    return nl2br(htmlspecialchars($text));
+
+    return sanitizeOverviewHtml($text);
 }
 
 function documentTypeLabel(string $type): string
@@ -1075,6 +1222,11 @@ function saveIdUpload(array $file, string $prefix): ?string
         return null;
     }
 
+    $maxBytes = 5 * 1024 * 1024;
+    if (($file['size'] ?? 0) > $maxBytes) {
+        return null;
+    }
+
     $allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
     $mime = mime_content_type($file['tmp_name']);
     if (!in_array($mime, $allowed, true)) {
@@ -1124,6 +1276,11 @@ function ensureStaffProfileColumns(PDO $pdo): void
 function saveStaffPhotoUpload(array $file, string $staffId): ?string
 {
     if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        return null;
+    }
+
+    $maxBytes = 2 * 1024 * 1024;
+    if (($file['size'] ?? 0) > $maxBytes) {
         return null;
     }
 
@@ -1180,7 +1337,8 @@ function renderStaffAvatar(?string $photoPath, string $name, string $classes = '
 {
     $initial = staffInitial($name);
     if (staffPhotoExists($photoPath)) {
-        return '<img src="' . htmlspecialchars($photoPath, ENT_QUOTES, 'UTF-8') . '" alt="" class="'
+        $src = protectedUploadUrl($photoPath) ?? $photoPath;
+        return '<img src="' . htmlspecialchars($src, ENT_QUOTES, 'UTF-8') . '" alt="" class="'
             . htmlspecialchars($classes, ENT_QUOTES, 'UTF-8') . ' ' . htmlspecialchars($rounded, ENT_QUOTES, 'UTF-8')
             . ' border border-gray-200 object-cover shrink-0">';
     }
@@ -1283,8 +1441,8 @@ function documentRequestViewData(array $row): array
         'phone'          => !empty($row['phone']) ? (string) $row['phone'] : '—',
         'document_type'  => documentTypeLabel((string) ($row['document_type'] ?? '')),
         'purpose'        => !empty($row['purpose']) ? (string) $row['purpose'] : '—',
-        'id_front_path'  => !empty($row['id_front_path']) ? (string) $row['id_front_path'] : null,
-        'id_back_path'   => !empty($row['id_back_path']) ? (string) $row['id_back_path'] : null,
+        'id_front_path'  => protectedUploadUrl(!empty($row['id_front_path']) ? (string) $row['id_front_path'] : null),
+        'id_back_path'   => protectedUploadUrl(!empty($row['id_back_path']) ? (string) $row['id_back_path'] : null),
         'appointment'    => $appointment !== '' ? $appointment : '—',
         'status'         => requestStatusLabel((string) ($row['status'] ?? 'pending')),
         'privacy_agreed' => !empty($row['privacy_agreed']) ? 'Yes' : 'No',
@@ -1309,8 +1467,8 @@ function appointmentViewData(array $row): array
         'source'           => $isRequest ? 'Document request visit' : 'Special service appointment',
         'tracking_code'    => !empty($row['tracking_code']) ? (string) $row['tracking_code'] : '',
         'notify_email'     => !empty($row['notify_email']) ? 'Yes' : 'No',
-        'id_front_path'    => !empty($row['id_front_path']) ? (string) $row['id_front_path'] : null,
-        'id_back_path'     => !empty($row['id_back_path']) ? (string) $row['id_back_path'] : null,
+        'id_front_path'    => protectedUploadUrl(!empty($row['id_front_path']) ? (string) $row['id_front_path'] : null),
+        'id_back_path'     => protectedUploadUrl(!empty($row['id_back_path']) ? (string) $row['id_back_path'] : null),
         'created_at'       => !empty($row['created_at']) ? formatDateDisplay($row['created_at']) : '—',
         'notes'            => !empty($row['notes']) ? (string) $row['notes'] : null,
     ];
@@ -1518,9 +1676,11 @@ function citizenEmailHtml(array $mail): string
         . '</table></td></tr></table></body></html>';
 }
 
-function sendCitizenNotice(string $to, string $subject, array $mail): bool
+function sendCitizenNotice(string $to, string $subject, array $mail, string $emailType = 'general'): bool
 {
-    return sendCitizenEmail($to, $subject, citizenEmailPlain($mail), citizenEmailHtml($mail));
+    $ok = sendCitizenEmail($to, $subject, citizenEmailPlain($mail), citizenEmailHtml($mail));
+    logEmailDelivery($to, $subject, $emailType, isset($mail['code']) ? (string) $mail['code'] : null, $ok);
+    return $ok;
 }
 
 function buildEmailMime(string $fromName, string $fromEmail, string $body, ?string $html = null): array

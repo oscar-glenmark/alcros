@@ -5,7 +5,6 @@ require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/scripts.php';
 
 $activePage = $activePage ?? basename($_SERVER['PHP_SELF']);
-$siteName = getSiteSettings()['name'];
 
 function sidebarLink(string $page, string $label, string $icon, string $active, bool $liveBadge = false, ?string $countBadgeId = null): string
 {
@@ -37,7 +36,6 @@ function sidebarLink(string $page, string $label, string $icon, string $active, 
         . '</a>';
 }
 
-$sidebarSubtitle = isAdmin() ? 'Registry Admin' : 'Staff Portal';
 ?>
 <style>
     /* Fixed Positioning with GPU Rendering Layer to Eliminate Page-Load Flicker */
@@ -154,22 +152,54 @@ $sidebarSubtitle = isAdmin() ? 'Registry Admin' : 'Staff Portal';
         min-width: 1rem;
         min-height: 1rem;
     }
+    .admin-sidebar-brand {
+        flex-shrink: 0;
+        background: #050b18;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .admin-sidebar-brand .gov-brand-logo {
+        width: 2.75rem;
+        height: 2.75rem;
+        border-radius: 9999px;
+        object-fit: cover;
+        background: #fff;
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.12);
+    }
+    .admin-sidebar-brand .gov-brand-title {
+        color: #ffffff;
+        font-size: 0.8125rem;
+        font-weight: 700;
+        line-height: 1.25;
+        letter-spacing: -0.01em;
+    }
+    .admin-sidebar-brand .gov-brand-subtitle {
+        color: rgba(255, 255, 255, 0.78);
+        font-size: 0.6875rem;
+        font-style: italic;
+        line-height: 1.35;
+        margin-top: 0.2rem;
+    }
+    .admin-sidebar-brand .sidebar-close-btn {
+        color: rgba(255, 255, 255, 0.75);
+    }
+    .admin-sidebar-brand .sidebar-close-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+        color: #ffffff;
+    }
 </style>
 
 <div id="adminSidebarBackdrop" class="admin-sidebar-backdrop" aria-hidden="true"></div>
 
 <aside class="admin-sidebar" id="mainAdminSidebar" aria-label="Admin navigation">
-    <div class="flex-shrink-0 p-4 sm:p-6 border-b border-gray-50 flex items-center justify-between gap-3">
-        <a href="<?= htmlspecialchars(buildAuthUrl('dashboard.php')) ?>" class="group flex items-center gap-3 rounded-xl transition hover:opacity-90 min-w-0 flex-1">
-            <div class="flex items-center justify-center w-9 h-9 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl shadow-md shadow-blue-200/70 group-hover:shadow-lg group-hover:shadow-blue-200/80 transition-shadow shrink-0">
-                <span class="text-white text-sm font-black">A</span>
-            </div>
-            <div class="flex flex-col leading-none min-w-0">
-                <span class="font-black text-base tracking-tight text-slate-900 truncate"><?= htmlspecialchars($siteName) ?></span>
-                <span class="text-[9px] font-bold text-blue-600 tracking-widest uppercase mt-1"><?= htmlspecialchars($sidebarSubtitle) ?></span>
+    <div class="admin-sidebar-brand p-4 sm:p-5 flex items-start justify-between gap-3">
+        <a href="<?= htmlspecialchars(buildAuthUrl('dashboard.php')) ?>" class="flex items-center gap-3 min-w-0 flex-1 transition hover:opacity-90">
+            <?= alcrosFaviconImg(44, 'gov-brand-logo shrink-0') ?>
+            <div class="min-w-0">
+                <div class="gov-brand-title">Municipality of Aloran Misamis Occidental</div>
+                <div class="gov-brand-subtitle">ALCROS</div>
             </div>
         </a>
-        <button type="button" id="sidebarCloseBtn" class="lg:hidden shrink-0 p-2 rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Close menu">
+        <button type="button" id="sidebarCloseBtn" class="sidebar-close-btn lg:hidden shrink-0 p-2 rounded-lg transition-colors" aria-label="Close menu">
             <i data-lucide="x" class="w-5 h-5"></i>
         </button>
     </div>

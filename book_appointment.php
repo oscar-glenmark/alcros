@@ -126,7 +126,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body class="bg-gray-50 min-h-screen" data-gmail-form="bookAppointmentForm">
     <nav class="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-gray-100 bg-white">
         <div class="flex items-center gap-2 min-w-0">
-            <div class="bg-blue-600 text-white p-1 rounded font-bold text-[10px] w-5 h-5 flex items-center justify-center shrink-0">A</div>
+            <?= alcrosFaviconImg(20) ?>
             <span class="font-bold tracking-tight text-blue-900 truncate">ALCROS</span>
         </div>
         <a href="index.php" class="back-home back-home--nav shrink-0">Back to Home</a>

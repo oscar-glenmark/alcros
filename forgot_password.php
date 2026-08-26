@@ -103,8 +103,8 @@ if ($step === 2) {
     <div class="w-full max-w-[420px] bg-white rounded-[2rem] overflow-hidden login-card border border-gray-100">
         <div class="p-6 sm:p-10 pb-8">
             <div class="text-center mb-6">
-                <div class="inline-flex items-center justify-center w-14 h-14 bg-blue-600 rounded-2xl mb-4 shadow-lg shadow-blue-200">
-                    <span class="text-white text-2xl font-black">A</span>
+                <div class="flex justify-center mb-4">
+                    <?= alcrosFaviconImg(56, 'shadow-lg shadow-blue-200') ?>
                 </div>
                 <h1 class="text-2xl font-black text-slate-900 mb-1">Reset Password</h1>
                 <p class="text-gray-400 text-[11px] font-medium">Staff &amp; administrator accounts</p>

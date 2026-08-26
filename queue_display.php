@@ -30,7 +30,7 @@ $purposeLabels = queuePurposeLabels();
 <body class="h-screen w-screen flex flex-col relative p-4" data-realtime="queue-display">
     <header class="flex items-center justify-between px-6 py-4 rounded-2xl border border-gray-800 mb-4">
         <div class="flex items-center gap-4">
-            <div class="bg-blue-600 p-2 rounded-xl"><i data-lucide="monitor" class="w-6 h-6 text-white"></i></div>
+            <?= alcrosFaviconImg(40, 'shadow-md shadow-blue-900/30') ?>
             <div>
                 <h2 class="text-xl font-black tracking-tighter leading-none">ALCROS<span class="text-blue-500 italic">LIVE</span></h2>
                 <p class="text-[9px] font-bold text-gray-500 uppercase tracking-widest mt-1">Public Queue Display · Table 1 Walk-in · Table 2 Appointment · Table 3 Claim</p>

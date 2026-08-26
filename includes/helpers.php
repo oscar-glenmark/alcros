@@ -1576,6 +1576,19 @@ function staffPhotoExists(?string $photoPath): bool
     return is_file(__DIR__ . '/../' . ltrim($photoPath, '/'));
 }
 
+function alcrosFaviconImg(int $sizePx = 20, string $extraClass = ''): string
+{
+    $size = max(16, min(72, $sizePx));
+    $class = trim('object-cover shrink-0 rounded-full bg-white ' . $extraClass);
+
+    return sprintf(
+        '<img src="images/favicon.png?v=2" alt="ALCROS" class="%s" width="%d" height="%d">',
+        htmlspecialchars($class, ENT_QUOTES, 'UTF-8'),
+        $size,
+        $size
+    );
+}
+
 function renderStaffAvatar(?string $photoPath, string $name, string $classes = 'w-8 h-8', string $rounded = 'rounded-full'): string
 {
     $initial = staffInitial($name);

@@ -86,9 +86,7 @@ $sections = [
 
     <nav class="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-gray-100 bg-white">
         <a href="index.php" class="group flex items-center gap-3 rounded-xl pr-2 -ml-1 py-1 transition hover:opacity-90 min-w-0">
-            <div class="flex items-center justify-center w-9 h-9 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl shadow-md shadow-blue-200/70 group-hover:shadow-lg group-hover:shadow-blue-200/80 transition-shadow shrink-0">
-                <span class="text-white text-sm font-black">A</span>
-            </div>
+            <?= alcrosFaviconImg(36, 'shadow-md shadow-blue-200/70') ?>
             <div class="flex flex-col leading-none min-w-0">
                 <span class="font-black text-base tracking-tight text-slate-900 truncate"><?= htmlspecialchars($site['name']) ?></span>
                 <span class="text-[9px] font-bold text-blue-600 tracking-widest uppercase mt-1">Civil Registry Portal</span>
@@ -203,9 +201,7 @@ $sections = [
     <footer class="bg-[#0b1120] text-gray-500 py-6 px-12 text-[10px] flex flex-wrap justify-between items-center gap-4 border-t border-gray-800 mt-12">
         <div class="flex flex-wrap items-center gap-6">
             <a href="index.php" class="group flex items-center gap-2.5 transition hover:opacity-90">
-                <div class="flex items-center justify-center w-7 h-7 bg-gradient-to-br from-blue-500 to-blue-700 rounded-lg shadow-md shadow-blue-900/40 group-hover:shadow-lg group-hover:shadow-blue-900/50 transition-shadow shrink-0">
-                    <span class="text-white text-[10px] font-black">A</span>
-                </div>
+                <?= alcrosFaviconImg(28, 'shadow-md shadow-blue-900/40') ?>
                 <div class="flex flex-col leading-none">
                     <span class="font-bold text-white text-[11px]"><?= htmlspecialchars($site['name']) ?></span>
                     <span class="text-[8px] font-semibold text-blue-400 tracking-wider uppercase mt-0.5">Civil Registry Portal</span>

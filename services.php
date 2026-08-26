@@ -38,7 +38,7 @@ $year = date('Y');
 
     <nav class="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-gray-100 bg-white">
         <div class="flex items-center gap-2 min-w-0">
-            <div class="bg-blue-600 text-white p-1 rounded font-bold text-[10px] w-5 h-5 flex items-center justify-center shrink-0">A</div>
+            <?= alcrosFaviconImg(20) ?>
             <span class="font-bold tracking-tight text-blue-900 truncate"><?= htmlspecialchars($site['name']) ?></span>
         </div>
         <div class="hidden md:flex items-center gap-8 text-sm font-medium text-gray-600">
@@ -114,7 +114,7 @@ $year = date('Y');
     <footer class="bg-[#0b1120] text-gray-500 py-6 px-12 text-[10px] flex justify-between items-center border-t border-gray-800">
         <div class="flex items-center gap-6">
             <div class="flex items-center gap-1">
-                <div class="bg-blue-600 text-white p-0.5 rounded text-[8px] font-bold">A</div>
+                <?= alcrosFaviconImg(20) ?>
                 <span class="font-bold text-white text-[11px]"><?= htmlspecialchars($site['name']) ?></span>
             </div>
             <span>&copy; <?= htmlspecialchars($year) ?> Aloran Civil Registry Office. All rights reserved.</span>

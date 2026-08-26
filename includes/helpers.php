@@ -154,6 +154,19 @@ function ensureExtendedSchema(PDO $pdo): void
     } catch (PDOException $e) {
         // Non-fatal if migration fails
     }
+
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS staff_password_otps (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            staff_id VARCHAR(50) NOT NULL,
+            otp_hash VARCHAR(255) NOT NULL,
+            expires_at DATETIME NOT NULL,
+            attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_staff_otp (staff_id),
+            INDEX idx_expires (expires_at)
+        ) ENGINE=InnoDB"
+    );
 }
 
 function logEmailDelivery(
@@ -1271,6 +1284,236 @@ function ensureStaffProfileColumns(PDO $pdo): void
         } catch (Throwable $ignored) {
         }
     }
+
+    try {
+        $pdo->query('SELECT email FROM staff LIMIT 1');
+    } catch (Throwable $e) {
+        try {
+            $pdo->exec('ALTER TABLE staff ADD COLUMN email VARCHAR(150) DEFAULT NULL AFTER name');
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    try {
+        $pdo->query('SELECT recovery_gmail_2sv_confirmed FROM staff LIMIT 1');
+    } catch (Throwable $e) {
+        try {
+            $pdo->exec('ALTER TABLE staff ADD COLUMN recovery_gmail_2sv_confirmed TINYINT(1) NOT NULL DEFAULT 0 AFTER email');
+        } catch (Throwable $ignored) {
+        }
+    }
+}
+
+function staffRowById(PDO $pdo, string $staffId): ?array
+{
+    ensureStaffProfileColumns($pdo);
+    $stmt = $pdo->prepare('SELECT staff_id, name, email, recovery_gmail_2sv_confirmed, role, password_hash, profile_photo_path, created_at FROM staff WHERE staff_id = ? LIMIT 1');
+    $stmt->execute([strtoupper(trim($staffId))]);
+    $row = $stmt->fetch();
+
+    return $row ?: null;
+}
+
+function normalizeStaffEmail(string $email): string
+{
+    return normalizeGmail($email);
+}
+
+function validateStaffEmail(string $email): ?string
+{
+    $email = normalizeStaffEmail($email);
+    if ($email === '') {
+        return 'Gmail address is required for password recovery.';
+    }
+    if (!isValidGmail($email)) {
+        return 'Please enter a valid Gmail address (example@gmail.com).';
+    }
+
+    return null;
+}
+
+function staffRecoveryGmailNeeds2svConfirmation(?array $existingStaff, string $newEmail): bool
+{
+    if (!$existingStaff) {
+        return true;
+    }
+
+    $oldEmail = normalizeStaffEmail((string) ($existingStaff['email'] ?? ''));
+    $newEmail = normalizeStaffEmail($newEmail);
+    $confirmed = (int) ($existingStaff['recovery_gmail_2sv_confirmed'] ?? 0) === 1;
+
+    if ($newEmail !== $oldEmail) {
+        return true;
+    }
+
+    return !$confirmed;
+}
+
+function validateStaffRecoveryGmail2sv(bool $confirmed): ?string
+{
+    if (!$confirmed) {
+        return 'You must confirm that this Gmail account already has Google 2-Step Verification enabled. Enable it at myaccount.google.com/signinoptions/two-step-verification, then try again.';
+    }
+
+    return null;
+}
+
+function staffRecoveryGmail2svConfirmedValue(?array $existingStaff, string $newEmail, bool $checkboxConfirmed): int
+{
+    if (staffRecoveryGmailNeeds2svConfirmation($existingStaff, $newEmail)) {
+        return $checkboxConfirmed ? 1 : 0;
+    }
+
+    return (int) ($existingStaff['recovery_gmail_2sv_confirmed'] ?? 0);
+}
+
+function staffEmailInUse(PDO $pdo, string $email, ?string $exceptStaffId = null): bool
+{
+    ensureStaffProfileColumns($pdo);
+    $email = normalizeStaffEmail($email);
+    if ($email === '') {
+        return false;
+    }
+    $sql = 'SELECT COUNT(*) FROM staff WHERE email = ?';
+    $params = [$email];
+    if ($exceptStaffId !== null && $exceptStaffId !== '') {
+        $sql .= ' AND staff_id <> ?';
+        $params[] = strtoupper(trim($exceptStaffId));
+    }
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+
+    return (int) $stmt->fetchColumn() > 0;
+}
+
+function maskEmailAddress(string $email): string
+{
+    $email = normalizeStaffEmail($email);
+    if ($email === '' || !str_contains($email, '@')) {
+        return '';
+    }
+    [$local, $domain] = explode('@', $email, 2);
+    $visible = substr($local, 0, 1);
+    $maskedLocal = $visible . str_repeat('*', max(1, strlen($local) - 1));
+
+    return $maskedLocal . '@' . $domain;
+}
+
+function purgeExpiredStaffOtps(PDO $pdo): void
+{
+    ensureExtendedSchema($pdo);
+    $pdo->exec('DELETE FROM staff_password_otps WHERE expires_at < NOW()');
+}
+
+function sendStaffPasswordOtp(PDO $pdo, string $staffId): array
+{
+    ensureExtendedSchema($pdo);
+    purgeExpiredStaffOtps($pdo);
+
+    $staff = staffRowById($pdo, $staffId);
+    if (!$staff) {
+        return ['ok' => true, 'message' => 'If that Staff ID is registered with a Gmail address, a verification code was sent.'];
+    }
+
+    $email = normalizeStaffEmail((string) ($staff['email'] ?? ''));
+    if ($email === '') {
+        return [
+            'ok' => false,
+            'message' => 'No Gmail is registered for this account. Ask an administrator to add your Gmail under System Settings → Staff Members, or set it in My Settings if you can still sign in.',
+        ];
+    }
+
+    if ((int) ($staff['recovery_gmail_2sv_confirmed'] ?? 0) !== 1) {
+        return [
+            'ok' => false,
+            'message' => 'Password recovery is not enabled for this account because the recovery Gmail has not been confirmed with Google 2-Step Verification. Sign in and update Recovery Gmail in System Settings, or ask an administrator.',
+        ];
+    }
+
+    $otp = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    $expiresAt = date('Y-m-d H:i:s', time() + 900);
+
+    $pdo->prepare('DELETE FROM staff_password_otps WHERE staff_id = ?')->execute([$staff['staff_id']]);
+    $pdo->prepare(
+        'INSERT INTO staff_password_otps (staff_id, otp_hash, expires_at, attempts) VALUES (?, ?, ?, 0)'
+    )->execute([$staff['staff_id'], password_hash($otp, PASSWORD_DEFAULT), $expiresAt]);
+
+    $site = getSiteSettings()['name'];
+    $subject = $site . ' — Staff password reset code';
+    $plain = "Hello {$staff['name']},\n\n"
+        . "Your ALCROS staff portal password reset code is: {$otp}\n\n"
+        . "Staff ID: {$staff['staff_id']}\n"
+        . "This code expires in 15 minutes.\n\n"
+        . "If you did not request this, ignore this email and contact your administrator.";
+    $html = '<p>Hello <strong>' . htmlspecialchars($staff['name']) . '</strong>,</p>'
+        . '<p>Your staff portal password reset code is:</p>'
+        . '<p style="font-size:28px;font-weight:800;letter-spacing:6px;color:#2563eb;">' . htmlspecialchars($otp) . '</p>'
+        . '<p>Staff ID: <strong>' . htmlspecialchars($staff['staff_id']) . '</strong><br>'
+        . 'This code expires in <strong>15 minutes</strong>.</p>'
+        . '<p style="color:#64748b;font-size:13px;">If you did not request this, ignore this email and contact your administrator.</p>';
+
+    if (!sendCitizenEmail($email, $subject, $plain, $html)) {
+        $pdo->prepare('DELETE FROM staff_password_otps WHERE staff_id = ?')->execute([$staff['staff_id']]);
+
+        return [
+            'ok' => false,
+            'message' => 'Could not send the verification email. Confirm Gmail SMTP is configured in System Settings, then try again.',
+        ];
+    }
+
+    logEmailDelivery($email, $subject, 'staff_password_otp', $staff['staff_id'], true);
+
+    return [
+        'ok' => true,
+        'message' => 'A 6-digit verification code was sent to ' . maskEmailAddress($email) . '.',
+        'staff_id' => $staff['staff_id'],
+        'email_hint' => maskEmailAddress($email),
+    ];
+}
+
+function resetStaffPasswordWithOtp(PDO $pdo, string $staffId, string $otp, string $newPassword): array
+{
+    ensureExtendedSchema($pdo);
+    purgeExpiredStaffOtps($pdo);
+
+    $staffId = strtoupper(trim($staffId));
+    $otp = trim($otp);
+    if ($staffId === '' || $otp === '') {
+        return ['ok' => false, 'message' => 'Staff ID and verification code are required.'];
+    }
+    if ($passwordError = validatePasswordStrength($newPassword)) {
+        return ['ok' => false, 'message' => $passwordError];
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT id, otp_hash, expires_at, attempts FROM staff_password_otps WHERE staff_id = ? ORDER BY id DESC LIMIT 1'
+    );
+    $stmt->execute([$staffId]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        return ['ok' => false, 'message' => 'No active verification code found. Request a new code.'];
+    }
+    if ((int) ($row['attempts'] ?? 0) >= 5) {
+        return ['ok' => false, 'message' => 'Too many incorrect attempts. Request a new verification code.'];
+    }
+    if (strtotime((string) $row['expires_at']) < time()) {
+        $pdo->prepare('DELETE FROM staff_password_otps WHERE id = ?')->execute([(int) $row['id']]);
+
+        return ['ok' => false, 'message' => 'Verification code expired. Request a new code.'];
+    }
+
+    if (!password_verify($otp, (string) $row['otp_hash'])) {
+        $pdo->prepare('UPDATE staff_password_otps SET attempts = attempts + 1 WHERE id = ?')->execute([(int) $row['id']]);
+
+        return ['ok' => false, 'message' => 'Incorrect verification code.'];
+    }
+
+    $pdo->prepare('UPDATE staff SET password_hash = ? WHERE staff_id = ?')
+        ->execute([password_hash($newPassword, PASSWORD_DEFAULT), $staffId]);
+    $pdo->prepare('DELETE FROM staff_password_otps WHERE staff_id = ?')->execute([$staffId]);
+    logActivity($staffId, 'Password Reset', 'Password reset via Gmail OTP');
+
+    return ['ok' => true, 'message' => 'Password updated successfully. You can now sign in.'];
 }
 
 function saveStaffPhotoUpload(array $file, string $staffId): ?string

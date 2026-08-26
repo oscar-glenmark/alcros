@@ -32,10 +32,56 @@
         btn.addEventListener('click', function () {
             document.getElementById('editStaffId').value = btn.dataset.staffId;
             document.getElementById('editStaffName').value = btn.dataset.staffName;
+            var emailInput = document.getElementById('editStaffEmail');
+            emailInput.value = btn.dataset.staffEmail || '';
+            emailInput.dataset.originalEmail = btn.dataset.staffEmail || '';
+            emailInput.dataset.staff2svConfirmed = btn.dataset.staff2svConfirmed || '0';
             document.getElementById('editStaffRole').value = btn.dataset.staffRole;
+            var checkbox = document.getElementById('editStaff2svCheckbox');
+            if (checkbox) checkbox.checked = false;
+            updateRecovery2svField(emailInput, document.getElementById('editStaff2svField'), checkbox);
             openModal('editStaffModal');
         });
     });
+
+    function normalizeEmail(value) {
+        return (value || '').trim().toLowerCase();
+    }
+
+    function recovery2svRequired(emailInput) {
+        var current = normalizeEmail(emailInput.value);
+        var original = normalizeEmail(emailInput.dataset.originalEmail || '');
+        var confirmed = emailInput.dataset.staff2svConfirmed === '1' || emailInput.dataset['2svConfirmed'] === '1';
+        if (current === '') return true;
+        if (current !== original) return true;
+        return !confirmed;
+    }
+
+    function updateRecovery2svField(emailInput, fieldEl, checkboxEl) {
+        if (!emailInput || !fieldEl) return;
+        var required = recovery2svRequired(emailInput);
+        fieldEl.classList.toggle('hidden', !required);
+        if (checkboxEl) {
+            checkboxEl.required = required;
+            if (!required) checkboxEl.checked = false;
+        }
+    }
+
+    var profileEmail = document.getElementById('profileEmail');
+    if (profileEmail) {
+        var profile2svField = document.getElementById('profile2svField');
+        var profileCheckbox = profile2svField ? profile2svField.querySelector('.recovery-2sv-checkbox') : null;
+        profileEmail.addEventListener('input', function () {
+            updateRecovery2svField(profileEmail, profile2svField, profileCheckbox);
+        });
+    }
+
+    var editStaffEmail = document.getElementById('editStaffEmail');
+    if (editStaffEmail) {
+        editStaffEmail.addEventListener('input', function () {
+            updateRecovery2svField(editStaffEmail, document.getElementById('editStaff2svField'), document.getElementById('editStaff2svCheckbox'));
+        });
+    }
 
     document.querySelectorAll('.reset-staff-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {

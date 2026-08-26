@@ -1,17 +1,23 @@
-# VS Code / Cursor
+# IDE
 .vscode/
 
-# Environment files
+# Environment
 .env
 .env.*
 
-# Logs
-*.log
+# Runtime / secrets (generated on server)
+storage/*
+!storage/.htaccess
+uploads/ids/*
+!uploads/ids/.htaccess
+uploads/staff/*
+!uploads/staff/.htaccess
 
-# Temporary files
+# Logs & temp
+*.log
 *.tmp
 *.temp
 
-# OS files
+# OS
 .DS_Store
 Thumbs.db

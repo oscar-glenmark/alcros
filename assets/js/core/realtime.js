@@ -321,12 +321,6 @@
         return p[1] + '/' + p[2] + '/' + p[0];
     }
 
-    function initManageRequests() {
-        // Keep server-rendered Save/Advance/Delete forms. Replacing the table
-        // here previously dropped auth fields and the status dropdown.
-        return;
-    }
-
     function initAppointments() {
         var viewDate = document.body.dataset.appointmentDate;
         if (!viewDate) return;
@@ -374,7 +368,6 @@
         if (mode === 'queue-display') initQueueDisplay();
         if (mode === 'dashboard') initDashboard();
         if (mode === 'track' || mode === 'track-appointment') initTrack();
-        if (mode === 'requests') initManageRequests();
         if (mode === 'appointments') initAppointments();
     });
 })();

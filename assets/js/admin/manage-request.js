@@ -77,8 +77,4 @@
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape' && modal.classList.contains('flex')) closeRequestModal();
     });
-
-    document.addEventListener('alcros:requests-refreshed', function () {
-        if (typeof lucide !== 'undefined') lucide.createIcons();
-    });
 })();

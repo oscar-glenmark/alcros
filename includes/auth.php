@@ -271,11 +271,6 @@ function isAdmin(): bool
     return staffRole() === 'Administrator';
 }
 
-function isStaffMember(): bool
-{
-    return staffRole() === 'Staff';
-}
-
 function staffMenuPages(): array
 {
     return [

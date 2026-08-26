@@ -46,7 +46,7 @@ $defaults = [
 
 function currentStaffRow(PDO $pdo, string $staffId): ?array
 {
-    $stmt = $pdo->prepare('SELECT staff_id, name, role, created_at, profile_photo_path FROM staff WHERE staff_id = ? LIMIT 1');
+    $stmt = $pdo->prepare('SELECT staff_id, name, email, recovery_gmail_2sv_confirmed, role, created_at, profile_photo_path FROM staff WHERE staff_id = ? LIMIT 1');
     $stmt->execute([$staffId]);
     $row = $stmt->fetch();
     return $row ?: null;
@@ -77,11 +77,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         if ($action === 'update_profile') {
             $name = trim($_POST['profile_name'] ?? '');
+            $email = normalizeStaffEmail(trim($_POST['profile_email'] ?? ''));
             if ($name === '') {
                 throw new InvalidArgumentException('Display name cannot be empty.');
             }
-            $pdo->prepare('UPDATE staff SET name = ? WHERE staff_id = ?')->execute([$name, $currentStaffId]);
-            logActivity($currentStaffId, 'Profile Updated', 'Updated display name');
+            if ($emailError = validateStaffEmail($email)) {
+                throw new InvalidArgumentException($emailError);
+            }
+            if (staffEmailInUse($pdo, $email, $currentStaffId)) {
+                throw new InvalidArgumentException('That Gmail address is already used by another staff account.');
+            }
+            $existing = currentStaffRow($pdo, $currentStaffId);
+            $needs2sv = staffRecoveryGmailNeeds2svConfirmation($existing, $email);
+            $confirmedCheckbox = !empty($_POST['recovery_gmail_2sv_confirmed']);
+            if ($needs2sv && ($error2sv = validateStaffRecoveryGmail2sv($confirmedCheckbox))) {
+                throw new InvalidArgumentException($error2sv);
+            }
+            $confirmedValue = staffRecoveryGmail2svConfirmedValue($existing, $email, $confirmedCheckbox);
+            $pdo->prepare('UPDATE staff SET name = ?, email = ?, recovery_gmail_2sv_confirmed = ? WHERE staff_id = ?')
+                ->execute([$name, $email, $confirmedValue, $currentStaffId]);
+            logActivity($currentStaffId, 'Profile Updated', 'Updated display name and recovery Gmail');
             settingsFlashSet('success', 'Your profile has been updated.');
         } elseif ($action === 'change_password') {
             $current = $_POST['current_password'] ?? '';
@@ -125,6 +140,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'add_staff' && $isAdmin) {
             $name = trim($_POST['staff_name'] ?? '');
             $newStaffId = strtoupper(trim($_POST['staff_id_new'] ?? ''));
+            $email = normalizeStaffEmail(trim($_POST['staff_email'] ?? ''));
             $password = $_POST['staff_password'] ?? '';
             $role = $_POST['staff_role'] ?? 'Staff';
             $validRoles = ['Staff', 'Administrator'];
@@ -133,6 +149,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if ($name === '' || $newStaffId === '' || $password === '') {
                 throw new InvalidArgumentException('Please fill in name, staff ID, and password.');
+            }
+            if ($emailError = validateStaffEmail($email)) {
+                throw new InvalidArgumentException($emailError);
+            }
+            if (staffEmailInUse($pdo, $email)) {
+                throw new InvalidArgumentException('That Gmail address is already used by another staff account.');
+            }
+            if ($error2sv = validateStaffRecoveryGmail2sv(!empty($_POST['recovery_gmail_2sv_confirmed']))) {
+                throw new InvalidArgumentException($error2sv);
             }
             if (strlen($password) < 6) {
                 throw new InvalidArgumentException('Password must be at least 6 characters.');
@@ -148,13 +173,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ((int) $exists->fetchColumn() > 0) {
                 throw new InvalidArgumentException('That Staff ID is already in use.');
             }
-            $pdo->prepare('INSERT INTO staff (staff_id, name, password_hash, role) VALUES (?, ?, ?, ?)')
-                ->execute([$newStaffId, $name, password_hash($password, PASSWORD_DEFAULT), $role]);
+            $pdo->prepare('INSERT INTO staff (staff_id, name, email, recovery_gmail_2sv_confirmed, password_hash, role) VALUES (?, ?, ?, 1, ?, ?)')
+                ->execute([$newStaffId, $name, $email, password_hash($password, PASSWORD_DEFAULT), $role]);
             logActivity($currentStaffId, 'Staff Added', "Created staff account $newStaffId ($name)");
             settingsFlashSet('success', "Staff member $name ($newStaffId) added successfully.");
         } elseif ($action === 'update_staff' && $isAdmin) {
             $targetId = strtoupper(trim($_POST['target_staff_id'] ?? ''));
             $name = trim($_POST['edit_staff_name'] ?? '');
+            $email = normalizeStaffEmail(trim($_POST['edit_staff_email'] ?? ''));
             $role = $_POST['edit_staff_role'] ?? 'Staff';
             $validRoles = ['Staff', 'Administrator'];
             if (!in_array($role, $validRoles, true)) {
@@ -163,10 +189,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($targetId === '' || $name === '') {
                 throw new InvalidArgumentException('Staff ID and name are required.');
             }
+            if ($emailError = validateStaffEmail($email)) {
+                throw new InvalidArgumentException($emailError);
+            }
+            if (staffEmailInUse($pdo, $email, $targetId)) {
+                throw new InvalidArgumentException('That Gmail address is already used by another staff account.');
+            }
+            $existing = currentStaffRow($pdo, $targetId);
+            $needs2sv = staffRecoveryGmailNeeds2svConfirmation($existing, $email);
+            $confirmedCheckbox = !empty($_POST['recovery_gmail_2sv_confirmed']);
+            if ($needs2sv && ($error2sv = validateStaffRecoveryGmail2sv($confirmedCheckbox))) {
+                throw new InvalidArgumentException($error2sv);
+            }
+            $confirmedValue = staffRecoveryGmail2svConfirmedValue($existing, $email, $confirmedCheckbox);
             if ($targetId === $currentStaffId && $role !== 'Administrator' && adminCount($pdo) <= 1) {
                 throw new InvalidArgumentException('Cannot demote the last administrator account.');
             }
-            $pdo->prepare('UPDATE staff SET name = ?, role = ? WHERE staff_id = ?')->execute([$name, $role, $targetId]);
+            $pdo->prepare('UPDATE staff SET name = ?, email = ?, recovery_gmail_2sv_confirmed = ?, role = ? WHERE staff_id = ?')
+                ->execute([$name, $email, $confirmedValue, $role, $targetId]);
             logActivity($currentStaffId, 'Staff Updated', "Updated account $targetId");
             settingsFlashSet('success', "Staff account $targetId updated.");
         } elseif ($action === 'reset_staff_password' && $isAdmin) {
@@ -262,7 +302,8 @@ foreach ($adminSettingKeys as $key) {
 }
 
 $currentStaff = currentStaffRow($pdo, $currentStaffId);
-$staffMembers = $pdo->query('SELECT staff_id, name, role, created_at, profile_photo_path FROM staff ORDER BY created_at ASC')->fetchAll();
+$profileNeeds2svConfirmation = staffRecoveryGmailNeeds2svConfirmation($currentStaff, (string) ($currentStaff['email'] ?? ''));
+$staffMembers = $pdo->query('SELECT staff_id, name, email, recovery_gmail_2sv_confirmed, role, created_at, profile_photo_path FROM staff ORDER BY created_at ASC')->fetchAll();
 $systemStats = $isAdmin ? getSystemStats($pdo) : [];
 $recentLogs = $isAdmin
     ? $pdo->query('SELECT staff_id, action, details, created_at FROM activity_logs ORDER BY created_at DESC LIMIT 8')->fetchAll()
@@ -384,12 +425,21 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                 <p class="text-sm font-semibold text-slate-800"><?= $lastLogin ? formatRecordDate(substr($lastLogin, 0, 10)) : 'First session' ?></p>
                             </div>
                             <div class="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                <p class="text-[10px] font-bold text-slate-400 uppercase mb-1">Recovery Gmail</p>
+                                <p class="text-sm font-semibold text-slate-800 truncate"><?= htmlspecialchars($currentStaff['email'] ?? 'Not set') ?></p>
+                                <?php if (!empty($currentStaff['email'])): ?>
+                                <p class="text-[10px] mt-1 <?= !empty($currentStaff['recovery_gmail_2sv_confirmed']) ? 'text-emerald-600' : 'text-amber-600' ?> font-semibold">
+                                    <?= !empty($currentStaff['recovery_gmail_2sv_confirmed']) ? '2-Step Verification confirmed' : '2-Step Verification not confirmed — password reset disabled' ?>
+                                </p>
+                                <?php endif; ?>
+                            </div>
+                            <div class="bg-slate-50 rounded-xl p-4 border border-slate-100">
                                 <p class="text-[10px] font-bold text-slate-400 uppercase mb-1">Office Email</p>
                                 <p class="text-sm font-semibold text-slate-800 truncate"><?= htmlspecialchars($settings['office_email']) ?></p>
                             </div>
                         </div>
 
-                        <form method="POST" class="space-y-4 border-t border-slate-100 pt-6">
+                        <form method="POST" class="space-y-4 border-t border-slate-100 pt-6" id="profileForm">
                             <?= authFormField() ?>
                             <input type="hidden" name="settings_action" value="update_profile">
                             <input type="hidden" name="active_tab" value="my-account">
@@ -404,6 +454,20 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                     <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Staff ID</label>
                                     <input type="text" readonly value="<?= htmlspecialchars($currentStaffId) ?>"
                                         class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-500 font-mono">
+                                </div>
+                                <div class="sm:col-span-2">
+                                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Recovery Gmail *</label>
+                                    <input type="email" name="profile_email" id="profileEmail" required value="<?= htmlspecialchars($currentStaff['email'] ?? '') ?>" placeholder="you@gmail.com"
+                                        data-original-email="<?= htmlspecialchars($currentStaff['email'] ?? '') ?>"
+                                        data-2sv-confirmed="<?= !empty($currentStaff['recovery_gmail_2sv_confirmed']) ? '1' : '0' ?>"
+                                        class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
+                                    <p class="text-[10px] text-slate-400 mt-1">Must be a Gmail account with <strong>Google 2-Step Verification</strong> already enabled. Used for password reset codes.</p>
+                                </div>
+                                <div class="sm:col-span-2 recovery-2sv-field <?= $profileNeeds2svConfirmation ? '' : 'hidden' ?>" id="profile2svField">
+                                    <label class="flex items-start gap-3 cursor-pointer">
+                                        <input type="checkbox" name="recovery_gmail_2sv_confirmed" value="1" class="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 recovery-2sv-checkbox" <?= $profileNeeds2svConfirmation ? 'required' : '' ?>>
+                                        <span class="text-xs text-slate-600 leading-relaxed">I confirm this Gmail account already has Google 2-Step Verification turned on. <a href="https://myaccount.google.com/signinoptions/two-step-verification" target="_blank" rel="noopener noreferrer" class="text-blue-600 font-semibold hover:underline">Enable 2-Step Verification</a></span>
+                                    </label>
                                 </div>
                             </div>
                             <div class="flex justify-end">
@@ -420,7 +484,9 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                         <p class="text-xs text-slate-500 mb-6">Change your password and review account security policies.</p>
 
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-600 mb-8 space-y-1">
-                            <p><strong>Password policy:</strong> Minimum 6 characters. Use a unique password not shared with other systems.</p>
+                            <p><strong>Password policy:</strong> Minimum 10 characters with uppercase, lowercase, and a number.</p>
+                            <p><strong>Forgot password:</strong> Use the link on the login page. A 6-digit code is sent to your registered Gmail with 2-Step Verification confirmed.</p>
+                            <p><strong>Recovery Gmail:</strong> Must be @gmail.com with Google 2-Step Verification already enabled before password reset works.</p>
                             <p><strong>Staff IDs:</strong> Alphanumeric characters and hyphens only (e.g. ALORAN-001).</p>
                             <p><strong>Session:</strong> Login tokens expire after 7 days of inactivity.</p>
                         </div>
@@ -474,6 +540,11 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                 <input type="text" name="staff_id_new" required placeholder="ALORAN-002" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm uppercase focus:outline-none focus:border-blue-500">
                             </div>
                             <div>
+                                <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Recovery Gmail *</label>
+                                <input type="email" name="staff_email" required placeholder="staff@gmail.com" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+                                <p class="text-[10px] text-slate-400 mt-1">Gmail with Google 2-Step Verification required.</p>
+                            </div>
+                            <div>
                                 <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Role</label>
                                 <select name="staff_role" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
                                     <option value="Staff">Staff</option>
@@ -483,6 +554,12 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                             <div>
                                 <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Password</label>
                                 <input type="password" name="staff_password" required minlength="6" placeholder="Minimum 6 characters" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label class="flex items-start gap-3 cursor-pointer">
+                                    <input type="checkbox" name="recovery_gmail_2sv_confirmed" value="1" required class="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+                                    <span class="text-xs text-slate-600 leading-relaxed">I confirm this Gmail account already has Google 2-Step Verification turned on. <a href="https://myaccount.google.com/signinoptions/two-step-verification" target="_blank" rel="noopener noreferrer" class="text-blue-600 font-semibold hover:underline">Enable 2-Step Verification</a></span>
+                                </label>
                             </div>
                             <div class="sm:col-span-2">
                                 <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-6 py-2.5 rounded-xl text-sm font-semibold">Add Staff Member</button>
@@ -496,6 +573,8 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                         <th class="px-4 py-3">Photo</th>
                                         <th class="px-4 py-3">Staff ID</th>
                                         <th class="px-4 py-3">Name</th>
+                                        <th class="px-4 py-3">Gmail</th>
+                                        <th class="px-4 py-3">2SV</th>
                                         <th class="px-4 py-3">Role</th>
                                         <th class="px-4 py-3">Added</th>
                                         <th class="px-4 py-3 text-right">Actions</th>
@@ -531,6 +610,16 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                             <?= htmlspecialchars($member['name']) ?>
                                             <?php if ($member['staff_id'] === $currentStaffId): ?><span class="text-[9px] text-blue-500 font-normal"> (You)</span><?php endif; ?>
                                         </td>
+                                        <td class="px-4 py-3 text-xs text-slate-600 whitespace-nowrap"><?= htmlspecialchars($member['email'] ?? '—') ?></td>
+                                        <td class="px-4 py-3 whitespace-nowrap">
+                                            <?php if (empty($member['email'])): ?>
+                                            <span class="text-[10px] text-slate-400">—</span>
+                                            <?php elseif (!empty($member['recovery_gmail_2sv_confirmed'])): ?>
+                                            <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">Confirmed</span>
+                                            <?php else: ?>
+                                            <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-amber-100 text-amber-700">Required</span>
+                                            <?php endif; ?>
+                                        </td>
                                         <td class="px-4 py-3">
                                             <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded whitespace-nowrap <?= $member['role'] === 'Staff' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700' ?>"><?= htmlspecialchars($member['role']) ?></span>
                                         </td>
@@ -539,7 +628,9 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                             <button type="button" class="edit-staff-btn text-[10px] font-semibold text-blue-600 hover:underline"
                                                 data-staff-id="<?= htmlspecialchars($member['staff_id']) ?>"
                                                 data-staff-name="<?= htmlspecialchars($member['name']) ?>"
-                                                data-staff-role="<?= htmlspecialchars($member['role']) ?>">Edit</button>
+                                                data-staff-email="<?= htmlspecialchars($member['email'] ?? '') ?>"
+                                                data-staff-role="<?= htmlspecialchars($member['role']) ?>"
+                                                data-staff-2sv-confirmed="<?= !empty($member['recovery_gmail_2sv_confirmed']) ? '1' : '0' ?>">Edit</button>
                                             <span class="text-slate-200 mx-1">·</span>
                                             <button type="button" class="reset-staff-btn text-[10px] font-semibold text-amber-600 hover:underline"
                                                 data-staff-id="<?= htmlspecialchars($member['staff_id']) ?>">Reset</button>
@@ -727,6 +818,17 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                 <div>
                     <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Full Name</label>
                     <input type="text" name="edit_staff_name" id="editStaffName" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Recovery Gmail</label>
+                    <input type="email" name="edit_staff_email" id="editStaffEmail" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
+                    <p class="text-[10px] text-slate-400 mt-1">Gmail with Google 2-Step Verification required.</p>
+                </div>
+                <div id="editStaff2svField" class="recovery-2sv-field hidden">
+                    <label class="flex items-start gap-3 cursor-pointer">
+                        <input type="checkbox" name="recovery_gmail_2sv_confirmed" value="1" id="editStaff2svCheckbox" class="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 recovery-2sv-checkbox">
+                        <span class="text-xs text-slate-600 leading-relaxed">I confirm this Gmail account already has Google 2-Step Verification turned on. <a href="https://myaccount.google.com/signinoptions/two-step-verification" target="_blank" rel="noopener noreferrer" class="text-blue-600 font-semibold hover:underline">Enable 2-Step Verification</a></span>
+                    </label>
                 </div>
                 <div>
                     <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Role</label>

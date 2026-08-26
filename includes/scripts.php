@@ -56,9 +56,3 @@ function lucideInitScript(): string
 {
     return scriptTag('core/lucide-init.js');
 }
-
-function pageScripts(array $paths, array $attrs = []): string
-{
-    $out = scriptTags($paths, $attrs);
-    return $out !== '' ? $out . "\n    " . lucideInitScript() : lucideInitScript();
-}

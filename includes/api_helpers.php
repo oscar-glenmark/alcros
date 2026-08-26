@@ -157,65 +157,6 @@ function fetchDashboardStats(PDO $pdo, bool $isAdmin, string $staffId): array
     ];
 }
 
-function fetchManageRequests(PDO $pdo, string $filterStatus, string $search, string $filterType = 'all', int $limit = 0, int $offset = 0): array
-{
-    $sql = 'SELECT * FROM document_requests WHERE 1=1';
-    $params = [];
-    if ($filterStatus !== 'all' && $filterStatus !== '') {
-        $sql .= ' AND status = ?';
-        $params[] = $filterStatus;
-    }
-    if ($filterType !== 'all' && $filterType !== '') {
-        $sql .= ' AND document_type = ?';
-        $params[] = $filterType;
-    }
-    if ($search !== '') {
-        $sql .= ' AND (citizen_name LIKE ? OR tracking_code LIKE ? OR email LIKE ? OR phone LIKE ?)';
-        $term = "%$search%";
-        array_push($params, $term, $term, $term, $term);
-    }
-    $sql .= ' ORDER BY submitted_at DESC';
-    if ($limit > 0) {
-        $sql .= ' LIMIT ' . (int) $limit . ' OFFSET ' . (int) $offset;
-    }
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    return $stmt->fetchAll();
-}
-
-function countManageRequests(PDO $pdo, string $filterStatus, string $search, string $filterType = 'all'): int
-{
-    $sql = 'SELECT COUNT(*) FROM document_requests WHERE 1=1';
-    $params = [];
-    if ($filterStatus !== 'all' && $filterStatus !== '') {
-        $sql .= ' AND status = ?';
-        $params[] = $filterStatus;
-    }
-    if ($filterType !== 'all' && $filterType !== '') {
-        $sql .= ' AND document_type = ?';
-        $params[] = $filterType;
-    }
-    if ($search !== '') {
-        $sql .= ' AND (citizen_name LIKE ? OR tracking_code LIKE ? OR email LIKE ? OR phone LIKE ?)';
-        $term = "%$search%";
-        array_push($params, $term, $term, $term, $term);
-    }
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    return (int) $stmt->fetchColumn();
-}
-
-function fetchRequestStatusCounts(PDO $pdo): array
-{
-    $rows = $pdo->query("SELECT status, COUNT(*) AS cnt FROM document_requests GROUP BY status")->fetchAll();
-    $counts = array_fill_keys(requestStatusOptions(), 0);
-    foreach ($rows as $row) {
-        $counts[$row['status']] = (int) $row['cnt'];
-    }
-    $counts['all'] = array_sum($counts);
-    return $counts;
-}
-
 function fetchAppointments(PDO $pdo, string $date): array
 {
     $stmt = $pdo->prepare(
@@ -234,18 +175,6 @@ function documentTypeLabelsMap(): array
         'marriage' => 'Marriage Certificate',
         'cenomar'  => 'CENOMAR',
     ];
-}
-
-function statusBadgeClass(string $status): string
-{
-    $classes = [
-        'pending'    => 'bg-yellow-100 text-yellow-700',
-        'verified'   => 'bg-blue-100 text-blue-700',
-        'ready'      => 'bg-green-100 text-green-700',
-        'completed'  => 'bg-gray-100 text-gray-600',
-        'rejected'   => 'bg-red-100 text-red-700',
-    ];
-    return $classes[$status] ?? 'bg-gray-100 text-gray-600';
 }
 
 function fetchNotifications(PDO $pdo, int $limit = 20): array

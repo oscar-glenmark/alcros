@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS staff (
     name VARCHAR(100) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(50) NOT NULL DEFAULT 'Staff',
+    email VARCHAR(150) DEFAULT NULL,
+    recovery_gmail_2sv_confirmed TINYINT(1) NOT NULL DEFAULT 0,
     profile_photo_path VARCHAR(255) DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
@@ -210,6 +212,17 @@ CREATE TABLE IF NOT EXISTS request_status_history (
     INDEX idx_created (created_at),
     CONSTRAINT fk_status_history_request
         FOREIGN KEY (request_id) REFERENCES document_requests(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS staff_password_otps (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    staff_id VARCHAR(50) NOT NULL,
+    otp_hash VARCHAR(255) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_staff_otp (staff_id),
+    INDEX idx_expires (expires_at)
 ) ENGINE=InnoDB;
 
 -- Default administrator (change password after first login in System Settings).

@@ -1,19 +1,7 @@
 <?php
 /**
- * ALCROS - Staff Portal Login (login.php)
- *
- * Functional additions (design untouched):
- *  - Real POST-based authentication against a staff directory
- *  - Session creation on success, with session_regenerate_id() to prevent fixation
- *  - CSRF token on the form
- *  - Redirects already-logged-in staff straight to dashboard.php
- *  - Redirects back to whatever page the user was trying to reach (?redirect=)
- *  - Inline error message on failed login (small addition, styled to match the card)
- *  - Working eye-icon password show/hide toggle
- *  - "Sign in with Google" is left as a visual button wired to a stub (oauth_google.php)
- *    since real Google sign-in requires OAuth client credentials you'll need to supply
+ * ALCROS staff portal login.
  */
-
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
@@ -25,15 +13,12 @@ if (!preg_match('/^[a-zA-Z0-9_\-\.]+\.php(\?.*)?$/', $redirectTarget)) {
     $redirectTarget = 'dashboard.php';
 }
 
-// CSRF token
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    rateLimitOrAbort(rateLimitKey('login', strtoupper(trim($_POST['staff_id'] ?? ''))), 8, 900, 'Too many login attempts. Please wait 15 minutes and try again.');
-}
-
 $error = '';
 $submittedStaffId = '';
+$resetSuccess = isset($_GET['reset']) && $_GET['reset'] === '1';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    rateLimitOrAbort(rateLimitKey('login', strtoupper(trim($_POST['staff_id'] ?? ''))), 8, 900, 'Too many login attempts. Please wait 15 minutes and try again.');
     $submittedStaffId = strtoupper(trim($_POST['staff_id'] ?? ''));
     $password          = $_POST['password'] ?? '';
     $csrf               = $_POST['csrf_token'] ?? '';
@@ -106,6 +91,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </span>
             </div>
 
+            <?php if ($resetSuccess): ?>
+            <div class="mb-6 px-4 py-3 rounded-xl bg-green-50 border border-green-100 text-green-700 text-[11px] font-semibold text-left flex items-center gap-2">
+                <i data-lucide="check-circle" class="w-3.5 h-3.5 flex-shrink-0"></i>
+                <span>Password updated. Sign in with your new password.</span>
+            </div>
+            <?php endif; ?>
+
             <?php if ($error): ?>
             <div class="mb-6 px-4 py-3 rounded-xl bg-red-50 border border-red-100 text-red-600 text-[11px] font-semibold text-left flex items-center gap-2">
                 <i data-lucide="alert-circle" class="w-3.5 h-3.5 flex-shrink-0"></i>
@@ -143,24 +135,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             required
                         >
                     </div>
+                    <div class="text-right mt-1.5">
+                        <a href="forgot_password.php" class="text-[10px] font-bold text-blue-600 hover:underline">Forgot password?</a>
+                    </div>
                 </div>
 
                 <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3.5 text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-md shadow-blue-100" data-loading-text="Signing in…">
                     <i data-lucide="log-in" class="w-4 h-4"></i> Sign In
                 </button>
             </form>
-
-            <div class="relative my-8">
-                <div class="absolute inset-0 flex items-center"><span class="w-full border-t border-gray-100"></span></div>
-                <div class="relative flex justify-center text-[9px] uppercase font-black tracking-widest text-gray-400">
-                    <span class="bg-white px-3">Or Continue With</span>
-                </div>
-            </div>
-
-            <a href="oauth_google.php?redirect=<?= urlencode($redirectTarget) ?>" class="w-full border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl py-3 text-xs font-bold flex items-center justify-center gap-3 transition-all">
-                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-4 h-4" alt="Google">
-                Sign in with Google
-            </a>
         </div>
 
         <div class="bg-gray-50/50 py-6 border-t border-gray-50 text-center">

@@ -28,7 +28,8 @@
 
         function tick() {
             if (stopped || (!pollInBackground && document.hidden)) return;
-            fetch(buildUrl(url, params), { credentials: 'same-origin', cache: 'no-store' })
+            var resolved = typeof params === 'function' ? params() : (params || {});
+            fetch(buildUrl(url, resolved), { credentials: 'same-origin', cache: 'no-store' })
                 .then(function (r) { return r.json(); })
                 .then(function (data) {
                     if (data && data.ok !== false) {

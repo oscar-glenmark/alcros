@@ -1,0 +1,131 @@
+.dash-card {
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.dash-card:hover {
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+}
+
+.stat-link:hover {
+    border-color: #93c5fd;
+}
+
+.dash-schedule-calendar {
+    user-select: none;
+}
+
+.dash-cal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.65rem;
+}
+
+.dash-cal-month {
+    font-size: 0.8125rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.dash-cal-nav {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 0.5rem;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    color: #64748b;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+
+.dash-cal-nav:hover {
+    border-color: #93c5fd;
+    color: #2563eb;
+    background: #f8fafc;
+}
+
+.dash-cal-weekdays,
+.dash-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.25rem;
+}
+
+.dash-cal-weekdays {
+    margin-bottom: 0.35rem;
+}
+
+.dash-cal-weekdays span {
+    text-align: center;
+    font-size: 0.5625rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #94a3b8;
+}
+
+.dash-cal-cell--blank {
+    min-height: 2rem;
+}
+
+.dash-cal-day {
+    position: relative;
+    min-height: 2rem;
+    border: 1px solid transparent;
+    border-radius: 0.55rem;
+    background: transparent;
+    color: #334155;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.125rem;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.dash-cal-day:hover {
+    background: #f1f5f9;
+}
+
+.dash-cal-day.is-today {
+    border-color: #bfdbfe;
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.dash-cal-day.is-selected {
+    border-color: #2563eb;
+    background: #2563eb;
+    color: #fff;
+}
+
+.dash-cal-day.is-selected.is-today {
+    border-color: #1d4ed8;
+    background: #1d4ed8;
+}
+
+.dash-cal-day.has-appointments .dash-cal-dot {
+    display: block;
+}
+
+.dash-cal-dot {
+    display: none;
+    width: 0.3rem;
+    height: 0.3rem;
+    border-radius: 9999px;
+    background: #10b981;
+}
+
+.dash-cal-day.is-selected .dash-cal-dot {
+    background: #fff;
+}
+
+.dash-cal-day-num {
+    line-height: 1;
+}

@@ -9,6 +9,16 @@
         if (el) el.textContent = value || '—';
     }
 
+    function renderIdFiles(container, data) {
+        if (!container) return;
+        if (window.AlcrosIdPreview && typeof window.AlcrosIdPreview.renderGrid === 'function') {
+            container.innerHTML = window.AlcrosIdPreview.renderGrid(data.id_front_path, data.id_back_path);
+            return;
+        }
+        var html = idLink('Front ID', data.id_front_path) + idLink('Back ID', data.id_back_path);
+        container.innerHTML = html || '<span class="text-xs text-gray-400 italic">No ID files uploaded.</span>';
+    }
+
     function idLink(label, path) {
         if (!path) return '';
         var isPdf = /\.pdf$/i.test(path);
@@ -33,10 +43,7 @@
         setText('view-updated', data.updated_at);
 
         var idFiles = document.getElementById('view-id-files');
-        if (idFiles) {
-            var html = idLink('Front ID', data.id_front_path) + idLink('Back ID', data.id_back_path);
-            idFiles.innerHTML = html || '<span class="text-xs text-gray-400 italic">No ID files uploaded.</span>';
-        }
+        renderIdFiles(idFiles, data);
 
         var notesWrap = document.getElementById('view-notes-wrap');
         var notesEl = document.getElementById('view-notes');

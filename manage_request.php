@@ -13,8 +13,14 @@ ensureCitizenNotifyColumns($pdo);
 
 function manageRequestsRedirectFilters(): array
 {
+    $status = $_POST['redirect_status'] ?? $_GET['status'] ?? 'all';
+    $allowed = ['all', 'pending', 'rejected'];
+    if (!in_array($status, $allowed, true)) {
+        $status = 'all';
+    }
+
     return [
-        'status' => $_POST['redirect_status'] ?? $_GET['status'] ?? 'all',
+        'status' => $status,
         'q'      => $_POST['redirect_q'] ?? $_GET['q'] ?? '',
     ];
 }
@@ -34,27 +40,44 @@ function updateDocumentRequestStatus(PDO $pdo, int $id, string $status): bool
     }
 
     $oldStatus = (string) $row['status'];
-    if ($oldStatus === $status) {
+    $staffAction = $status;
+    $saveStatus = $staffAction === 'verified' ? 'ready' : $staffAction;
+
+    if ($oldStatus === $saveStatus) {
         return true;
     }
 
     $stmt = $pdo->prepare('UPDATE document_requests SET status = ?, updated_at = NOW() WHERE id = ?');
-    $stmt->execute([$status, $id]);
+    $stmt->execute([$saveStatus, $id]);
 
     $checkStmt = $pdo->prepare('SELECT status FROM document_requests WHERE id = ?');
     $checkStmt->execute([$id]);
     $savedStatus = (string) $checkStmt->fetchColumn();
-    if ($savedStatus !== $status) {
+    if ($savedStatus !== $saveStatus) {
         return false;
     }
 
     try {
-        notifyRequestStatusChange($pdo, $id, $status);
+        if ($staffAction === 'verified') {
+            syncDocumentRequestAppointment($pdo, $id, 'verified');
+        } else {
+            syncDocumentRequestAppointment($pdo, $id, $saveStatus);
+        }
+    } catch (Throwable $e) {
+        // Status is already saved; appointment sync failure should not block staff.
+    }
+
+    try {
+        notifyRequestStatusChange($pdo, $id, $saveStatus);
     } catch (Throwable $e) {
         // Status is already saved; email failure should not block staff.
     }
-    logRequestStatusChange($pdo, $id, (string) $row['tracking_code'], $oldStatus, $status, staffId());
-    logActivity(staffId(), 'Request Updated', 'Changed ' . $row['tracking_code'] . ' to ' . $status);
+    logRequestStatusChange($pdo, $id, (string) $row['tracking_code'], $oldStatus, $saveStatus, staffId());
+    $logLabel = requestStatusLabel($saveStatus);
+    if ($staffAction === 'verified') {
+        $logLabel = 'Ready for Pickup (verified)';
+    }
+    logActivity(staffId(), 'Request Updated', 'Changed ' . $row['tracking_code'] . ' to ' . $logLabel);
 
     return true;
 }
@@ -69,7 +92,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($isUpdate) {
         $status = (string) ($_POST['status'] ?? '');
         if (updateDocumentRequestStatus($pdo, $id, $status)) {
-            manageRequestsFlashSet('success', 'Request status saved as ' . requestStatusLabel($status) . '.');
+            if ($status === 'verified') {
+                manageRequestsFlashSet('success', 'Request verified — moved to Appointments as ready for pickup.');
+            } else {
+                manageRequestsFlashSet('success', 'Request status saved as ' . requestStatusLabel($status) . '.');
+            }
         } else {
             manageRequestsFlashSet('error', 'Could not update request status. Please try again.');
         }
@@ -88,14 +115,28 @@ $filterStatus = $_GET['status'] ?? 'all';
 $search       = trim($_GET['q'] ?? '');
 $flash        = manageRequestsFlashGet();
 
+$statusFilters = ['all' => 'Pending queue', 'pending' => 'Pending', 'rejected' => 'Rejected'];
+if (!isset($statusFilters[$filterStatus])) {
+    $filterStatus = 'all';
+}
+
 $sql = 'SELECT * FROM document_requests WHERE 1=1';
 $params = [];
-if ($filterStatus !== 'all' && $filterStatus !== '') {
+if ($search !== '') {
+    if ($filterStatus !== 'all' && $filterStatus !== '') {
+        $sql .= ' AND status = ?';
+        $params[] = $filterStatus;
+    }
+} elseif ($filterStatus === 'all' || $filterStatus === '') {
+    $sql .= " AND status = 'pending'";
+} elseif ($filterStatus !== 'all' && $filterStatus !== '') {
     $sql .= ' AND status = ?';
     $params[] = $filterStatus;
 }
 if ($search !== '') {
-    $sql .= ' AND (citizen_name LIKE ? OR tracking_code LIKE ?)';
+    $sql .= ' AND (first_name LIKE ? OR middle_name LIKE ? OR last_name LIKE ? OR tracking_code LIKE ?)';
+    $params[] = "%$search%";
+    $params[] = "%$search%";
     $params[] = "%$search%";
     $params[] = "%$search%";
 }
@@ -104,7 +145,6 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $requests = $stmt->fetchAll();
 
-$statusFilters = ['all' => 'All', 'pending' => 'Pending', 'verified' => 'Verified', 'ready' => 'Ready', 'completed' => 'Completed', 'rejected' => 'Rejected'];
 $statusOptions = requestStatusUpdateOptions();
 ?>
 <!DOCTYPE html>
@@ -116,15 +156,8 @@ $statusOptions = requestStatusUpdateOptions();
     <title>Manage Requests - ALCROS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <?= adminLayoutHeadStyles('manage-requests') ?>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1e293b; }
-        .sidebar-item:hover { background-color: #f1f5f9; }
-        .active-nav { background-color: #2563eb; color: white !important; }
-        .status-btn { font-size: 10px; font-weight: 700; padding: 6px 12px; border-radius: 6px; text-transform: uppercase; transition: all 0.2s; }
-        .status-btn-inactive { color: #94a3b8; }
-        .status-btn-active { background-color: #f1f5f9; color: #1e293b; }
-    </style>
 </head>
 <body class="flex min-h-screen">
 
@@ -133,15 +166,12 @@ $statusOptions = requestStatusUpdateOptions();
     <main class="admin-main flex flex-col min-h-screen">
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
 
-        <div class="p-4 sm:p-6 lg:p-10 max-w-7xl mx-auto w-full">
-            <div class="mb-8">
-                <a href="<?= htmlspecialchars(buildAuthUrl('dashboard.php')) ?>" class="text-blue-600 text-[11px] font-bold flex items-center mb-2 hover:underline">
-                    <i data-lucide="chevron-left" class="w-3 h-3 mr-1"></i> Back to Dashboard
-                </a>
-                <div class="flex justify-between items-start">
+        <div class="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full admin-page-wrap">
+            <div class="admin-page-head">
+                <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
                     <div>
-                        <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Manage Requests</h1>
-                        <p class="text-gray-500 text-sm font-medium mt-1">Review, verify, and track citizen certificate requests.</p>
+                        <h1>Manage Requests</h1>
+                        <p>Review pending certificate requests. Verified requests move to Appointments as ready for pickup.</p>
                     </div>
                 </div>
             </div>
@@ -153,13 +183,13 @@ $statusOptions = requestStatusUpdateOptions();
             </div>
             <?php endif; ?>
 
-            <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col lg:flex-row lg:items-center gap-3 mb-6">
+            <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="admin-toolbar">
                 <?= authFormField() ?>
-                <div class="relative flex-1 w-full lg:max-w-2xl">
+                <div class="relative flex-1 w-full admin-toolbar-search">
                     <i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-gray-400"></i>
                     <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search citizen name or tracking code..." class="w-full pl-10 pr-4 py-2 text-sm bg-gray-50 border-none rounded-lg focus:ring-0 text-slate-600 placeholder-gray-400">
                 </div>
-                <div class="flex items-center bg-gray-50 p-1 rounded-lg border border-gray-100 overflow-x-auto flex-nowrap lg:ml-0">
+                <div class="admin-toolbar-filters">
                     <?php foreach ($statusFilters as $key => $label): ?>
                     <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php', array_filter(['status' => $key !== 'all' ? $key : null, 'q' => $search !== '' ? $search : null]))) ?>" class="status-btn whitespace-nowrap shrink-0 <?= $filterStatus === $key ? 'status-btn-active' : 'status-btn-inactive px-4' ?>"><?= $label ?></a>
                     <?php endforeach; ?>
@@ -196,7 +226,7 @@ $statusOptions = requestStatusUpdateOptions();
                         <?php foreach ($requests as $req): ?>
                         <tr data-request-row="<?= (int) $req['id'] ?>">
                             <td class="px-4 py-3 font-mono text-xs font-bold text-blue-600"><?= htmlspecialchars($req['tracking_code']) ?></td>
-                            <td class="px-4 py-3 font-semibold"><?= htmlspecialchars($req['citizen_name']) ?></td>
+                            <td class="px-4 py-3 font-semibold"><?= htmlspecialchars(personNameFromRow($req)) ?></td>
                             <td class="px-4 py-3 text-gray-500"><?= htmlspecialchars(documentTypeLabel($req['document_type'])) ?></td>
                             <td class="px-4 py-3"><?= requestStatusBadge($req['status']) ?></td>
                             <td class="px-4 py-3 text-gray-400 text-xs"><?= formatDateDisplay($req['submitted_at']) ?></td>
@@ -216,7 +246,7 @@ $statusOptions = requestStatusUpdateOptions();
                                         <input type="hidden" name="update_status" value="1">
                                         <select name="status" required class="text-[10px] border rounded px-2 py-1">
                                             <?php if (!in_array($req['status'], $statusOptions, true)): ?>
-                                            <option value="" selected disabled>Select status</option>
+                                            <option value="<?= htmlspecialchars($req['status']) ?>" selected disabled><?= htmlspecialchars(requestStatusLabel($req['status'])) ?></option>
                                             <?php endif; ?>
                                             <?php foreach ($statusOptions as $s): ?>
                                             <option value="<?= $s ?>" <?= $req['status'] === $s ? 'selected' : '' ?>><?= htmlspecialchars(requestStatusLabel($s)) ?></option>
@@ -231,7 +261,7 @@ $statusOptions = requestStatusUpdateOptions();
                                         <input type="hidden" name="redirect_q" value="<?= htmlspecialchars($search) ?>">
                                         <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
                                         <input type="hidden" name="delete_request" value="1">
-                                        <button type="submit" title="Delete completed request" class="text-gray-400 hover:text-red-500 p-1" data-loading-text="Deleting…" onclick="return confirm(<?= json_encode('Delete this completed request (' . $req['tracking_code'] . ')? This cannot be undone.') ?>)">
+                                        <button type="submit" title="Delete completed request" class="text-gray-400 hover:text-red-500 p-1" data-loading-text="Deleting…">
                                             <i data-lucide="trash-2" class="w-4 h-4"></i>
                                         </button>
                                     </form>
@@ -298,6 +328,7 @@ $statusOptions = requestStatusUpdateOptions();
             </div>
         </div>
     </div>
+    <?= scriptTag('admin/id-preview.js') ?>
     <?= scriptTag('core/page-config.js') ?>
     <?= scriptTag('admin/manage-request.js') ?>
     <?= lucideInitScript() ?>

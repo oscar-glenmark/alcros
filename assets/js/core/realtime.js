@@ -91,7 +91,7 @@
             actions.innerHTML = authInputHtml() +
                 '<input type="hidden" name="purpose" value="' + purpose + '">' +
                 '<input type="hidden" name="action" value="skip">' +
-                '<button type="submit" class="text-[11px] text-slate-400 hover:text-red-500 font-medium" onclick="return confirm(\'Mark current ticket as no-show?\')">No-show — skip current</button>';
+                '<button type="submit" class="text-[11px] text-slate-400 hover:text-red-500 font-medium">No-show — skip current</button>';
             section.querySelector('.p-5').appendChild(actions);
         } else if (!hasServing && skipParent) {
             skipParent.remove();
@@ -222,7 +222,17 @@
 
     function initDashboard() {
         var isAdmin = document.body.dataset.admin === '1';
-        AlcrosPoll.pollJson('api/dashboard_stats.php', {}, 45000, function (data) {
+
+        function pollDashboard() {
+            AlcrosPoll.pollJson('api/dashboard_stats.php', function () {
+                var state = window.AlcrosDashboardSchedule && window.AlcrosDashboardSchedule.getState
+                    ? window.AlcrosDashboardSchedule.getState()
+                    : {};
+                return {
+                    month: state.month || undefined,
+                    date: state.date || undefined
+                };
+            }, 45000, function (data) {
             var s = data.stats;
             AlcrosPoll.setText('stat-pending', s.pending_count);
             AlcrosPoll.setText('stat-queue', s.queue_count);
@@ -253,20 +263,27 @@
                 if (typeof lucide !== 'undefined') lucide.createIcons();
             }
 
-            var apptEl = document.getElementById('today-appts-list');
-            if (apptEl && data.today_appts) {
-                apptEl.innerHTML = data.today_appts.length ? data.today_appts.map(function (a) {
-                    var d = new Date('1970-01-01T' + a.appointment_time);
-                    var h = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-                    var ampm = d.toLocaleTimeString([], { hour: 'numeric', hour12: true }).split(' ')[1] || '';
-                    var status = a.status ? '<span class="text-[9px] font-bold uppercase text-gray-400 shrink-0">' + escapeHtml(a.status) + '</span>' : '';
-                    return '<div class="px-5 py-3 flex items-center gap-3"><div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex flex-col items-center justify-center shrink-0 leading-none"><span class="text-[9px] font-bold">' + escapeHtml(h.replace(/ [AP]M/i, '')) + '</span><span class="text-[8px] uppercase">' + escapeHtml(ampm) + '</span></div><div class="min-w-0 flex-1"><p class="text-sm font-semibold text-slate-800 truncate">' + escapeHtml(a.citizen_name) + '</p><p class="text-[10px] text-gray-400 truncate">' + escapeHtml(a.service_type) + '</p></div>' + status + '</div>';
-                }).join('') : '';
-                if (typeof lucide !== 'undefined') lucide.createIcons();
+            if (data.schedule && window.AlcrosDashboardSchedule && window.AlcrosDashboardSchedule.applyPoll) {
+                window.AlcrosDashboardSchedule.applyPoll(data.schedule);
+            } else {
+                var apptEl = document.getElementById('today-appts-list');
+                if (apptEl && data.today_appts) {
+                    apptEl.innerHTML = data.today_appts.length ? data.today_appts.map(function (a) {
+                        var d = new Date('1970-01-01T' + a.appointment_time);
+                        var h = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                        var ampm = d.toLocaleTimeString([], { hour: 'numeric', hour12: true }).split(' ')[1] || '';
+                        var status = a.status ? '<span class="text-[9px] font-bold uppercase text-gray-400 shrink-0">' + escapeHtml(a.status) + '</span>' : '';
+                        return '<div class="px-5 py-3 flex items-center gap-3"><div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex flex-col items-center justify-center shrink-0 leading-none"><span class="text-[9px] font-bold">' + escapeHtml(h.replace(/ [AP]M/i, '')) + '</span><span class="text-[8px] uppercase">' + escapeHtml(ampm) + '</span></div><div class="min-w-0 flex-1"><p class="text-sm font-semibold text-slate-800 truncate">' + escapeHtml(a.citizen_name) + '</p><p class="text-[10px] text-gray-400 truncate">' + escapeHtml(a.service_type) + '</p></div>' + status + '</div>';
+                    }).join('') : '';
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
             }
 
             AlcrosPoll.markLiveIndicator();
-        });
+            });
+        }
+
+        pollDashboard();
     }
 
         function initTrack() {

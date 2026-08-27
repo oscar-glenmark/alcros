@@ -90,8 +90,8 @@ if ($step === 2) {
     <title>Reset Staff Password - ALCROS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="includes/password_toggle.css">
-    <link rel="stylesheet" href="includes/back_home.css">
+    <?= publicStylesheet('password-toggle') ?>
+    <?= publicStylesheet('back-home') ?>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
@@ -119,7 +119,7 @@ if ($step === 2) {
 
             <?php if ($step === 1): ?>
             <p class="text-xs text-gray-500 mb-5 leading-relaxed">Enter your Staff ID. We will send a 6-digit verification code to the Gmail registered on your account. That Gmail must have <strong>Google 2-Step Verification</strong> already enabled and confirmed in System Settings.</p>
-            <form method="POST" class="space-y-4" autocomplete="off">
+            <form method="POST" class="space-y-4" autocomplete="off" data-no-confirm>
                 <?= publicCsrfField() ?>
                 <input type="hidden" name="action" value="send_otp">
                 <input type="hidden" name="step" value="1">
@@ -136,7 +136,7 @@ if ($step === 2) {
             <p class="text-xs text-gray-500 mb-5 leading-relaxed">
                 Enter the 6-digit code sent<?= $emailHint !== '' ? ' to <strong class="text-slate-700">' . htmlspecialchars($emailHint) . '</strong>' : '' ?> and choose a new password.
             </p>
-            <form method="POST" class="space-y-4" autocomplete="off">
+            <form method="POST" class="space-y-4" autocomplete="off" data-no-confirm>
                 <?= publicCsrfField() ?>
                 <input type="hidden" name="action" value="reset_password">
                 <input type="hidden" name="step" value="2">
@@ -174,7 +174,7 @@ if ($step === 2) {
         </div>
     </div>
 
-    <?= scriptTag('core/loading.js') ?>
+    <?= actionCoreScripts() ?>
     <?= scriptTag('core/password-toggle.js') ?>
     <?= lucideInitScript() ?>
 </body>

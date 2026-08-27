@@ -82,7 +82,9 @@
 
     function initCivilRecordCheck() {
         var checkBtn = document.getElementById('checkRecordBtn');
-        var nameInput = document.getElementById('citizenNameInput');
+        var firstNameInput = document.getElementById('firstNameInput');
+        var middleNameInput = document.getElementById('middleNameInput');
+        var lastNameInput = document.getElementById('lastNameInput');
         var dobInput = document.getElementById('dateOfBirthInput');
         var recordVerified = document.getElementById('recordVerified');
         var recordStatus = document.getElementById('recordStatus');
@@ -108,12 +110,14 @@
             if (recordStatus) recordStatus.classList.add('hidden');
         }
 
-        if (checkBtn && nameInput && dobInput) {
+        if (checkBtn && firstNameInput && lastNameInput && dobInput) {
             checkBtn.addEventListener('click', function () {
-                var name = nameInput.value.trim();
+                var firstName = firstNameInput.value.trim();
+                var middleName = middleNameInput ? middleNameInput.value.trim() : '';
+                var lastName = lastNameInput.value.trim();
                 var dob = dobInput.value.trim();
-                if (!name) {
-                    setRecordStatus('Enter your full name on record first.', 'err');
+                if (!firstName || !lastName) {
+                    setRecordStatus('Enter your first name and last name on record first.', 'err');
                     return;
                 }
                 if (!dob) {
@@ -125,7 +129,9 @@
                 checkBtn.textContent = 'Checking…';
 
                 var body = new FormData();
-                body.append('citizen_name', name);
+                body.append('first_name', firstName);
+                body.append('middle_name', middleName);
+                body.append('last_name', lastName);
                 body.append('date_of_birth', dob);
 
                 fetch('api/check_civil_record.php', { method: 'POST', body: body, credentials: 'same-origin' })
@@ -150,7 +156,9 @@
             });
         }
 
-        if (nameInput) nameInput.addEventListener('input', resetRecordCheck);
+        if (firstNameInput) firstNameInput.addEventListener('input', resetRecordCheck);
+        if (middleNameInput) middleNameInput.addEventListener('input', resetRecordCheck);
+        if (lastNameInput) lastNameInput.addEventListener('input', resetRecordCheck);
         if (dobInput) dobInput.addEventListener('input', resetRecordCheck);
 
         if (form) {
@@ -163,24 +171,75 @@
         }
     }
 
-    function initFileInputLabels(ids) {
-        (ids || ['idFront', 'idBack']).forEach(function (id) {
-            var input = document.getElementById(id);
-            var label = document.getElementById(id + 'Label');
-            if (input && label) {
-                input.addEventListener('change', function () {
-                    if (input.files && input.files[0]) {
-                        label.textContent = input.files[0].name;
-                    }
-                });
+    function initIdUploadPreview(ids) {
+        (ids || ['idFront', 'idBack']).forEach(function (inputId) {
+            var input = document.getElementById(inputId);
+            if (!input) return;
+
+            var label = input.closest('[data-id-upload]');
+            if (!label) return;
+
+            var empty = label.querySelector('[data-id-upload-empty]');
+            var preview = label.querySelector('[data-id-upload-preview]');
+            var img = label.querySelector('[data-id-upload-image]');
+            var pdfNote = label.querySelector('[data-id-upload-pdf]');
+            var caption = label.querySelector('[data-id-upload-caption]');
+
+            function showEmpty() {
+                label.classList.remove('has-preview');
+                if (empty) empty.classList.remove('hidden');
+                if (preview) preview.classList.add('hidden');
+                if (img) {
+                    img.removeAttribute('src');
+                    img.classList.add('hidden');
+                }
+                if (pdfNote) pdfNote.classList.add('hidden');
+                if (caption) caption.textContent = '';
             }
+
+            function showPreview(file) {
+                label.classList.add('has-preview');
+                if (empty) empty.classList.add('hidden');
+                if (preview) preview.classList.remove('hidden');
+                if (caption) caption.textContent = file.name;
+
+                var isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+                if (isPdf) {
+                    if (img) img.classList.add('hidden');
+                    if (pdfNote) pdfNote.classList.remove('hidden');
+                    return;
+                }
+
+                if (pdfNote) pdfNote.classList.add('hidden');
+                if (!img) return;
+
+                img.classList.remove('hidden');
+                var reader = new FileReader();
+                reader.onload = function (e) {
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+
+            input.addEventListener('change', function () {
+                if (input.files && input.files[0]) {
+                    showPreview(input.files[0]);
+                } else {
+                    showEmpty();
+                }
+            });
         });
+    }
+
+    function initFileInputLabels(ids) {
+        initIdUploadPreview(ids);
     }
 
     window.AlcrosForms = {
         initGmailVerify: initGmailVerify,
         initCivilRecordCheck: initCivilRecordCheck,
-        initFileInputLabels: initFileInputLabels
+        initFileInputLabels: initFileInputLabels,
+        initIdUploadPreview: initIdUploadPreview
     };
 
     document.addEventListener('DOMContentLoaded', function () {

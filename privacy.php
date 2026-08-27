@@ -70,7 +70,7 @@ $sections = [
     <title>Privacy &amp; Safety - <?= htmlspecialchars($site['name']) ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="includes/back_home.css">
+    <?= publicStylesheet('back-home') ?>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
         body { font-family: 'Inter', sans-serif; }

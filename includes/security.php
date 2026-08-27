@@ -321,7 +321,7 @@ function publicTrackingRequest(array $row): array
 {
     return [
         'tracking_code'    => $row['tracking_code'] ?? '',
-        'citizen_name'     => $row['citizen_name'] ?? '',
+        'citizen_name'     => personNameFromRow($row),
         'document_type'    => $row['document_type'] ?? '',
         'status'           => $row['status'] ?? '',
         'submitted_at'     => $row['submitted_at'] ?? '',
@@ -335,7 +335,7 @@ function publicTrackingAppointment(array $row): array
 {
     return [
         'appointment_code' => $row['appointment_code'] ?? '',
-        'citizen_name'     => $row['citizen_name'] ?? '',
+        'citizen_name'     => personNameFromRow($row),
         'service_type'     => $row['service_type'] ?? '',
         'status'           => $row['status'] ?? '',
         'appointment_date' => $row['appointment_date'] ?? '',

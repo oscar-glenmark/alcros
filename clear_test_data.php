@@ -5,6 +5,7 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
+require_once __DIR__ . '/includes/scripts.php';
 
 requireAdmin();
 
@@ -112,7 +113,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clear Test Data - ALCROS</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="includes/back_home.css">
+    <?= publicStylesheet('back-home') ?>
 </head>
 <body class="bg-gray-50 min-h-screen flex items-center justify-center p-6">
     <div class="max-w-md w-full bg-white rounded-2xl shadow p-8 border border-gray-100">
@@ -137,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
             <li>Activity logs: <strong><?= (int) $counts['activity_logs'] ?></strong></li>
         </ul>
 
-        <form method="POST" onsubmit="return confirm('This will permanently delete all sample citizen data. Continue?')">
+        <form method="POST">
             <?= authFormField() ?>
             <label class="block text-[11px] font-bold text-gray-500 mb-1">Type CLEAR to confirm</label>
             <input type="text" name="confirm" autocomplete="off" class="w-full mb-4 border border-gray-200 rounded-xl px-3 py-2 text-sm" placeholder="CLEAR">
@@ -146,7 +147,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
         <?php endif; ?>
 
         <a href="index.php" class="back-home back-home--center block mt-4">Back to Home</a>
-        <p class="mt-4 text-[11px] text-gray-400">Delete <code>clear_test_data.php</code> when testing is finished.</p>
+        <p class="mt-4 text-[11px] text-gray-400">Development tool — remove before production deploy.</p>
     </div>
+    <?= scriptTag('core/confirm.js') ?>
 </body>
 </html>

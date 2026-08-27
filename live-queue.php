@@ -93,26 +93,22 @@ $totalWaiting = array_sum(array_map(fn ($g) => count($g['waiting']), $grouped));
     <title>Live Queue - ALCROS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <?= adminLayoutHeadStyles() ?>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        body { font-family: 'Inter', sans-serif; background: #f1f5f9; }
-        .active-nav { background-color: #2563eb; color: white !important; }
-    </style>
 </head>
 <body class="flex min-h-screen" data-realtime="queue">
     <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
     <main class="admin-main flex flex-col">
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
-        <div class="p-5 lg:p-8 max-w-6xl">
-            <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
-                <div>
-                    <a href="<?= htmlspecialchars(buildAuthUrl('dashboard.php')) ?>" class="text-blue-600 text-[11px] font-bold flex items-center mb-2 hover:underline">
-                        <i data-lucide="chevron-left" class="w-3 h-3 mr-1"></i> Back to Dashboard
-                    </a>
-                    <h1 class="text-2xl font-black text-slate-900">Live Queue</h1>
-                    <p class="text-sm text-slate-500 mt-0.5">One button per table — tap when you are ready for the next citizen.</p>
+        <div class="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto w-full admin-page-wrap">
+            <div class="admin-page-head mb-6">
+                <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+                    <div>
+                        <h1>Live Queue</h1>
+                        <p>One button per table — tap when you are ready for the next citizen.</p>
+                    </div>
+                    <a href="queue_display.php" target="_blank" class="text-xs font-bold text-blue-600 hover:underline shrink-0">Open display screen</a>
                 </div>
-                <a href="queue_display.php" target="_blank" class="text-xs font-bold text-blue-600 hover:underline">Open display screen</a>
             </div>
 
             <?php if ($flash): ?>
@@ -155,8 +151,8 @@ $totalWaiting = array_sum(array_map(fn ($g) => count($g['waiting']), $grouped));
                         <div class="queue-serving-slot min-h-[72px] flex flex-col items-center justify-center mb-4" data-purpose="<?= htmlspecialchars($purpose) ?>">
                             <?php if ($serving): ?>
                             <p class="queue-serving-number text-5xl font-black text-slate-900 leading-none"><?= htmlspecialchars($serving['ticket_number']) ?></p>
-                            <?php if (!empty($serving['citizen_name'])): ?>
-                            <p class="text-sm text-slate-500 mt-2"><?= htmlspecialchars($serving['citizen_name']) ?></p>
+                            <?php $servingName = personNameFromRow($serving); if ($servingName !== ''): ?>
+                            <p class="text-sm text-slate-500 mt-2"><?= htmlspecialchars($servingName) ?></p>
                             <?php endif; ?>
                             <?php else: ?>
                             <p class="queue-serving-number text-4xl font-black text-slate-200">—</p>
@@ -213,8 +209,7 @@ $totalWaiting = array_sum(array_map(fn ($g) => count($g['waiting']), $grouped));
                             <?= authFormField() ?>
                             <input type="hidden" name="purpose" value="<?= htmlspecialchars($purpose) ?>">
                             <input type="hidden" name="action" value="skip">
-                            <button type="submit" class="text-[11px] text-slate-400 hover:text-red-500 font-medium"
-                                onclick="return confirm('Mark current ticket as no-show?')">No-show — skip current</button>
+                            <button type="submit" class="text-[11px] text-slate-400 hover:text-red-500 font-medium">No-show — skip current</button>
                         </form>
                         <?php else: ?>
                         <div class="queue-skip-slot hidden"></div>
@@ -230,6 +225,7 @@ $totalWaiting = array_sum(array_map(fn ($g) => count($g['waiting']), $grouped));
             </p>
         </div>
     </main>
+    <?= scriptTag('core/confirm.js') ?>
     <?= scriptTag('core/poll.js') ?>
     <?= scriptTag('core/realtime.js') ?>
     <?= lucideInitScript() ?>

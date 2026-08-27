@@ -74,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <?php foreach ($tables as $purpose => $cfg): ?>
-            <form method="POST" class="contents">
+            <form method="POST" class="contents kiosk-form">
                 <?= publicCsrfField() ?>
                 <input type="hidden" name="purpose" value="<?= htmlspecialchars($purpose) ?>">
                 <button type="submit"
@@ -93,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
     </div>
 
-    <?= scriptTag('core/loading.js') ?>
+    <?= actionCoreScripts() ?>
     <?= lucideInitScript() ?>
 </body>
 </html>

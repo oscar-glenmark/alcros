@@ -1,0 +1,102 @@
+.stat-card {
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.stat-card:hover {
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+}
+
+.analytics-charts {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.analytics-chart-card {
+    background: #fff;
+    border: 1px solid #f1f5f9;
+    border-radius: 0.875rem;
+    padding: 1.25rem;
+}
+
+.analytics-chart-card--featured {
+    padding: 1.25rem 1.25rem 1rem;
+}
+
+.analytics-chart-head {
+    margin-bottom: 0.75rem;
+}
+
+.analytics-chart-head h2 {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.analytics-chart-head p {
+    font-size: 0.6875rem;
+    color: #94a3b8;
+    margin-top: 0.125rem;
+}
+
+.analytics-chart-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+
+@media (min-width: 1024px) {
+    .analytics-chart-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.chart-box {
+    position: relative;
+    height: 240px;
+}
+
+.chart-box--tall {
+    height: 260px;
+}
+
+.chart-box--compact {
+    height: 200px;
+}
+
+.analytics-queue-strip {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.analytics-queue-item {
+    text-align: center;
+    border-radius: 0.625rem;
+    padding: 0.875rem 0.5rem;
+}
+
+.analytics-queue-item strong {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 900;
+    line-height: 1.1;
+}
+
+.analytics-queue-item span {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.analytics-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+    font-size: 0.875rem;
+    color: #94a3b8;
+}

@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
+require_once __DIR__ . '/includes/api_helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 requireStaffLogin();
 requirePageAccess('dashboard.php');
@@ -20,10 +21,10 @@ $pipelineCount = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE
 $readyCount    = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'ready'")->fetchColumn();
 $completedToday = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'completed' AND DATE(updated_at) = CURDATE()")->fetchColumn();
 
-$recentRequests = $pdo->query(
-    "SELECT tracking_code, citizen_name, document_type, status, submitted_at
+$recentRequests = enrichCitizenNameRows($pdo->query(
+    "SELECT tracking_code, first_name, middle_name, last_name, document_type, status, submitted_at
      FROM document_requests ORDER BY submitted_at DESC LIMIT 6"
-)->fetchAll();
+)->fetchAll());
 
 if ($isAdminUser) {
     $activities = $pdo->query(
@@ -37,12 +38,9 @@ if ($isAdminUser) {
     $activities = $activityStmt->fetchAll();
 }
 
-$todayApptList = $pdo->prepare(
-    "SELECT citizen_name, appointment_time, service_type, status FROM appointments
-     WHERE appointment_date = CURDATE() ORDER BY appointment_time ASC LIMIT 8"
-);
-$todayApptList->execute();
-$todayApptRows = $todayApptList->fetchAll();
+$scheduleMonth = date('Y-m');
+$scheduleDate = date('Y-m-d');
+$scheduleCalendar = fetchDashboardSchedule($pdo, $scheduleDate, $scheduleMonth);
 
 $quickActions = [
     ['href' => 'manage_request.php', 'label' => 'Manage Requests', 'desc' => 'Review & update statuses', 'icon' => 'file-text', 'color' => 'bg-blue-50 text-blue-600'],
@@ -61,7 +59,7 @@ $statCards = [
     ['id' => 'stat-queue',    'label' => 'Queue Waiting',     'hint' => 'Citizens in line today', 'value' => $queueCount,    'icon' => 'users',          'accent' => 'border-violet-400', 'iconColor' => 'text-violet-500', 'href' => 'live-queue.php'],
     ['id' => 'stat-appts',    'label' => "Today's Appointments", 'hint' => 'Scheduled for today', 'value' => $todayAppts,    'icon' => 'calendar',       'accent' => 'border-blue-400',  'iconColor' => 'text-blue-500',   'href' => 'appointment.php'],
     ['id' => 'stat-pipeline', 'label' => 'Verified',          'hint' => 'Being prepared',       'value' => $pipelineCount, 'icon' => 'loader-2',       'accent' => 'border-indigo-400', 'iconColor' => 'text-indigo-500', 'href' => 'manage_request.php?status=verified'],
-    ['id' => 'stat-ready',    'label' => 'Ready for Pickup',  'hint' => 'Awaiting release',     'value' => $readyCount,    'icon' => 'package',        'accent' => 'border-emerald-400', 'iconColor' => 'text-emerald-500', 'href' => 'manage_request.php?status=ready'],
+    ['id' => 'stat-ready',    'label' => 'Ready for Pickup',  'hint' => 'Awaiting release',     'value' => $readyCount,    'icon' => 'package',        'accent' => 'border-emerald-400', 'iconColor' => 'text-emerald-500', 'href' => 'appointment.php?date=' . date('Y-m-d')],
 ];
 
 function activityIcon(string $action): string
@@ -86,13 +84,8 @@ function activityIcon(string $action): string
     <title>Dashboard - ALCROS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <?= adminLayoutHeadStyles('dashboard') ?>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1e293b; }
-        .dash-card { box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); transition: box-shadow 0.2s, border-color 0.2s; }
-        .dash-card:hover { box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06); }
-        .stat-link:hover { border-color: #93c5fd; }
-    </style>
 </head>
 <body class="flex min-h-screen" data-realtime="dashboard" data-admin="<?= $isAdminUser ? '1' : '0' ?>">
 
@@ -101,7 +94,7 @@ function activityIcon(string $action): string
     <main class="admin-main flex flex-col bg-[#f8fafc]">
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
 
-        <div class="admin-content p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6">
+        <div class="admin-content p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto admin-page-wrap space-y-6">
 
             <!-- Header -->
             <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
@@ -216,18 +209,42 @@ function activityIcon(string $action): string
                     <div class="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
                         <div>
                             <h2 class="font-bold text-sm text-slate-900">Today's Schedule</h2>
-                            <p class="text-[10px] text-gray-400 mt-0.5"><?= count($todayApptRows) ?> appointment(s)</p>
+                            <p class="text-[10px] text-gray-400 mt-0.5"><span id="dash-schedule-count"><?= count($scheduleCalendar['appointments']) ?></span> appointment(s) · <span id="dash-schedule-date-label"><?= formatDateDisplay($scheduleDate) ?></span></p>
                         </div>
-                        <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php')) ?>" class="text-blue-600 text-[10px] font-bold uppercase hover:underline">Open</a>
+                        <a id="dash-schedule-open-link" href="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $scheduleDate])) ?>" class="text-blue-600 text-[10px] font-bold uppercase hover:underline">Open</a>
                     </div>
-                    <?php if (empty($todayApptRows)): ?>
-                    <div class="p-10 text-center">
+
+                    <div class="px-4 pt-4 pb-3 border-b border-gray-50">
+                        <div class="dash-schedule-calendar" id="dashScheduleCalendar">
+                            <div class="dash-cal-head">
+                                <button type="button" id="dashCalPrev" class="dash-cal-nav" aria-label="Previous month">
+                                    <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                                </button>
+                                <p id="dashCalMonthLabel" class="dash-cal-month"></p>
+                                <button type="button" id="dashCalNext" class="dash-cal-nav" aria-label="Next month">
+                                    <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                            <div class="dash-cal-weekdays">
+                                <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                            </div>
+                            <div id="dashCalGrid" class="dash-cal-grid" role="grid" aria-label="Appointment calendar"></div>
+                        </div>
+                    </div>
+
+                    <?php if (empty($scheduleCalendar['appointments'])): ?>
+                    <div id="dash-schedule-empty" class="p-10 text-center">
                         <i data-lucide="calendar-off" class="w-8 h-8 text-gray-200 mx-auto mb-2"></i>
-                        <p class="text-xs text-gray-400">No appointments scheduled for today.</p>
+                        <p class="text-xs text-gray-400">No appointments scheduled for this date.</p>
                     </div>
+                    <div id="today-appts-list" class="divide-y divide-gray-50 max-h-[240px] overflow-y-auto hidden"></div>
                     <?php else: ?>
-                    <div id="today-appts-list" class="divide-y divide-gray-50 max-h-[340px] overflow-y-auto">
-                        <?php foreach ($todayApptRows as $ap): ?>
+                    <div id="dash-schedule-empty" class="p-10 text-center hidden">
+                        <i data-lucide="calendar-off" class="w-8 h-8 text-gray-200 mx-auto mb-2"></i>
+                        <p class="text-xs text-gray-400">No appointments scheduled for this date.</p>
+                    </div>
+                    <div id="today-appts-list" class="divide-y divide-gray-50 max-h-[240px] overflow-y-auto">
+                        <?php foreach ($scheduleCalendar['appointments'] as $ap): ?>
                         <div class="px-5 py-3 flex items-center gap-3">
                             <div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex flex-col items-center justify-center shrink-0 leading-none">
                                 <span class="text-[9px] font-bold"><?= date('g:i', strtotime($ap['appointment_time'])) ?></span>
@@ -283,6 +300,14 @@ function activityIcon(string $action): string
         </div>
     </main>
 
+    <?= pageConfigJson([
+        'scheduleMonth'     => $scheduleMonth,
+        'scheduleDate'      => $scheduleDate,
+        'appointmentDates'  => $scheduleCalendar['dates'],
+        'appointmentPage'   => buildAuthUrl('appointment.php'),
+    ], 'dashboard-schedule-config') ?>
+    <?= scriptTag('core/page-config.js') ?>
+    <?= scriptTag('admin/dashboard.js') ?>
     <?= lucideInitScript() ?>
 </body>
 </html>

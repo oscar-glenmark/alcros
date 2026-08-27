@@ -1,0 +1,522 @@
+:root {
+    --admin-sidebar-width: 16rem;
+    --admin-header-height: 3.5rem;
+}
+
+@media (min-width: 640px) {
+    :root {
+        --admin-header-height: 4rem;
+    }
+}
+
+@media (max-width: 1279px) {
+    :root {
+        --admin-sidebar-width: 12.5rem;
+    }
+}
+
+@media (max-width: 1023px) {
+    :root {
+        --admin-sidebar-width: 4.25rem;
+    }
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html {
+    width: 100%;
+}
+
+body.flex.min-h-screen {
+    display: grid;
+    grid-template-columns: var(--admin-sidebar-width) minmax(0, 1fr);
+    align-items: start;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+    font-family: 'Inter', sans-serif;
+    background-color: #f8fafc;
+    color: #1e293b;
+}
+
+/* ── Sidebar (always visible, shares row with main) ── */
+.admin-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    grid-column: 1;
+    grid-row: 1;
+    width: var(--admin-sidebar-width);
+    max-width: var(--admin-sidebar-width);
+    height: 100dvh;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    background-color: #ffffff;
+    border-right: 1px solid #e2e8f0;
+    flex-shrink: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.admin-sidebar-nav {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    min-height: 0;
+}
+
+@media (min-height: 700px) {
+    .admin-sidebar-nav {
+        overflow-y: hidden;
+    }
+}
+
+.admin-sidebar-footer {
+    flex-shrink: 0;
+}
+
+/* ── Main content area ── */
+.admin-main {
+    grid-column: 2;
+    grid-row: 1;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    height: 100dvh;
+    max-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.admin-header {
+    flex-shrink: 0;
+    z-index: 20;
+    background-color: #ffffff;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.admin-main > .admin-header + *,
+.admin-main > header + * {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+.admin-content {
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.admin-page-wrap {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+
+/* ── Compact sidebar (icon rail) ── */
+@media (max-width: 1023px) {
+    .admin-sidebar-brand {
+        padding: 0.75rem !important;
+        justify-content: center;
+    }
+
+    .admin-sidebar-brand a {
+        justify-content: center;
+    }
+
+    .admin-sidebar-brand .gov-brand-title,
+    .admin-sidebar-brand .gov-brand-subtitle {
+        display: none;
+    }
+
+    .admin-sidebar-brand .gov-brand-logo {
+        width: 2.25rem;
+        height: 2.25rem;
+    }
+
+    .admin-sidebar-nav {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+    }
+
+    .sidebar-section-label,
+    .sidebar-link-label,
+    .sidebar-logout-label {
+        display: none;
+    }
+
+    .admin-sidebar a.flex.items-center {
+        justify-content: center !important;
+        padding: 0.625rem !important;
+    }
+
+    .admin-sidebar a.flex.items-center > div.flex {
+        justify-content: center;
+        flex: 0 0 auto;
+    }
+
+    .admin-sidebar a [data-lucide] {
+        margin-right: 0 !important;
+    }
+
+    .admin-sidebar a {
+        position: relative;
+    }
+
+    .admin-sidebar a span.bg-white.text-blue-600 {
+        position: absolute;
+        top: 0.35rem;
+        right: 0.35rem;
+        width: 0.4rem;
+        height: 0.4rem;
+        min-width: 0;
+        padding: 0;
+        font-size: 0;
+        border-radius: 9999px;
+        background-color: #2563eb !important;
+        color: transparent !important;
+    }
+
+    .admin-sidebar a [id$="-badge"],
+    .admin-sidebar a .ml-auto {
+        position: absolute;
+        top: 0.2rem;
+        right: 0.2rem;
+        margin-left: 0 !important;
+        min-width: 0.875rem;
+        height: 0.875rem;
+        padding: 0 0.15rem;
+        font-size: 0.5rem;
+    }
+
+    .admin-sidebar-footer {
+        padding: 0.5rem !important;
+    }
+
+    .admin-sidebar-footer button {
+        justify-content: center;
+        padding: 0.625rem !important;
+    }
+
+    .admin-sidebar-footer button [data-lucide] {
+        margin-right: 0 !important;
+    }
+}
+
+/* ── Medium sidebar (narrow labels) ── */
+@media (min-width: 1024px) and (max-width: 1279px) {
+    .admin-sidebar-brand .gov-brand-title {
+        font-size: 0.6875rem;
+        -webkit-line-clamp: 3;
+        line-clamp: 3;
+    }
+
+    .admin-sidebar-brand .gov-brand-logo {
+        width: 2rem;
+        height: 2rem;
+    }
+
+    .admin-sidebar-brand {
+        padding: 0.875rem !important;
+    }
+
+    .admin-sidebar-nav {
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
+    }
+
+    .admin-sidebar a {
+        padding-left: 0.625rem !important;
+        padding-right: 0.625rem !important;
+        font-size: 0.8125rem;
+    }
+
+    .sidebar-section-label {
+        padding-left: 0.625rem !important;
+        padding-right: 0.625rem !important;
+    }
+}
+
+/* ── Sidebar nav styling ── */
+.sidebar-item {
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.sidebar-item:hover {
+    background-color: #f1f5f9;
+}
+
+.active-nav {
+    background-color: #2563eb !important;
+    color: #ffffff !important;
+}
+
+.active-nav #sidebar-notif-badge {
+    background-color: #ffffff;
+    color: #dc2626;
+}
+
+.admin-sidebar a,
+.admin-sidebar button {
+    min-width: 0;
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
+}
+
+.admin-sidebar a:focus,
+.admin-sidebar a:focus-visible,
+.admin-sidebar button:focus,
+.admin-sidebar button:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+.admin-sidebar [data-lucide] {
+    display: inline-block;
+    min-width: 1rem;
+    min-height: 1rem;
+    flex-shrink: 0;
+}
+
+.admin-sidebar-brand {
+    flex-shrink: 0;
+    background: #050b18;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.admin-sidebar-brand .gov-brand-logo {
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 9999px;
+    object-fit: cover;
+    background: #fff;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.12);
+}
+
+.admin-sidebar-brand .gov-brand-title {
+    color: #ffffff;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+}
+
+.admin-sidebar-brand .gov-brand-subtitle {
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 0.6875rem;
+    font-style: italic;
+    line-height: 1.35;
+    margin-top: 0.2rem;
+}
+
+.sidebar-section-label {
+    padding: 0.75rem 0.75rem 0.25rem;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #94a3b8;
+}
+
+.sidebar-section-label:first-child {
+    padding-top: 0;
+}
+
+.sidebar-link-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.admin-sidebar a.flex.items-center:not(.justify-between) .sidebar-link-label {
+    flex: 1 1 auto;
+}
+
+/* ── Page head & toolbar ── */
+.admin-page-head {
+    margin-bottom: 1.5rem;
+    min-width: 0;
+}
+
+.admin-page-head h1 {
+    font-size: 1.125rem;
+    font-weight: 900;
+    color: #0f172a;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+
+@media (min-width: 640px) {
+    .admin-page-head h1 {
+        font-size: 1.625rem;
+    }
+}
+
+@media (min-width: 1024px) {
+    .admin-page-head h1 {
+        font-size: 1.875rem;
+    }
+}
+
+.admin-page-head p {
+    color: #64748b;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    margin-top: 0.25rem;
+    overflow-wrap: anywhere;
+}
+
+@media (min-width: 640px) {
+    .admin-page-head p {
+        font-size: 0.875rem;
+    }
+}
+
+.admin-toolbar {
+    background: #fff;
+    padding: 0.75rem;
+    border-radius: 0.75rem;
+    border: 1px solid #f3f4f6;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 0.625rem;
+    margin-bottom: 1.5rem;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+
+@media (min-width: 640px) {
+    .admin-toolbar {
+        flex-direction: row;
+        align-items: center;
+        flex-wrap: wrap;
+        padding: 0.875rem;
+        gap: 0.75rem;
+    }
+}
+
+.admin-toolbar-search {
+    position: relative;
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0;
+}
+
+@media (min-width: 640px) {
+    .admin-toolbar-search {
+        flex: 1 1 8rem;
+        min-width: 0;
+    }
+}
+
+@media (min-width: 1024px) {
+    .admin-toolbar-search {
+        max-width: 28rem;
+    }
+}
+
+.admin-toolbar-filters {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    background: #f9fafb;
+    padding: 0.25rem;
+    border-radius: 0.5rem;
+    border: 1px solid #f3f4f6;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+.admin-toolbar > button,
+.admin-toolbar > .shrink-0,
+.admin-toolbar > select,
+.admin-toolbar > form {
+    flex-shrink: 0;
+    min-width: 0;
+}
+
+.admin-toolbar > form {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* ── Prevent content blowout ── */
+.admin-main img,
+.admin-main video,
+.admin-main svg {
+    max-width: 100%;
+    height: auto;
+}
+
+.admin-main table {
+    width: 100%;
+}
+
+.admin-main .overflow-x-auto {
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+}
+
+.admin-main .grid > * {
+    min-width: 0;
+}
+
+.settings-tab-nav,
+.settings-tab-panel {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.admin-main .max-w-7xl,
+.admin-main .max-w-6xl,
+.admin-main .max-w-3xl {
+    max-width: 100%;
+}
+
+@media (min-width: 1280px) {
+    .admin-main .max-w-7xl {
+        max-width: 80rem;
+    }
+
+    .admin-main .max-w-6xl {
+        max-width: 72rem;
+    }
+
+    .admin-main .max-w-3xl {
+        max-width: 48rem;
+    }
+}

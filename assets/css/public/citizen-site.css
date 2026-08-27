@@ -1,0 +1,204 @@
+:root {
+    --alcros-navy: #071428;
+    --alcros-navy-mid: #0c2247;
+    --alcros-gold: #f4b400;
+    --alcros-gold-hover: #e5a800;
+}
+
+html,
+body.citizen-site {
+    height: 100%;
+    overflow: hidden;
+}
+
+.citizen-site {
+    font-family: 'Inter', sans-serif;
+    color: #1e293b;
+    height: 100dvh;
+    max-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+}
+
+.citizen-site::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background-image:
+        linear-gradient(105deg, rgba(7, 20, 40, 0.94) 0%, rgba(7, 20, 40, 0.82) 42%, rgba(7, 20, 40, 0.55) 68%, rgba(7, 20, 40, 0.45) 100%),
+        url('../../../images/municipal-hall.jpg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    pointer-events: none;
+}
+
+.citizen-site-header {
+    position: relative;
+    z-index: 50;
+    flex-shrink: 0;
+    background: var(--alcros-navy);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.citizen-site-main {
+    position: relative;
+    z-index: 1;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+.citizen-brand-logo {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 9999px;
+    object-fit: cover;
+    background: #fff;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15);
+}
+
+.citizen-nav-link {
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 0.35rem 0.65rem;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+    text-decoration: none;
+}
+
+.citizen-nav-link:hover {
+    color: var(--alcros-gold);
+}
+
+.citizen-nav-link.is-active {
+    color: #fff;
+    border-bottom-color: var(--alcros-gold);
+}
+
+.citizen-btn-login {
+    border: 1.5px solid rgba(255, 255, 255, 0.85);
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.45rem 1.1rem;
+    transition: background 0.2s, color 0.2s;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.citizen-btn-login:hover {
+    background: #fff;
+    color: var(--alcros-navy);
+}
+
+.citizen-page-hero {
+    padding: 2.5rem 1.5rem 2rem;
+    text-align: center;
+}
+
+.citizen-page-hero h1 {
+    color: #fff;
+    font-size: clamp(1.75rem, 4vw, 2.25rem);
+    font-weight: 900;
+    margin-bottom: 0.5rem;
+    letter-spacing: -0.02em;
+}
+
+.citizen-page-hero p {
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 0.875rem;
+    max-width: 36rem;
+    margin: 0 auto;
+    line-height: 1.6;
+}
+
+.citizen-page-hero .back-home--inline {
+    color: rgba(255, 255, 255, 0.88);
+    margin-bottom: 1rem;
+}
+
+.citizen-page-hero .back-home--inline:hover {
+    color: var(--alcros-gold);
+    background-color: rgba(255, 255, 255, 0.08);
+    box-shadow: none;
+}
+
+.citizen-section-label {
+    font-size: 0.625rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--alcros-gold);
+    margin-bottom: 1.5rem;
+}
+
+.citizen-service-card {
+    background: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 1rem;
+    box-shadow: 0 12px 32px rgba(7, 20, 40, 0.18);
+    transition: box-shadow 0.2s, transform 0.2s;
+}
+
+.citizen-service-card:hover {
+    box-shadow: 0 16px 40px rgba(7, 20, 40, 0.24);
+    transform: translateY(-2px);
+}
+
+.citizen-link-gold {
+    color: #92400e;
+    font-size: 0.625rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(244, 180, 0, 0.55);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.125rem;
+}
+
+.citizen-link-gold:hover {
+    color: var(--alcros-navy);
+    border-bottom-color: var(--alcros-navy);
+}
+
+.citizen-help-card {
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 1rem;
+    box-shadow: 0 12px 32px rgba(7, 20, 40, 0.16);
+}
+
+.citizen-footer {
+    background: var(--alcros-navy);
+    color: rgba(255, 255, 255, 0.75);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.citizen-footer a,
+.citizen-footer button {
+    color: rgba(255, 255, 255, 0.75);
+    transition: color 0.2s;
+}
+
+.citizen-footer a:hover,
+.citizen-footer button:hover {
+    color: #fff;
+}
+
+#citizenMobileNav.is-open {
+    display: block;
+}

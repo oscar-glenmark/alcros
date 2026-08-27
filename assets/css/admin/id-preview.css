@@ -1,0 +1,73 @@
+.admin-id-preview-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.admin-id-preview-card {
+    position: relative;
+    display: block;
+    min-height: 7.5rem;
+    border: 2px solid rgba(110, 231, 183, 0.85);
+    border-radius: 0.75rem;
+    background: rgba(236, 253, 245, 0.55);
+    overflow: hidden;
+    text-decoration: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.admin-id-preview-card:hover {
+    border-color: #34d399;
+    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.12);
+}
+
+.admin-id-preview-label {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    z-index: 1;
+    padding: 0.15rem 0.45rem;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.92);
+    font-size: 0.5625rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #047857;
+}
+
+.admin-id-preview-image {
+    width: 100%;
+    height: 7.5rem;
+    object-fit: cover;
+    object-position: center;
+    opacity: 0.42;
+    display: block;
+    pointer-events: none;
+}
+
+.admin-id-preview-pdf {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 7.5rem;
+    padding: 1rem;
+    color: #047857;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    opacity: 0.72;
+}
+
+.admin-id-preview-caption {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 0.35rem 0.5rem;
+    background: linear-gradient(to top, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.68));
+    font-size: 0.625rem;
+    font-weight: 700;
+    color: #334155;
+    text-align: center;
+}

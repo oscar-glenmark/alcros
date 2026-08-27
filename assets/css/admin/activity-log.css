@@ -1,0 +1,9 @@
+.range-pill {
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.range-pill.is-active {
+    background: #2563eb;
+    color: #fff;
+    border-color: #2563eb;
+}

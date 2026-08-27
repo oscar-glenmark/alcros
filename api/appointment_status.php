@@ -13,7 +13,7 @@ rateLimitOrAbort(rateLimitKey('track_appointment', $code), 30, 300, 'Too many tr
 try {
     $pdo = getDB();
     $stmt = $pdo->prepare(
-        'SELECT appointment_code, citizen_name, service_type, status, appointment_date, appointment_time, email, phone, created_at
+        'SELECT appointment_code, first_name, middle_name, last_name, service_type, status, appointment_date, appointment_time, email, phone, created_at
          FROM appointments WHERE appointment_code = ?'
     );
     $stmt->execute([$code]);

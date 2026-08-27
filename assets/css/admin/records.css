@@ -1,0 +1,32 @@
+.table-head {
+    font-size: 10px;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.filter-chip {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 6px;
+}
+
+.entry-dropdown {
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+    z-index: 60;
+}
+
+.entry-menu-item:hover {
+    background-color: #f8fafc;
+}
+
+.stat-card {
+    transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.stat-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+    border-color: #bfdbfe;
+}

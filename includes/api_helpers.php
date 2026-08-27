@@ -50,14 +50,14 @@ function fetchQueueStats(PDO $pdo): array
 
 function fetchActiveQueueTickets(PDO $pdo, string $filter = 'all'): array
 {
-    $sql = "SELECT id, ticket_number, purpose, status, window_number, citizen_name, reference_code, created_at, called_at
+    $sql = "SELECT id, ticket_number, purpose, status, window_number, first_name, middle_name, last_name, reference_code, created_at, called_at
             FROM queue_tickets
             WHERE DATE(created_at) = CURDATE() AND status IN ('waiting','serving')";
     if (in_array($filter, ['walk_in', 'appointment', 'document_claim'], true)) {
         $sql .= ' AND purpose = ' . $pdo->quote($filter);
     }
     $sql .= " ORDER BY FIELD(purpose,'walk_in','appointment','document_claim'), FIELD(status,'serving','waiting'), created_at ASC";
-    return $pdo->query($sql)->fetchAll();
+    return enrichCitizenNameRows($pdo->query($sql)->fetchAll());
 }
 
 function fetchQueueTicketsGrouped(PDO $pdo): array
@@ -127,10 +127,10 @@ function fetchDashboardStats(PDO $pdo, bool $isAdmin, string $staffId): array
         'ready_count'     => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'ready'")->fetchColumn(),
     ];
 
-    $recentRequests = $pdo->query(
-        "SELECT tracking_code, citizen_name, document_type, status, submitted_at
+    $recentRequests = enrichCitizenNameRows($pdo->query(
+        "SELECT tracking_code, first_name, middle_name, last_name, document_type, status, submitted_at
          FROM document_requests ORDER BY submitted_at DESC LIMIT 5"
-    )->fetchAll();
+    )->fetchAll());
 
     if ($isAdmin) {
         $activities = $pdo->query(
@@ -144,10 +144,11 @@ function fetchDashboardStats(PDO $pdo, bool $isAdmin, string $staffId): array
         $activities = $stmt->fetchAll();
     }
 
-    $todayAppts = $pdo->query(
-        "SELECT citizen_name, appointment_time, service_type, status FROM appointments
-         WHERE appointment_date = CURDATE() ORDER BY appointment_time ASC LIMIT 8"
-    )->fetchAll();
+    $todayAppts = enrichCitizenNameRows($pdo->query(
+        "SELECT first_name, middle_name, last_name, appointment_time, service_type, status FROM appointments
+         WHERE appointment_date = CURDATE() AND status NOT IN ('cancelled', 'no_show')
+         ORDER BY appointment_time ASC LIMIT 8"
+    )->fetchAll());
 
     return [
         'stats'           => $stats,
@@ -157,14 +158,69 @@ function fetchDashboardStats(PDO $pdo, bool $isAdmin, string $staffId): array
     ];
 }
 
+function fetchAppointmentDatesInMonth(PDO $pdo, string $yearMonth): array
+{
+    if (!preg_match('/^\d{4}-\d{2}$/', $yearMonth)) {
+        $yearMonth = date('Y-m');
+    }
+
+    $start = $yearMonth . '-01';
+    $end = date('Y-m-t', strtotime($start));
+    $stmt = $pdo->prepare(
+        "SELECT a.appointment_date, COUNT(*) AS cnt
+         FROM appointments a
+         LEFT JOIN document_requests r ON r.tracking_code = a.tracking_code
+         WHERE a.appointment_date BETWEEN ? AND ?
+           AND a.status NOT IN ('cancelled', 'no_show')
+           AND NOT (
+                (a.source = 'document_request' OR (a.tracking_code IS NOT NULL AND a.tracking_code != ''))
+                AND r.status IN ('pending', 'rejected')
+           )
+         GROUP BY a.appointment_date"
+    );
+    $stmt->execute([$start, $end]);
+    $map = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $map[(string) $row['appointment_date']] = (int) $row['cnt'];
+    }
+
+    return $map;
+}
+
+function fetchDashboardSchedule(PDO $pdo, string $scheduleDate, string $calendarMonth): array
+{
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $scheduleDate)) {
+        $scheduleDate = date('Y-m-d');
+    }
+    if (!preg_match('/^\d{4}-\d{2}$/', $calendarMonth)) {
+        $calendarMonth = date('Y-m', strtotime($scheduleDate));
+    }
+
+    return [
+        'month'         => $calendarMonth,
+        'dates'         => fetchAppointmentDatesInMonth($pdo, $calendarMonth),
+        'schedule_date' => $scheduleDate,
+        'appointments'  => array_slice(fetchAppointments($pdo, $scheduleDate), 0, 8),
+    ];
+}
+
 function fetchAppointments(PDO $pdo, string $date): array
 {
     $stmt = $pdo->prepare(
-        'SELECT id, appointment_code, citizen_name, service_type, appointment_time, status
-         FROM appointments WHERE appointment_date = ? ORDER BY appointment_time ASC'
+        "SELECT a.id, a.appointment_code, a.first_name, a.middle_name, a.last_name, a.service_type,
+                a.appointment_time, a.status
+         FROM appointments a
+         LEFT JOIN document_requests r ON r.tracking_code = a.tracking_code
+         WHERE a.appointment_date = ?
+           AND a.status NOT IN ('cancelled', 'no_show')
+           AND NOT (
+                (a.source = 'document_request' OR (a.tracking_code IS NOT NULL AND a.tracking_code != ''))
+                AND r.status IN ('pending', 'rejected')
+           )
+         ORDER BY a.appointment_time ASC"
     );
     $stmt->execute([$date]);
-    return $stmt->fetchAll();
+    return enrichCitizenNameRows($stmt->fetchAll());
 }
 
 function documentTypeLabelsMap(): array
@@ -182,11 +238,11 @@ function fetchNotifications(PDO $pdo, int $limit = 20): array
     $items = [];
     $docLabels = documentTypeLabelsMap();
 
-    $pending = $pdo->query(
-        "SELECT tracking_code, citizen_name, document_type, submitted_at
+    $pending = enrichCitizenNameRows($pdo->query(
+        "SELECT tracking_code, first_name, middle_name, last_name, document_type, submitted_at
          FROM document_requests WHERE status = 'pending'
          ORDER BY submitted_at DESC LIMIT 5"
-    )->fetchAll();
+    )->fetchAll());
     foreach ($pending as $row) {
         $items[] = [
             'id'         => 'req-pending-' . $row['tracking_code'],
@@ -195,23 +251,6 @@ function fetchNotifications(PDO $pdo, int $limit = 20): array
             'message'    => $row['citizen_name'] . ' · ' . ($docLabels[$row['document_type']] ?? $row['document_type']),
             'detail'     => $row['tracking_code'],
             'created_at' => $row['submitted_at'],
-            'href'       => 'manage_request.php',
-        ];
-    }
-
-    $ready = $pdo->query(
-        "SELECT tracking_code, citizen_name, document_type, updated_at
-         FROM document_requests WHERE status = 'ready'
-         ORDER BY updated_at DESC LIMIT 5"
-    )->fetchAll();
-    foreach ($ready as $row) {
-        $items[] = [
-            'id'         => 'req-ready-' . $row['tracking_code'],
-            'type'       => 'ready_pickup',
-            'title'      => 'Ready for pickup',
-            'message'    => $row['citizen_name'] . ' · ' . ($docLabels[$row['document_type']] ?? $row['document_type']),
-            'detail'     => $row['tracking_code'],
-            'created_at' => $row['updated_at'],
             'href'       => 'manage_request.php',
         ];
     }
@@ -236,17 +275,20 @@ function fetchNotifications(PDO $pdo, int $limit = 20): array
         ];
     }
 
-    $appts = $pdo->query(
-        "SELECT appointment_code, citizen_name, service_type, appointment_time, appointment_date, created_at
+    $appts = enrichCitizenNameRows($pdo->query(
+        "SELECT appointment_code, first_name, middle_name, last_name, service_type,
+                appointment_time, appointment_date, created_at
          FROM appointments
          WHERE status IN ('scheduled', 'confirmed')
+           AND COALESCE(source, 'standalone') = 'standalone'
+           AND (tracking_code IS NULL OR tracking_code = '')
            AND (
                 created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
                 OR appointment_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 14 DAY)
            )
          ORDER BY created_at DESC
          LIMIT 10"
-    )->fetchAll();
+    )->fetchAll());
     foreach ($appts as $row) {
         $timeLabel = date('g:i A', strtotime($row['appointment_time']));
         $dateLabel = formatDateDisplay($row['appointment_date']);

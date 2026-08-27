@@ -7,7 +7,9 @@ USE alcros_db;
 CREATE TABLE IF NOT EXISTS staff (
     id INT AUTO_INCREMENT PRIMARY KEY,
     staff_id VARCHAR(50) NOT NULL UNIQUE,
-    name VARCHAR(100) NOT NULL,
+    first_name VARCHAR(80) NOT NULL,
+    middle_name VARCHAR(80) DEFAULT NULL,
+    last_name VARCHAR(80) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(50) NOT NULL DEFAULT 'Staff',
     email VARCHAR(150) DEFAULT NULL,
@@ -19,7 +21,9 @@ CREATE TABLE IF NOT EXISTS staff (
 CREATE TABLE IF NOT EXISTS document_requests (
     id INT AUTO_INCREMENT PRIMARY KEY,
     tracking_code VARCHAR(20) NOT NULL UNIQUE,
-    citizen_name VARCHAR(150) NOT NULL,
+    first_name VARCHAR(80) NOT NULL,
+    middle_name VARCHAR(80) DEFAULT NULL,
+    last_name VARCHAR(80) NOT NULL,
     date_of_birth DATE DEFAULT NULL,
     sex ENUM('male','female') DEFAULT NULL,
     email VARCHAR(150) DEFAULT NULL,
@@ -39,13 +43,15 @@ CREATE TABLE IF NOT EXISTS document_requests (
     submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_status (status),
-    INDEX idx_citizen (citizen_name)
-) ENGINE=InnoDB; 
+    INDEX idx_citizen_name (last_name, first_name)
+) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS appointments (
     id INT AUTO_INCREMENT PRIMARY KEY,
     appointment_code VARCHAR(20) NOT NULL UNIQUE,
-    citizen_name VARCHAR(150) NOT NULL,
+    first_name VARCHAR(80) NOT NULL,
+    middle_name VARCHAR(80) DEFAULT NULL,
+    last_name VARCHAR(80) NOT NULL,
     email VARCHAR(150) DEFAULT NULL,
     phone VARCHAR(30) DEFAULT NULL,
     notify_email TINYINT(1) NOT NULL DEFAULT 0,
@@ -61,7 +67,8 @@ CREATE TABLE IF NOT EXISTS appointments (
     notes TEXT DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_date (appointment_date),
-    INDEX idx_status (status)
+    INDEX idx_status (status),
+    INDEX idx_citizen_name (last_name, first_name)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS queue_tickets (
@@ -69,7 +76,9 @@ CREATE TABLE IF NOT EXISTS queue_tickets (
     ticket_number VARCHAR(10) NOT NULL,
     purpose ENUM('walk_in','appointment','document_claim') NOT NULL,
     status ENUM('waiting','serving','completed','skipped') NOT NULL DEFAULT 'waiting',
-    citizen_name VARCHAR(150) DEFAULT NULL,
+    first_name VARCHAR(80) DEFAULT NULL,
+    middle_name VARCHAR(80) DEFAULT NULL,
+    last_name VARCHAR(80) DEFAULT NULL,
     reference_code VARCHAR(20) DEFAULT NULL,
     window_number INT DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -82,7 +91,9 @@ CREATE TABLE IF NOT EXISTS civil_records (
     id INT AUTO_INCREMENT PRIMARY KEY,
     record_type ENUM('birth','death','marriage') NOT NULL,
     registry_number VARCHAR(50) DEFAULT NULL,
-    person_name VARCHAR(150) NOT NULL,
+    first_name VARCHAR(80) DEFAULT NULL,
+    middle_name VARCHAR(80) DEFAULT NULL,
+    last_name VARCHAR(80) DEFAULT NULL,
     birth_date DATE DEFAULT NULL,
     sex VARCHAR(10) DEFAULT NULL,
     birth_time VARCHAR(20) DEFAULT NULL,
@@ -150,7 +161,7 @@ CREATE TABLE IF NOT EXISTS civil_records (
     deleted_at TIMESTAMP NULL DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_type (record_type),
-    INDEX idx_person (person_name),
+    INDEX idx_person_name (last_name, first_name),
     INDEX idx_deleted (deleted_at)
 ) ENGINE=InnoDB;
 
@@ -226,9 +237,9 @@ CREATE TABLE IF NOT EXISTS staff_password_otps (
 ) ENGINE=InnoDB;
 
 -- Default administrator (change password after first login in System Settings).
-INSERT INTO staff (staff_id, name, password_hash, role) VALUES
-('ALORAN-001', 'Glen Mark Gonzaga', '$2y$10$Cx6KHQWZUxmyrz.7v3s.UeGNWmwmyncSad1FhNh8N.YPqoUwL5zbO', 'Administrator')
-ON DUPLICATE KEY UPDATE name = VALUES(name), role = VALUES(role);
+INSERT INTO staff (staff_id, first_name, middle_name, last_name, password_hash, role) VALUES
+('ALORAN-001', 'Glen Mark', NULL, 'Gonzaga', '$2y$10$Cx6KHQWZUxmyrz.7v3s.UeGNWmwmyncSad1FhNh8N.YPqoUwL5zbO', 'Administrator')
+ON DUPLICATE KEY UPDATE first_name = VALUES(first_name), middle_name = VALUES(middle_name), last_name = VALUES(last_name), role = VALUES(role);
 
 -- Default office settings (no other sample records).
 INSERT INTO system_settings (setting_key, setting_value) VALUES

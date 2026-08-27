@@ -192,6 +192,9 @@
             btn.addEventListener('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
+                if (window.AlcrosConfirm && !window.AlcrosConfirm.ask('Clear all notifications from this list?')) {
+                    return;
+                }
                 var now = Date.now();
                 visibleList(latestGetter()).forEach(function (n) { dismissId(n.id); });
                 setClearedAt(now);
@@ -207,6 +210,9 @@
                 if (!btn) return;
                 e.preventDefault();
                 e.stopPropagation();
+                if (window.AlcrosConfirm && !window.AlcrosConfirm.ask('Remove this notification?')) {
+                    return;
+                }
                 dismissId(btn.getAttribute('data-id'));
                 refresh();
             });

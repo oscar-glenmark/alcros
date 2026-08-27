@@ -107,30 +107,20 @@ $chartPayload = [
     <title>Analytics - ALCROS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <?= adminLayoutHeadStyles('analytics') ?>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
-        .sidebar-item:hover { background-color: #f1f5f9; }
-        .active-nav { background-color: #2563eb; color: white !important; }
-        .stat-card { box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); }
-        .stat-card:hover { box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06); }
-        .chart-box { position: relative; height: 220px; }
-    </style>
 </head>
 <body class="flex min-h-screen">
     <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
     <main class="admin-main flex flex-col bg-[#f8fafc]">
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
 
-        <div class="admin-content p-6 lg:p-8 max-w-6xl w-full mx-auto space-y-6">
+        <div class="admin-content p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto admin-page-wrap space-y-6">
 
-            <div>
-                <a href="<?= htmlspecialchars(buildAuthUrl('dashboard.php')) ?>" class="text-blue-600 text-[11px] font-bold flex items-center mb-2 hover:underline">
-                    <i data-lucide="chevron-left" class="w-3 h-3 mr-1"></i> Back to Dashboard
-                </a>
-                <h1 class="text-2xl font-black text-slate-900">Analytics</h1>
-                <p class="text-gray-500 text-sm mt-1"><?= date('F j, Y') ?> · For detailed exports, use Operational Reports</p>
+            <div class="admin-page-head">
+                <h1>Analytics</h1>
+                <p><?= date('F j, Y') ?> · For detailed exports, use Operational Reports</p>
             </div>
 
             <?php if ($pendingCount > 0 || $readyCount > 0 || $queueWaiting > 0): ?>
@@ -140,7 +130,7 @@ $chartPayload = [
                 <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php', ['status' => 'pending'])) ?>" class="text-xs font-bold bg-white border border-amber-200 text-amber-800 px-2.5 py-1 rounded-lg hover:bg-amber-100"><?= $pendingCount ?> pending</a>
                 <?php endif; ?>
                 <?php if ($readyCount > 0): ?>
-                <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php', ['status' => 'ready'])) ?>" class="text-xs font-bold bg-white border border-amber-200 text-amber-800 px-2.5 py-1 rounded-lg hover:bg-amber-100"><?= $readyCount ?> ready</a>
+                <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => date('Y-m-d')])) ?>" class="text-xs font-bold bg-white border border-amber-200 text-amber-800 px-2.5 py-1 rounded-lg hover:bg-amber-100"><?= $readyCount ?> ready</a>
                 <?php endif; ?>
                 <?php if ($queueWaiting > 0): ?>
                 <a href="<?= htmlspecialchars(buildAuthUrl('live-queue.php')) ?>" class="text-xs font-bold bg-white border border-amber-200 text-amber-800 px-2.5 py-1 rounded-lg hover:bg-amber-100"><?= $queueWaiting ?> in queue</a>
@@ -171,52 +161,62 @@ $chartPayload = [
                 </a>
             </div>
 
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div class="bg-white rounded-xl border border-gray-100 p-5">
-                    <h2 class="text-sm font-bold text-slate-900">Request pipeline</h2>
-                    <p class="text-[11px] text-gray-400 mb-3">All requests by stage</p>
-                    <?php if ($totalRequests === 0): ?>
-                    <p class="text-sm text-gray-400 py-14 text-center">No requests yet.</p>
-                    <?php else: ?>
-                    <div class="chart-box"><canvas id="chartPipeline"></canvas></div>
-                    <?php endif; ?>
-                </div>
-
-                <div class="bg-white rounded-xl border border-gray-100 p-5">
-                    <h2 class="text-sm font-bold text-slate-900">Monthly requests</h2>
-                    <p class="text-[11px] text-gray-400 mb-3">Last 6 months</p>
+            <div class="analytics-charts">
+                <div class="analytics-chart-card analytics-chart-card--featured">
+                    <div class="analytics-chart-head">
+                        <h2>Monthly requests</h2>
+                        <p>Submission trend · last 6 months</p>
+                    </div>
                     <?php if ($maxMonth === 0): ?>
-                    <p class="text-sm text-gray-400 py-14 text-center">No data yet.</p>
+                    <div class="analytics-empty">No data yet.</div>
                     <?php else: ?>
-                    <div class="chart-box"><canvas id="chartMonths"></canvas></div>
+                    <div class="chart-box chart-box--tall"><canvas id="chartMonths"></canvas></div>
                     <?php endif; ?>
                 </div>
 
-                <div class="bg-white rounded-xl border border-gray-100 p-5">
-                    <h2 class="text-sm font-bold text-slate-900">Appointments</h2>
-                    <p class="text-[11px] text-gray-400 mb-3">All bookings by status</p>
-                    <?php if ($apptTotal === 0): ?>
-                    <p class="text-sm text-gray-400 py-14 text-center">No appointments yet.</p>
-                    <?php else: ?>
-                    <div class="chart-box"><canvas id="chartAppointments"></canvas></div>
-                    <?php endif; ?>
+                <div class="analytics-chart-grid">
+                    <div class="analytics-chart-card">
+                        <div class="analytics-chart-head">
+                            <h2>Request pipeline</h2>
+                            <p>Current stage breakdown</p>
+                        </div>
+                        <?php if ($totalRequests === 0): ?>
+                        <div class="analytics-empty">No requests yet.</div>
+                        <?php else: ?>
+                        <div class="chart-box chart-box--compact"><canvas id="chartPipeline"></canvas></div>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="analytics-chart-card">
+                        <div class="analytics-chart-head">
+                            <h2>Appointments</h2>
+                            <p>All bookings by status</p>
+                        </div>
+                        <?php if ($apptTotal === 0): ?>
+                        <div class="analytics-empty">No appointments yet.</div>
+                        <?php else: ?>
+                        <div class="chart-box chart-box--compact"><canvas id="chartAppointments"></canvas></div>
+                        <?php endif; ?>
+                    </div>
                 </div>
 
-                <div class="bg-white rounded-xl border border-gray-100 p-5 flex flex-col justify-center">
-                    <h2 class="text-sm font-bold text-slate-900">Queue today</h2>
-                    <p class="text-[11px] text-gray-400 mb-4">Live ticket counts</p>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
-                        <div class="rounded-lg bg-amber-50 py-4 px-2">
-                            <p class="text-2xl font-black text-amber-700"><?= $queueWaiting ?></p>
-                            <p class="text-[10px] font-bold text-amber-800/70 mt-1 uppercase">Waiting</p>
+                <div class="analytics-chart-card">
+                    <div class="analytics-chart-head">
+                        <h2>Queue today</h2>
+                        <p>Live ticket counts</p>
+                    </div>
+                    <div class="analytics-queue-strip">
+                        <div class="analytics-queue-item bg-amber-50">
+                            <strong class="text-amber-700"><?= $queueWaiting ?></strong>
+                            <span class="text-amber-800/70">Waiting</span>
                         </div>
-                        <div class="rounded-lg bg-blue-50 py-4 px-2">
-                            <p class="text-2xl font-black text-blue-700"><?= $queueServing ?></p>
-                            <p class="text-[10px] font-bold text-blue-800/70 mt-1 uppercase">Serving</p>
+                        <div class="analytics-queue-item bg-blue-50">
+                            <strong class="text-blue-700"><?= $queueServing ?></strong>
+                            <span class="text-blue-800/70">Serving</span>
                         </div>
-                        <div class="rounded-lg bg-emerald-50 py-4 px-2">
-                            <p class="text-2xl font-black text-emerald-700"><?= $queueServed ?></p>
-                            <p class="text-[10px] font-bold text-emerald-800/70 mt-1 uppercase">Done</p>
+                        <div class="analytics-queue-item bg-emerald-50">
+                            <strong class="text-emerald-700"><?= $queueServed ?></strong>
+                            <span class="text-emerald-800/70">Done</span>
                         </div>
                     </div>
                 </div>

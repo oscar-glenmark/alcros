@@ -28,7 +28,6 @@
     transform: scale(0.98);
 }
 
-/* Page header — chevron + label */
 .back-home--inline {
     font-size: 0.6875rem;
     color: #2563eb;
@@ -51,7 +50,6 @@
     transform: translateY(-1px);
 }
 
-/* Top nav — compact text link */
 .back-home--nav {
     font-size: 0.625rem;
     color: #64748b;
@@ -71,7 +69,6 @@
     box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
 }
 
-/* Pill button */
 .back-home--btn {
     justify-content: center;
     font-size: 0.75rem;
@@ -90,7 +87,6 @@
     box-shadow: 0 8px 20px rgba(37, 99, 235, 0.14);
 }
 
-/* Centered text link */
 .back-home--center {
     justify-content: center;
     width: 100%;
@@ -105,7 +101,6 @@
     box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12);
 }
 
-/* Primary filled button (install page) */
 .back-home--primary {
     justify-content: center;
     width: 100%;

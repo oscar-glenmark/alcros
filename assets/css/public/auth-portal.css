@@ -1,0 +1,207 @@
+:root {
+    --alcros-navy: #071428;
+    --alcros-navy-mid: #0c2247;
+    --alcros-gold: #f4b400;
+    --alcros-gold-hover: #e5a800;
+}
+
+html,
+body.auth-portal {
+    height: 100%;
+    overflow: hidden;
+}
+
+.auth-portal {
+    font-family: 'Inter', sans-serif;
+    height: 100dvh;
+    max-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    color: #1e293b;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Fixed building background — does not scroll with content */
+.auth-portal::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background-image:
+        linear-gradient(105deg, rgba(7, 20, 40, 0.94) 0%, rgba(7, 20, 40, 0.82) 42%, rgba(7, 20, 40, 0.55) 68%, rgba(7, 20, 40, 0.45) 100%),
+        url('../../../images/municipal-hall.jpg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    pointer-events: none;
+}
+
+.auth-portal-header {
+    position: relative;
+    z-index: 2;
+    flex-shrink: 0;
+    background: var(--alcros-navy);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.auth-portal-header-inner {
+    max-width: 80rem;
+    margin: 0 auto;
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+@media (min-width: 640px) {
+    .auth-portal-header-inner {
+        padding: 0.75rem 1.5rem;
+    }
+}
+
+.auth-portal-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+    text-decoration: none;
+}
+
+.auth-portal-brand-logo {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 9999px;
+    object-fit: cover;
+    background: #fff;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15);
+    flex-shrink: 0;
+}
+
+.auth-portal-brand-title {
+    color: #fff;
+    font-weight: 800;
+    font-size: 1.125rem;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+}
+
+.auth-portal-brand-subtitle {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.6875rem;
+    font-style: italic;
+    line-height: 1.35;
+    margin-top: 0.125rem;
+}
+
+.auth-portal-header-link {
+    color: #fff;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    text-decoration: none;
+    border: 1.5px solid rgba(255, 255, 255, 0.85);
+    padding: 0.45rem 1rem;
+    transition: background 0.2s, color 0.2s;
+    white-space: nowrap;
+}
+
+.auth-portal-header-link:hover {
+    background: #fff;
+    color: var(--alcros-navy);
+}
+
+.auth-portal-main {
+    position: relative;
+    z-index: 1;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+.auth-portal-card {
+    width: 100%;
+    max-width: 420px;
+    background: #fff;
+    border-radius: 2rem;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 24px 60px rgba(7, 20, 40, 0.35);
+    flex-shrink: 0;
+}
+
+.auth-portal-badge {
+    display: inline-block;
+    padding: 0.5rem 1.5rem;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(244, 180, 0, 0.35);
+    background: rgba(244, 180, 0, 0.12);
+    color: #92400e;
+    font-size: 0.625rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.auth-portal-btn {
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    background: var(--alcros-gold);
+    color: var(--alcros-navy);
+    border: none;
+    border-radius: 0.75rem;
+    padding: 0.875rem 1rem;
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    transition: background 0.2s, transform 0.15s;
+    box-shadow: 0 8px 20px rgba(244, 180, 0, 0.25);
+    cursor: pointer;
+}
+
+.auth-portal-btn:hover {
+    background: var(--alcros-gold-hover);
+}
+
+.auth-portal-btn:active {
+    transform: scale(0.98);
+}
+
+.auth-portal-card-footer {
+    background: rgba(248, 250, 252, 0.95);
+    border-top: 1px solid #f1f5f9;
+    padding: 1.25rem 1.5rem;
+    text-align: center;
+}
+
+.auth-portal-card .back-home--center {
+    color: var(--alcros-navy-mid);
+}
+
+.auth-portal-card .back-home--center:hover {
+    color: var(--alcros-navy);
+    background-color: rgba(7, 20, 40, 0.06);
+    box-shadow: none;
+}
+
+.auth-portal-card a.text-blue-600,
+.auth-portal-card .text-blue-600 {
+    color: #0c4a8a !important;
+}
+
+.auth-portal-card a.text-blue-600:hover {
+    color: var(--alcros-navy) !important;
+}

@@ -1,7 +1,17 @@
 (function () {
     'use strict';
 
+    function getAdminScrollContainer() {
+        var main = document.querySelector('.admin-main');
+        if (!main) return null;
+        return main.querySelector(':scope > .admin-header + *, :scope > header + *') || main;
+    }
+
     function switchTab(tabId) {
+        var nav = document.querySelector('.settings-tab-nav');
+        var scrollEl = getAdminScrollContainer();
+        var navTop = nav ? nav.getBoundingClientRect().top : null;
+
         document.querySelectorAll('.tab-content').forEach(function (el) { el.classList.add('hidden'); });
         document.querySelectorAll('.tab-btn').forEach(function (btn) { btn.classList.remove('active'); });
         var target = document.getElementById('tab-' + tabId);
@@ -11,7 +21,17 @@
         var url = new URL(window.location);
         if (tabId === 'my-account') url.searchParams.delete('tab');
         else url.searchParams.set('tab', tabId);
+        if (tabId !== 'admin-tools') url.searchParams.delete('admin_sub');
         window.history.replaceState({}, '', url);
+
+        if (nav && scrollEl && navTop !== null && window.matchMedia('(min-width: 1024px)').matches) {
+            requestAnimationFrame(function () {
+                var nextTop = nav.getBoundingClientRect().top;
+                if (Math.abs(nextTop - navTop) > 1) {
+                    scrollEl.scrollTop += (nextTop - navTop);
+                }
+            });
+        }
     }
 
     window.switchTab = switchTab;
@@ -31,7 +51,9 @@
     document.querySelectorAll('.edit-staff-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
             document.getElementById('editStaffId').value = btn.dataset.staffId;
-            document.getElementById('editStaffName').value = btn.dataset.staffName;
+            document.getElementById('editStaffFirstName').value = btn.dataset.staffFirstName || '';
+            document.getElementById('editStaffMiddleName').value = btn.dataset.staffMiddleName || '';
+            document.getElementById('editStaffLastName').value = btn.dataset.staffLastName || '';
             var emailInput = document.getElementById('editStaffEmail');
             emailInput.value = btn.dataset.staffEmail || '';
             emailInput.dataset.originalEmail = btn.dataset.staffEmail || '';

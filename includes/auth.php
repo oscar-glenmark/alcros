@@ -17,7 +17,7 @@ function createStaffAuthToken(array $staff): string
 {
     $payload = [
         'staff_id' => (string) $staff['staff_id'],
-        'name'     => (string) $staff['name'],
+        'name'     => personNameFromRow($staff),
         'role'     => (string) ($staff['role'] ?: 'Staff'),
         'exp'      => time() + 86400 * 7,
     ];
@@ -54,7 +54,7 @@ function validateStaffAuthToken(string $token): ?array
 function staffSessionLogin(array $staff, bool $regenerate = false): void
 {
     $_SESSION['staff_id']   = (string) $staff['staff_id'];
-    $_SESSION['staff_name'] = (string) ($staff['name'] ?? 'User');
+    $_SESSION['staff_name'] = personNameFromRow($staff);
     $_SESSION['staff_role'] = (string) ($staff['role'] ?? 'Staff');
     if ($regenerate) {
         session_regenerate_id(true);
@@ -91,13 +91,13 @@ function hydrateStaffFromDatabase(array $staff): ?array
             require_once __DIR__ . '/../config/database.php';
         }
         $pdo = getDB();
-        $stmt = $pdo->prepare('SELECT name, role FROM staff WHERE staff_id = ? LIMIT 1');
+        $stmt = $pdo->prepare('SELECT first_name, middle_name, last_name, role FROM staff WHERE staff_id = ? LIMIT 1');
         $stmt->execute([$staff['staff_id']]);
         $row = $stmt->fetch();
         if (!$row) {
             return null;
         }
-        $staff['name'] = (string) $row['name'];
+        $staff['name'] = personNameFromRow($row);
         $staff['role'] = (string) ($row['role'] ?: 'Staff');
     } catch (Throwable $e) {
         // Use existing payload if database lookup fails temporarily.
@@ -279,6 +279,7 @@ function staffMenuPages(): array
         'manage_request.php',
         'appointment.php',
         'records.php',
+        'report.php',
         'live-queue.php',
         'system_settings.php',
     ];

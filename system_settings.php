@@ -46,7 +46,7 @@ $defaults = [
 
 function currentStaffRow(PDO $pdo, string $staffId): ?array
 {
-    $stmt = $pdo->prepare('SELECT staff_id, name, email, recovery_gmail_2sv_confirmed, role, created_at, profile_photo_path FROM staff WHERE staff_id = ? LIMIT 1');
+    $stmt = $pdo->prepare('SELECT staff_id, first_name, middle_name, last_name, email, recovery_gmail_2sv_confirmed, role, created_at, profile_photo_path FROM staff WHERE staff_id = ? LIMIT 1');
     $stmt->execute([$staffId]);
     $row = $stmt->fetch();
     return $row ?: null;
@@ -76,10 +76,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         if ($action === 'update_profile') {
-            $name = trim($_POST['profile_name'] ?? '');
+            $nameParts = personNamePartsFromInput($_POST, 'profile_');
             $email = normalizeStaffEmail(trim($_POST['profile_email'] ?? ''));
-            if ($name === '') {
-                throw new InvalidArgumentException('Display name cannot be empty.');
+            if (($nameError = validatePersonNameParts($nameParts)) !== null) {
+                throw new InvalidArgumentException($nameError);
             }
             if ($emailError = validateStaffEmail($email)) {
                 throw new InvalidArgumentException($emailError);
@@ -94,8 +94,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new InvalidArgumentException($error2sv);
             }
             $confirmedValue = staffRecoveryGmail2svConfirmedValue($existing, $email, $confirmedCheckbox);
-            $pdo->prepare('UPDATE staff SET name = ?, email = ?, recovery_gmail_2sv_confirmed = ? WHERE staff_id = ?')
-                ->execute([$name, $email, $confirmedValue, $currentStaffId]);
+            $pdo->prepare('UPDATE staff SET first_name = ?, middle_name = ?, last_name = ?, email = ?, recovery_gmail_2sv_confirmed = ? WHERE staff_id = ?')
+                ->execute([$nameParts['first_name'], $nameParts['middle_name'], $nameParts['last_name'], $email, $confirmedValue, $currentStaffId]);
+            $_SESSION['staff_name'] = formatPersonName($nameParts['first_name'], $nameParts['middle_name'], $nameParts['last_name']);
             logActivity($currentStaffId, 'Profile Updated', 'Updated display name and recovery Gmail');
             settingsFlashSet('success', 'Your profile has been updated.');
         } elseif ($action === 'change_password') {
@@ -138,7 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             logActivity($currentStaffId, 'Settings Updated', 'System configuration saved');
             settingsFlashSet('success', 'System settings saved successfully.');
         } elseif ($action === 'add_staff' && $isAdmin) {
-            $name = trim($_POST['staff_name'] ?? '');
+            $nameParts = personNamePartsFromInput($_POST, 'staff_');
             $newStaffId = strtoupper(trim($_POST['staff_id_new'] ?? ''));
             $email = normalizeStaffEmail(trim($_POST['staff_email'] ?? ''));
             $password = $_POST['staff_password'] ?? '';
@@ -147,8 +148,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!in_array($role, $validRoles, true)) {
                 $role = 'Staff';
             }
-            if ($name === '' || $newStaffId === '' || $password === '') {
-                throw new InvalidArgumentException('Please fill in name, staff ID, and password.');
+            if (($nameError = validatePersonNameParts($nameParts)) !== null || $newStaffId === '' || $password === '') {
+                throw new InvalidArgumentException($nameError ?? 'Please fill in name, staff ID, and password.');
             }
             if ($emailError = validateStaffEmail($email)) {
                 throw new InvalidArgumentException($emailError);
@@ -173,21 +174,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ((int) $exists->fetchColumn() > 0) {
                 throw new InvalidArgumentException('That Staff ID is already in use.');
             }
-            $pdo->prepare('INSERT INTO staff (staff_id, name, email, recovery_gmail_2sv_confirmed, password_hash, role) VALUES (?, ?, ?, 1, ?, ?)')
-                ->execute([$newStaffId, $name, $email, password_hash($password, PASSWORD_DEFAULT), $role]);
-            logActivity($currentStaffId, 'Staff Added', "Created staff account $newStaffId ($name)");
-            settingsFlashSet('success', "Staff member $name ($newStaffId) added successfully.");
+            $pdo->prepare('INSERT INTO staff (staff_id, first_name, middle_name, last_name, email, recovery_gmail_2sv_confirmed, password_hash, role) VALUES (?, ?, ?, ?, ?, 1, ?, ?)')
+                ->execute([$newStaffId, $nameParts['first_name'], $nameParts['middle_name'], $nameParts['last_name'], $email, password_hash($password, PASSWORD_DEFAULT), $role]);
+            $displayName = formatPersonName($nameParts['first_name'], $nameParts['middle_name'], $nameParts['last_name']);
+            logActivity($currentStaffId, 'Staff Added', "Created staff account $newStaffId ($displayName)");
+            settingsFlashSet('success', "Staff member $displayName ($newStaffId) added successfully.");
         } elseif ($action === 'update_staff' && $isAdmin) {
             $targetId = strtoupper(trim($_POST['target_staff_id'] ?? ''));
-            $name = trim($_POST['edit_staff_name'] ?? '');
+            $nameParts = personNamePartsFromInput($_POST, 'edit_staff_');
             $email = normalizeStaffEmail(trim($_POST['edit_staff_email'] ?? ''));
             $role = $_POST['edit_staff_role'] ?? 'Staff';
             $validRoles = ['Staff', 'Administrator'];
             if (!in_array($role, $validRoles, true)) {
                 $role = 'Staff';
             }
-            if ($targetId === '' || $name === '') {
-                throw new InvalidArgumentException('Staff ID and name are required.');
+            if ($targetId === '' || ($nameError = validatePersonNameParts($nameParts)) !== null) {
+                throw new InvalidArgumentException($nameError ?? 'Staff ID and name are required.');
             }
             if ($emailError = validateStaffEmail($email)) {
                 throw new InvalidArgumentException($emailError);
@@ -205,8 +207,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($targetId === $currentStaffId && $role !== 'Administrator' && adminCount($pdo) <= 1) {
                 throw new InvalidArgumentException('Cannot demote the last administrator account.');
             }
-            $pdo->prepare('UPDATE staff SET name = ?, email = ?, recovery_gmail_2sv_confirmed = ?, role = ? WHERE staff_id = ?')
-                ->execute([$name, $email, $confirmedValue, $role, $targetId]);
+            $pdo->prepare('UPDATE staff SET first_name = ?, middle_name = ?, last_name = ?, email = ?, recovery_gmail_2sv_confirmed = ?, role = ? WHERE staff_id = ?')
+                ->execute([$nameParts['first_name'], $nameParts['middle_name'], $nameParts['last_name'], $email, $confirmedValue, $role, $targetId]);
+            if ($targetId === $currentStaffId) {
+                $_SESSION['staff_name'] = formatPersonName($nameParts['first_name'], $nameParts['middle_name'], $nameParts['last_name']);
+            }
             logActivity($currentStaffId, 'Staff Updated', "Updated account $targetId");
             settingsFlashSet('success', "Staff account $targetId updated.");
         } elseif ($action === 'reset_staff_password' && $isAdmin) {
@@ -293,7 +298,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $tab = $_POST['active_tab'] ?? 'my-account';
-    redirectWithAuth('system_settings.php', array_filter(['tab' => $tab !== 'my-account' ? $tab : null]));
+    $redirectParams = array_filter(['tab' => $tab !== 'my-account' ? $tab : null]);
+    if ($tab === 'admin-tools' && !empty($_POST['admin_sub'])) {
+        $redirectParams['admin_sub'] = $_POST['admin_sub'];
+    }
+    redirectWithAuth('system_settings.php', $redirectParams);
 }
 
 $settings = [];
@@ -303,7 +312,7 @@ foreach ($adminSettingKeys as $key) {
 
 $currentStaff = currentStaffRow($pdo, $currentStaffId);
 $profileNeeds2svConfirmation = staffRecoveryGmailNeeds2svConfirmation($currentStaff, (string) ($currentStaff['email'] ?? ''));
-$staffMembers = $pdo->query('SELECT staff_id, name, email, recovery_gmail_2sv_confirmed, role, created_at, profile_photo_path FROM staff ORDER BY created_at ASC')->fetchAll();
+$staffMembers = $pdo->query('SELECT staff_id, first_name, middle_name, last_name, email, recovery_gmail_2sv_confirmed, role, created_at, profile_photo_path FROM staff ORDER BY created_at ASC')->fetchAll();
 $systemStats = $isAdmin ? getSystemStats($pdo) : [];
 $recentLogs = $isAdmin
     ? $pdo->query('SELECT staff_id, action, details, created_at FROM activity_logs ORDER BY created_at DESC LIMIT 8')->fetchAll()
@@ -323,6 +332,22 @@ if (!in_array($activeTab, $validTabs, true)) {
     $activeTab = 'my-account';
 }
 
+$adminToolsSection = 'overview';
+if ($isAdmin && $activeTab === 'admin-tools') {
+    $adminToolsSection = $_GET['admin_sub'] ?? 'overview';
+    if (!in_array($adminToolsSection, ['overview', 'activity', 'maintenance'], true)) {
+        $adminToolsSection = 'overview';
+    }
+}
+
+function settingsPageUrl(string $tab, ?string $adminSub = null): string
+{
+    return buildAuthUrl('system_settings.php', array_filter([
+        'tab' => $tab !== 'my-account' ? $tab : null,
+        'admin_sub' => ($tab === 'admin-tools' && $adminSub && $adminSub !== 'overview') ? $adminSub : null,
+    ]));
+}
+
 $flash = settingsFlashGet();
 $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
 ?>
@@ -335,29 +360,9 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
     <title><?= $isAdmin ? 'System Settings' : 'My Settings' ?> - ALCROS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="includes/password_toggle.css">
+    <?= publicStylesheet('password-toggle') ?>
+    <?= adminLayoutHeadStyles('settings') ?>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
-        .tab-btn.active { background-color: #2563eb; color: #ffffff; }
-        .tab-btn.active i { color: #ffffff; }
-        .toggle-dot { transition: transform 0.2s; }
-
-        .settings-tab-nav .tab-btn {
-            cursor: pointer;
-            overflow: visible;
-            transition: background-color 0.15s ease;
-        }
-        .settings-tab-nav .tab-btn:hover:not(.active) {
-            background-color: #f8fafc;
-        }
-        .settings-tab-nav .tab-label {
-            opacity: 1;
-            visibility: visible;
-            display: inline;
-            white-space: nowrap;
-        }
-    </style>
 </head>
 <body class="flex min-h-screen">
     <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
@@ -365,13 +370,10 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
     <main class="admin-main flex-1 flex flex-col bg-[#f8fafc]">
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
 
-        <div class="p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
-            <div class="mb-6">
-                <a href="dashboard.php" class="text-xs text-gray-500 hover:text-blue-600 inline-flex items-center gap-1 mb-2 font-medium">
-                    <i data-lucide="chevron-left" class="w-4 h-4"></i> Back to Dashboard
-                </a>
-                <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight"><?= $isAdmin ? 'System Settings' : 'My Settings' ?></h1>
-                <p class="text-gray-500 text-sm mt-1">Manage your account, security<?= $isAdmin ? ', staff accounts, and system-wide configurations' : ', and credentials' ?>.</p>
+        <div class="p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto admin-page-wrap">
+            <div class="admin-page-head mb-6">
+                <h1><?= $isAdmin ? 'System Settings' : 'My Settings' ?></h1>
+                <p>Manage your account, security<?= $isAdmin ? ', staff accounts, and system-wide configurations' : ', and credentials' ?>.</p>
             </div>
 
             <?php if ($flash): ?>
@@ -381,35 +383,40 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
             </div>
             <?php endif; ?>
 
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                <aside class="settings-tab-nav lg:col-span-3 bg-white border border-slate-100 rounded-2xl p-3 shadow-sm space-y-1 lg:sticky lg:top-6 self-start z-10">
+            <div class="settings-layout grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start min-w-0">
+                <aside class="settings-tab-nav lg:col-span-3 bg-white border border-slate-100 rounded-2xl p-3 shadow-sm space-y-1 min-w-0">
                     <?php
                     $tabs = [
-                        'my-account'           => ['label' => 'My Account', 'icon' => 'user'],
-                        'security'             => ['label' => 'Security', 'icon' => 'shield'],
+                        'my-account' => ['label' => 'My Account', 'icon' => 'user', 'desc' => ''],
+                        'security'   => ['label' => 'Security', 'icon' => 'shield', 'desc' => ''],
                     ];
                     if ($isAdmin) {
-                        $tabs['account-management']   = ['label' => 'Account Management', 'icon' => 'users'];
-                        $tabs['system-configuration'] = ['label' => 'System Configuration', 'icon' => 'settings'];
-                        $tabs['admin-tools']          = ['label' => 'Admin Tools', 'icon' => 'wrench'];
+                        $tabs['account-management']   = ['label' => 'Staff Accounts', 'icon' => 'users', 'desc' => 'Portal users & roles'];
+                        $tabs['system-configuration'] = ['label' => 'Configuration', 'icon' => 'settings', 'desc' => 'Office, portal & email'];
+                        $tabs['admin-tools']          = ['label' => 'Admin Tools', 'icon' => 'wrench', 'desc' => 'Stats, logs & upkeep'];
                     }
                     foreach ($tabs as $id => $tab):
                     ?>
                     <button type="button" onclick="switchTab('<?= $id ?>')" id="btn-<?= $id ?>"
-                        class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-slate-600 <?= $activeTab === $id ? 'active' : '' ?>">
-                        <i data-lucide="<?= $tab['icon'] ?>" class="w-4 h-4 text-slate-500 shrink-0"></i>
-                        <span class="tab-label"><?= htmlspecialchars($tab['label']) ?></span>
+                        class="tab-btn w-full flex items-start gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-slate-600 text-left <?= $activeTab === $id ? 'active' : '' ?>">
+                        <i data-lucide="<?= $tab['icon'] ?>" class="w-4 h-4 text-slate-500 shrink-0 mt-0.5"></i>
+                        <span class="min-w-0">
+                            <span class="tab-label block"><?= htmlspecialchars($tab['label']) ?></span>
+                            <?php if (!empty($tab['desc'])): ?>
+                            <span class="tab-desc"><?= htmlspecialchars($tab['desc']) ?></span>
+                            <?php endif; ?>
+                        </span>
                     </button>
                     <?php endforeach; ?>
                 </aside>
 
-                <section class="lg:col-span-9 space-y-6">
+                <section class="settings-tab-panel lg:col-span-9 space-y-6 min-w-0">
                     <!-- MY ACCOUNT -->
                     <div id="tab-my-account" class="tab-content bg-white border border-slate-100 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-sm <?= $activeTab !== 'my-account' ? 'hidden' : '' ?>">
                         <div class="flex items-center gap-5 mb-8">
-                            <?= renderStaffAvatar($currentStaffPhoto, $currentStaff['name'] ?? staffName(), 'w-20 h-20 text-3xl', 'rounded-2xl') ?>
+                            <?= renderStaffAvatar($currentStaffPhoto, personNameFromRow($currentStaff ?? []), 'w-20 h-20 text-3xl', 'rounded-2xl') ?>
                             <div>
-                                <h2 class="text-2xl font-bold text-slate-900"><?= htmlspecialchars($currentStaff['name'] ?? staffName()) ?></h2>
+                                <h2 class="text-2xl font-bold text-slate-900"><?= htmlspecialchars(personNameFromRow($currentStaff ?? [])) ?></h2>
                                 <p class="text-sm text-slate-400 font-mono"><?= htmlspecialchars($currentStaffId) ?></p>
                                 <span class="inline-block mt-2 text-[10px] font-bold uppercase px-2 py-0.5 rounded <?= staffRole() === 'Staff' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700' ?>"><?= htmlspecialchars(staffRole()) ?></span>
                             </div>
@@ -443,13 +450,25 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                             <?= authFormField() ?>
                             <input type="hidden" name="settings_action" value="update_profile">
                             <input type="hidden" name="active_tab" value="my-account">
-                            <h3 class="text-sm font-bold text-slate-900">Update Display Name</h3>
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <h3 class="text-sm font-bold text-slate-900">Update Name</h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:col-span-2">
                                 <div>
-                                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Full Name</label>
-                                    <input type="text" name="profile_name" required value="<?= htmlspecialchars($currentStaff['name'] ?? '') ?>"
+                                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">First Name</label>
+                                    <input type="text" name="profile_first_name" required value="<?= htmlspecialchars($currentStaff['first_name'] ?? '') ?>"
                                         class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
                                 </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Middle Name</label>
+                                    <input type="text" name="profile_middle_name" value="<?= htmlspecialchars($currentStaff['middle_name'] ?? '') ?>"
+                                        class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Last Name</label>
+                                    <input type="text" name="profile_last_name" required value="<?= htmlspecialchars($currentStaff['last_name'] ?? '') ?>"
+                                        class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Staff ID</label>
                                     <input type="text" readonly value="<?= htmlspecialchars($currentStaffId) ?>"
@@ -531,9 +550,19 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                             <?= authFormField() ?>
                             <input type="hidden" name="settings_action" value="add_staff">
                             <input type="hidden" name="active_tab" value="account-management">
-                            <div>
-                                <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Full Name</label>
-                                <input type="text" name="staff_name" required placeholder="Juan Dela Cruz" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:col-span-2">
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">First Name</label>
+                                    <input type="text" name="staff_first_name" required placeholder="Juan" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Middle Name</label>
+                                    <input type="text" name="staff_middle_name" placeholder="Dela" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Last Name</label>
+                                    <input type="text" name="staff_last_name" required placeholder="Cruz" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+                                </div>
                             </div>
                             <div>
                                 <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Staff ID</label>
@@ -585,7 +614,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                     <tr class="hover:bg-slate-50/50">
                                         <td class="px-4 py-3">
                                             <div class="flex flex-col items-center gap-1">
-                                                <?= renderStaffAvatar($member['profile_photo_path'] ?? null, $member['name'], 'w-10 h-10 text-sm') ?>
+                                                <?= renderStaffAvatar($member['profile_photo_path'] ?? null, personNameFromRow($member), 'w-10 h-10 text-sm') ?>
                                                 <form method="POST" enctype="multipart/form-data" class="staff-photo-form">
                                                     <?= authFormField() ?>
                                                     <input type="hidden" name="settings_action" value="upload_staff_photo">
@@ -600,14 +629,14 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                                     <input type="hidden" name="settings_action" value="remove_staff_photo">
                                                     <input type="hidden" name="active_tab" value="account-management">
                                                     <input type="hidden" name="target_staff_id" value="<?= htmlspecialchars($member['staff_id']) ?>">
-                                                    <button type="submit" class="text-[10px] text-slate-400 hover:text-red-500" onclick="return confirm('Remove profile photo for this account?');">Remove</button>
+                                                    <button type="submit" class="text-[10px] text-slate-400 hover:text-red-500">Remove</button>
                                                 </form>
                                                 <?php endif; ?>
                                             </div>
                                         </td>
                                         <td class="px-4 py-3 font-mono text-xs font-bold text-blue-600 whitespace-nowrap"><?= htmlspecialchars($member['staff_id']) ?></td>
                                         <td class="px-4 py-3 font-semibold text-slate-800 whitespace-nowrap">
-                                            <?= htmlspecialchars($member['name']) ?>
+                                            <?= htmlspecialchars(personNameFromRow($member)) ?>
                                             <?php if ($member['staff_id'] === $currentStaffId): ?><span class="text-[9px] text-blue-500 font-normal"> (You)</span><?php endif; ?>
                                         </td>
                                         <td class="px-4 py-3 text-xs text-slate-600 whitespace-nowrap"><?= htmlspecialchars($member['email'] ?? '—') ?></td>
@@ -627,7 +656,9 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                         <td class="px-4 py-3 text-right whitespace-nowrap">
                                             <button type="button" class="edit-staff-btn text-[10px] font-semibold text-blue-600 hover:underline"
                                                 data-staff-id="<?= htmlspecialchars($member['staff_id']) ?>"
-                                                data-staff-name="<?= htmlspecialchars($member['name']) ?>"
+                                                data-staff-first-name="<?= htmlspecialchars($member['first_name'] ?? '') ?>"
+                                                data-staff-middle-name="<?= htmlspecialchars($member['middle_name'] ?? '') ?>"
+                                                data-staff-last-name="<?= htmlspecialchars($member['last_name'] ?? '') ?>"
                                                 data-staff-email="<?= htmlspecialchars($member['email'] ?? '') ?>"
                                                 data-staff-role="<?= htmlspecialchars($member['role']) ?>"
                                                 data-staff-2sv-confirmed="<?= !empty($member['recovery_gmail_2sv_confirmed']) ? '1' : '0' ?>">Edit</button>
@@ -636,7 +667,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                                 data-staff-id="<?= htmlspecialchars($member['staff_id']) ?>">Reset</button>
                                             <?php if ($member['staff_id'] !== $currentStaffId): ?>
                                             <span class="text-slate-200 mx-1">·</span>
-                                            <form method="POST" class="inline" onsubmit="return confirm('Remove this staff account permanently?');">
+                                            <form method="POST" class="inline">
                                                 <?= authFormField() ?>
                                                 <input type="hidden" name="settings_action" value="remove_staff">
                                                 <input type="hidden" name="active_tab" value="account-management">
@@ -654,14 +685,21 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
 
                     <!-- SYSTEM CONFIGURATION -->
                     <div id="tab-system-configuration" class="tab-content bg-white border border-slate-100 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-sm <?= $activeTab !== 'system-configuration' ? 'hidden' : '' ?>">
-                        <form method="POST" class="space-y-8">
+                        <div class="mb-6">
+                            <h2 class="text-lg font-bold text-slate-900">System Configuration</h2>
+                            <p class="text-xs text-slate-500 mt-1">Expand each section to edit. Save once at the bottom — all changes apply together.</p>
+                        </div>
+                        <form method="POST" class="space-y-4">
                             <?= authFormField() ?>
                             <input type="hidden" name="settings_action" value="save_settings">
                             <input type="hidden" name="active_tab" value="system-configuration">
 
-                            <div>
-                                <h2 class="text-base font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100">Office Information</h2>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <details class="config-section group rounded-xl border border-slate-200 overflow-hidden" open>
+                                <summary class="flex items-center justify-between gap-3 px-4 py-3.5 bg-slate-50 hover:bg-slate-100/80 font-semibold text-sm text-slate-800">
+                                    <span class="flex items-center gap-2"><i data-lucide="building-2" class="w-4 h-4 text-slate-500"></i> Office Information</span>
+                                    <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 config-chevron"></i>
+                                </summary>
+                                <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-100">
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Site Name</label><input type="text" name="site_name" value="<?= htmlspecialchars($settings['site_name']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Office Name</label><input type="text" name="office_name" value="<?= htmlspecialchars($settings['office_name']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                     <div class="sm:col-span-2"><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Address</label><input type="text" name="office_address" value="<?= htmlspecialchars($settings['office_address']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
@@ -670,11 +708,14 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Office Hours</label><input type="text" name="office_hours" value="<?= htmlspecialchars($settings['office_hours']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Office Head / Signatory</label><input type="text" name="office_head" value="<?= htmlspecialchars($settings['office_head']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                 </div>
-                            </div>
+                            </details>
 
-                            <div>
-                                <h2 class="text-base font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100">Public Portal Content</h2>
-                                <div class="space-y-4">
+                            <details class="config-section group rounded-xl border border-slate-200 overflow-hidden">
+                                <summary class="flex items-center justify-between gap-3 px-4 py-3.5 bg-slate-50 hover:bg-slate-100/80 font-semibold text-sm text-slate-800">
+                                    <span class="flex items-center gap-2"><i data-lucide="globe" class="w-4 h-4 text-slate-500"></i> Public Portal Content</span>
+                                    <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 config-chevron"></i>
+                                </summary>
+                                <div class="p-4 space-y-4 border-t border-slate-100">
                                     <div>
                                         <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Overview Description</label>
                                         <textarea name="overview_text" rows="3" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><?= htmlspecialchars($settings['overview_text']) ?></textarea>
@@ -687,24 +728,30 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Portal Banner Description</label><textarea name="portal_description" rows="2" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><?= htmlspecialchars($settings['portal_description']) ?></textarea></div>
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Kiosk Welcome Message</label><input type="text" name="kiosk_welcome_message" value="<?= htmlspecialchars($settings['kiosk_welcome_message']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                 </div>
-                            </div>
+                            </details>
 
-                            <div>
-                                <h2 class="text-base font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100">Operations & Queue</h2>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <details class="config-section group rounded-xl border border-slate-200 overflow-hidden">
+                                <summary class="flex items-center justify-between gap-3 px-4 py-3.5 bg-slate-50 hover:bg-slate-100/80 font-semibold text-sm text-slate-800">
+                                    <span class="flex items-center gap-2"><i data-lucide="mail" class="w-4 h-4 text-slate-500"></i> Operations, Queue & Email</span>
+                                    <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 config-chevron"></i>
+                                </summary>
+                                <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-100">
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Queue Window Number</label><input type="number" name="queue_window" value="<?= htmlspecialchars($settings['queue_window']) ?>" min="1" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Max Daily Appointments</label><input type="number" name="max_daily_appointments" value="<?= htmlspecialchars($settings['max_daily_appointments']) ?>" min="1" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                     <div class="sm:col-span-2"><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Notification Email</label><input type="email" name="notification_email" value="<?= htmlspecialchars($settings['notification_email']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Fallback From address if Gmail SMTP is not used.</p></div>
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Gmail SMTP Host</label><input type="text" name="smtp_host" value="<?= htmlspecialchars($settings['smtp_host'] ?: 'smtp.gmail.com') ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Gmail SMTP Port</label><input type="number" name="smtp_port" value="<?= htmlspecialchars($settings['smtp_port'] ?: '587') ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">587 for STARTTLS, or 465 for SSL.</p></div>
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Gmail Address (SMTP user)</label><input type="email" name="smtp_user" value="<?= htmlspecialchars($settings['smtp_user']) ?>" placeholder="youroffice@gmail.com" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
-                                    <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Gmail App Password</label><input type="password" name="smtp_pass" value="" autocomplete="new-password" placeholder="<?= $settings['smtp_pass'] !== '' ? 'Leave blank to keep the saved password' : 'App password from Google Account' ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Create an App Password in Google Account → Security. Required so citizens receive request and status emails.</p></div>
+                                    <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Gmail App Password</label><input type="password" name="smtp_pass" value="" autocomplete="new-password" placeholder="<?= $settings['smtp_pass'] !== '' ? 'Leave blank to keep the saved password' : 'App password from Google Account' ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Create an App Password in Google Account → Security.</p></div>
                                 </div>
-                            </div>
+                            </details>
 
-                            <div>
-                                <h2 class="text-base font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100">Portal Access Controls</h2>
-                                <div class="space-y-4">
+                            <details class="config-section group rounded-xl border border-slate-200 overflow-hidden">
+                                <summary class="flex items-center justify-between gap-3 px-4 py-3.5 bg-slate-50 hover:bg-slate-100/80 font-semibold text-sm text-slate-800">
+                                    <span class="flex items-center gap-2"><i data-lucide="shield-check" class="w-4 h-4 text-slate-500"></i> Portal Access Controls</span>
+                                    <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 config-chevron"></i>
+                                </summary>
+                                <div class="p-4 space-y-3 border-t border-slate-100">
                                     <label class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 cursor-pointer">
                                         <div>
                                             <p class="text-sm font-semibold text-slate-800">Maintenance Mode</p>
@@ -720,9 +767,9 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                         <input type="checkbox" name="allow_public_requests" value="1" <?= $settings['allow_public_requests'] === '1' ? 'checked' : '' ?> class="rounded text-blue-600 w-5 h-5">
                                     </label>
                                 </div>
-                            </div>
+                            </details>
 
-                            <div class="pt-4 flex justify-end">
+                            <div class="pt-2 flex justify-end sticky bottom-0 bg-white/95 backdrop-blur border-t border-slate-100 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-4 mt-4">
                                 <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl text-sm font-semibold inline-flex items-center gap-2">
                                     <i data-lucide="save" class="w-4 h-4"></i> Save Settings
                                 </button>
@@ -731,73 +778,142 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                     </div>
 
                     <!-- ADMIN TOOLS -->
-                    <div id="tab-admin-tools" class="tab-content space-y-6 <?= $activeTab !== 'admin-tools' ? 'hidden' : '' ?>">
-                        <div class="bg-white border border-slate-100 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-sm">
-                            <h2 class="text-lg font-bold text-slate-900 mb-1">System Overview</h2>
-                            <p class="text-xs text-slate-500 mb-6">Database statistics and environment information.</p>
-                            <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
-                                <?php foreach ($systemStats as $stat): ?>
-                                <div class="bg-slate-50 rounded-xl p-4 border border-slate-100">
-                                    <p class="text-[10px] font-bold text-slate-400 uppercase"><?= htmlspecialchars($stat['label']) ?></p>
-                                    <p class="text-2xl font-black text-slate-900"><?= number_format($stat['count']) ?></p>
-                                </div>
+                    <div id="tab-admin-tools" class="tab-content <?= $activeTab !== 'admin-tools' ? 'hidden' : '' ?>">
+                        <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden mb-5">
+                            <div class="px-5 py-4 border-b border-slate-100">
+                                <h2 class="text-base font-black text-slate-900">Admin Tools</h2>
+                                <p class="text-xs text-slate-500 mt-0.5">System health, audit trail, and maintenance — one section at a time.</p>
+                            </div>
+                            <nav class="flex gap-1 p-2 overflow-x-auto bg-slate-50/80 border-b border-slate-100" aria-label="Admin tools sections">
+                                <?php
+                                $adminToolTabs = [
+                                    'overview'    => ['label' => 'Overview', 'icon' => 'layout-dashboard'],
+                                    'activity'    => ['label' => 'Activity', 'icon' => 'activity', 'count' => count($recentLogs)],
+                                    'maintenance' => ['label' => 'Maintenance', 'icon' => 'wrench'],
+                                ];
+                                foreach ($adminToolTabs as $subKey => $subTab):
+                                ?>
+                                <a href="<?= htmlspecialchars(settingsPageUrl('admin-tools', $subKey)) ?>"
+                                   class="admin-sub-tab flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold border border-transparent whitespace-nowrap text-slate-600 hover:bg-white <?= $adminToolsSection === $subKey ? 'is-active' : '' ?>">
+                                    <i data-lucide="<?= $subTab['icon'] ?>" class="w-3.5 h-3.5"></i>
+                                    <?= htmlspecialchars($subTab['label']) ?>
+                                    <?php if (isset($subTab['count'])): ?>
+                                    <span class="min-w-[1.1rem] h-5 px-1 rounded-full text-[10px] font-black flex items-center justify-center <?= $adminToolsSection === $subKey ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600' ?>"><?= (int) $subTab['count'] ?></span>
+                                    <?php endif; ?>
+                                </a>
                                 <?php endforeach; ?>
-                            </div>
-                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-slate-600 bg-slate-50 rounded-xl p-4 border border-slate-100">
-                                <div><span class="text-slate-400 font-bold uppercase text-[10px]">Database</span><p class="font-semibold mt-1"><?= htmlspecialchars(DB_NAME) ?></p></div>
-                                <div><span class="text-slate-400 font-bold uppercase text-[10px]">Host</span><p class="font-semibold mt-1"><?= htmlspecialchars(DB_HOST) ?></p></div>
-                                <div><span class="text-slate-400 font-bold uppercase text-[10px]">PHP Version</span><p class="font-semibold mt-1"><?= htmlspecialchars(PHP_VERSION) ?></p></div>
-                            </div>
-                        </div>
+                            </nav>
 
-                        <div class="bg-white border border-slate-100 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-sm">
-                            <div class="flex justify-between items-center mb-4">
-                                <h3 class="text-base font-bold text-slate-900">Recent Activity</h3>
-                                <a href="Activity-log.php" class="text-[10px] font-bold text-blue-600 hover:underline uppercase">View Full Log</a>
-                            </div>
-                            <?php if (empty($recentLogs)): ?>
-                            <p class="text-sm text-slate-400">No activity logged yet.</p>
-                            <?php else: ?>
-                            <div class="divide-y divide-slate-100">
-                                <?php foreach ($recentLogs as $log): ?>
-                                <div class="py-3 flex justify-between gap-4 text-sm">
-                                    <div>
-                                        <p class="font-semibold text-slate-800"><?= htmlspecialchars($log['action']) ?></p>
-                                        <p class="text-xs text-slate-400"><?= htmlspecialchars($log['staff_id'] ?? 'System') ?> — <?= htmlspecialchars($log['details']) ?></p>
+                            <!-- Overview -->
+                            <div class="p-5 sm:p-6 <?= $adminToolsSection !== 'overview' ? 'hidden' : '' ?>">
+                                <h3 class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-3">Database totals</h3>
+                                <div class="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
+                                    <?php foreach ($systemStats as $stat): ?>
+                                    <div class="rounded-xl p-4 bg-slate-50 border border-slate-100">
+                                        <p class="text-[10px] font-bold text-slate-400 uppercase"><?= htmlspecialchars($stat['label']) ?></p>
+                                        <p class="text-xl font-black text-slate-900 mt-1"><?= number_format($stat['count']) ?></p>
                                     </div>
-                                    <span class="text-[10px] text-slate-400 whitespace-nowrap"><?= formatDateDisplay($log['created_at']) ?></span>
+                                    <?php endforeach; ?>
                                 </div>
-                                <?php endforeach; ?>
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-slate-600 rounded-xl p-4 bg-slate-50 border border-slate-100 mb-6">
+                                    <div><span class="text-slate-400 font-bold uppercase text-[10px]">Database</span><p class="font-semibold mt-1"><?= htmlspecialchars(DB_NAME) ?></p></div>
+                                    <div><span class="text-slate-400 font-bold uppercase text-[10px]">Host</span><p class="font-semibold mt-1"><?= htmlspecialchars(DB_HOST) ?></p></div>
+                                    <div><span class="text-slate-400 font-bold uppercase text-[10px]">PHP</span><p class="font-semibold mt-1"><?= htmlspecialchars(PHP_VERSION) ?></p></div>
+                                </div>
+                                <h3 class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-3">Quick links</h3>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <?php
+                                    $adminQuickLinks = [
+                                        ['url' => buildAuthUrl('analytics.php'), 'label' => 'Analytics', 'desc' => 'Charts and live metrics', 'icon' => 'bar-chart-2'],
+                                        ['url' => buildAuthUrl('report.php'), 'label' => 'Operational Reports', 'desc' => 'Export period reports', 'icon' => 'file-bar-chart-2'],
+                                        ['url' => buildAuthUrl('Activity-log.php'), 'label' => 'Full Activity Log', 'desc' => 'Search all staff actions', 'icon' => 'scroll-text'],
+                                        ['url' => settingsPageUrl('system-configuration'), 'label' => 'Configuration', 'desc' => 'Office & portal settings', 'icon' => 'settings'],
+                                    ];
+                                    foreach ($adminQuickLinks as $link):
+                                    ?>
+                                    <a href="<?= htmlspecialchars($link['url']) ?>"
+                                       class="flex items-start gap-3 p-4 rounded-xl border border-slate-100 hover:border-blue-200 hover:bg-blue-50/40 transition-colors">
+                                        <div class="p-2 bg-white rounded-lg border border-slate-100 shrink-0">
+                                            <i data-lucide="<?= $link['icon'] ?>" class="w-4 h-4 text-slate-600"></i>
+                                        </div>
+                                        <div class="min-w-0">
+                                            <p class="text-sm font-bold text-slate-800"><?= htmlspecialchars($link['label']) ?></p>
+                                            <p class="text-xs text-slate-500 mt-0.5"><?= htmlspecialchars($link['desc']) ?></p>
+                                        </div>
+                                        <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 shrink-0 mt-1"></i>
+                                    </a>
+                                    <?php endforeach; ?>
+                                </div>
                             </div>
-                            <?php endif; ?>
-                        </div>
 
-                        <div class="bg-white border border-slate-100 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-sm">
-                            <h3 class="text-base font-bold text-slate-900 mb-1">Maintenance Actions</h3>
-                            <p class="text-xs text-slate-500 mb-6">Export logs or clean up old data. Use with caution.</p>
-                            <div class="flex flex-wrap gap-3">
-                                <a href="<?= htmlspecialchars(buildAuthUrl('system_settings.php', ['action' => 'export_logs'])) ?>" class="border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold inline-flex items-center gap-2">
-                                    <i data-lucide="download" class="w-4 h-4"></i> Export Activity Logs
-                                </a>
-                                <a href="install.php" target="_blank" class="border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800 px-4 py-2.5 rounded-xl text-xs font-bold inline-flex items-center gap-2">
-                                    <i data-lucide="database" class="w-4 h-4"></i> Database Installer
-                                </a>
-                            </div>
-                            <form method="POST" class="mt-6 pt-6 border-t border-slate-100 flex flex-wrap items-end gap-4" onsubmit="return confirm('Delete old activity logs permanently?');">
-                                <?= authFormField() ?>
-                                <input type="hidden" name="settings_action" value="clear_old_logs">
-                                <input type="hidden" name="active_tab" value="admin-tools">
-                                <div>
-                                    <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Clear Logs Older Than</label>
-                                    <select name="log_retention_days" class="border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
-                                        <option value="30">30 days</option>
-                                        <option value="60">60 days</option>
-                                        <option value="90">90 days</option>
-                                        <option value="180">180 days</option>
-                                    </select>
+                            <!-- Activity preview -->
+                            <div class="p-5 sm:p-6 <?= $adminToolsSection !== 'activity' ? 'hidden' : '' ?>">
+                                <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                                    <div>
+                                        <h3 class="text-sm font-bold text-slate-900">Recent staff actions</h3>
+                                        <p class="text-xs text-slate-500">Latest 8 entries — open the full log to search and filter.</p>
+                                    </div>
+                                    <a href="<?= htmlspecialchars(buildAuthUrl('Activity-log.php')) ?>" class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline">
+                                        Open full log <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                                    </a>
                                 </div>
-                                <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold">Clear Old Logs</button>
-                            </form>
+                                <?php if (empty($recentLogs)): ?>
+                                <p class="text-sm text-slate-400 py-8 text-center rounded-xl bg-slate-50 border border-slate-100">No activity logged yet.</p>
+                                <?php else: ?>
+                                <div class="divide-y divide-slate-100 rounded-xl border border-slate-100 overflow-hidden">
+                                    <?php foreach ($recentLogs as $log): ?>
+                                    <div class="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 hover:bg-slate-50/60">
+                                        <div class="flex items-center gap-3 min-w-0 flex-1">
+                                            <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                                                <i data-lucide="activity" class="w-4 h-4"></i>
+                                            </div>
+                                            <div class="min-w-0">
+                                                <p class="text-sm font-semibold text-slate-800 truncate"><?= htmlspecialchars($log['action']) ?></p>
+                                                <p class="text-xs text-slate-400 truncate"><?= htmlspecialchars($log['staff_id'] ?? 'System') ?> · <?= htmlspecialchars($log['details'] ?? '') ?></p>
+                                            </div>
+                                        </div>
+                                        <span class="text-[11px] text-slate-400 shrink-0"><?= htmlspecialchars(formatDateDisplay($log['created_at'])) ?></span>
+                                    </div>
+                                    <?php endforeach; ?>
+                                </div>
+                                <?php endif; ?>
+                            </div>
+
+                            <!-- Maintenance -->
+                            <div class="p-5 sm:p-6 <?= $adminToolsSection !== 'maintenance' ? 'hidden' : '' ?>">
+                                <h3 class="text-sm font-bold text-slate-900 mb-1">Exports & utilities</h3>
+                                <p class="text-xs text-slate-500 mb-4">Download data or open setup tools. These do not delete live records.</p>
+                                <div class="flex flex-wrap gap-3 mb-8">
+                                    <a href="<?= htmlspecialchars(buildAuthUrl('system_settings.php', ['action' => 'export_logs'])) ?>" class="inline-flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold">
+                                        <i data-lucide="download" class="w-4 h-4"></i> Export activity logs (CSV)
+                                    </a>
+                                    <a href="install.php" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800 px-4 py-2.5 rounded-xl text-xs font-bold">
+                                        <i data-lucide="database" class="w-4 h-4"></i> Database installer
+                                    </a>
+                                </div>
+                                <div class="rounded-xl border border-red-100 bg-red-50/50 p-5">
+                                    <h4 class="text-sm font-bold text-red-900 flex items-center gap-2">
+                                        <i data-lucide="alert-triangle" class="w-4 h-4"></i> Danger zone
+                                    </h4>
+                                    <p class="text-xs text-red-800/80 mt-1 mb-4">Permanently removes old activity log rows. This cannot be undone.</p>
+                                    <form method="POST" class="flex flex-wrap items-end gap-3">
+                                        <?= authFormField() ?>
+                                        <input type="hidden" name="settings_action" value="clear_old_logs">
+                                        <input type="hidden" name="active_tab" value="admin-tools">
+                                        <input type="hidden" name="admin_sub" value="maintenance">
+                                        <div>
+                                            <label class="block text-[10px] font-bold text-red-900/70 uppercase mb-1">Remove logs older than</label>
+                                            <select name="log_retention_days" class="border border-red-200 rounded-lg px-3 py-2 text-sm bg-white">
+                                                <option value="30">30 days</option>
+                                                <option value="60">60 days</option>
+                                                <option value="90">90 days</option>
+                                                <option value="180">180 days</option>
+                                            </select>
+                                        </div>
+                                        <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-xs font-bold">Clear old logs</button>
+                                    </form>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <?php endif; ?>
@@ -815,9 +931,19 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                 <input type="hidden" name="settings_action" value="update_staff">
                 <input type="hidden" name="active_tab" value="account-management">
                 <input type="hidden" name="target_staff_id" id="editStaffId">
-                <div>
-                    <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Full Name</label>
-                    <input type="text" name="edit_staff_name" id="editStaffName" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">First Name</label>
+                        <input type="text" name="edit_staff_first_name" id="editStaffFirstName" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Middle Name</label>
+                        <input type="text" name="edit_staff_middle_name" id="editStaffMiddleName" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Last Name</label>
+                        <input type="text" name="edit_staff_last_name" id="editStaffLastName" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
+                    </div>
                 </div>
                 <div>
                     <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Recovery Gmail</label>

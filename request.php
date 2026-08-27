@@ -19,6 +19,7 @@ if (!isset($_SESSION['request_draft'])) {
 }
 
 $draft = &$_SESSION['request_draft'];
+$draftCitizenName = personNameFromRow($draft);
 $error = null;
 $trackingCode = null;
 $success = !empty($_SESSION['request_success']);
@@ -35,7 +36,7 @@ if ($type && in_array($type, $validTypes, true)) {
 
 $step = max(1, min(4, (int) ($_GET['step'] ?? $_POST['step'] ?? 1)));
 $recordVerified = isCivilRecordVerifiedInSession(
-    (string) ($draft['citizen_name'] ?? ''),
+    $draftCitizenName,
     (string) ($draft['date_of_birth'] ?? '')
 );
 
@@ -50,13 +51,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
     }
 
     if ($step === 1) {
-        $citizenName  = trim($_POST['citizen_name'] ?? '');
+        $nameParts    = personNamePartsFromInput($_POST);
         $dateOfBirth  = $_POST['date_of_birth'] ?? '';
         $sex          = $_POST['sex'] ?? '';
         $documentType = $_POST['document_type'] ?? '';
+        $citizenName  = formatPersonName($nameParts['first_name'], $nameParts['middle_name'], $nameParts['last_name']);
 
-        if ($citizenName === '' || !in_array($documentType, $validTypes, true)) {
-            $error = 'Please enter your full name and select a service type.';
+        if (($nameError = validatePersonNameParts($nameParts)) !== null || !in_array($documentType, $validTypes, true)) {
+            $error = $nameError ?? 'Please enter your name and select a service type.';
         } elseif ($dateOfBirth === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfBirth)) {
             $error = 'Please enter a valid date of birth.';
         } elseif (!in_array($sex, ['male', 'female'], true)) {
@@ -65,10 +67,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
             $error = 'Please check your civil registry record before continuing. If you are not registered, visit the LCRO office in person.';
             $recordVerified = false;
         } else {
-            $draft['citizen_name']   = $citizenName;
+            $draft['first_name']     = $nameParts['first_name'];
+            $draft['middle_name']    = $nameParts['middle_name'];
+            $draft['last_name']      = $nameParts['last_name'];
             $draft['date_of_birth']  = $dateOfBirth;
             $draft['sex']            = $sex;
             $draft['document_type']  = $documentType;
+            unset($draft['citizen_name']);
             header('Location: request.php?step=2');
             exit;
         }
@@ -154,14 +159,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                     $trackingCode = generateTrackingCode();
                     $stmt = $pdo->prepare(
                         'INSERT INTO document_requests
-                         (tracking_code, citizen_name, date_of_birth, sex, email, email_verified, phone,
+                         (tracking_code, first_name, middle_name, last_name, date_of_birth, sex, email, email_verified, phone,
                           document_type, purpose, id_front_path, id_back_path, privacy_agreed, notify_email,
                           appointment_date, appointment_time, status)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
                     );
                     $stmt->execute([
                         $trackingCode,
-                        $draft['citizen_name'],
+                        $draft['first_name'],
+                        $draft['middle_name'] ?? null,
+                        $draft['last_name'],
                         $draft['date_of_birth'],
                         $draft['sex'],
                         $draft['email'],
@@ -178,40 +185,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                         'pending',
                     ]);
 
-                    $apptCode = generateAppointmentCode();
-                    $apptStmt = $pdo->prepare(
-                        'INSERT INTO appointments
-                         (appointment_code, citizen_name, email, phone, notify_email, service_type, appointment_date, appointment_time, status, source, tracking_code)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-                    );
-                    $apptStmt->execute([
-                        $apptCode,
-                        $draft['citizen_name'],
-                        $draft['email'],
-                        $draft['phone'],
-                        (int) ($draft['notify_email'] ?? 0),
-                        documentTypeLabel($draft['document_type']),
-                        $draft['appointment_date'],
-                        normalizeAppointmentTime($draft['appointment_time']),
-                        'scheduled',
-                        'document_request',
-                        $trackingCode,
-                    ]);
                     $pdo->commit();
 
-                    $emailSent = notifyRequestSubmitted([
+                    $emailSent = notifyRequestSubmitted(array_merge($draft, [
                         'tracking_code'    => $trackingCode,
-                        'citizen_name'     => $draft['citizen_name'],
-                        'email'            => $draft['email'],
                         'document_label'   => documentTypeLabel($draft['document_type']),
                         'appointment_date' => $draft['appointment_date'],
                         'appointment_time' => $draft['appointment_time'],
                         'notify_email'     => (int) ($draft['notify_email'] ?? 0),
-                    ]);
+                    ]));
 
                     $_SESSION['request_success'] = [
                         'tracking_code'    => $trackingCode,
-                        'citizen_name'     => $draft['citizen_name'],
+                        'citizen_name'     => personNameFromRow($draft),
+                        'first_name'       => $draft['first_name'],
+                        'middle_name'      => $draft['middle_name'] ?? '',
+                        'last_name'        => $draft['last_name'],
                         'email'            => $draft['email'],
                         'document_label'   => documentTypeLabel($draft['document_type']),
                         'appointment_date' => $draft['appointment_date'],
@@ -245,6 +234,12 @@ $stepTitles = [
     2 => ['title' => 'Requirement Checklist', 'subtitle' => 'Please provide your Gmail and upload necessary documents.'],
     3 => ['title' => 'Schedule Appointment', 'subtitle' => 'Choose your preferred date and time for document pickup.'],
 ];
+
+$isStaffLoggedIn = isset($_SESSION['staff_id']);
+$staffPortalUrl = $isStaffLoggedIn ? 'dashboard.php' : 'login.php';
+$requestDocumentLabel = !empty($draft['document_type'])
+    ? documentTypeLabel($draft['document_type'])
+    : 'Certificate';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -255,44 +250,86 @@ $stepTitles = [
     <title>Request Document - ALCROS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <?= scriptTag('core/loading.js', ['defer' => 'defer']) ?>
-    <link rel="stylesheet" href="includes/back_home.css">
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        .step-active { color: #2563eb; }
-        .step-done { color: #2563eb; }
-        .step-pending { color: #94a3b8; }
-        .upload-box { border: 2px dashed #e2e8f0; transition: border-color 0.2s; }
-        .upload-box:hover { border-color: #93c5fd; }
-    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <?= publicStylesheet('citizen-site') ?>
+    <?= publicStylesheet('citizen-request') ?>
+    <?= publicStylesheet('id-upload') ?>
+    <?= publicStylesheet('back-home') ?>
 </head>
-<body class="bg-gray-50 min-h-screen">
+<body class="citizen-site">
 
-    <nav class="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-gray-100 bg-white">
-        <div class="flex items-center gap-2 min-w-0">
-            <?= alcrosFaviconImg(20) ?>
-            <span class="font-bold tracking-tight text-blue-900 truncate">ALCROS</span>
+    <header class="citizen-site-header">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between gap-4 py-3">
+                <a href="index.php" class="flex items-center gap-3 min-w-0">
+                    <?= alcrosFaviconImg(48, 'citizen-brand-logo shrink-0') ?>
+                    <div class="min-w-0 hidden sm:block">
+                        <div class="text-white font-extrabold text-lg leading-tight tracking-tight">ALCROS</div>
+                        <div class="text-white/70 text-[11px] italic leading-snug">Aloran Local Civil Registry Online System</div>
+                    </div>
+                </a>
+
+                <nav class="hidden lg:flex items-center gap-1 xl:gap-2">
+                    <a href="index.php" class="citizen-nav-link">Home</a>
+                    <a href="services.php" class="citizen-nav-link is-active">Services</a>
+                    <button type="button" data-open-track class="citizen-nav-link cursor-pointer bg-transparent border-0 border-b-2 border-transparent">Track Request</button>
+                    <a href="index.php#about" class="citizen-nav-link">About</a>
+                    <a href="index.php#faqs" class="citizen-nav-link">FAQs</a>
+                    <a href="index.php#contact" class="citizen-nav-link">Contact Us</a>
+                </nav>
+
+                <div class="flex items-center gap-2 shrink-0">
+                    <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="citizen-btn-login hidden sm:inline-block">
+                        <?= $isStaffLoggedIn ? 'Dashboard' : 'Login' ?>
+                    </a>
+                    <button type="button" id="citizenMobileNavToggle" class="lg:hidden p-2 text-white" aria-label="Open menu">
+                        <i data-lucide="menu" class="w-6 h-6"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div id="citizenMobileNav" class="hidden lg:hidden pb-4 border-t border-white/10 pt-3">
+                <div class="flex flex-col gap-1">
+                    <a href="index.php" class="citizen-nav-link">Home</a>
+                    <a href="services.php" class="citizen-nav-link is-active">Services</a>
+                    <button type="button" data-open-track class="citizen-nav-link text-left cursor-pointer bg-transparent border-0">Track Request</button>
+                    <a href="index.php#about" class="citizen-nav-link">About</a>
+                    <a href="index.php#faqs" class="citizen-nav-link">FAQs</a>
+                    <a href="index.php#contact" class="citizen-nav-link">Contact Us</a>
+                    <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="citizen-btn-login inline-block text-center mt-2 w-fit"><?= $isStaffLoggedIn ? 'Dashboard' : 'Login' ?></a>
+                </div>
+            </div>
         </div>
-        <a href="index.php" class="back-home back-home--nav shrink-0">Back to Home</a>
-    </nav>
+    </header>
 
-    <main class="max-w-2xl mx-auto px-4 py-10">
+    <main class="citizen-site-main">
+        <section class="citizen-page-hero citizen-page-hero--compact">
+            <div class="max-w-2xl mx-auto">
+                <a href="index.php" class="back-home back-home--inline is-centered">
+                    <i data-lucide="chevron-left" class="back-home__icon w-3 h-3"></i>
+                    <span>Back to Home</span>
+                </a>
+                <h1>Request a <?= htmlspecialchars($requestDocumentLabel) ?></h1>
+                <p>Complete each step below to submit your document request online.</p>
+            </div>
+        </section>
+
+        <section class="max-w-2xl mx-auto px-4 pb-12">
         <?php if ($success && $step === 4 && $successData): ?>
         <div class="flex justify-center mb-10">
             <?php foreach ($stepLabels as $i => $s): ?>
             <div class="flex items-center <?= $i < 4 ? 'flex-1' : '' ?>">
                 <div class="flex flex-col items-center">
-                    <div class="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center">
+                    <div class="w-8 h-8 rounded-full citizen-request-progress-dot is-done flex items-center justify-center">
                         <i data-lucide="check" class="w-4 h-4"></i>
                     </div>
-                    <span class="text-[9px] font-bold uppercase mt-1 step-done"><?= $s['label'] ?></span>
+                    <span class="text-[9px] font-bold uppercase mt-1 citizen-request-step-done"><?= $s['label'] ?></span>
                 </div>
-                <?php if ($i < 4): ?><div class="flex-1 h-0.5 bg-blue-600 mx-2 mb-4"></div><?php endif; ?>
+                <?php if ($i < 4): ?><div class="flex-1 h-0.5 citizen-request-progress-line is-done mx-2 mb-4"></div><?php endif; ?>
             </div>
             <?php endforeach; ?>
         </div>
-        <div class="bg-white rounded-2xl border border-green-100 p-8 md:p-10 shadow-sm">
+        <div class="citizen-request-card p-8 md:p-10">
             <div class="text-center mb-8">
                 <div class="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
                     <i data-lucide="check-circle" class="w-8 h-8"></i>
@@ -336,7 +373,7 @@ $stepTitles = [
             </div>
 
             <div class="flex flex-col sm:flex-row justify-center gap-3">
-                <button type="button" data-open-track data-track-code="<?= htmlspecialchars($successData['tracking_code'], ENT_QUOTES) ?>" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full text-xs font-bold text-center">Track My Request</button>
+                <button type="button" data-open-track data-track-code="<?= htmlspecialchars($successData['tracking_code'], ENT_QUOTES) ?>" class="citizen-btn-gold px-6 py-3 rounded-full text-xs text-center">Track My Request</button>
                 <a href="index.php" class="back-home back-home--btn">Back to Home</a>
             </div>
         </div>
@@ -351,25 +388,28 @@ $stepTitles = [
             <?php if ($i <= 3): ?>
             <div class="flex items-center flex-1 last:flex-none min-w-[4.5rem]">
                 <div class="flex flex-col items-center">
-                    <div class="w-8 h-8 rounded-full flex items-center justify-center border-2
-                        <?= $i < $step ? 'bg-blue-600 border-blue-600 text-white' : ($i === $step ? 'border-blue-600 text-blue-600 bg-white' : 'border-gray-200 text-gray-300 bg-white') ?>">
+                    <?php
+                    $dotClass = $i < $step ? 'is-done' : ($i === $step ? 'is-active' : 'is-pending');
+                    $labelClass = $i <= $step ? ($i < $step ? 'citizen-request-step-done' : 'citizen-request-step-active') : 'citizen-request-step-pending';
+                    ?>
+                    <div class="w-8 h-8 rounded-full flex items-center justify-center border-2 citizen-request-progress-dot <?= $dotClass ?>">
                         <?php if ($i < $step): ?>
                         <i data-lucide="check" class="w-4 h-4"></i>
                         <?php else: ?>
                         <i data-lucide="<?= $s['icon'] ?>" class="w-4 h-4"></i>
                         <?php endif; ?>
                     </div>
-                    <span class="hidden sm:block text-[9px] font-bold uppercase mt-1.5 tracking-wide text-center <?= $i <= $step ? 'step-active' : 'step-pending' ?>"><?= $s['label'] ?></span>
+                    <span class="hidden sm:block text-[9px] font-bold uppercase mt-1.5 tracking-wide text-center <?= $labelClass ?>"><?= $s['label'] ?></span>
                 </div>
                 <?php if ($i < 3): ?>
-                <div class="flex-1 h-0.5 mx-2 sm:mx-3 mb-0 sm:mb-5 <?= $i < $step ? 'bg-blue-600' : 'bg-gray-200' ?>"></div>
+                <div class="flex-1 h-0.5 mx-2 sm:mx-3 mb-0 sm:mb-5 citizen-request-progress-line <?= $i < $step ? 'is-done' : 'is-pending' ?>"></div>
                 <?php endif; ?>
             </div>
             <?php endif; ?>
             <?php endforeach; ?>
         </div>
 
-        <div class="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
+        <div class="citizen-request-card p-8">
             <h1 class="text-xl font-black text-slate-900 mb-1"><?= htmlspecialchars($stepTitles[$step]['title'] ?? 'Request') ?></h1>
             <p class="text-gray-400 text-sm mb-6"><?= htmlspecialchars($stepTitles[$step]['subtitle'] ?? '') ?></p>
 
@@ -395,12 +435,21 @@ $stepTitles = [
                 </div>
                 <div>
                     <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                        <i data-lucide="user" class="w-3.5 h-3.5 text-blue-500"></i> Full Name on Record
+                        <i data-lucide="user" class="w-3.5 h-3.5 text-blue-500"></i> Name on Record
                     </label>
-                    <div class="flex gap-2">
-                        <input type="text" id="citizenNameInput" name="citizen_name" required value="<?= htmlspecialchars($draft['citizen_name'] ?? '') ?>"
-                               class="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                        <button type="button" id="checkRecordBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl text-xs font-bold whitespace-nowrap shrink-0">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-2">
+                        <input type="text" id="firstNameInput" name="first_name" required placeholder="First name"
+                               value="<?= htmlspecialchars($draft['first_name'] ?? '') ?>"
+                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                        <input type="text" id="middleNameInput" name="middle_name" placeholder="Middle name (optional)"
+                               value="<?= htmlspecialchars($draft['middle_name'] ?? '') ?>"
+                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                        <input type="text" id="lastNameInput" name="last_name" required placeholder="Last name"
+                               value="<?= htmlspecialchars($draft['last_name'] ?? '') ?>"
+                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                    </div>
+                    <div class="flex justify-end">
+                        <button type="button" id="checkRecordBtn" class="citizen-btn-navy px-4 py-2.5 rounded-xl text-xs whitespace-nowrap shrink-0">
                             Check Record
                         </button>
                     </div>
@@ -422,14 +471,14 @@ $stepTitles = [
                         <?php foreach (['male' => 'Male', 'female' => 'Female'] as $val => $label): ?>
                         <label class="flex-1 cursor-pointer">
                             <input type="radio" name="sex" value="<?= $val ?>" class="sr-only peer" <?= ($draft['sex'] ?? '') === $val ? 'checked' : '' ?> required>
-                            <span class="block text-center py-3 rounded-xl border text-sm font-semibold peer-checked:bg-blue-600 peer-checked:text-white peer-checked:border-blue-600 border-gray-200 text-gray-600 hover:border-blue-300 transition"><?= $label ?></span>
+                            <span class="block text-center py-3 rounded-xl border text-sm font-semibold peer-checked:bg-[#f4b400] peer-checked:text-[#071428] peer-checked:border-[#f4b400] border-gray-200 text-gray-600 hover:border-[#f4b400]/60 transition"><?= $label ?></span>
                         </label>
                         <?php endforeach; ?>
                     </div>
                 </div>
                 <div class="flex justify-between items-center pt-4">
                     <a href="index.php" class="text-gray-400 text-sm flex items-center gap-1 hover:text-gray-600"><i data-lucide="chevron-left" class="w-4 h-4"></i> Back</a>
-                    <button type="submit" name="action" value="next" id="step1ContinueBtn" class="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-8 py-3 rounded-full text-sm font-bold flex items-center gap-2" data-loading-text="Saving…" <?= $recordVerified ? '' : 'disabled' ?>>Continue <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                    <button type="submit" name="action" value="next" id="step1ContinueBtn" class="citizen-btn-gold disabled:opacity-40 disabled:cursor-not-allowed px-8 py-3 rounded-full text-sm flex items-center gap-2" data-loading-text="Saving…" <?= $recordVerified ? '' : 'disabled' ?>>Continue <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
                 </div>
             </form>
 
@@ -446,7 +495,7 @@ $stepTitles = [
                         <input type="email" id="gmailInput" name="email" required placeholder="example@gmail.com"
                                value="<?= htmlspecialchars($draft['email'] ?? '') ?>"
                                class="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                        <button type="button" id="verifyGmailBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl text-xs font-bold whitespace-nowrap shrink-0">
+                        <button type="button" id="verifyGmailBtn" class="citizen-btn-navy px-4 py-3 rounded-xl text-xs whitespace-nowrap shrink-0">
                             Verify Gmail
                         </button>
                     </div>
@@ -475,17 +524,39 @@ $stepTitles = [
                 <div>
                     <label class="text-[11px] font-bold text-gray-700 mb-2 block">Upload Valid IDs (National ID / Driver's License)</label>
                     <div class="grid grid-cols-2 gap-4">
-                        <label class="upload-box rounded-xl p-6 text-center cursor-pointer block">
+                        <label class="citizen-id-upload" data-id-upload>
                             <input type="file" name="id_front" accept="image/*,.pdf" class="hidden" id="idFront" <?= empty($draft['id_front_path']) ? 'required' : '' ?>>
-                            <i data-lucide="upload" class="w-6 h-6 text-gray-300 mx-auto mb-2"></i>
-                            <p class="text-xs font-bold text-gray-600">Front Side</p>
-                            <p class="text-[10px] text-gray-400 mt-1" id="idFrontLabel"><?= !empty($draft['id_front_path']) ? 'Previously uploaded' : 'Click to upload ID' ?></p>
+                            <div class="citizen-id-upload__empty" data-id-upload-empty>
+                                <i data-lucide="upload" class="w-6 h-6 text-gray-300 mx-auto mb-2"></i>
+                                <p class="text-xs font-bold text-gray-600">Front Side</p>
+                                <p class="text-[10px] text-gray-400 mt-1" id="idFrontLabel"><?= !empty($draft['id_front_path']) ? 'Previously uploaded' : 'Click to upload ID' ?></p>
+                            </div>
+                            <div class="citizen-id-upload__preview hidden" data-id-upload-preview>
+                                <span class="citizen-id-upload__side">Front</span>
+                                <img class="citizen-id-upload__image hidden" data-id-upload-image alt="Front ID preview">
+                                <div class="citizen-id-upload__pdf hidden" data-id-upload-pdf>
+                                    <i data-lucide="file-text" class="w-8 h-8 mx-auto mb-2 opacity-60"></i>
+                                    <span>PDF uploaded</span>
+                                </div>
+                                <p class="citizen-id-upload__caption" data-id-upload-caption></p>
+                            </div>
                         </label>
-                        <label class="upload-box rounded-xl p-6 text-center cursor-pointer block">
+                        <label class="citizen-id-upload" data-id-upload>
                             <input type="file" name="id_back" accept="image/*,.pdf" class="hidden" id="idBack">
-                            <i data-lucide="upload" class="w-6 h-6 text-gray-300 mx-auto mb-2"></i>
-                            <p class="text-xs font-bold text-gray-600">Back Side (Optional)</p>
-                            <p class="text-[10px] text-gray-400 mt-1" id="idBackLabel"><?= !empty($draft['id_back_path']) ? 'Previously uploaded' : 'Click to upload ID' ?></p>
+                            <div class="citizen-id-upload__empty" data-id-upload-empty>
+                                <i data-lucide="upload" class="w-6 h-6 text-gray-300 mx-auto mb-2"></i>
+                                <p class="text-xs font-bold text-gray-600">Back Side (Optional)</p>
+                                <p class="text-[10px] text-gray-400 mt-1" id="idBackLabel"><?= !empty($draft['id_back_path']) ? 'Previously uploaded' : 'Click to upload ID' ?></p>
+                            </div>
+                            <div class="citizen-id-upload__preview hidden" data-id-upload-preview>
+                                <span class="citizen-id-upload__side">Back</span>
+                                <img class="citizen-id-upload__image hidden" data-id-upload-image alt="Back ID preview">
+                                <div class="citizen-id-upload__pdf hidden" data-id-upload-pdf>
+                                    <i data-lucide="file-text" class="w-8 h-8 mx-auto mb-2 opacity-60"></i>
+                                    <span>PDF uploaded</span>
+                                </div>
+                                <p class="citizen-id-upload__caption" data-id-upload-caption></p>
+                            </div>
                         </label>
                     </div>
                 </div>
@@ -508,7 +579,7 @@ $stepTitles = [
                 </div>
                 <div class="flex justify-between items-center pt-4">
                     <button type="submit" name="action" value="back" class="text-gray-400 text-sm flex items-center gap-1 hover:text-gray-600"><i data-lucide="chevron-left" class="w-4 h-4"></i> Back</button>
-                    <button type="submit" name="action" value="next" id="step2ContinueBtn" class="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-8 py-3 rounded-full text-sm font-bold flex items-center gap-2" data-loading-text="Saving…" <?= isGmailVerifiedInSession($draft['email'] ?? '') ? '' : 'disabled' ?>>Continue <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                    <button type="submit" name="action" value="next" id="step2ContinueBtn" class="citizen-btn-gold disabled:opacity-40 disabled:cursor-not-allowed px-8 py-3 rounded-full text-sm flex items-center gap-2" data-loading-text="Saving…" <?= isGmailVerifiedInSession($draft['email'] ?? '') ? '' : 'disabled' ?>>Continue <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
                 </div>
             </form>
 
@@ -517,7 +588,7 @@ $stepTitles = [
                 <?= publicCsrfField() ?>
                 <input type="hidden" name="step" value="3">
                 <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-2">
-                    <p class="text-xs text-blue-800"><strong><?= htmlspecialchars($draft['citizen_name'] ?? '') ?></strong> — <?= htmlspecialchars(documentTypeLabel($draft['document_type'] ?? '')) ?></p>
+                    <p class="text-xs text-blue-800"><strong><?= htmlspecialchars($draftCitizenName) ?></strong> — <?= htmlspecialchars(documentTypeLabel($draft['document_type'] ?? '')) ?></p>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     <div>
@@ -541,15 +612,17 @@ $stepTitles = [
                 <p id="slotAvailabilityStatus" class="hidden text-xs mt-2"></p>
                 <div class="flex justify-between items-center pt-4">
                     <button type="submit" name="action" value="back" class="text-gray-400 text-sm flex items-center gap-1 hover:text-gray-600"><i data-lucide="chevron-left" class="w-4 h-4"></i> Back</button>
-                    <button type="submit" name="action" value="next" data-appointment-submit class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-full text-sm font-bold flex items-center gap-2" data-loading-text="Submitting…">Submit Request <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                    <button type="submit" name="action" value="next" data-appointment-submit class="citizen-btn-gold px-8 py-3 rounded-full text-sm flex items-center gap-2" data-loading-text="Submitting…">Submit Request <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
                 </div>
             </form>
             <?php endif; ?>
         </div>
         <?php endif; ?>
+        </section>
     </main>
 
-    <?= scriptTag('core/loading.js', ['defer' => 'defer']) ?>
+    <?= scriptTags(['core/confirm.js', 'core/loading.js'], ['defer' => 'defer']) ?>
+    <?= scriptTag('public/citizen-site.js') ?>
     <?= scriptTag('public/forms.js') ?>
     <?php require __DIR__ . '/includes/track_floating.php'; ?>
     <?= scriptTag('public/track-floating.js') ?>

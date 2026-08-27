@@ -15,6 +15,14 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $viewDate)) {
     $viewDate = date('Y-m-d');
 }
 
+$search = trim($_GET['q'] ?? $_POST['redirect_q'] ?? '');
+if ($search !== '' && empty($_GET['date']) && empty($_POST['redirect_date'])) {
+    $searchDate = findAppointmentDateForSearch($pdo, $search);
+    if ($searchDate) {
+        $viewDate = $searchDate;
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $id = (int) ($_POST['appointment_id'] ?? 0);
     $isDelete = isset($_POST['delete_appointment']);
@@ -51,12 +59,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    redirectWithAuth('appointment.php', ['date' => $viewDate]);
+    redirectWithAuth('appointment.php', array_filter([
+        'date' => $viewDate,
+        'q'    => trim($_POST['redirect_q'] ?? $_GET['q'] ?? '') ?: null,
+    ]));
 }
 
 $flash = appointmentFlashGet();
 
-$stmt = $pdo->prepare('SELECT * FROM appointments WHERE appointment_date = ? ORDER BY appointment_time ASC');
+$stmt = $pdo->prepare(
+    'SELECT a.*
+     FROM appointments a
+     LEFT JOIN document_requests r ON r.tracking_code = a.tracking_code
+     WHERE a.appointment_date = ?
+       AND NOT (
+            (a.source = \'document_request\' OR (a.tracking_code IS NOT NULL AND a.tracking_code != \'\'))
+            AND r.status IN (\'pending\', \'rejected\')
+       )
+     ORDER BY a.appointment_time ASC'
+);
 $stmt->execute([$viewDate]);
 $appointments = $stmt->fetchAll();
 
@@ -74,15 +95,15 @@ foreach ($appointments as $ap) {
 $prevDate = date('Y-m-d', strtotime($viewDate . ' -1 day'));
 $nextDate = date('Y-m-d', strtotime($viewDate . ' +1 day'));
 
-function renderAppointmentRows(array $rows, string $viewDate): void
+function renderAppointmentRows(array $rows, string $viewDate, string $search = ''): void
 {
     foreach ($rows as $ap): ?>
-                        <tr data-appointment-row="<?= (int) $ap['id'] ?>">
+                        <tr data-appointment-row="<?= (int) $ap['id'] ?>" data-search="<?= htmlspecialchars(appointmentSearchBlob($ap), ENT_QUOTES, 'UTF-8') ?>">
                             <td class="px-4 py-3 font-mono text-xs font-bold text-blue-600"><?= htmlspecialchars($ap['appointment_code']) ?></td>
                             <td class="px-4 py-3">
-                                <p class="font-semibold"><?= htmlspecialchars($ap['citizen_name']) ?></p>
+                                <p class="font-semibold"><?= htmlspecialchars(personNameFromRow($ap)) ?></p>
                                 <?php if (!empty($ap['tracking_code'])): ?>
-                                <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php', ['q' => $ap['tracking_code']])) ?>" class="text-[10px] font-mono font-bold text-blue-600 hover:underline"><?= htmlspecialchars($ap['tracking_code']) ?></a>
+                                <span class="text-[10px] font-mono font-bold text-blue-600"><?= htmlspecialchars($ap['tracking_code']) ?></span>
                                 <?php endif; ?>
                                 <?php if (!empty($ap['id_front_path']) || !empty($ap['id_back_path'])): ?>
                                 <p class="mt-1 flex flex-wrap gap-1.5">
@@ -97,7 +118,7 @@ function renderAppointmentRows(array $rows, string $viewDate): void
                             </td>
                             <td class="px-4 py-3 text-gray-500"><?= htmlspecialchars(appointmentServiceLabel($ap['service_type'])) ?></td>
                             <td class="px-4 py-3"><?= date('g:i A', strtotime($ap['appointment_time'])) ?></td>
-                            <td class="px-4 py-3"><span class="text-[10px] font-bold uppercase"><?= htmlspecialchars(appointmentStatusLabel($ap['status'])) ?></span></td>
+                            <td class="px-4 py-3"><span class="text-[10px] font-bold uppercase"><?= htmlspecialchars(appointmentDisplayStatusLabel($ap)) ?></span></td>
                             <td class="px-4 py-3">
                                 <div class="flex gap-1 items-center">
                                     <button type="button"
@@ -106,16 +127,22 @@ function renderAppointmentRows(array $rows, string $viewDate): void
                                             data-appointment="<?= htmlspecialchars(json_encode(appointmentViewData($ap), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP), ENT_QUOTES, 'UTF-8') ?>">
                                         <i data-lucide="eye" class="w-4 h-4"></i>
                                     </button>
-                                    <form method="POST" action="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $viewDate])) ?>" class="flex gap-1 items-center">
+                                    <form method="POST" action="<?= htmlspecialchars(buildAuthUrl('appointment.php', array_filter(['date' => $viewDate, 'q' => $search ?: null]))) ?>" class="flex gap-1 items-center">
                                         <?= authFormField() ?>
                                         <input type="hidden" name="redirect_date" value="<?= htmlspecialchars($viewDate) ?>">
+                                        <?php if ($search !== ''): ?>
+                                        <input type="hidden" name="redirect_q" value="<?= htmlspecialchars($search) ?>">
+                                        <?php endif; ?>
                                         <input type="hidden" name="appointment_id" value="<?= (int) $ap['id'] ?>">
                                         <input type="hidden" name="update_status" value="1">
                                         <select name="status" required class="text-[10px] border rounded px-2 py-1">
-                                            <?php if (!in_array($ap['status'], appointmentStatusUpdateOptions(), true)): ?>
-                                            <option value="" selected disabled>Select status</option>
+                                            <?php if (isDocumentRequestAppointment($ap) && $ap['status'] === 'confirmed'): ?>
+                                            <option value="confirmed" selected disabled>Ready for Pickup</option>
+                                            <?php elseif (!in_array($ap['status'], appointmentStatusUpdateOptions(), true)): ?>
+                                            <option value="" selected disabled><?= htmlspecialchars(appointmentDisplayStatusLabel($ap)) ?></option>
                                             <?php endif; ?>
                                             <?php foreach (appointmentStatusUpdateOptions() as $s): ?>
+                                            <?php if (isDocumentRequestAppointment($ap) && $ap['status'] === 'confirmed' && $s === 'confirmed') { continue; } ?>
                                             <option value="<?= $s ?>" <?= $ap['status'] === $s ? 'selected' : '' ?>><?= htmlspecialchars(appointmentStatusLabel($s)) ?></option>
                                             <?php endforeach; ?>
                                         </select>
@@ -143,45 +170,46 @@ function renderAppointmentRows(array $rows, string $viewDate): void
     <title>Appointment Management - ALCROS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <?= adminLayoutHeadStyles('appointment') ?>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1e293b; }
-        .sidebar-item:hover { background-color: #f1f5f9; }
-        .active-nav { background-color: #2563eb; color: white !important; }
-        .date-navigator { background-color: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 12px; }
-        .row-pending-delete { opacity: 0.45; pointer-events: none; }
-    </style>
 </head>
 <body class="flex min-h-screen" data-realtime="appointments" data-appointment-date="<?= htmlspecialchars($viewDate) ?>">
     <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
     <main class="admin-main flex flex-col bg-[#fdfdfd]">
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
-        <div class="px-4 sm:px-6 lg:px-10 pt-6 sm:pt-8 lg:pt-10 pb-6">
-            <a href="<?= htmlspecialchars(buildAuthUrl('dashboard.php')) ?>" class="text-blue-600 text-[11px] font-bold flex items-center mb-2 hover:underline">
-                <i data-lucide="chevron-left" class="w-3 h-3 mr-1"></i> Back to Dashboard
-            </a>
-            <h1 class="text-2xl font-black text-slate-900 tracking-tight">Appointment Management</h1>
-            <p class="text-gray-500 text-sm font-medium">Special service bookings and document-request visits for the selected date.</p>
-        </div>
-        <div class="px-4 sm:px-6 lg:px-10 mb-6 flex flex-wrap items-center justify-between gap-3">
-            <div class="flex items-center space-x-4">
-                <div class="flex items-center date-navigator space-x-4">
-                    <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $prevDate])) ?>" class="text-gray-400 hover:text-slate-900"><i data-lucide="chevron-left" class="w-4 h-4"></i></a>
-                    <div class="flex items-center space-x-2 text-sm font-bold text-slate-800">
-                        <i data-lucide="calendar" class="w-4 h-4 text-blue-600"></i>
-                        <span><?= formatDateDisplay($viewDate) ?></span>
+        <div class="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full admin-page-wrap">
+            <div class="admin-page-head mb-6">
+                <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+                    <div>
+                        <h1>Appointment Management</h1>
+                        <p>Special service bookings and document-request visits for the selected date.</p>
                     </div>
-                    <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $nextDate])) ?>" class="text-gray-400 hover:text-slate-900"><i data-lucide="chevron-right" class="w-4 h-4"></i></a>
+                    <div class="flex items-center date-navigator space-x-4 shrink-0">
+                        <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php', array_filter(['date' => $prevDate, 'q' => $search ?: null]))) ?>" class="text-gray-400 hover:text-slate-900"><i data-lucide="chevron-left" class="w-4 h-4"></i></a>
+                        <div class="flex items-center space-x-2 text-sm font-bold text-slate-800">
+                            <i data-lucide="calendar" class="w-4 h-4 text-blue-600"></i>
+                            <span><?= formatDateDisplay($viewDate) ?></span>
+                        </div>
+                        <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php', array_filter(['date' => $nextDate, 'q' => $search ?: null]))) ?>" class="text-gray-400 hover:text-slate-900"><i data-lucide="chevron-right" class="w-4 h-4"></i></a>
+                    </div>
                 </div>
             </div>
-        </div>
-        <div class="px-4 sm:px-6 lg:px-10 flex-1 pb-8 lg:pb-10">
+
             <?php if ($flash): ?>
             <div class="mb-6 p-4 <?= $flash[0] === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800' ?> border text-sm rounded-xl flex items-center gap-2">
                 <i data-lucide="<?= $flash[0] === 'success' ? 'check-circle' : 'alert-circle' ?>" class="w-5 h-5 shrink-0"></i>
                 <span><?= htmlspecialchars($flash[1]) ?></span>
             </div>
             <?php endif; ?>
+
+            <?php if ($search !== ''): ?>
+            <div class="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-900 flex flex-wrap items-center gap-2">
+                <i data-lucide="search" class="w-4 h-4 shrink-0"></i>
+                <span>Showing matches for <strong class="font-mono"><?= htmlspecialchars($search) ?></strong> on <?= formatDateDisplay($viewDate) ?>.</span>
+                <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $viewDate])) ?>" class="text-xs font-bold uppercase tracking-wide text-blue-700 hover:underline ml-auto">Clear search</a>
+            </div>
+            <?php endif; ?>
+
             <?php if (empty($appointments)): ?>
             <div class="bg-white rounded-2xl border border-gray-100 shadow-sm min-h-[400px] flex flex-col items-center justify-center">
                 <div class="bg-gray-50 p-4 rounded-xl mb-6"><i data-lucide="calendar-off" class="w-10 h-10 text-gray-200"></i></div>
@@ -189,6 +217,9 @@ function renderAppointmentRows(array $rows, string $viewDate): void
                 <p class="text-gray-400 text-xs font-medium">There are no appointments scheduled for this date.</p>
             </div>
             <?php else: ?>
+            <div id="appointmentSearchEmpty" class="<?= $search === '' ? 'hidden ' : '' ?>mb-4 p-4 bg-amber-50 border border-amber-100 rounded-xl text-sm text-amber-900">
+                No appointments on <?= formatDateDisplay($viewDate) ?> match <strong class="font-mono"><?= htmlspecialchars($search) ?></strong>. Try another date or clear the search.
+            </div>
             <div class="space-y-8">
                 <section>
                     <div class="flex items-end justify-between gap-3 mb-3">
@@ -208,7 +239,7 @@ function renderAppointmentRows(array $rows, string $viewDate): void
                                 <tr><th class="px-4 py-3">Code</th><th class="px-4 py-3">Citizen / Tracking</th><th class="px-4 py-3">Document</th><th class="px-4 py-3">Time</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Action</th></tr>
                             </thead>
                             <tbody class="divide-y divide-gray-50">
-                                <?php renderAppointmentRows($requestVisits, $viewDate); ?>
+                                <?php renderAppointmentRows($requestVisits, $viewDate, $search); ?>
                             </tbody>
                         </table>
                         </div>
@@ -234,7 +265,7 @@ function renderAppointmentRows(array $rows, string $viewDate): void
                                 <tr><th class="px-4 py-3">Code</th><th class="px-4 py-3">Citizen</th><th class="px-4 py-3">Service</th><th class="px-4 py-3">Time</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Action</th></tr>
                             </thead>
                             <tbody class="divide-y divide-gray-50">
-                                <?php renderAppointmentRows($standaloneAppointments, $viewDate); ?>
+                                <?php renderAppointmentRows($standaloneAppointments, $viewDate, $search); ?>
                             </tbody>
                         </table>
                         </div>
@@ -246,9 +277,12 @@ function renderAppointmentRows(array $rows, string $viewDate): void
         </div>
     </main>
 
-    <form id="deleteAppointmentForm" method="POST" action="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $viewDate])) ?>" class="hidden">
+    <form id="deleteAppointmentForm" method="POST" action="<?= htmlspecialchars(buildAuthUrl('appointment.php', array_filter(['date' => $viewDate, 'q' => $search ?: null]))) ?>" class="hidden" data-no-confirm>
         <?= authFormField() ?>
         <input type="hidden" name="redirect_date" value="<?= htmlspecialchars($viewDate) ?>">
+        <?php if ($search !== ''): ?>
+        <input type="hidden" name="redirect_q" value="<?= htmlspecialchars($search) ?>">
+        <?php endif; ?>
         <input type="hidden" name="delete_appointment" value="1">
         <input type="hidden" name="appointment_id" id="deleteAppointmentId" value="">
     </form>
@@ -306,6 +340,7 @@ function renderAppointmentRows(array $rows, string $viewDate): void
         </div>
     </div>
 
+    <?= scriptTag('admin/id-preview.js') ?>
     <?= scriptTag('admin/appointment.js') ?>
     <?= lucideInitScript() ?>
 </body>

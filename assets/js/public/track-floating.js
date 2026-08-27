@@ -41,9 +41,26 @@
     }
 
     function messageClass(status) {
-        if (status === 'ready' || status === 'completed') return 'bg-emerald-50 text-emerald-800 border border-emerald-100';
-        if (status === 'rejected' || status === 'cancelled' || status === 'no_show') return 'bg-red-50 text-red-800 border border-red-100';
+        if (status === 'verified' || status === 'ready' || status === 'completed') {
+            return 'bg-emerald-50 text-emerald-800 border border-emerald-100';
+        }
+        if (status === 'rejected' || status === 'cancelled' || status === 'no_show') {
+            return 'bg-red-50 text-red-800 border border-red-100';
+        }
         return 'bg-blue-50 text-blue-800 border border-blue-100';
+    }
+
+    function visitStatusLabel(data, entity) {
+        if (data.appointment_confirmed || entity.appointment_confirmed) {
+            return 'Confirmed';
+        }
+        if (data.appointment_status === 'scheduled') {
+            return 'Scheduled';
+        }
+        if (entity.status === 'verified' || entity.status === 'ready') {
+            return 'Confirmed';
+        }
+        return '';
     }
 
     function showLoading(show) {
@@ -89,10 +106,14 @@
               '<p><span class="font-bold text-slate-500">Service:</span> ' + escapeHtml(data.service || entity.service_type) + '</p>' +
               '<p><span class="font-bold text-slate-500">Scheduled:</span> ' + escapeHtml(formatDateTimeDisplay(entity.appointment_date + ' ' + entity.appointment_time)) + '</p>' +
               '<p><span class="font-bold text-slate-500">Booked:</span> ' + escapeHtml(formatDateDisplay(entity.created_at)) + '</p>'
-            : '<p><span class="font-bold text-slate-500">Name:</span> ' + escapeHtml(entity.citizen_name) + '</p>' +
-              '<p><span class="font-bold text-slate-500">Document:</span> ' + escapeHtml(data.document || entity.document_type) + '</p>' +
-              '<p><span class="font-bold text-slate-500">Submitted:</span> ' + escapeHtml(formatDateDisplay(entity.submitted_at)) + '</p>' +
-              (entity.appointment_date ? '<p><span class="font-bold text-slate-500">Preferred visit:</span> ' + escapeHtml(formatDateTimeDisplay(entity.appointment_date + ' ' + (entity.appointment_time || ''))) + '</p>' : '');
+            : (function () {
+                var visitLabel = visitStatusLabel(data, entity);
+                return '<p><span class="font-bold text-slate-500">Name:</span> ' + escapeHtml(entity.citizen_name) + '</p>' +
+                    '<p><span class="font-bold text-slate-500">Document:</span> ' + escapeHtml(data.document || entity.document_type) + '</p>' +
+                    '<p><span class="font-bold text-slate-500">Submitted:</span> ' + escapeHtml(formatDateDisplay(entity.submitted_at)) + '</p>' +
+                    (entity.appointment_date ? '<p><span class="font-bold text-slate-500">Pickup visit:</span> ' + escapeHtml(formatDateTimeDisplay(entity.appointment_date + ' ' + (entity.appointment_time || ''))) + '</p>' : '') +
+                    (visitLabel ? '<p><span class="font-bold text-slate-500">Visit status:</span> ' + escapeHtml(visitLabel) + '</p>' : '');
+            }());
 
         var codeLabel = isAppointment ? 'Appointment Code' : 'Tracking Code';
         var footerNote = hideProgress

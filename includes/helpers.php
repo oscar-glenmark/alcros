@@ -311,14 +311,9 @@ function requestStatusWorkflow(): array
     return ['pending', 'verified', 'ready', 'completed'];
 }
 
-function requestStatusOptions(): array
-{
-    return ['pending', 'verified', 'ready', 'completed', 'rejected'];
-}
-
 function requestStatusUpdateOptions(): array
 {
-    return ['verified', 'ready', 'completed', 'rejected'];
+    return ['verified', 'rejected'];
 }
 
 function normalizeRequestStatus(string $status): string
@@ -353,6 +348,7 @@ function migrateLegacyProcessingStatus(PDO $pdo): void
 
 function ensureCitizenNotifyColumns(PDO $pdo): void
 {
+    ensurePersonNamePartColumns($pdo);
     static $done = false;
     if ($done) {
         return;
@@ -423,7 +419,11 @@ function ensureCitizenNotifyColumns(PDO $pdo): void
                AND r.appointment_time = a.appointment_time
                AND (
                     (r.email IS NOT NULL AND r.email != '' AND r.email = a.email)
-                    OR (r.citizen_name = a.citizen_name)
+                    OR (
+                        r.first_name = a.first_name
+                        AND IFNULL(r.middle_name, '') = IFNULL(a.middle_name, '')
+                        AND r.last_name = a.last_name
+                    )
                )
              SET a.source = 'document_request', a.tracking_code = r.tracking_code
              WHERE a.source = 'standalone'
@@ -532,6 +532,20 @@ function appointmentServiceLabel(string $value): string
     return ucwords(str_replace('-', ' ', $value));
 }
 
+function isDocumentRequestAppointment(array $row): bool
+{
+    return (($row['source'] ?? '') === 'document_request') || !empty($row['tracking_code']);
+}
+
+function appointmentDisplayStatusLabel(array $row): string
+{
+    if (isDocumentRequestAppointment($row) && ($row['status'] ?? '') === 'confirmed') {
+        return 'Ready for Pickup';
+    }
+
+    return appointmentStatusLabel((string) ($row['status'] ?? 'scheduled'));
+}
+
 function appointmentStatusWorkflow(): array
 {
     return ['scheduled', 'confirmed', 'completed'];
@@ -539,7 +553,7 @@ function appointmentStatusWorkflow(): array
 
 function appointmentStatusUpdateOptions(): array
 {
-    return ['confirmed', 'completed', 'cancelled', 'no_show'];
+    return ['confirmed', 'completed', 'no_show'];
 }
 
 function appointmentStatusLabel(string $status): string
@@ -742,11 +756,6 @@ function appointmentStatusProgressIndex(string $status): int|false
     $idx = array_search($status, appointmentStatusWorkflow(), true);
 
     return $idx === false ? false : (int) $idx;
-}
-
-function isAppointmentTrackingCode(string $code): bool
-{
-    return (bool) preg_match('/^APT-/i', $code);
 }
 
 function getPurposeOptions(): array
@@ -1128,6 +1137,231 @@ function isGmailVerifiedInSession(string $email): bool
     return true;
 }
 
+function formatPersonName(?string $first, ?string $middle = null, ?string $last = null): string
+{
+    $parts = array_filter([
+        trim((string) $first),
+        trim((string) ($middle ?? '')),
+        trim((string) ($last ?? '')),
+    ], static fn ($part) => $part !== '');
+
+    return implode(' ', $parts);
+}
+
+function personNamePartsFromInput(array $input, string $prefix = ''): array
+{
+    return [
+        'first_name'  => trim((string) ($input[$prefix . 'first_name'] ?? '')),
+        'middle_name' => trim((string) ($input[$prefix . 'middle_name'] ?? '')) ?: null,
+        'last_name'   => trim((string) ($input[$prefix . 'last_name'] ?? '')),
+    ];
+}
+
+function validatePersonNameParts(array $parts): ?string
+{
+    if ($parts['first_name'] === '' || $parts['last_name'] === '') {
+        return 'Please enter your first name and last name.';
+    }
+
+    return null;
+}
+
+function personNameFromRow(array $row): string
+{
+    if (isset($row['first_name']) || isset($row['middle_name']) || isset($row['last_name'])) {
+        return formatPersonName(
+            (string) ($row['first_name'] ?? ''),
+            $row['middle_name'] ?? null,
+            (string) ($row['last_name'] ?? '')
+        );
+    }
+
+    return trim((string) ($row['citizen_name'] ?? $row['person_name'] ?? ''));
+}
+
+function civilRecordDisplayName(array $row): string
+{
+    if (($row['record_type'] ?? '') === 'marriage') {
+        $husband = trim((string) ($row['husband_name'] ?? ''));
+        $wife = trim((string) ($row['wife_name'] ?? ''));
+        if ($husband !== '' && $wife !== '') {
+            return $husband . ' & ' . $wife;
+        }
+    }
+
+    $name = personNameFromRow($row);
+
+    return $name !== '' ? $name : '—';
+}
+
+function parsePersonNameToParts(string $full): array
+{
+    $full = trim($full);
+    if ($full === '') {
+        return ['first_name' => '', 'middle_name' => null, 'last_name' => ''];
+    }
+
+    if (str_contains($full, ',')) {
+        [$last, $rest] = array_map('trim', explode(',', $full, 2));
+        $restParts = preg_split('/\s+/', trim($rest)) ?: [];
+
+        return [
+            'first_name'  => $restParts[0] ?? '',
+            'middle_name' => count($restParts) > 1 ? implode(' ', array_slice($restParts, 1)) : null,
+            'last_name'   => $last,
+        ];
+    }
+
+    $parts = preg_split('/\s+/', $full) ?: [];
+    if (count($parts) === 1) {
+        return ['first_name' => $parts[0], 'middle_name' => null, 'last_name' => ''];
+    }
+    if (count($parts) === 2) {
+        return ['first_name' => $parts[0], 'middle_name' => null, 'last_name' => $parts[1]];
+    }
+
+    return [
+        'first_name'  => $parts[0],
+        'middle_name' => implode(' ', array_slice($parts, 1, -1)),
+        'last_name'   => $parts[count($parts) - 1],
+    ];
+}
+
+function normalizePersonNameParts(?string $first, ?string $middle, ?string $last): string
+{
+    return normalizePersonName(formatPersonName($first, $middle, $last));
+}
+
+function citizenNameFromPost(array $post): string
+{
+    if (trim((string) ($post['citizen_name'] ?? '')) !== '') {
+        return trim((string) $post['citizen_name']);
+    }
+
+    $parts = personNamePartsFromInput($post);
+
+    return formatPersonName($parts['first_name'], $parts['middle_name'], $parts['last_name']);
+}
+
+function ensurePersonNamePartColumns(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+
+    $requiredTables = [
+        'document_requests' => true,
+        'appointments'      => true,
+        'queue_tickets'     => false,
+        'civil_records'     => false,
+        'staff'             => true,
+    ];
+
+    foreach ($requiredTables as $table => $namesRequired) {
+        migrateTablePersonNameParts($pdo, $table, $namesRequired);
+    }
+}
+
+function legacyNameColumnForTable(string $table): string
+{
+    return match ($table) {
+        'civil_records' => 'person_name',
+        'staff'         => 'name',
+        default         => 'citizen_name',
+    };
+}
+
+function migrateTablePersonNameParts(PDO $pdo, string $table, bool $namesRequired): void
+{
+    $legacyColumn = legacyNameColumnForTable($table);
+    $hasParts = true;
+
+    try {
+        $pdo->query("SELECT first_name FROM `$table` LIMIT 1");
+    } catch (Throwable $e) {
+        $hasParts = false;
+    }
+
+    if (!$hasParts) {
+        try {
+            if ($table === 'civil_records') {
+                $pdo->exec("ALTER TABLE `$table` ADD COLUMN first_name VARCHAR(80) NULL AFTER registry_number");
+            } elseif ($table === 'staff') {
+                $pdo->exec("ALTER TABLE `$table` ADD COLUMN first_name VARCHAR(80) NULL AFTER staff_id");
+            } elseif ($table === 'document_requests') {
+                $pdo->exec("ALTER TABLE `$table` ADD COLUMN first_name VARCHAR(80) NULL AFTER tracking_code");
+            } elseif ($table === 'appointments') {
+                $pdo->exec("ALTER TABLE `$table` ADD COLUMN first_name VARCHAR(80) NULL AFTER appointment_code");
+            } else {
+                $pdo->exec("ALTER TABLE `$table` ADD COLUMN first_name VARCHAR(80) NULL AFTER ticket_number");
+            }
+            $pdo->exec("ALTER TABLE `$table` ADD COLUMN middle_name VARCHAR(80) NULL AFTER first_name");
+            $pdo->exec("ALTER TABLE `$table` ADD COLUMN last_name VARCHAR(80) NULL AFTER middle_name");
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    try {
+        $pdo->query("SELECT `$legacyColumn` FROM `$table` LIMIT 1");
+        $stmt = $pdo->query("SELECT * FROM `$table` WHERE (`$legacyColumn` IS NOT NULL AND `$legacyColumn` != '') AND (first_name IS NULL OR first_name = '')");
+        while ($row = $stmt->fetch()) {
+            $parts = parsePersonNameToParts((string) $row[$legacyColumn]);
+            $update = $pdo->prepare("UPDATE `$table` SET first_name = ?, middle_name = ?, last_name = ? WHERE id = ?");
+            $update->execute([
+                $parts['first_name'] !== '' ? $parts['first_name'] : 'Unknown',
+                $parts['middle_name'],
+                $parts['last_name'],
+                $row['id'],
+            ]);
+        }
+
+        if ($namesRequired) {
+            $pdo->exec("UPDATE `$table` SET first_name = 'Unknown' WHERE first_name IS NULL OR first_name = ''");
+            $pdo->exec("UPDATE `$table` SET last_name = '' WHERE last_name IS NULL");
+            $pdo->exec("ALTER TABLE `$table` MODIFY first_name VARCHAR(80) NOT NULL");
+            $pdo->exec("ALTER TABLE `$table` MODIFY last_name VARCHAR(80) NOT NULL");
+        }
+
+        try {
+            $pdo->exec("ALTER TABLE `$table` DROP INDEX idx_citizen");
+        } catch (Throwable $ignored) {
+        }
+        try {
+            $pdo->exec("ALTER TABLE `$table` DROP INDEX idx_person");
+        } catch (Throwable $ignored) {
+        }
+
+        $pdo->exec("ALTER TABLE `$table` DROP COLUMN `$legacyColumn`");
+
+        if ($table !== 'civil_records') {
+            try {
+                $pdo->exec("CREATE INDEX idx_citizen_name ON `$table` (last_name, first_name)");
+            } catch (Throwable $ignored) {
+            }
+        } else {
+            try {
+                $pdo->exec('CREATE INDEX idx_person_name ON civil_records (last_name, first_name)');
+            } catch (Throwable $ignored) {
+            }
+        }
+    } catch (Throwable $ignored) {
+    }
+}
+
+function enrichCitizenNameRow(array $row): array
+{
+    $row['citizen_name'] = personNameFromRow($row);
+
+    return $row;
+}
+
+function enrichCitizenNameRows(array $rows): array
+{
+    return array_map('enrichCitizenNameRow', $rows);
+}
+
 function normalizePersonName(string $name): string
 {
     $name = strtolower(trim($name));
@@ -1145,14 +1379,18 @@ function findCivilRecordMatch(PDO $pdo, string $citizenName, string $dateOfBirth
     }
 
     $stmt = $pdo->prepare(
-        'SELECT id, record_type, person_name, birth_date, registry_number
+        'SELECT id, record_type, first_name, middle_name, last_name, birth_date, registry_number
          FROM civil_records
-         WHERE deleted_at IS NULL AND birth_date = ?
-         ORDER BY person_name ASC'
+         WHERE deleted_at IS NULL AND birth_date = ? AND record_type IN (\'birth\', \'death\')
+         ORDER BY last_name ASC, first_name ASC'
     );
     $stmt->execute([$dateOfBirth]);
     while ($row = $stmt->fetch()) {
-        if (normalizePersonName((string) $row['person_name']) === $normalized) {
+        if (normalizePersonNameParts(
+            (string) ($row['first_name'] ?? ''),
+            $row['middle_name'] ?? null,
+            (string) ($row['last_name'] ?? '')
+        ) === $normalized) {
             return $row;
         }
     }
@@ -1202,7 +1440,7 @@ function verifyCitizenCivilRecord(PDO $pdo, string $citizenName, string $dateOfB
 {
     $citizenName = trim($citizenName);
     if ($citizenName === '') {
-        return ['ok' => false, 'error' => 'Enter your full name on record first.'];
+        return ['ok' => false, 'error' => 'Enter your first name, middle name (if any), and last name on record first.'];
     }
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfBirth)) {
         return ['ok' => false, 'error' => 'Enter your date of birth first.'];
@@ -1222,11 +1460,6 @@ function verifyCitizenCivilRecord(PDO $pdo, string $citizenName, string $dateOfB
         'ok'    => false,
         'error' => 'No civil registry record was found for this name and date of birth. Please visit the Local Civil Registry Office (LCRO) in person to register before submitting an online request.',
     ];
-}
-
-function ensureDocumentRequestSchema(?PDO $pdo = null): void
-{
-    // Schema is created by install.php only — no runtime ALTER TABLE (safer for XAMPP MySQL).
 }
 
 function saveIdUpload(array $file, string $prefix): ?string
@@ -1276,6 +1509,8 @@ function ensureStaffProfileColumns(PDO $pdo): void
     }
     $done = true;
 
+    ensurePersonNamePartColumns($pdo);
+
     try {
         $pdo->query('SELECT profile_photo_path FROM staff LIMIT 1');
     } catch (Throwable $e) {
@@ -1289,7 +1524,7 @@ function ensureStaffProfileColumns(PDO $pdo): void
         $pdo->query('SELECT email FROM staff LIMIT 1');
     } catch (Throwable $e) {
         try {
-            $pdo->exec('ALTER TABLE staff ADD COLUMN email VARCHAR(150) DEFAULT NULL AFTER name');
+            $pdo->exec('ALTER TABLE staff ADD COLUMN email VARCHAR(150) DEFAULT NULL AFTER last_name');
         } catch (Throwable $ignored) {
         }
     }
@@ -1307,7 +1542,7 @@ function ensureStaffProfileColumns(PDO $pdo): void
 function staffRowById(PDO $pdo, string $staffId): ?array
 {
     ensureStaffProfileColumns($pdo);
-    $stmt = $pdo->prepare('SELECT staff_id, name, email, recovery_gmail_2sv_confirmed, role, password_hash, profile_photo_path, created_at FROM staff WHERE staff_id = ? LIMIT 1');
+    $stmt = $pdo->prepare('SELECT staff_id, first_name, middle_name, last_name, email, recovery_gmail_2sv_confirmed, role, password_hash, profile_photo_path, created_at FROM staff WHERE staff_id = ? LIMIT 1');
     $stmt->execute([strtoupper(trim($staffId))]);
     $row = $stmt->fetch();
 
@@ -1440,12 +1675,13 @@ function sendStaffPasswordOtp(PDO $pdo, string $staffId): array
 
     $site = getSiteSettings()['name'];
     $subject = $site . ' — Staff password reset code';
-    $plain = "Hello {$staff['name']},\n\n"
+    $displayName = personNameFromRow($staff);
+    $plain = "Hello {$displayName},\n\n"
         . "Your ALCROS staff portal password reset code is: {$otp}\n\n"
         . "Staff ID: {$staff['staff_id']}\n"
         . "This code expires in 15 minutes.\n\n"
         . "If you did not request this, ignore this email and contact your administrator.";
-    $html = '<p>Hello <strong>' . htmlspecialchars($staff['name']) . '</strong>,</p>'
+    $html = '<p>Hello <strong>' . htmlspecialchars($displayName) . '</strong>,</p>'
         . '<p>Your staff portal password reset code is:</p>'
         . '<p style="font-size:28px;font-weight:800;letter-spacing:6px;color:#2563eb;">' . htmlspecialchars($otp) . '</p>'
         . '<p>Staff ID: <strong>' . htmlspecialchars($staff['staff_id']) . '</strong><br>'
@@ -1689,7 +1925,10 @@ function documentRequestViewData(array $row): array
 
     return [
         'tracking_code'  => (string) ($row['tracking_code'] ?? ''),
-        'citizen_name'   => (string) ($row['citizen_name'] ?? ''),
+        'citizen_name'   => personNameFromRow($row),
+        'first_name'     => (string) ($row['first_name'] ?? ''),
+        'middle_name'    => (string) ($row['middle_name'] ?? ''),
+        'last_name'      => (string) ($row['last_name'] ?? ''),
         'date_of_birth'  => !empty($row['date_of_birth']) ? formatDateDisplay($row['date_of_birth']) : '—',
         'sex'            => !empty($row['sex']) ? ucfirst((string) $row['sex']) : '—',
         'email'          => !empty($row['email']) ? (string) $row['email'] : '—',
@@ -1714,12 +1953,15 @@ function appointmentViewData(array $row): array
 
     return [
         'appointment_code' => (string) ($row['appointment_code'] ?? ''),
-        'citizen_name'     => (string) ($row['citizen_name'] ?? ''),
+        'citizen_name'     => personNameFromRow($row),
+        'first_name'       => (string) ($row['first_name'] ?? ''),
+        'middle_name'      => (string) ($row['middle_name'] ?? ''),
+        'last_name'        => (string) ($row['last_name'] ?? ''),
         'email'            => !empty($row['email']) ? (string) $row['email'] : '—',
         'phone'            => !empty($row['phone']) ? (string) $row['phone'] : '—',
         'service_type'     => appointmentServiceLabel((string) ($row['service_type'] ?? '')),
         'schedule'         => formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null) ?: '—',
-        'status'           => appointmentStatusLabel((string) ($row['status'] ?? 'scheduled')),
+        'status'           => appointmentDisplayStatusLabel($row),
         'source'           => $isRequest ? 'Document request visit' : 'Special service appointment',
         'tracking_code'    => !empty($row['tracking_code']) ? (string) $row['tracking_code'] : '',
         'notify_email'     => !empty($row['notify_email']) ? 'Yes' : 'No',
@@ -1728,6 +1970,46 @@ function appointmentViewData(array $row): array
         'created_at'       => !empty($row['created_at']) ? formatDateDisplay($row['created_at']) : '—',
         'notes'            => !empty($row['notes']) ? (string) $row['notes'] : null,
     ];
+}
+
+function appointmentSearchBlob(array $row): string
+{
+    $parts = [
+        $row['appointment_code'] ?? '',
+        $row['tracking_code'] ?? '',
+        personNameFromRow($row),
+        $row['first_name'] ?? '',
+        $row['middle_name'] ?? '',
+        $row['last_name'] ?? '',
+        $row['email'] ?? '',
+        $row['phone'] ?? '',
+        appointmentServiceLabel((string) ($row['service_type'] ?? '')),
+        appointmentDisplayStatusLabel($row),
+    ];
+
+    return implode(' ', array_filter(array_map(static fn ($v) => trim((string) $v), $parts), static fn ($v) => $v !== ''));
+}
+
+function findAppointmentDateForSearch(PDO $pdo, string $q): ?string
+{
+    $q = trim($q);
+    if ($q === '') {
+        return null;
+    }
+
+    $term = '%' . $q . '%';
+    $stmt = $pdo->prepare(
+        'SELECT appointment_date
+         FROM appointments
+         WHERE appointment_code LIKE ? OR tracking_code LIKE ?
+            OR first_name LIKE ? OR middle_name LIKE ? OR last_name LIKE ?
+         ORDER BY appointment_date DESC
+         LIMIT 1'
+    );
+    $stmt->execute([$term, $term, $term, $term, $term]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    return !empty($row['appointment_date']) ? (string) $row['appointment_date'] : null;
 }
 
 function requestStatusLabel(string $status): string
@@ -1752,6 +2034,82 @@ function requestStatusMessage(string $status): string
         'rejected'  => 'This request could not be approved. Please contact the registry office for help.',
         default     => 'Track your request status below.',
     };
+}
+
+function fetchDocumentRequestAppointment(PDO $pdo, string $trackingCode): ?array
+{
+    $trackingCode = trim($trackingCode);
+    if ($trackingCode === '') {
+        return null;
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT appointment_code, status, appointment_date, appointment_time
+         FROM appointments WHERE tracking_code = ? LIMIT 1'
+    );
+    $stmt->execute([$trackingCode]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $row ?: null;
+}
+
+function publicRequestStatusLabel(string $status): string
+{
+    return match (normalizeRequestStatus($status)) {
+        'verified'  => 'Confirmed · Ready for Pickup',
+        'ready'     => 'Ready for Pickup',
+        default     => requestStatusLabel($status),
+    };
+}
+
+function publicRequestStatusMessage(string $status, ?array $appointment = null): string
+{
+    $status = normalizeRequestStatus($status);
+
+    if ($status === 'verified' || $status === 'ready') {
+        $visit = '';
+        if ($appointment && !empty($appointment['appointment_date'])) {
+            $visit = ' Your confirmed visit is on '
+                . formatAppointmentDisplay($appointment['appointment_date'], $appointment['appointment_time'] ?? null)
+                . '.';
+        }
+
+        return 'Your request has been verified, your pickup visit is confirmed, and your document is ready for pickup.'
+            . $visit
+            . ' Please visit the Local Civil Registrar Office with your tracking code and a valid ID.';
+    }
+
+    return requestStatusMessage($status);
+}
+
+function publicRequestStatusProgressIndex(string $status): int|false
+{
+    $status = normalizeRequestStatus($status);
+    if ($status === 'rejected') {
+        return false;
+    }
+    if ($status === 'verified') {
+        return 2;
+    }
+
+    return requestStatusProgressIndex($status);
+}
+
+function publicRequestStatusBadge(string $status): string
+{
+    $status = normalizeRequestStatus($status);
+    $classes = [
+        'pending'   => 'bg-yellow-100 text-yellow-700',
+        'verified'  => 'bg-green-100 text-green-700',
+        'ready'     => 'bg-green-100 text-green-700',
+        'completed' => 'bg-gray-100 text-gray-600',
+        'rejected'  => 'bg-red-100 text-red-700',
+    ];
+    $class = $classes[$status] ?? 'bg-gray-100 text-gray-600';
+
+    return '<span class="px-2 py-0.5 rounded text-[9px] font-bold uppercase ' . $class . '">'
+        . htmlspecialchars(publicRequestStatusLabel($status))
+        . '</span>';
 }
 
 function appBaseUrl(): string
@@ -2081,7 +2439,7 @@ function notifyRequestSubmitted(array $data): bool
         'ALCROS — Request received (' . $data['tracking_code'] . ')',
         [
             'heading'      => 'Request received',
-            'name'         => $data['citizen_name'],
+            'name'         => personNameFromRow($data),
             'intro'        => 'Thank you for submitting your document request through ALCROS.',
             'code_label'   => 'Tracking code',
             'code'         => $data['tracking_code'],
@@ -2094,11 +2452,94 @@ function notifyRequestSubmitted(array $data): bool
     );
 }
 
+function syncDocumentRequestAppointment(PDO $pdo, int $requestId, string $requestStatus): void
+{
+    ensureCitizenNotifyColumns($pdo);
+    $status = normalizeRequestStatus($requestStatus);
+
+    $stmt = $pdo->prepare(
+        'SELECT tracking_code, first_name, middle_name, last_name, email, phone, notify_email,
+                document_type, appointment_date, appointment_time, id_front_path, id_back_path
+         FROM document_requests WHERE id = ? LIMIT 1'
+    );
+    $stmt->execute([$requestId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) {
+        return;
+    }
+
+    $trackingCode = (string) $row['tracking_code'];
+    $apptStmt = $pdo->prepare('SELECT id, status FROM appointments WHERE tracking_code = ? LIMIT 1');
+    $apptStmt->execute([$trackingCode]);
+    $existing = $apptStmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($status === 'verified') {
+        $apptDate = $row['appointment_date'] ?? null;
+        $apptTime = $row['appointment_time'] ?? null;
+        if (!$apptDate || !$apptTime) {
+            return;
+        }
+
+        $normalizedTime = normalizeAppointmentTime($apptTime);
+        $serviceType = documentTypeLabel($row['document_type']);
+
+        if ($existing) {
+            $pdo->prepare(
+                "UPDATE appointments
+                 SET status = 'confirmed', appointment_date = ?, appointment_time = ?, service_type = ?
+                 WHERE id = ?"
+            )->execute([$apptDate, $normalizedTime, $serviceType, $existing['id']]);
+
+            return;
+        }
+
+        $apptCode = generateAppointmentCode();
+        $pdo->prepare(
+            'INSERT INTO appointments
+             (appointment_code, first_name, middle_name, last_name, email, phone, notify_email,
+              service_type, appointment_date, appointment_time, status, source, tracking_code,
+              id_front_path, id_back_path)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        )->execute([
+            $apptCode,
+            $row['first_name'],
+            $row['middle_name'] ?? null,
+            $row['last_name'],
+            $row['email'],
+            $row['phone'],
+            (int) ($row['notify_email'] ?? 0),
+            $serviceType,
+            $apptDate,
+            $normalizedTime,
+            'confirmed',
+            'document_request',
+            $trackingCode,
+            $row['id_front_path'] ?? null,
+            $row['id_back_path'] ?? null,
+        ]);
+
+        return;
+    }
+
+    if (!$existing) {
+        return;
+    }
+
+    $apptStatus = match ($status) {
+        'rejected'  => 'cancelled',
+        'completed' => 'completed',
+        default     => null,
+    };
+    if ($apptStatus !== null && $existing['status'] !== $apptStatus) {
+        $pdo->prepare('UPDATE appointments SET status = ? WHERE id = ?')->execute([$apptStatus, $existing['id']]);
+    }
+}
+
 function notifyRequestStatusChange(PDO $pdo, int $requestId, string $newStatus): void
 {
     ensureCitizenNotifyColumns($pdo);
     $stmt = $pdo->prepare(
-        'SELECT tracking_code, citizen_name, email, document_type, status, appointment_date, appointment_time, notify_email
+        'SELECT tracking_code, first_name, middle_name, last_name, email, document_type, status, appointment_date, appointment_time, notify_email
          FROM document_requests WHERE id = ? LIMIT 1'
     );
     $stmt->execute([$requestId]);
@@ -2108,43 +2549,56 @@ function notifyRequestStatusChange(PDO $pdo, int $requestId, string $newStatus):
     }
 
     $status = normalizeRequestStatus($newStatus);
+    $appointment = fetchDocumentRequestAppointment($pdo, (string) $row['tracking_code']);
+    $visitSchedule = formatAppointmentDisplay(
+        $appointment['appointment_date'] ?? $row['appointment_date'] ?? null,
+        $appointment['appointment_time'] ?? $row['appointment_time'] ?? null
+    );
+
     $intro = match ($status) {
-        'verified'  => 'The civil registry staff has verified your request. It is now being processed.',
-        'ready'     => 'Good news — your document is ready for pickup.',
+        'verified'  => 'Your request has been verified, your pickup visit is confirmed, and your document is ready for pickup.',
+        'ready'     => 'Good news — your document is ready for pickup and your visit remains confirmed.',
         'completed' => 'Your request has been completed.',
         'rejected'  => 'There is an update on your document request.',
         default     => 'There is an update on your document request.',
     };
     $subject = match ($status) {
-        'verified'  => 'ALCROS — Your request is being processed (' . $row['tracking_code'] . ')',
-        'ready'     => 'ALCROS — Ready for pickup (' . $row['tracking_code'] . ')',
-        default     => 'ALCROS — Request update (' . $row['tracking_code'] . ')',
+        'verified', 'ready' => 'ALCROS — Ready for pickup (' . $row['tracking_code'] . ')',
+        default             => 'ALCROS — Request update (' . $row['tracking_code'] . ')',
     };
     $accent = match ($status) {
-        'ready'     => '#16a34a',
-        'completed' => '#475569',
-        'rejected'  => '#dc2626',
-        default     => '#2563eb',
+        'verified', 'ready' => '#16a34a',
+        'completed'         => '#475569',
+        'rejected'          => '#dc2626',
+        default             => '#2563eb',
     };
     $heading = match ($status) {
-        'verified'  => 'Now being processed',
+        'verified'  => 'Confirmed · Ready for pickup',
         'ready'     => 'Ready for pickup',
         'completed' => 'Request completed',
         'rejected'  => 'Request update',
         default     => 'Request update',
     };
 
+    $details = [
+        'Document'   => documentTypeLabel($row['document_type']),
+        'New status' => publicRequestStatusLabel($newStatus),
+    ];
+    if ($status === 'verified' || $status === 'ready') {
+        $details['Visit status'] = 'Confirmed';
+        if ($visitSchedule !== '—') {
+            $details['Scheduled visit'] = $visitSchedule;
+        }
+    }
+
     sendCitizenNotice($row['email'], $subject, [
         'heading'      => $heading,
-        'name'         => $row['citizen_name'],
+        'name'         => personNameFromRow($row),
         'intro'        => $intro,
         'code_label'   => 'Tracking code',
         'code'         => $row['tracking_code'],
-        'details'      => [
-            'Document'   => documentTypeLabel($row['document_type']),
-            'New status' => requestStatusLabel($newStatus),
-        ],
-        'note'         => requestStatusMessage($newStatus),
+        'details'      => $details,
+        'note'         => publicRequestStatusMessage($newStatus, $appointment),
         'button_label' => 'View full details',
         'button_url'   => trackRequestUrl($row['tracking_code']),
         'accent'       => $accent,
@@ -2162,7 +2616,7 @@ function notifyAppointmentBooked(array $data): bool
         'ALCROS — Appointment booked (' . $data['appointment_code'] . ')',
         [
             'heading'      => 'Appointment booked',
-            'name'         => $data['citizen_name'],
+            'name'         => personNameFromRow($data),
             'intro'        => 'Your appointment was booked successfully.',
             'code_label'   => 'Appointment code',
             'code'         => $data['appointment_code'],
@@ -2183,7 +2637,7 @@ function notifyAppointmentStatusChange(PDO $pdo, int $appointmentId, string $new
 {
     ensureCitizenNotifyColumns($pdo);
     $stmt = $pdo->prepare(
-        'SELECT appointment_code, citizen_name, email, service_type, appointment_date, appointment_time, notify_email
+        'SELECT appointment_code, first_name, middle_name, last_name, email, service_type, appointment_date, appointment_time, notify_email
          FROM appointments WHERE id = ? LIMIT 1'
     );
     $stmt->execute([$appointmentId]);
@@ -2204,7 +2658,7 @@ function notifyAppointmentStatusChange(PDO $pdo, int $appointmentId, string $new
         'ALCROS — Appointment update (' . $row['appointment_code'] . ')',
         [
             'heading'      => 'Appointment update',
-            'name'         => $row['citizen_name'],
+            'name'         => personNameFromRow($row),
             'intro'        => 'There is an update on your appointment.',
             'code_label'   => 'Appointment code',
             'code'         => $row['appointment_code'],
@@ -2231,7 +2685,7 @@ function notifyAppointmentReminder(array $row): bool
         'ALCROS — Appointment in 5 hours (' . $row['appointment_code'] . ')',
         [
             'heading'      => 'Appointment reminder',
-            'name'         => $row['citizen_name'],
+            'name'         => personNameFromRow($row),
             'intro'        => 'This is a reminder that your appointment is in about 5 hours.',
             'code_label'   => 'Appointment code',
             'code'         => $row['appointment_code'],
@@ -2258,7 +2712,7 @@ function notifyRequestVisitReminder(array $row): bool
         'ALCROS — Visit in 5 hours (' . $row['tracking_code'] . ')',
         [
             'heading'      => 'Visit reminder',
-            'name'         => $row['citizen_name'],
+            'name'         => personNameFromRow($row),
             'intro'        => 'This is a reminder that your preferred visit for document pickup is in about 5 hours.',
             'code_label'   => 'Tracking code',
             'code'         => $row['tracking_code'],
@@ -2293,7 +2747,7 @@ function sendDueAppointmentReminders(PDO $pdo): int
     $sent = 0;
     try {
         $reqStmt = $pdo->query(
-            "SELECT id, tracking_code, citizen_name, email, document_type, status, appointment_date, appointment_time, notify_email
+            "SELECT id, tracking_code, first_name, middle_name, last_name, email, document_type, status, appointment_date, appointment_time, notify_email
              FROM document_requests
              WHERE notify_email = 1
                AND email IS NOT NULL AND email != ''
@@ -2327,7 +2781,7 @@ function sendDueAppointmentReminders(PDO $pdo): int
         }
 
         $apptStmt = $pdo->query(
-            "SELECT id, appointment_code, citizen_name, email, service_type, appointment_date, appointment_time, notify_email
+            "SELECT id, appointment_code, first_name, middle_name, last_name, email, service_type, appointment_date, appointment_time, notify_email
              FROM appointments
              WHERE notify_email = 1
                AND email IS NOT NULL AND email != ''
@@ -2443,6 +2897,122 @@ function reportRangeLabel(string $range, string $from, string $to): string
     return formatDateDisplay($from) . ' – ' . formatDateDisplay($to);
 }
 
+function civilRecordRegisteredDateExpr(): string
+{
+    return 'COALESCE(registration_date, event_date, DATE(created_at))';
+}
+
+function resolveReportYear(?string $yearInput = null): int
+{
+    $year = (int) ($yearInput ?? date('Y'));
+    $current = (int) date('Y');
+
+    if ($year < 2000 || $year > $current + 1) {
+        return $current;
+    }
+
+    return $year;
+}
+
+function quarterLabels(): array
+{
+    return [
+        1 => 'Q1 (Jan–Mar)',
+        2 => 'Q2 (Apr–Jun)',
+        3 => 'Q3 (Jul–Sep)',
+        4 => 'Q4 (Oct–Dec)',
+    ];
+}
+
+function buildQuarterlyCivilRecordsReport(PDO $pdo, int $year): array
+{
+    $dateExpr = civilRecordRegisteredDateExpr();
+    $stmt = $pdo->prepare(
+        "SELECT QUARTER($dateExpr) AS quarter_num, record_type, COUNT(*) AS cnt
+         FROM civil_records
+         WHERE deleted_at IS NULL AND YEAR($dateExpr) = ?
+         GROUP BY quarter_num, record_type
+         ORDER BY quarter_num, record_type"
+    );
+    $stmt->execute([$year]);
+
+    $quarters = [];
+    foreach (quarterLabels() as $num => $label) {
+        $quarters[$num] = [
+            'label' => $label,
+            'birth' => 0,
+            'death' => 0,
+            'marriage' => 0,
+            'total' => 0,
+        ];
+    }
+
+    $yearTotals = ['birth' => 0, 'death' => 0, 'marriage' => 0, 'total' => 0];
+
+    foreach ($stmt->fetchAll() as $row) {
+        $quarterNum = (int) $row['quarter_num'];
+        $recordType = (string) $row['record_type'];
+        $count = (int) $row['cnt'];
+
+        if (!isset($quarters[$quarterNum]) || !in_array($recordType, ['birth', 'death', 'marriage'], true)) {
+            continue;
+        }
+
+        $quarters[$quarterNum][$recordType] = $count;
+        $quarters[$quarterNum]['total'] += $count;
+        $yearTotals[$recordType] += $count;
+        $yearTotals['total'] += $count;
+    }
+
+    return [
+        'year' => $year,
+        'generated_at' => date('Y-m-d H:i:s'),
+        'office_name' => getSetting('office_name', 'Local Civil Registrar Office'),
+        'site_name' => getSetting('site_name', 'ALCROS'),
+        'quarters' => $quarters,
+        'year_totals' => $yearTotals,
+        'record_types' => ['birth', 'death', 'marriage'],
+    ];
+}
+
+function exportQuarterlyCivilRecordsCsv(array $report): void
+{
+    $year = $report['year'];
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="ALCROS_Civil_Records_Quarterly_' . $year . '.csv"');
+
+    $out = fopen('php://output', 'w');
+    fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
+
+    fputcsv($out, ['ALCROS Civil Records — Quarterly Registration Report']);
+    fputcsv($out, ['Office', $report['office_name']]);
+    fputcsv($out, ['Calendar year', $year]);
+    fputcsv($out, ['Generated on', $report['generated_at']]);
+    fputcsv($out, ['Note', 'Counts use registration date, or event/entry date when registration date is not set.']);
+    fputcsv($out, []);
+    fputcsv($out, ['Quarter', 'Birth', 'Death', 'Marriage', 'Quarter total']);
+
+    foreach ($report['quarters'] as $quarter) {
+        fputcsv($out, [
+            $quarter['label'],
+            $quarter['birth'],
+            $quarter['death'],
+            $quarter['marriage'],
+            $quarter['total'],
+        ]);
+    }
+
+    fputcsv($out, [
+        'Year total',
+        $report['year_totals']['birth'],
+        $report['year_totals']['death'],
+        $report['year_totals']['marriage'],
+        $report['year_totals']['total'],
+    ]);
+
+    fclose($out);
+}
+
 function buildOperationalReport(PDO $pdo, string $from, string $to): array
 {
     $summaryStmt = $pdo->prepare(
@@ -2496,7 +3066,7 @@ function buildOperationalReport(PDO $pdo, string $from, string $to): array
     }
 
     $requestList = $pdo->prepare(
-        "SELECT tracking_code, citizen_name, document_type, status, submitted_at, updated_at
+        "SELECT tracking_code, first_name, middle_name, last_name, document_type, status, submitted_at, updated_at
          FROM document_requests
          WHERE DATE(submitted_at) BETWEEN ? AND ?
          ORDER BY submitted_at DESC"
@@ -2515,7 +3085,7 @@ function buildOperationalReport(PDO $pdo, string $from, string $to): array
     }
 
     $appointmentList = $pdo->prepare(
-        "SELECT appointment_code, citizen_name, service_type, appointment_date, appointment_time, status, source, created_at
+        "SELECT appointment_code, first_name, middle_name, last_name, service_type, appointment_date, appointment_time, status, source, created_at
          FROM appointments
          WHERE appointment_date BETWEEN ? AND ?
          ORDER BY appointment_date ASC, appointment_time ASC"
@@ -2534,7 +3104,7 @@ function buildOperationalReport(PDO $pdo, string $from, string $to): array
     }
 
     $queueList = $pdo->prepare(
-        "SELECT ticket_number, purpose, status, citizen_name, reference_code, window_number, created_at, called_at
+        "SELECT ticket_number, purpose, status, first_name, middle_name, last_name, reference_code, window_number, created_at, called_at
          FROM queue_tickets
          WHERE DATE(created_at) BETWEEN ? AND ?
          ORDER BY created_at DESC"
@@ -2734,7 +3304,7 @@ function exportOperationalReportCsv(array $report, string $type): void
             foreach ($report['requests'] as $row) {
                 fputcsv($out, [
                     $row['tracking_code'],
-                    $row['citizen_name'],
+                    personNameFromRow($row),
                     documentTypeLabel($row['document_type']),
                     requestStatusLabel($row['status']),
                     formatReportDateTime($row['submitted_at']),
@@ -2772,7 +3342,7 @@ function exportOperationalReportCsv(array $report, string $type): void
             foreach ($report['appointments'] as $row) {
                 fputcsv($out, [
                     $row['appointment_code'],
-                    $row['citizen_name'],
+                    personNameFromRow($row),
                     appointmentServiceLabel($row['service_type']),
                     formatRecordDate($row['appointment_date']),
                     formatReportTime($row['appointment_time']),
@@ -2814,7 +3384,7 @@ function exportOperationalReportCsv(array $report, string $type): void
                     $row['ticket_number'],
                     queuePurposeLabel((string) $row['purpose']),
                     queueStatusLabel((string) $row['status']),
-                    $row['citizen_name'] ?: 'Not provided',
+                    personNameFromRow($row) ?: 'Not provided',
                     $row['reference_code'] ?: 'None',
                     $row['window_number'] ? 'Window ' . $row['window_number'] : 'Not assigned',
                     formatReportDateTime($row['created_at']),

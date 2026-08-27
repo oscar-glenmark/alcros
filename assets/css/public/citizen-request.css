@@ -1,0 +1,86 @@
+.citizen-page-hero--compact {
+    padding: 1.75rem 1.5rem 1.25rem;
+}
+
+.citizen-request-card {
+    background: rgba(255, 255, 255, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 1rem;
+    box-shadow: 0 12px 32px rgba(7, 20, 40, 0.18);
+}
+
+.citizen-request-step-active {
+    color: var(--alcros-gold);
+}
+
+.citizen-request-step-done {
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.citizen-request-step-pending {
+    color: rgba(255, 255, 255, 0.45);
+}
+
+.citizen-request-progress-line.is-done {
+    background: var(--alcros-gold);
+}
+
+.citizen-request-progress-line.is-pending {
+    background: rgba(255, 255, 255, 0.22);
+}
+
+.citizen-request-progress-dot.is-done {
+    background: var(--alcros-gold);
+    border-color: var(--alcros-gold);
+    color: var(--alcros-navy);
+}
+
+.citizen-request-progress-dot {
+    border-width: 2px;
+    border-style: solid;
+}
+
+.citizen-request-progress-dot.is-active {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--alcros-gold);
+    color: var(--alcros-gold);
+}
+
+.citizen-request-progress-dot.is-pending {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.22);
+    color: rgba(255, 255, 255, 0.35);
+}
+
+.citizen-btn-gold {
+    background: var(--alcros-gold);
+    color: var(--alcros-navy);
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    transition: background 0.2s, transform 0.15s, opacity 0.2s;
+}
+
+.citizen-btn-gold:hover {
+    background: var(--alcros-gold-hover);
+}
+
+.citizen-btn-gold:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.citizen-request-upload {
+    border: 2px dashed #e2e8f0;
+    transition: border-color 0.2s;
+}
+
+.citizen-btn-navy {
+    background: var(--alcros-navy-mid);
+    color: #fff;
+    font-weight: 700;
+    transition: background 0.2s;
+}
+
+.citizen-btn-navy:hover {
+    background: var(--alcros-navy);
+}

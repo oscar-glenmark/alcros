@@ -5,6 +5,7 @@
  */
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
+require_once __DIR__ . '/includes/scripts.php';
 
 $sqlFile = __DIR__ . '/database/alcros.sql';
 $messages = [];
@@ -53,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ALCROS Database Setup</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="includes/back_home.css">
+    <?= publicStylesheet('back-home') ?>
 </head>
 <body class="bg-gray-50 min-h-screen flex items-center justify-center p-6">
     <div class="max-w-md w-full bg-white rounded-2xl shadow p-8 border border-gray-100">

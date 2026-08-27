@@ -1,0 +1,81 @@
+.tab-btn.active {
+    background-color: #2563eb;
+    color: #ffffff;
+}
+
+.tab-btn.active i {
+    color: #ffffff;
+}
+
+.toggle-dot {
+    transition: transform 0.2s;
+}
+
+.settings-layout {
+    align-items: start;
+}
+
+.settings-tab-nav .tab-btn {
+    cursor: pointer;
+    overflow: visible;
+    transition: background-color 0.15s ease;
+}
+
+@media (min-width: 1024px) {
+    .settings-tab-nav {
+        position: sticky;
+        top: 0.75rem;
+        align-self: start;
+        height: max-content;
+        max-height: calc(100dvh - var(--admin-header-height) - 2rem);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+        z-index: 15;
+        flex-shrink: 0;
+    }
+}
+
+.settings-tab-nav .tab-btn:hover:not(.active) {
+    background-color: #f8fafc;
+}
+
+.settings-tab-nav .tab-desc {
+    display: block;
+    font-size: 10px;
+    font-weight: 500;
+    color: #94a3b8;
+    margin-top: 2px;
+    line-height: 1.3;
+}
+
+.tab-btn.active .tab-desc {
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.admin-sub-tab {
+    transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+
+.admin-sub-tab.is-active {
+    color: #2563eb;
+    border-color: #2563eb;
+    background: #eff6ff;
+}
+
+details.config-section > summary {
+    cursor: pointer;
+    list-style: none;
+}
+
+details.config-section > summary::-webkit-details-marker {
+    display: none;
+}
+
+details.config-section[open] > summary .config-chevron {
+    transform: rotate(180deg);
+}
+
+.config-chevron {
+    transition: transform 0.2s;
+}

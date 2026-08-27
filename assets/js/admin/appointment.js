@@ -10,6 +10,16 @@
             if (el) el.textContent = value || '—';
         }
 
+        function renderIdFiles(container, data) {
+            if (!container) return;
+            if (window.AlcrosIdPreview && typeof window.AlcrosIdPreview.renderGrid === 'function') {
+                container.innerHTML = window.AlcrosIdPreview.renderGrid(data.id_front_path, data.id_back_path);
+                return;
+            }
+            var html = idLink('Front ID', data.id_front_path) + idLink('Back ID', data.id_back_path);
+            container.innerHTML = html || '<span class="text-xs text-gray-400 italic">No ID files uploaded.</span>';
+        }
+
         function idLink(label, path) {
             if (!path) return '';
             var isPdf = /\.pdf$/i.test(path);
@@ -40,10 +50,7 @@
             }
 
             var idFiles = document.getElementById('appt-view-id-files');
-            if (idFiles) {
-                var html = idLink('Front ID', data.id_front_path) + idLink('Back ID', data.id_back_path);
-                idFiles.innerHTML = html || '<span class="text-xs text-gray-400 italic">No ID files uploaded.</span>';
-            }
+            renderIdFiles(idFiles, data);
 
             var notesWrap = document.getElementById('appt-view-notes-wrap');
             var notesEl = document.getElementById('appt-view-notes');
@@ -114,8 +121,11 @@
         function startDeleteCountdown(btn) {
             if (pendingDelete) cancelPendingDelete();
 
-            const appointmentId = btn.dataset.appointmentId;
-            const code = btn.dataset.code;
+            var appointmentId = btn.dataset.appointmentId;
+            var code = btn.dataset.code;
+            if (window.AlcrosConfirm && !window.AlcrosConfirm.ask('Delete appointment ' + code + '? You can undo within ' + UNDO_SECONDS + ' seconds.')) {
+                return;
+            }
             const row = document.querySelector('[data-appointment-row="' + appointmentId + '"]');
 
             row.classList.add('row-pending-delete');
@@ -142,5 +152,25 @@
             var btn = e.target.closest('.delete-appointment-btn');
             if (btn) startDeleteCountdown(btn);
         });
+    })();
+
+    (function () {
+        var params = new URLSearchParams(window.location.search);
+        var query = (params.get('q') || '').trim().toLowerCase();
+        if (!query) return;
+
+        var rows = document.querySelectorAll('[data-appointment-row]');
+        var visible = 0;
+        rows.forEach(function (row) {
+            var haystack = (row.getAttribute('data-search') || '').toLowerCase();
+            var match = haystack.indexOf(query) !== -1;
+            row.classList.toggle('hidden', !match);
+            if (match) visible += 1;
+        });
+
+        var emptyNote = document.getElementById('appointmentSearchEmpty');
+        if (emptyNote) {
+            emptyNote.classList.toggle('hidden', visible > 0);
+        }
     })();
 })();

@@ -14,7 +14,7 @@ try {
     $pdo = getDB();
     migrateLegacyProcessingStatus($pdo);
     $stmt = $pdo->prepare(
-        'SELECT tracking_code, citizen_name, document_type, status, submitted_at, updated_at,
+        'SELECT tracking_code, first_name, middle_name, last_name, document_type, status, submitted_at, updated_at,
                 appointment_date, appointment_time, email
          FROM document_requests WHERE tracking_code = ?'
     );
@@ -25,23 +25,29 @@ try {
         apiJsonResponse(['found' => false]);
     }
 
+    $appointment = fetchDocumentRequestAppointment($pdo, (string) $request['tracking_code']);
     $statusSteps = requestStatusWorkflow();
-    $currentIdx = requestStatusProgressIndex($request['status']);
-    if ($request['status'] === 'rejected') {
-        $currentIdx = false;
+    $currentIdx = publicRequestStatusProgressIndex($request['status']);
+
+    $tracking = publicTrackingRequest($request);
+    if ($appointment) {
+        $tracking['appointment_status'] = $appointment['status'];
+        $tracking['appointment_confirmed'] = $appointment['status'] === 'confirmed';
     }
 
     apiJsonResponse([
-        'found'          => true,
-        'request'        => publicTrackingRequest($request),
-        'document'       => documentTypeLabel($request['document_type']),
-        'status_html'    => requestStatusBadge($request['status']),
-        'status_label'   => requestStatusLabel($request['status']),
-        'status_message' => requestStatusMessage($request['status']),
-        'current_idx'    => $currentIdx === false ? -1 : (int) $currentIdx,
-        'status_steps'   => $statusSteps,
-        'step_labels'    => array_map('requestStatusLabel', $statusSteps),
-        'updated_at'     => $request['updated_at'],
+        'found'                 => true,
+        'request'               => $tracking,
+        'document'              => documentTypeLabel($request['document_type']),
+        'status_html'           => publicRequestStatusBadge($request['status']),
+        'status_label'          => publicRequestStatusLabel($request['status']),
+        'status_message'        => publicRequestStatusMessage($request['status'], $appointment),
+        'current_idx'           => $currentIdx === false ? -1 : (int) $currentIdx,
+        'status_steps'          => $statusSteps,
+        'step_labels'           => array_map('requestStatusLabel', $statusSteps),
+        'updated_at'            => $request['updated_at'],
+        'appointment_status'    => $appointment['status'] ?? null,
+        'appointment_confirmed' => ($appointment['status'] ?? '') === 'confirmed',
     ]);
 } catch (Throwable $e) {
     apiError('Unable to load request status.', 500);

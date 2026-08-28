@@ -159,7 +159,7 @@ $totalWaiting = array_sum(array_map(fn ($g) => count($g['waiting']), $grouped));
                             <?php endif; ?>
                         </div>
 
-                        <form method="POST" class="mb-4">
+                        <form method="POST" class="mb-4" data-no-confirm>
                             <?= authFormField() ?>
                             <input type="hidden" name="purpose" value="<?= htmlspecialchars($purpose) ?>">
                             <input type="hidden" name="action" value="next">
@@ -172,7 +172,7 @@ $totalWaiting = array_sum(array_map(fn ($g) => count($g['waiting']), $grouped));
                         </form>
 
                         <?php if ($hasServing): ?>
-                        <form method="POST" class="mb-4">
+                        <form method="POST" class="mb-4" data-no-confirm>
                             <?= authFormField() ?>
                             <input type="hidden" name="purpose" value="<?= htmlspecialchars($purpose) ?>">
                             <input type="hidden" name="action" value="call_again">
@@ -205,7 +205,7 @@ $totalWaiting = array_sum(array_map(fn ($g) => count($g['waiting']), $grouped));
                         </div>
 
                         <?php if ($hasServing): ?>
-                        <form method="POST" class="mt-4 pt-4 border-t border-slate-100">
+                        <form method="POST" class="mt-4 pt-4 border-t border-slate-100" data-no-confirm>
                             <?= authFormField() ?>
                             <input type="hidden" name="purpose" value="<?= htmlspecialchars($purpose) ?>">
                             <input type="hidden" name="action" value="skip">
@@ -225,7 +225,6 @@ $totalWaiting = array_sum(array_map(fn ($g) => count($g['waiting']), $grouped));
             </p>
         </div>
     </main>
-    <?= scriptTag('core/confirm.js') ?>
     <?= scriptTag('core/poll.js') ?>
     <?= scriptTag('core/realtime.js') ?>
     <?= lucideInitScript() ?>

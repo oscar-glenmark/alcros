@@ -15,6 +15,28 @@
         return String(form.getAttribute('method') || 'get').toLowerCase();
     }
 
+    function queueActionValue(form, submitter) {
+        if (submitter && submitter.name === 'action') {
+            return String(submitter.value || '').trim().toLowerCase();
+        }
+        return hiddenValue(form, 'action').toLowerCase();
+    }
+
+    function isQueueForm(form, submitter) {
+        if (form.classList.contains('kiosk-form')) return true;
+        if (document.body && document.body.dataset.realtime === 'queue') return true;
+
+        var action = queueActionValue(form, submitter);
+        if (!action) return false;
+
+        var queueActions = ['next', 'call_again', 'serve', 'complete', 'skip', 'no_show'];
+        if (queueActions.indexOf(action) === -1) return false;
+        if (form.querySelector('[name="ticket_id"]')) return true;
+        if (form.querySelector('[name="purpose"]') && !form.querySelector('[name="step"]')) return true;
+
+        return false;
+    }
+
     function shouldSkipForm(form, submitter) {
         if (form.dataset.noConfirm !== undefined) return true;
         if (form.dataset.alcrosConfirmed === '1') {
@@ -24,6 +46,7 @@
         if (submitter && submitter.dataset.noConfirm !== undefined) return true;
         if (formMethod(form) === 'get') return true;
         if (submitter && submitter.name === 'action' && submitter.value === 'back') return true;
+        if (isQueueForm(form, submitter)) return true;
 
         var actionPath = String(form.getAttribute('action') || '').toLowerCase();
         if (/login\.php|forgot_password\.php/.test(actionPath)) return true;
@@ -68,28 +91,7 @@
             }
         }
 
-        var queueAction = '';
-        if (submitter && submitter.name === 'action') {
-            queueAction = String(submitter.value || '').trim().toLowerCase();
-        }
-        if (!queueAction) {
-            queueAction = hiddenValue(form, 'action').toLowerCase();
-        }
-
-        var queueMessages = {
-            next: 'Call the next person in queue?',
-            call_again: 'Call the current ticket again?',
-            serve: 'Start serving this ticket?',
-            complete: 'Mark this ticket as done?',
-            skip: 'Skip this ticket?',
-            no_show: 'Mark current ticket as no-show?'
-        };
-        if (queueMessages[queueAction]) {
-            if (queueAction === 'skip' && /no-show|no show/.test(submitterText(submitter).toLowerCase())) {
-                return 'Mark current ticket as no-show?';
-            }
-            return queueMessages[queueAction];
-        }
+        var queueAction = queueActionValue(form, submitter);
 
         if (queueAction === 'import_csv') {
             return 'Import records from this CSV file?';
@@ -120,9 +122,6 @@
 
         if (form.id === 'bookAppointmentForm') {
             return 'Book this appointment?';
-        }
-        if (form.classList.contains('kiosk-form')) {
-            return 'Get a queue number for this service?';
         }
 
         var text = submitterText(submitter).toLowerCase();

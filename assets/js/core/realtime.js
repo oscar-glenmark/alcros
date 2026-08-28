@@ -69,6 +69,7 @@
             var callForm = document.createElement('form');
             callForm.method = 'POST';
             callForm.className = 'mb-4 queue-call-again-form';
+            callForm.setAttribute('data-no-confirm', '');
             callForm.innerHTML = authInputHtml() +
                 '<input type="hidden" name="purpose" value="' + purpose + '">' +
                 '<input type="hidden" name="action" value="call_again">' +
@@ -88,6 +89,7 @@
             var actions = document.createElement('form');
             actions.method = 'POST';
             actions.className = 'mt-4 pt-4 border-t border-slate-100 queue-skip-form';
+            actions.setAttribute('data-no-confirm', '');
             actions.innerHTML = authInputHtml() +
                 '<input type="hidden" name="purpose" value="' + purpose + '">' +
                 '<input type="hidden" name="action" value="skip">' +

@@ -222,7 +222,7 @@ $faqs = [
                     <a href="#services" class="nav-link">Services</a>
                     <button type="button" data-open-track class="nav-link cursor-pointer bg-transparent border-0 border-b-2 border-transparent">Track Request</button>
                     <a href="#about" class="nav-link">About</a>
-                    <a href="#faqs" class="nav-link">FAQs</a>
+                    <a href="#faqs" class="nav-link">FAQ</a>
                     <a href="#contact" class="nav-link">Contact Us</a>
                 </nav>
 

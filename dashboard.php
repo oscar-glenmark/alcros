@@ -19,7 +19,6 @@ $queueCount    = (int) $pdo->query("SELECT COUNT(*) FROM queue_tickets WHERE sta
 $todayAppts    = (int) $pdo->query("SELECT COUNT(*) FROM appointments WHERE appointment_date = CURDATE()")->fetchColumn();
 $pipelineCount = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'verified'")->fetchColumn();
 $readyCount    = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'ready'")->fetchColumn();
-$completedToday = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'completed' AND DATE(updated_at) = CURDATE()")->fetchColumn();
 
 $recentRequests = enrichCitizenNameRows($pdo->query(
     "SELECT tracking_code, first_name, middle_name, last_name, document_type, status, submitted_at
@@ -114,21 +113,6 @@ function activityIcon(string $action): string
                         <i data-lucide="users" class="w-3.5 h-3.5"></i> Open Queue
                     </a>
                 </div>
-            </div>
-
-            <!-- Live status strip -->
-            <div class="bg-white border border-gray-100 rounded-2xl px-5 py-4 flex flex-wrap items-center gap-6 dash-card">
-                <div class="flex items-center gap-2">
-                    <span class="relative flex h-2.5 w-2.5">
-                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60"></span>
-                        <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
-                    </span>
-                    <span class="text-xs font-semibold text-slate-700">System online</span>
-                </div>
-                <div class="h-4 w-px bg-gray-200 hidden sm:block"></div>
-                <div class="text-xs text-gray-500"><span class="font-bold text-slate-800" id="cmd-queue-count"><?= $queueCount ?></span> in queue</div>
-                <div class="text-xs text-gray-500"><span class="font-bold text-slate-800" id="cmd-appts-count"><?= $todayAppts ?></span> appointments today</div>
-                <div class="text-xs text-gray-500"><span class="font-bold text-emerald-600"><?= $completedToday ?></span> completed today</div>
             </div>
 
             <!-- Stats -->

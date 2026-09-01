@@ -310,6 +310,8 @@ $year = date('Y');
 
     <?= scriptTag('public/citizen-site.js') ?>
 
+    <?php require __DIR__ . '/includes/maintenance_announcement.php'; ?>
+
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>
 
     <?php require __DIR__ . '/includes/notification_consent.php'; ?>

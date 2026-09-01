@@ -90,15 +90,11 @@ if ($step === 2) {
     <title>Reset Staff Password - ALCROS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <?= publicStylesheet('auth-portal') ?>
     <?= publicStylesheet('password-toggle') ?>
     <?= publicStylesheet('back-home') ?>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
-        .login-card { box-shadow: 0 10px 40px rgba(0, 0, 0, 0.04); }
-    </style>
 </head>
-<body class="min-h-screen flex items-center justify-center p-6">
+<body class="auth-reset-page min-h-screen flex items-center justify-center p-6">
 
     <div class="w-full max-w-[420px] bg-white rounded-[2rem] overflow-hidden login-card border border-gray-100">
         <div class="p-6 sm:p-10 pb-8">
@@ -148,13 +144,13 @@ if ($step === 2) {
                 </div>
                 <div>
                     <label class="block text-[11px] font-bold text-gray-700 mb-2">New password</label>
-                    <input type="password" name="new_password" id="passwordInput" required minlength="10" autocomplete="new-password"
+                    <input type="password" name="new_password" id="passwordInput" required minlength="<?= passwordMinLength() ?>" autocomplete="new-password"
                         class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                    <p class="text-[10px] text-gray-400 mt-1">At least 10 characters with uppercase, lowercase, and a number.</p>
+                    <p class="text-[10px] text-gray-400 mt-1">At least <?= passwordMinLength() ?> characters with uppercase, lowercase, and a number.</p>
                 </div>
                 <div>
                     <label class="block text-[11px] font-bold text-gray-700 mb-2">Confirm new password</label>
-                    <input type="password" name="confirm_password" required minlength="10" autocomplete="new-password"
+                    <input type="password" name="confirm_password" required minlength="<?= passwordMinLength() ?>" autocomplete="new-password"
                         class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
                 </div>
                 <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3.5 text-xs font-bold" data-loading-text="Updating…">

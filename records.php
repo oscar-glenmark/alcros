@@ -1227,13 +1227,6 @@ function sortUrl(string $column): string
                 </div>
             </div>
 
-            <?php if ($flash): ?>
-            <div class="rounded-xl p-3 text-xs font-semibold flex items-center gap-2 <?= $flash[0] === 'success' ? 'bg-green-50 border border-green-100 text-green-700' : 'bg-red-50 border border-red-100 text-red-700' ?>">
-                <i data-lucide="<?= $flash[0] === 'success' ? 'check-circle' : 'alert-circle' ?>" class="w-4 h-4"></i>
-                <?= htmlspecialchars($flash[1]) ?>
-            </div>
-            <?php endif; ?>
-
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                 <?php foreach (['birth' => ['count' => $birthCount, 'icon' => 'users', 'bg' => 'bg-blue-50 text-blue-600'], 'death' => ['count' => $deathCount, 'icon' => 'activity', 'bg' => 'bg-gray-50 text-gray-400'], 'marriage' => ['count' => $marriageCount, 'icon' => 'heart', 'bg' => 'bg-pink-50 text-pink-500']] as $key => $meta): ?>
                 <a href="<?= buildRecordsUrl(['type' => $key, 'page' => 1]) ?>" class="stat-card bg-white p-4 rounded-lg border border-gray-100 shadow-sm block <?= $type === $key ? 'ring-2 ring-blue-500' : '' ?>">
@@ -1806,6 +1799,7 @@ function sortUrl(string $column): string
         </div>
     </div>
 
+    <?= actionResultScript($flash) ?>
     <?= pageConfigJson([
         'csvTemplateColumns' => [
             'birth' => civilRecordCsvColumns('birth'),

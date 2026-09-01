@@ -85,6 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
         $phone         = trim($_POST['phone'] ?? '');
         $privacyAgreed = isset($_POST['privacy_agreed']);
         $notifyEmail   = isset($_POST['notify_email']);
+        $notifySms     = isset($_POST['notify_sms']);
 
         if (!isValidGmail($email)) {
             $error = 'Please enter a valid Gmail address (example@gmail.com).';
@@ -113,6 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                     $draft['phone']           = $phone;
                     $draft['privacy_agreed']  = 1;
                     $draft['notify_email']    = $notifyEmail ? 1 : 0;
+                    $draft['notify_sms']      = $notifySms ? 1 : 0;
                     if ($frontPath) {
                         $draft['id_front_path'] = $frontPath;
                     }
@@ -160,9 +162,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                     $stmt = $pdo->prepare(
                         'INSERT INTO document_requests
                          (tracking_code, first_name, middle_name, last_name, date_of_birth, sex, email, email_verified, phone,
-                          document_type, purpose, id_front_path, id_back_path, privacy_agreed, notify_email,
+                          document_type, purpose, id_front_path, id_back_path, privacy_agreed, notify_email, notify_sms,
                           appointment_date, appointment_time, status)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
                     );
                     $stmt->execute([
                         $trackingCode,
@@ -180,6 +182,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                         $draft['id_back_path'] ?? null,
                         (int) ($draft['privacy_agreed'] ?? 0),
                         (int) ($draft['notify_email'] ?? 0),
+                        (int) ($draft['notify_sms'] ?? 0),
                         $draft['appointment_date'],
                         normalizeAppointmentTime($draft['appointment_time']),
                         'pending',
@@ -413,10 +416,6 @@ $requestDocumentLabel = !empty($draft['document_type'])
             <h1 class="text-xl font-black text-slate-900 mb-1"><?= htmlspecialchars($stepTitles[$step]['title'] ?? 'Request') ?></h1>
             <p class="text-gray-400 text-sm mb-6"><?= htmlspecialchars($stepTitles[$step]['subtitle'] ?? '') ?></p>
 
-            <?php if ($error): ?>
-            <div class="mb-4 p-3 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg"><?= htmlspecialchars($error) ?></div>
-            <?php endif; ?>
-
             <?php if ($step === 1): ?>
             <form method="POST" class="space-y-5" id="identificationForm">
                 <?= publicCsrfField() ?>
@@ -574,7 +573,11 @@ $requestDocumentLabel = !empty($draft['document_type'])
                     </label>
                     <label class="flex items-start gap-2 mt-3 cursor-pointer">
                         <input type="checkbox" name="notify_email" value="1" id="notifyEmailCheckbox" class="mt-0.5 rounded border-amber-300 text-blue-600 focus:ring-blue-500" <?= !empty($draft['notify_email']) ? 'checked' : '' ?>>
-                        <span class="text-xs font-semibold text-amber-800">Send Gmail notifications when my request is received, verified, updated, and 5 hours before my visit</span>
+                        <span class="text-xs font-semibold text-amber-800">Send Gmail updates when my request is received, verified, confirmed for pickup, or changes status — and at 5 hours, 3 hours, and 1 hour before a confirmed visit</span>
+                    </label>
+                    <label class="flex items-start gap-2 mt-3 cursor-pointer">
+                        <input type="checkbox" name="notify_sms" value="1" id="notifySmsCheckbox" class="mt-0.5 rounded border-amber-300 text-blue-600 focus:ring-blue-500" <?= !empty($draft['notify_sms']) ? 'checked' : '' ?>>
+                        <span class="text-xs font-semibold text-amber-800">Send SMS text updates to my cellphone when my request is accepted, ready for pickup, and 3 hours before my confirmed visit</span>
                     </label>
                 </div>
                 <div class="flex justify-between items-center pt-4">
@@ -621,7 +624,8 @@ $requestDocumentLabel = !empty($draft['document_type'])
         </section>
     </main>
 
-    <?= scriptTags(['core/confirm.js', 'core/loading.js'], ['defer' => 'defer']) ?>
+    <?= actionCoreScripts() ?>
+    <?= actionResultScript($error ? ['error', $error] : null) ?>
     <?= scriptTag('public/citizen-site.js') ?>
     <?= scriptTag('public/forms.js') ?>
     <?php require __DIR__ . '/includes/track_floating.php'; ?>

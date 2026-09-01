@@ -121,14 +121,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
         <h1 class="text-xl font-black text-slate-900 mb-2">Clear test data</h1>
         <p class="text-sm text-gray-500 mb-5">Deletes all sample citizen records in one run. Staff logins and office settings stay.</p>
 
-        <?php if ($error): ?>
-        <div class="mb-4 p-3 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg"><?= htmlspecialchars($error) ?></div>
-        <?php endif; ?>
-
-        <?php foreach ($messages as $msg): ?>
-        <div class="mb-4 p-3 bg-green-50 border border-green-100 text-green-700 text-sm rounded-lg"><?= htmlspecialchars($msg) ?></div>
-        <?php endforeach; ?>
-
         <?php if ($pdo): ?>
         <ul class="mb-6 text-xs text-gray-600 space-y-1 bg-gray-50 rounded-xl p-4">
             <li>Document requests: <strong><?= (int) $counts['document_requests'] ?></strong></li>
@@ -138,7 +130,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
             <li>Activity logs: <strong><?= (int) $counts['activity_logs'] ?></strong></li>
         </ul>
 
-        <form method="POST">
+        <form method="POST" data-no-confirm>
             <?= authFormField() ?>
             <label class="block text-[11px] font-bold text-gray-500 mb-1">Type CLEAR to confirm</label>
             <input type="text" name="confirm" autocomplete="off" class="w-full mb-4 border border-gray-200 rounded-xl px-3 py-2 text-sm" placeholder="CLEAR">
@@ -149,6 +141,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
         <a href="index.php" class="back-home back-home--center block mt-4">Back to Home</a>
         <p class="mt-4 text-[11px] text-gray-400">Development tool — remove before production deploy.</p>
     </div>
-    <?= scriptTag('core/confirm.js') ?>
+    <?php
+    $clearDataFlash = null;
+    if ($error) {
+        $clearDataFlash = ['error', $error];
+    } elseif (!empty($messages)) {
+        $clearDataFlash = ['success', implode(' ', $messages)];
+    }
+    ?>
+    <?= actionResultScript($clearDataFlash) ?>
+    <?= scriptTag('core/action-result.js') ?>
 </body>
 </html>

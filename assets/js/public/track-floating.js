@@ -55,7 +55,7 @@
             return 'Confirmed';
         }
         if (data.appointment_status === 'scheduled') {
-            return 'Scheduled';
+            return 'Awaiting confirmation';
         }
         if (entity.status === 'verified' || entity.status === 'ready') {
             return 'Confirmed';
@@ -104,7 +104,7 @@
         var details = isAppointment
             ? '<p><span class="font-bold text-slate-500">Name:</span> ' + escapeHtml(entity.citizen_name) + '</p>' +
               '<p><span class="font-bold text-slate-500">Service:</span> ' + escapeHtml(data.service || entity.service_type) + '</p>' +
-              '<p><span class="font-bold text-slate-500">Scheduled:</span> ' + escapeHtml(formatDateTimeDisplay(entity.appointment_date + ' ' + entity.appointment_time)) + '</p>' +
+              '<p><span class="font-bold text-slate-500">Visit date:</span> ' + escapeHtml(formatDateTimeDisplay(entity.appointment_date + ' ' + entity.appointment_time)) + '</p>' +
               '<p><span class="font-bold text-slate-500">Booked:</span> ' + escapeHtml(formatDateDisplay(entity.created_at)) + '</p>'
             : (function () {
                 var visitLabel = visitStatusLabel(data, entity);

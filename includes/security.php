@@ -234,10 +234,16 @@ function rateLimitOrAbort(string $key, int $maxAttempts, int $windowSeconds, str
     exit($message);
 }
 
+function passwordMinLength(): int
+{
+    return 8;
+}
+
 function validatePasswordStrength(string $password): ?string
 {
-    if (strlen($password) < 10) {
-        return 'Password must be at least 10 characters.';
+    $min = passwordMinLength();
+    if (strlen($password) < $min) {
+        return 'Password must be at least ' . $min . ' characters.';
     }
     if (!preg_match('/[A-Z]/', $password)) {
         return 'Password must include at least one uppercase letter.';

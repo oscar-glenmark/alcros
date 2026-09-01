@@ -36,6 +36,12 @@
 
     window.switchTab = switchTab;
 
+    document.querySelectorAll('.tab-btn[data-tab]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            switchTab(btn.getAttribute('data-tab'));
+        });
+    });
+
     function openModal(id) {
         document.getElementById(id).classList.remove('hidden');
         document.getElementById(id).classList.add('flex');
@@ -128,11 +134,24 @@
         btn.addEventListener('click', closeModals);
     });
 
-    setTimeout(function () {
-        var alert = document.getElementById('alert-banner');
-        if (alert) {
-            alert.style.opacity = '0';
-            setTimeout(function () { alert.remove(); }, 500);
+    var maintenanceToggle = document.getElementById('maintenanceModeToggle');
+    var allowRequestsToggle = document.getElementById('allowPublicRequestsToggle');
+
+    if (allowRequestsToggle && maintenanceToggle) {
+        allowRequestsToggle.addEventListener('change', function () {
+            if (allowRequestsToggle.checked) {
+                maintenanceToggle.checked = false;
+            }
+        });
+
+        maintenanceToggle.addEventListener('change', function () {
+            if (maintenanceToggle.checked) {
+                allowRequestsToggle.checked = false;
+            }
+        });
+
+        if (maintenanceToggle.checked && allowRequestsToggle.checked) {
+            allowRequestsToggle.checked = false;
         }
-    }, 5000);
+    }
 })();

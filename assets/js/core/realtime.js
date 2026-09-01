@@ -242,9 +242,8 @@
             AlcrosPoll.setText('stat-pipeline', s.pipeline_count);
             AlcrosPoll.setText('stat-ready', s.ready_count);
             AlcrosPoll.setText('header-queue-count', s.queue_count);
-            AlcrosPoll.setText('header-pending-count', s.pending_count);
-            AlcrosPoll.setText('cmd-queue-count', s.queue_count);
-            AlcrosPoll.setText('cmd-appts-count', s.today_appts);
+            AlcrosPoll.setText('header-appts-count', s.today_appts);
+            AlcrosPoll.setText('header-completed-count', s.completed_today);
 
             var recentEl = document.getElementById('recent-requests-list');
             if (recentEl && data.recent_requests) {
@@ -374,8 +373,10 @@
     function initHeaderStats() {
         if (!document.getElementById('header-queue-count')) return;
         AlcrosPoll.pollJson('api/dashboard_stats.php', {}, 60000, function (data) {
-            AlcrosPoll.setText('header-queue-count', data.stats.queue_count);
-            AlcrosPoll.setText('header-pending-count', data.stats.pending_count);
+            var s = data.stats || {};
+            AlcrosPoll.setText('header-queue-count', s.queue_count);
+            AlcrosPoll.setText('header-appts-count', s.today_appts);
+            AlcrosPoll.setText('header-completed-count', s.completed_today);
             AlcrosPoll.markLiveIndicator();
         });
     }

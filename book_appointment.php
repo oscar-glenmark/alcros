@@ -206,7 +206,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </button>
         </div>
         <?php else: ?>
-        <?php if ($error): ?><div class="mb-4 p-3 bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl"><?= htmlspecialchars($error) ?></div><?php endif; ?>
         <form method="POST" enctype="multipart/form-data" class="citizen-request-card p-6 space-y-4" id="bookAppointmentForm">
             <?= publicCsrfField() ?>
             <input type="hidden" name="service" value="<?= htmlspecialchars($service) ?>">
@@ -253,7 +252,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         Verify Gmail
                     </button>
                 </div>
-                <p class="text-[10px] text-gray-500 mt-1">We check that your @gmail.com account is active. If you agree to notifications, appointment updates are sent to this Gmail.</p>
+                <p class="text-[10px] text-gray-500 mt-1">We check that your @gmail.com account is active. If you opt in, Gmail updates are sent when staff confirm your visit or change your appointment status — not while it is still awaiting confirmation.</p>
                 <p id="gmailStatus" class="text-xs mt-2 <?= $gmailVerified ? 'font-semibold text-green-600' : 'hidden' ?>"><?= $gmailVerified ? 'Gmail verified — this is an active Google account.' : '' ?></p>
             </div>
             <div>
@@ -301,7 +300,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <label class="flex items-start gap-2 cursor-pointer">
                 <input type="checkbox" name="notify_email" value="1" id="notifyEmailCheckbox" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" <?= $notifyEmail ? 'checked' : '' ?>>
-                <span class="text-xs font-semibold text-slate-700">Send Gmail notifications for this appointment</span>
+                <span class="text-xs font-semibold text-slate-700">Send Gmail updates when staff confirm my visit or change my appointment status</span>
             </label>
             <button type="submit" id="bookSubmitBtn" class="citizen-btn-gold w-full rounded-xl py-3 text-sm disabled:opacity-40 disabled:cursor-not-allowed" data-loading-text="Booking…" <?= $gmailVerified ? '' : 'disabled' ?>>Book Appointment</button>
         </form>
@@ -309,11 +308,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </section>
     </main>
     <?= actionCoreScripts() ?>
+    <?= actionResultScript($error ? ['error', $error] : null) ?>
     <?= scriptTag('public/citizen-site.js') ?>
     <?= scriptTag('public/appointment-slots.js') ?>
     <?= scriptTag('public/forms.js') ?>
     <?php require __DIR__ . '/includes/track_floating.php'; ?>
     <?= scriptTag('public/track-floating.js') ?>
+    <?php require __DIR__ . '/includes/maintenance_announcement.php'; ?>
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>
     <?php require __DIR__ . '/includes/notification_consent.php'; ?>
     <?= scriptTag('core/reminders.js') ?>

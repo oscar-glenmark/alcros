@@ -166,6 +166,13 @@
         });
     }
 
+    function notifyResult(type, message) {
+        if (window.AlcrosActionResult) {
+            window.AlcrosActionResult.show(type, message);
+            return;
+        }
+    }
+
     function flashButton(btn, text) {
         if (!btn) return;
         var original = btn.textContent;
@@ -184,6 +191,7 @@
                 e.stopPropagation();
                 setSeenAt(Date.now());
                 refresh();
+                notifyResult('success', 'All notifications marked as read.');
                 flashButton(btn, 'Done');
             });
         });
@@ -192,15 +200,21 @@
             btn.addEventListener('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
-                if (window.AlcrosConfirm && !window.AlcrosConfirm.ask('Clear all notifications from this list?')) {
+                function proceed() {
+                    var now = Date.now();
+                    visibleList(latestGetter()).forEach(function (n) { dismissId(n.id); });
+                    setClearedAt(now);
+                    setSeenAt(now);
+                    refresh();
+                    notifyResult('success', 'All notifications cleared from this list.');
+                    flashButton(btn, 'Cleared');
+                }
+                if (window.AlcrosConfirm) {
+                    window.AlcrosConfirm.ask('Clear all notifications from this list?')
+                        .then(function (ok) { if (ok) proceed(); });
                     return;
                 }
-                var now = Date.now();
-                visibleList(latestGetter()).forEach(function (n) { dismissId(n.id); });
-                setClearedAt(now);
-                setSeenAt(now);
-                refresh();
-                flashButton(btn, 'Cleared');
+                proceed();
             });
         });
 
@@ -210,11 +224,17 @@
                 if (!btn) return;
                 e.preventDefault();
                 e.stopPropagation();
-                if (window.AlcrosConfirm && !window.AlcrosConfirm.ask('Remove this notification?')) {
+                function proceed() {
+                    dismissId(btn.getAttribute('data-id'));
+                    refresh();
+                    notifyResult('success', 'Notification removed.');
+                }
+                if (window.AlcrosConfirm) {
+                    window.AlcrosConfirm.ask('Remove this notification?')
+                        .then(function (ok) { if (ok) proceed(); });
                     return;
                 }
-                dismissId(btn.getAttribute('data-id'));
-                refresh();
+                proceed();
             });
         });
     }

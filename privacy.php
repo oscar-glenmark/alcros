@@ -71,16 +71,7 @@ $sections = [
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <?= publicStylesheet('back-home') ?>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        .gradient-text {
-            background: linear-gradient(90deg, #2563eb, #3b82f6);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        html { scroll-behavior: smooth; }
-    </style>
+    <?= publicStylesheet('privacy') ?>
 </head>
 <body class="bg-gray-50 text-gray-900">
 
@@ -218,6 +209,7 @@ $sections = [
 
     <?php require __DIR__ . '/includes/track_floating.php'; ?>
     <?= scriptTag('public/track-floating.js') ?>
+    <?php require __DIR__ . '/includes/maintenance_announcement.php'; ?>
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>
     <?php require __DIR__ . '/includes/notification_consent.php'; ?>
     <?= lucideInitScript() ?>

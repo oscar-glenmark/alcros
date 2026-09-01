@@ -20,12 +20,7 @@ $purposeLabels = queuePurposeLabels();
     <title>ALCROS LIVE - Public Announcement Display</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #020617; color: white; overflow: hidden; }
-        .marquee { white-space: nowrap; overflow: hidden; display: inline-block; animation: marquee 30s linear infinite; }
-        @keyframes marquee { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
-    </style>
+    <?= publicStylesheet('queue-display') ?>
 </head>
 <body class="h-screen w-screen flex flex-col relative p-4" data-realtime="queue-display">
     <header class="flex items-center justify-between px-6 py-4 rounded-2xl border border-gray-800 mb-4">

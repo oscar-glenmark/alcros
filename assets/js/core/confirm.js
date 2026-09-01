@@ -1,6 +1,10 @@
 (function (global) {
     'use strict';
 
+    var modal = null;
+    var messageEl = null;
+    var pendingResolve = null;
+
     function hiddenValue(form, name) {
         var el = form.querySelector('[name="' + name + '"]');
         return el ? String(el.value || '').trim() : '';
@@ -135,14 +139,99 @@
         return 'Are you sure you want to continue?';
     }
 
+    function ensureModal() {
+        if (modal) return modal;
+
+        modal = document.createElement('div');
+        modal.id = 'alcrosConfirmModal';
+        modal.className = 'fixed inset-0 bg-black/40 z-[200] hidden items-center justify-center p-4';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'alcrosConfirmTitle');
+        modal.innerHTML =
+            '<div class="bg-white rounded-2xl border border-gray-100 shadow-xl w-full max-w-sm p-6">' +
+                '<div class="flex items-start gap-3 mb-5">' +
+                    '<div class="bg-blue-50 text-blue-600 p-2 rounded-xl shrink-0">' +
+                        '<i data-lucide="help-circle" class="w-5 h-5"></i>' +
+                    '</div>' +
+                    '<div class="min-w-0">' +
+                        '<h3 id="alcrosConfirmTitle" class="text-base font-black text-slate-900">Confirm Action</h3>' +
+                        '<p id="alcrosConfirmMessage" class="text-sm text-gray-500 mt-1 leading-relaxed"></p>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="flex gap-2">' +
+                    '<button type="button" id="alcrosConfirmCancelBtn" class="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50">Cancel</button>' +
+                    '<button type="button" id="alcrosConfirmOkBtn" class="flex-1 bg-[#071428] hover:bg-[#0c2247] text-white rounded-xl py-2.5 text-sm font-bold">Confirm</button>' +
+                '</div>' +
+            '</div>';
+
+        document.body.appendChild(modal);
+
+        messageEl = modal.querySelector('#alcrosConfirmMessage');
+        var okBtn = modal.querySelector('#alcrosConfirmOkBtn');
+        var cancelBtn = modal.querySelector('#alcrosConfirmCancelBtn');
+
+        okBtn.addEventListener('click', function () {
+            closeModal(true);
+        });
+        cancelBtn.addEventListener('click', function () {
+            closeModal(false);
+        });
+        modal.addEventListener('click', function (e) {
+            if (e.target === modal) closeModal(false);
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && modal.classList.contains('flex')) {
+                closeModal(false);
+            }
+        });
+
+        return modal;
+    }
+
+    function openModal(message) {
+        ensureModal();
+        messageEl.textContent = message || 'Are you sure you want to continue?';
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        var okBtn = modal.querySelector('#alcrosConfirmOkBtn');
+        if (okBtn) okBtn.focus();
+    }
+
+    function closeModal(result) {
+        if (!modal) return;
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        var resolve = pendingResolve;
+        pendingResolve = null;
+        if (resolve) resolve(!!result);
+    }
+
     function ask(message) {
-        return global.confirm(message || 'Are you sure you want to continue?');
+        return new Promise(function (resolve) {
+            pendingResolve = resolve;
+            openModal(message);
+        });
     }
 
     function markConfirmed(form) {
         if (form) {
             form.dataset.alcrosConfirmed = '1';
         }
+    }
+
+    function resubmitForm(form, submitter) {
+        markConfirmed(form);
+        if (typeof form.requestSubmit === 'function') {
+            try {
+                form.requestSubmit(submitter || undefined);
+                return;
+            } catch (err) {
+                /* fall through */
+            }
+        }
+        form.submit();
     }
 
     function initFormConfirm() {
@@ -153,10 +242,12 @@
             var submitter = resolveSubmitter(form, e.submitter);
             if (shouldSkipForm(form, submitter)) return;
 
-            if (!ask(inferMessage(form, submitter))) {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-            }
+            e.preventDefault();
+            e.stopImmediatePropagation();
+
+            ask(inferMessage(form, submitter)).then(function (ok) {
+                if (ok) resubmitForm(form, submitter);
+            });
         }, true);
     }
 
@@ -164,11 +255,20 @@
         document.addEventListener('click', function (e) {
             var btn = e.target.closest('[data-confirm-click]');
             if (!btn) return;
-
-            if (!ask(btn.dataset.confirmClick || btn.dataset.confirm || 'Are you sure you want to continue?')) {
-                e.preventDefault();
-                e.stopImmediatePropagation();
+            if (btn.dataset.alcrosConfirmBypass === '1') {
+                delete btn.dataset.alcrosConfirmBypass;
+                return;
             }
+
+            e.preventDefault();
+            e.stopImmediatePropagation();
+
+            var msg = btn.dataset.confirmClick || btn.dataset.confirm || 'Are you sure you want to continue?';
+            ask(msg).then(function (ok) {
+                if (!ok) return;
+                btn.dataset.alcrosConfirmBypass = '1';
+                btn.click();
+            });
         }, true);
     }
 

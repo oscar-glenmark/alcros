@@ -18,6 +18,7 @@ $adminSettingKeys = [
     'queue_window', 'maintenance_mode', 'allow_public_requests', 'notification_email',
     'max_daily_appointments', 'privacy_policy_url', 'kiosk_welcome_message',
     'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass',
+    'sms_enabled', 'semaphore_api_key', 'semaphore_sender_name',
 ];
 
 $defaults = [
@@ -42,6 +43,9 @@ $defaults = [
     'smtp_port'               => '587',
     'smtp_user'               => '',
     'smtp_pass'               => '',
+    'sms_enabled'             => '0',
+    'semaphore_api_key'       => '',
+    'semaphore_sender_name'   => '',
 ];
 
 function currentStaffRow(PDO $pdo, string $staffId): ?array
@@ -109,9 +113,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$hash || !password_verify($current, $hash)) {
                 throw new InvalidArgumentException('Current password is incorrect.');
             }
-            if (strlen($newPass) < 6) {
-                throw new InvalidArgumentException('New password must be at least 6 characters.');
-            }
             if ($passwordError = validatePasswordStrength($newPass)) {
                 throw new InvalidArgumentException($passwordError);
             }
@@ -123,18 +124,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             settingsFlashSet('success', 'Password changed successfully.');
         } elseif ($action === 'save_settings' && $isAdmin) {
             foreach ($adminSettingKeys as $key) {
-                if (in_array($key, ['maintenance_mode', 'allow_public_requests'], true)) {
+                if (in_array($key, ['maintenance_mode', 'allow_public_requests', 'sms_enabled'], true)) {
                     setSetting($key, isset($_POST[$key]) ? '1' : '0');
                 } elseif ($key === 'smtp_pass') {
                     $smtpPass = (string) ($_POST['smtp_pass'] ?? '');
                     if ($smtpPass !== '') {
                         setSetting($key, $smtpPass);
                     }
+                } elseif ($key === 'semaphore_api_key') {
+                    $apiKey = (string) ($_POST['semaphore_api_key'] ?? '');
+                    if ($apiKey !== '') {
+                        setSetting($key, $apiKey);
+                    }
                 } elseif ($key === 'privacy_policy_url') {
                     setSetting($key, sanitizeExternalUrl(trim((string) ($_POST[$key] ?? '')), 'privacy.php'));
                 } elseif (isset($_POST[$key])) {
                     setSetting($key, trim($_POST[$key]));
                 }
+            }
+            if (getSetting('maintenance_mode', '0') === '1') {
+                setSetting('allow_public_requests', '0');
+            } elseif (getSetting('allow_public_requests', '0') === '1') {
+                setSetting('maintenance_mode', '0');
             }
             logActivity($currentStaffId, 'Settings Updated', 'System configuration saved');
             settingsFlashSet('success', 'System settings saved successfully.');
@@ -159,9 +170,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if ($error2sv = validateStaffRecoveryGmail2sv(!empty($_POST['recovery_gmail_2sv_confirmed']))) {
                 throw new InvalidArgumentException($error2sv);
-            }
-            if (strlen($password) < 6) {
-                throw new InvalidArgumentException('Password must be at least 6 characters.');
             }
             if ($passwordError = validatePasswordStrength($password)) {
                 throw new InvalidArgumentException($passwordError);
@@ -217,8 +225,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'reset_staff_password' && $isAdmin) {
             $targetId = strtoupper(trim($_POST['target_staff_id'] ?? ''));
             $newPass = $_POST['reset_password'] ?? '';
-            if ($targetId === '' || strlen($newPass) < 6) {
-                throw new InvalidArgumentException('Staff ID and a password of at least 6 characters are required.');
+            if ($targetId === '' || strlen($newPass) < passwordMinLength()) {
+                throw new InvalidArgumentException('Staff ID and a password of at least ' . passwordMinLength() . ' characters are required.');
             }
             if ($passwordError = validatePasswordStrength($newPass)) {
                 throw new InvalidArgumentException($passwordError);
@@ -376,13 +384,6 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                 <p>Manage your account, security<?= $isAdmin ? ', staff accounts, and system-wide configurations' : ', and credentials' ?>.</p>
             </div>
 
-            <?php if ($flash): ?>
-            <div id="alert-banner" class="mb-6 p-4 <?= $flash[0] === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800' ?> border text-sm rounded-xl flex items-center gap-2">
-                <i data-lucide="<?= $flash[0] === 'success' ? 'check-circle' : 'alert-circle' ?>" class="w-5 h-5 shrink-0"></i>
-                <span><?= htmlspecialchars($flash[1]) ?></span>
-            </div>
-            <?php endif; ?>
-
             <div class="settings-layout grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start min-w-0">
                 <aside class="settings-tab-nav lg:col-span-3 bg-white border border-slate-100 rounded-2xl p-3 shadow-sm space-y-1 min-w-0">
                     <?php
@@ -397,7 +398,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                     }
                     foreach ($tabs as $id => $tab):
                     ?>
-                    <button type="button" onclick="switchTab('<?= $id ?>')" id="btn-<?= $id ?>"
+                    <button type="button" data-tab="<?= htmlspecialchars($id) ?>" id="btn-<?= $id ?>"
                         class="tab-btn w-full flex items-start gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-slate-600 text-left <?= $activeTab === $id ? 'active' : '' ?>">
                         <i data-lucide="<?= $tab['icon'] ?>" class="w-4 h-4 text-slate-500 shrink-0 mt-0.5"></i>
                         <span class="min-w-0">
@@ -503,7 +504,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                         <p class="text-xs text-slate-500 mb-6">Change your password and review account security policies.</p>
 
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-600 mb-8 space-y-1">
-                            <p><strong>Password policy:</strong> Minimum 10 characters with uppercase, lowercase, and a number.</p>
+                            <p><strong>Password policy:</strong> Minimum <?= passwordMinLength() ?> characters with uppercase, lowercase, and a number.</p>
                             <p><strong>Forgot password:</strong> Use the link on the login page. A 6-digit code is sent to your registered Gmail with 2-Step Verification confirmed.</p>
                             <p><strong>Recovery Gmail:</strong> Must be @gmail.com with Google 2-Step Verification already enabled before password reset works.</p>
                             <p><strong>Staff IDs:</strong> Alphanumeric characters and hyphens only (e.g. ALORAN-001).</p>
@@ -521,12 +522,12 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                             </div>
                             <div>
                                 <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">New Password</label>
-                                <input type="password" name="new_password" required minlength="6" autocomplete="new-password"
+                                <input type="password" name="new_password" required minlength="<?= passwordMinLength() ?>" autocomplete="new-password"
                                     class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
                             </div>
                             <div>
                                 <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Confirm New Password</label>
-                                <input type="password" name="confirm_password" required minlength="6" autocomplete="new-password"
+                                <input type="password" name="confirm_password" required minlength="<?= passwordMinLength() ?>" autocomplete="new-password"
                                     class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
                             </div>
                             <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-6 py-2.5 rounded-xl text-sm font-semibold inline-flex items-center gap-2">
@@ -582,7 +583,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                             </div>
                             <div>
                                 <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Password</label>
-                                <input type="password" name="staff_password" required minlength="6" placeholder="Minimum 6 characters" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+                                <input type="password" name="staff_password" required minlength="<?= passwordMinLength() ?>" placeholder="Minimum <?= passwordMinLength() ?> characters" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
                             </div>
                             <div class="sm:col-span-2">
                                 <label class="flex items-start gap-3 cursor-pointer">
@@ -748,6 +749,40 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
 
                             <details class="config-section group rounded-xl border border-slate-200 overflow-hidden">
                                 <summary class="flex items-center justify-between gap-3 px-4 py-3.5 bg-slate-50 hover:bg-slate-100/80 font-semibold text-sm text-slate-800">
+                                    <span class="flex items-center gap-2"><i data-lucide="message-square" class="w-4 h-4 text-slate-500"></i> SMS (Semaphore)</span>
+                                    <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 config-chevron"></i>
+                                </summary>
+                                <div class="p-4 space-y-4 border-t border-slate-100">
+                                    <?php
+                                    require_once __DIR__ . '/includes/sms.php';
+                                    $smsSummary = smsConfigurationSummary();
+                                    ?>
+                                    <div class="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                                        <?php if ($smsSummary['configured']): ?>
+                                        <p class="font-semibold text-green-700">Semaphore is configured and ready to send SMS.</p>
+                                        <?php elseif ($smsSummary['enabled'] && !$smsSummary['has_api_key']): ?>
+                                        <p class="font-semibold text-amber-700">SMS is enabled but no API key is saved yet.</p>
+                                        <?php else: ?>
+                                        <p class="font-semibold text-slate-700">SMS is off until you subscribe at <a href="https://semaphore.co" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">semaphore.co</a> and enter your API key below.</p>
+                                        <?php endif; ?>
+                                        <p class="mt-1.5">Citizens who opt in receive text messages when a request is accepted, when it is ready for pickup, and 3 hours before a confirmed visit.</p>
+                                    </div>
+                                    <label class="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-100 cursor-pointer">
+                                        <div>
+                                            <p class="text-sm font-semibold text-slate-800">Enable SMS notifications</p>
+                                            <p class="text-xs text-slate-500">Turn on after your Semaphore account is active and funded.</p>
+                                        </div>
+                                        <input type="checkbox" name="sms_enabled" value="1" <?= $settings['sms_enabled'] === '1' ? 'checked' : '' ?> class="rounded text-blue-600 w-5 h-5">
+                                    </label>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Semaphore API Key</label><input type="password" name="semaphore_api_key" value="" autocomplete="new-password" placeholder="<?= $settings['semaphore_api_key'] !== '' ? 'Leave blank to keep the saved key' : 'API key from Semaphore dashboard' ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Found under Account → API in your Semaphore dashboard.</p></div>
+                                        <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Sender Name (optional)</label><input type="text" name="semaphore_sender_name" value="<?= htmlspecialchars($settings['semaphore_sender_name']) ?>" maxlength="11" placeholder="ALCROS" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Must be registered with Semaphore. Leave blank for the default sender.</p></div>
+                                    </div>
+                                </div>
+                            </details>
+
+                            <details class="config-section group rounded-xl border border-slate-200 overflow-hidden">
+                                <summary class="flex items-center justify-between gap-3 px-4 py-3.5 bg-slate-50 hover:bg-slate-100/80 font-semibold text-sm text-slate-800">
                                     <span class="flex items-center gap-2"><i data-lucide="shield-check" class="w-4 h-4 text-slate-500"></i> Portal Access Controls</span>
                                     <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 config-chevron"></i>
                                 </summary>
@@ -755,16 +790,16 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                     <label class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 cursor-pointer">
                                         <div>
                                             <p class="text-sm font-semibold text-slate-800">Maintenance Mode</p>
-                                            <p class="text-xs text-slate-500">Show maintenance notice on the citizen portal when enabled.</p>
+                                            <p class="text-xs text-slate-500">Show the maintenance announcement and temporarily block new online requests.</p>
                                         </div>
-                                        <input type="checkbox" name="maintenance_mode" value="1" <?= $settings['maintenance_mode'] === '1' ? 'checked' : '' ?> class="rounded text-blue-600 w-5 h-5">
+                                        <input type="checkbox" name="maintenance_mode" id="maintenanceModeToggle" value="1" <?= $settings['maintenance_mode'] === '1' ? 'checked' : '' ?> class="rounded text-blue-600 w-5 h-5">
                                     </label>
                                     <label class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 cursor-pointer">
                                         <div>
                                             <p class="text-sm font-semibold text-slate-800">Allow Public Requests</p>
                                             <p class="text-xs text-slate-500">Citizens can submit new document requests online.</p>
                                         </div>
-                                        <input type="checkbox" name="allow_public_requests" value="1" <?= $settings['allow_public_requests'] === '1' ? 'checked' : '' ?> class="rounded text-blue-600 w-5 h-5">
+                                        <input type="checkbox" name="allow_public_requests" id="allowPublicRequestsToggle" value="1" <?= $settings['allow_public_requests'] === '1' ? 'checked' : '' ?> class="rounded text-blue-600 w-5 h-5">
                                     </label>
                                 </div>
                             </details>
@@ -983,7 +1018,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                 <input type="hidden" name="target_staff_id" id="resetStaffId">
                 <div>
                     <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">New Password</label>
-                    <input type="password" name="reset_password" required minlength="6" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
+                    <input type="password" name="reset_password" required minlength="<?= passwordMinLength() ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
                 </div>
                 <div class="flex gap-3 pt-2">
                     <button type="submit" class="flex-1 bg-amber-600 text-white rounded-xl py-3 text-sm font-bold">Reset Password</button>
@@ -993,6 +1028,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
         </div>
     </div>
 
+    <?= actionResultScript($flash) ?>
     <?= scriptTag('admin/system-settings.js') ?>
     <?= scriptTag('core/password-toggle.js') ?>
     <?= lucideInitScript() ?>

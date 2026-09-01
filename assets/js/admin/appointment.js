@@ -123,27 +123,34 @@
 
             var appointmentId = btn.dataset.appointmentId;
             var code = btn.dataset.code;
-            if (window.AlcrosConfirm && !window.AlcrosConfirm.ask('Delete appointment ' + code + '? You can undo within ' + UNDO_SECONDS + ' seconds.')) {
+
+            function proceed() {
+                const row = document.querySelector('[data-appointment-row="' + appointmentId + '"]');
+
+                row.classList.add('row-pending-delete');
+                messageEl.textContent = 'Deleting ' + code + '…';
+                countdownEl.textContent = String(UNDO_SECONDS);
+                toast.classList.remove('hidden');
+
+                let remaining = UNDO_SECONDS;
+                const timer = setInterval(function () {
+                    remaining -= 1;
+                    countdownEl.textContent = String(remaining);
+                    if (remaining <= 0) {
+                        clearInterval(timer);
+                        commitDelete();
+                    }
+                }, 1000);
+
+                pendingDelete = { appointmentId, row, timer };
+            }
+
+            if (window.AlcrosConfirm) {
+                window.AlcrosConfirm.ask('Delete appointment ' + code + '? You can undo within ' + UNDO_SECONDS + ' seconds.')
+                    .then(function (ok) { if (ok) proceed(); });
                 return;
             }
-            const row = document.querySelector('[data-appointment-row="' + appointmentId + '"]');
-
-            row.classList.add('row-pending-delete');
-            messageEl.textContent = 'Deleting ' + code + '…';
-            countdownEl.textContent = String(UNDO_SECONDS);
-            toast.classList.remove('hidden');
-
-            let remaining = UNDO_SECONDS;
-            const timer = setInterval(function () {
-                remaining -= 1;
-                countdownEl.textContent = String(remaining);
-                if (remaining <= 0) {
-                    clearInterval(timer);
-                    commitDelete();
-                }
-            }, 1000);
-
-            pendingDelete = { appointmentId, row, timer };
+            proceed();
         }
 
         undoBtn.addEventListener('click', cancelPendingDelete);

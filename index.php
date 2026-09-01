@@ -55,155 +55,9 @@ $faqs = [
     <title>ALCROS - Aloran Local Civil Registry Online System</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-        html { scroll-behavior: smooth; }
-        body { font-family: 'Inter', sans-serif; color: #1e293b; }
-
-        :root {
-            --alcros-navy: #071428;
-            --alcros-navy-mid: #0c2247;
-            --alcros-gold: #f4b400;
-            --alcros-gold-hover: #e5a800;
-        }
-
-        .site-header {
-            background: var(--alcros-navy);
-            border-bottom: 1px solid rgba(255,255,255,0.06);
-        }
-
-        .brand-logo {
-            width: 3rem;
-            height: 3rem;
-            border-radius: 9999px;
-            object-fit: cover;
-            background: #fff;
-            box-shadow: 0 0 0 2px rgba(255,255,255,0.15);
-        }
-
-        .nav-link {
-            color: #fff;
-            font-size: 0.72rem;
-            font-weight: 700;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            padding: 0.35rem 0.65rem;
-            border-bottom: 2px solid transparent;
-            transition: color 0.2s, border-color 0.2s;
-        }
-        .nav-link:hover { color: var(--alcros-gold); }
-        .nav-link.is-active { color: #fff; border-bottom-color: var(--alcros-gold); }
-
-        .btn-login {
-            border: 1.5px solid rgba(255,255,255,0.85);
-            color: #fff;
-            font-size: 0.72rem;
-            font-weight: 700;
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
-            padding: 0.45rem 1.1rem;
-            transition: background 0.2s, color 0.2s;
-        }
-        .btn-login:hover { background: #fff; color: var(--alcros-navy); }
-
-        .hero-section {
-            position: relative;
-            min-height: 520px;
-            background-image:
-                linear-gradient(105deg, rgba(7, 20, 40, 0.94) 0%, rgba(7, 20, 40, 0.82) 42%, rgba(7, 20, 40, 0.45) 68%, rgba(7, 20, 40, 0.25) 100%),
-                url('images/municipal-hall.jpg');
-            background-size: cover;
-            background-position: center;
-        }
-
-        .hero-seal {
-            width: min(320px, 42vw);
-            height: min(320px, 42vw);
-            opacity: 0.18;
-            filter: drop-shadow(0 0 40px rgba(244, 180, 0, 0.15));
-        }
-
-        .text-gold { color: var(--alcros-gold); }
-
-        .btn-gold {
-            background: var(--alcros-gold);
-            color: #071428;
-            font-weight: 800;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            font-size: 0.78rem;
-            transition: background 0.2s, transform 0.15s;
-        }
-        .btn-gold:hover { background: var(--alcros-gold-hover); }
-
-        .btn-outline-light {
-            border: 1.5px solid rgba(255,255,255,0.75);
-            color: #fff;
-            font-weight: 700;
-            letter-spacing: 0.05em;
-            text-transform: uppercase;
-            font-size: 0.78rem;
-            transition: background 0.2s, border-color 0.2s;
-        }
-        .btn-outline-light:hover { background: rgba(255,255,255,0.1); border-color: #fff; }
-
-        .service-card {
-            border: 1px solid #e2e8f0;
-            transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s;
-        }
-        .service-card:hover {
-            box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
-            transform: translateY(-2px);
-            border-color: #cbd5e1;
-        }
-
-        .steps-line {
-            top: 2rem;
-            left: 10%;
-            right: 10%;
-            height: 0;
-            border-top: 2px dotted #cbd5e1;
-        }
-
-        .track-banner {
-            background: linear-gradient(90deg, #071428 0%, #0c2247 100%);
-            border-radius: 0.25rem;
-        }
-
-        .track-banner-inner {
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-            align-items: stretch;
-        }
-        @media (min-width: 1024px) {
-            .track-banner-inner {
-                flex-direction: row;
-                align-items: center;
-                justify-content: flex-start;
-                gap: 1rem;
-            }
-        }
-
-        .faq-item[open] summary .faq-chevron { transform: rotate(180deg); }
-        .faq-item summary { list-style: none; }
-        .faq-item summary::-webkit-details-marker { display: none; }
-
-        .footer-dark {
-            background: var(--alcros-navy);
-            color: rgba(255,255,255,0.75);
-        }
-
-        #mobileNav.is-open { display: block; }
-    </style>
+    <?= publicStylesheet('landing') ?>
 </head>
 <body class="bg-white">
-
-    <?php if ($maintenanceMode): ?>
-    <div class="bg-amber-500 text-white text-center text-xs font-bold py-2 px-4">
-        The citizen portal is currently under maintenance. Online requests may be temporarily unavailable.
-    </div>
-    <?php endif; ?>
 
     <!-- HEADER -->
     <header class="site-header sticky top-0 z-50">
@@ -492,33 +346,11 @@ $faqs = [
 
     <?php require __DIR__ . '/includes/track_floating.php'; ?>
     <?= scriptTag('public/track-floating.js') ?>
+    <?php require __DIR__ . '/includes/maintenance_announcement.php'; ?>
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>
     <?php require __DIR__ . '/includes/notification_consent.php'; ?>
     <?= scriptTag('core/reminders.js') ?>
+    <?= scriptTag('public/landing.js') ?>
     <?= lucideInitScript() ?>
-    <script>
-    (function () {
-        var toggle = document.getElementById('mobileNavToggle');
-        var mobileNav = document.getElementById('mobileNav');
-        if (toggle && mobileNav) {
-            toggle.addEventListener('click', function () {
-                mobileNav.classList.toggle('hidden');
-                mobileNav.classList.toggle('is-open');
-            });
-        }
-
-        var homeTrackForm = document.getElementById('home-track-form');
-        var homeTrackInput = document.getElementById('home-track-input');
-        if (homeTrackForm) {
-            homeTrackForm.addEventListener('submit', function (e) {
-                e.preventDefault();
-                var code = homeTrackInput ? homeTrackInput.value.trim() : '';
-                if (window.AlcrosTrack) {
-                    window.AlcrosTrack.open(code);
-                }
-            });
-        }
-    })();
-    </script>
 </body>
 </html>

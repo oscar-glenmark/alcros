@@ -35,7 +35,12 @@ CREATE TABLE IF NOT EXISTS document_requests (
     id_back_path VARCHAR(255) DEFAULT NULL,
     privacy_agreed TINYINT(1) NOT NULL DEFAULT 0,
     notify_email TINYINT(1) NOT NULL DEFAULT 0,
+    notify_sms TINYINT(1) NOT NULL DEFAULT 0,
     reminder_sent_at TIMESTAMP NULL DEFAULT NULL,
+    reminder_5h_sent_at TIMESTAMP NULL DEFAULT NULL,
+    reminder_3h_sent_at TIMESTAMP NULL DEFAULT NULL,
+    reminder_1h_sent_at TIMESTAMP NULL DEFAULT NULL,
+    sms_reminder_3h_sent_at TIMESTAMP NULL DEFAULT NULL,
     appointment_date DATE DEFAULT NULL,
     appointment_time TIME DEFAULT NULL,
     status ENUM('pending','verified','ready','completed','rejected') NOT NULL DEFAULT 'pending',
@@ -55,7 +60,12 @@ CREATE TABLE IF NOT EXISTS appointments (
     email VARCHAR(150) DEFAULT NULL,
     phone VARCHAR(30) DEFAULT NULL,
     notify_email TINYINT(1) NOT NULL DEFAULT 0,
+    notify_sms TINYINT(1) NOT NULL DEFAULT 0,
     reminder_sent_at TIMESTAMP NULL DEFAULT NULL,
+    reminder_5h_sent_at TIMESTAMP NULL DEFAULT NULL,
+    reminder_3h_sent_at TIMESTAMP NULL DEFAULT NULL,
+    reminder_1h_sent_at TIMESTAMP NULL DEFAULT NULL,
+    sms_reminder_3h_sent_at TIMESTAMP NULL DEFAULT NULL,
     service_type VARCHAR(100) NOT NULL,
     appointment_date DATE NOT NULL,
     appointment_time TIME NOT NULL,
@@ -208,6 +218,21 @@ CREATE TABLE IF NOT EXISTS email_logs (
     INDEX idx_sent (sent_at)
 ) ENGINE=InnoDB;
 
+-- Citizen SMS delivery audit trail (Semaphore).
+CREATE TABLE IF NOT EXISTS sms_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    recipient VARCHAR(20) NOT NULL,
+    message VARCHAR(500) NOT NULL,
+    sms_type VARCHAR(50) NOT NULL DEFAULT 'general',
+    reference_code VARCHAR(30) DEFAULT NULL,
+    success TINYINT(1) NOT NULL DEFAULT 0,
+    error_message VARCHAR(255) DEFAULT NULL,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_recipient (recipient),
+    INDEX idx_reference (reference_code),
+    INDEX idx_sent (sent_at)
+) ENGINE=InnoDB;
+
 -- Document request status change history.
 CREATE TABLE IF NOT EXISTS request_status_history (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -249,7 +274,7 @@ INSERT INTO system_settings (setting_key, setting_value) VALUES
 ('office_phone', '+639473212350'),
 ('office_email', 'aloran@gov.ph'),
 ('office_hours', '8:00 AM - 5:00 PM (Monday to Friday)'),
-('office_head', 'ATTY. LOCAL CIVIL REGISTRAR'),
+('office_head', 'ATTY. Euri Buladaco'),
 ('overview_text', 'This guide covers the requirements, steps, and fees for all core civil registration services handled by the <strong>{office}</strong>.'),
 ('portal_title', 'ALCROS Online Request Portal'),
 ('portal_description', 'Request document submissions or track application statuses online.'),

@@ -72,6 +72,14 @@ function updateDocumentRequestStatus(PDO $pdo, int $id, string $status): bool
     } catch (Throwable $e) {
         // Status is already saved; email failure should not block staff.
     }
+
+    try {
+        require_once __DIR__ . '/includes/sms.php';
+        $smsStatus = $staffAction === 'verified' ? 'verified' : $saveStatus;
+        notifyRequestStatusSms($pdo, $id, $smsStatus);
+    } catch (Throwable $e) {
+        // Status is already saved; SMS failure should not block staff.
+    }
     logRequestStatusChange($pdo, $id, (string) $row['tracking_code'], $oldStatus, $saveStatus, staffId());
     $logLabel = requestStatusLabel($saveStatus);
     if ($staffAction === 'verified') {
@@ -175,13 +183,6 @@ $statusOptions = requestStatusUpdateOptions();
                     </div>
                 </div>
             </div>
-
-            <?php if ($flash): ?>
-            <div class="mb-6 p-4 <?= $flash[0] === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800' ?> border text-sm rounded-xl flex items-center gap-2">
-                <i data-lucide="<?= $flash[0] === 'success' ? 'check-circle' : 'alert-circle' ?>" class="w-5 h-5 shrink-0"></i>
-                <span><?= htmlspecialchars($flash[1]) ?></span>
-            </div>
-            <?php endif; ?>
 
             <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="admin-toolbar">
                 <?= authFormField() ?>
@@ -328,6 +329,7 @@ $statusOptions = requestStatusUpdateOptions();
             </div>
         </div>
     </div>
+    <?= actionResultScript($flash) ?>
     <?= scriptTag('admin/id-preview.js') ?>
     <?= scriptTag('core/page-config.js') ?>
     <?= scriptTag('admin/manage-request.js') ?>

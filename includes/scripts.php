@@ -98,11 +98,24 @@ function pageConfigJson(array $config, string $id = 'page-config'): string
     return '<script type="application/json" id="' . htmlspecialchars($id) . '">' . $json . '</script>';
 }
 
+function actionResultScript(?array $flash): string
+{
+    if (!$flash || !isset($flash[0], $flash[1]) || $flash[1] === '') {
+        return '';
+    }
+
+    return pageConfigJson([
+        'type' => $flash[0] === 'success' ? 'success' : 'error',
+        'message' => (string) $flash[1],
+    ], 'alcros-action-result');
+}
+
 function actionCoreScripts(): string
 {
     return scriptTags([
         'core/confirm.js',
         'core/loading.js',
+        'core/action-result.js',
     ]);
 }
 
@@ -113,6 +126,7 @@ function adminCoreScripts(): string
         'core/admin-auth.js',
         'core/confirm.js',
         'core/loading.js',
+        'core/action-result.js',
         'core/poll.js',
         'core/realtime.js',
         'admin/notifications.js',

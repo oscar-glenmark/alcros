@@ -47,10 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>ALCROS Queue Kiosk</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background: #020617; }
-    </style>
+    <?= publicStylesheet('kiosk') ?>
 </head>
 <body class="flex items-center justify-center min-h-screen p-6">
 

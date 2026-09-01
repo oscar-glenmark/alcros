@@ -205,3 +205,12 @@ body.auth-portal {
 .auth-portal-card a.text-blue-600:hover {
     color: var(--alcros-navy) !important;
 }
+
+.login-card {
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.04);
+}
+
+body.auth-reset-page {
+    font-family: 'Inter', sans-serif;
+    background-color: #f8fafc;
+}

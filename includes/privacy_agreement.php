@@ -6,21 +6,7 @@ require_once __DIR__ . '/scripts.php';
 $privacySite = $site ?? getSiteSettings();
 $privacyPolicyUrl = sanitizeExternalUrl(getSetting('privacy_policy_url', 'privacy.php'));
 ?>
-<style>
-    #alcros-privacy-overlay {
-        transition: opacity 0.25s ease;
-    }
-    #alcros-privacy-overlay.is-open {
-        opacity: 1;
-    }
-    #alcros-privacy-panel {
-        transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.25s ease;
-    }
-    #alcros-privacy-overlay.is-open #alcros-privacy-panel {
-        transform: translateY(0) scale(1);
-        opacity: 1;
-    }
-</style>
+<?= stylesheetTag('public/privacy-agreement.css') ?>
 <div id="alcros-privacy-overlay" class="hidden fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-4 sm:p-6 bg-slate-900/70 backdrop-blur-sm opacity-0" role="dialog" aria-modal="true" aria-labelledby="alcros-privacy-title">
     <div id="alcros-privacy-panel" class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden border border-gray-100 translate-y-8 scale-95 opacity-0 sm:translate-y-4">
         <div class="px-6 pt-6 pb-4 border-b border-gray-100">

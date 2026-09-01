@@ -111,13 +111,6 @@ $totalWaiting = array_sum(array_map(fn ($g) => count($g['waiting']), $grouped));
                 </div>
             </div>
 
-            <?php if ($flash): ?>
-            <div class="mb-6 p-4 <?= $flash[0] === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800' ?> border text-sm rounded-xl flex items-center gap-2">
-                <i data-lucide="<?= $flash[0] === 'success' ? 'check-circle' : 'alert-circle' ?>" class="w-5 h-5 shrink-0"></i>
-                <span><?= htmlspecialchars($flash[1]) ?></span>
-            </div>
-            <?php endif; ?>
-
             <p class="mb-6 text-sm font-semibold text-slate-600">
                 <span id="stat-queue-waiting"><?= $totalWaiting ?></span> citizen<?= $totalWaiting === 1 ? '' : 's' ?> waiting total
             </p>
@@ -225,6 +218,7 @@ $totalWaiting = array_sum(array_map(fn ($g) => count($g['waiting']), $grouped));
             </p>
         </div>
     </main>
+    <?= actionResultScript($flash) ?>
     <?= scriptTag('core/poll.js') ?>
     <?= scriptTag('core/realtime.js') ?>
     <?= lucideInitScript() ?>

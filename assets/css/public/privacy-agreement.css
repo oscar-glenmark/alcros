@@ -1,0 +1,16 @@
+#alcros-privacy-overlay {
+    transition: opacity 0.25s ease;
+}
+
+#alcros-privacy-overlay.is-open {
+    opacity: 1;
+}
+
+#alcros-privacy-panel {
+    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.25s ease;
+}
+
+#alcros-privacy-overlay.is-open #alcros-privacy-panel {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+}

@@ -22,10 +22,10 @@ $notifySite = $site ?? getSiteSettings();
         <div class="px-6 py-4 overflow-y-auto text-[12px] text-gray-600 leading-relaxed space-y-3 flex-1">
             <p>Would you like to receive Gmail updates from this web app about your civil registry request or appointment?</p>
             <ul class="list-disc pl-5 space-y-1.5">
-                <li>A confirmation when you finish sending a document request, including your tracking code.</li>
-                <li>A reminder when staff verifies your request and it is being processed.</li>
-                <li>A reminder 5 hours before your preferred visit or appointment.</li>
-                <li>Follow-up emails when the status changes (for example, ready for pickup).</li>
+                <li>A confirmation when you submit a document request or book an appointment, including your tracking or appointment code.</li>
+                <li>Status updates when staff review your request or confirm your visit — not while it is still awaiting confirmation.</li>
+                <li>Reminders about 5 hours, 3 hours, and 1 hour before a confirmed visit or appointment.</li>
+                <li>Follow-up emails when your request or appointment status changes (for example, confirmed, ready for pickup, or completed).</li>
             </ul>
             <p>Emails are sent only to the Gmail address you provide. You can still use ALCROS if you choose not to receive notifications.</p>
         </div>

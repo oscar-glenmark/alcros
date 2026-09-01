@@ -195,13 +195,6 @@ function renderAppointmentRows(array $rows, string $viewDate, string $search = '
                 </div>
             </div>
 
-            <?php if ($flash): ?>
-            <div class="mb-6 p-4 <?= $flash[0] === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800' ?> border text-sm rounded-xl flex items-center gap-2">
-                <i data-lucide="<?= $flash[0] === 'success' ? 'check-circle' : 'alert-circle' ?>" class="w-5 h-5 shrink-0"></i>
-                <span><?= htmlspecialchars($flash[1]) ?></span>
-            </div>
-            <?php endif; ?>
-
             <?php if ($search !== ''): ?>
             <div class="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-900 flex flex-wrap items-center gap-2">
                 <i data-lucide="search" class="w-4 h-4 shrink-0"></i>
@@ -340,6 +333,7 @@ function renderAppointmentRows(array $rows, string $viewDate, string $search = '
         </div>
     </div>
 
+    <?= actionResultScript($flash) ?>
     <?= scriptTag('admin/id-preview.js') ?>
     <?= scriptTag('admin/appointment.js') ?>
     <?= lucideInitScript() ?>

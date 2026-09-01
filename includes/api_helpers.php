@@ -125,6 +125,7 @@ function fetchDashboardStats(PDO $pdo, bool $isAdmin, string $staffId): array
         'today_appts'     => (int) $pdo->query("SELECT COUNT(*) FROM appointments WHERE appointment_date = CURDATE()")->fetchColumn(),
         'pipeline_count'  => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'verified'")->fetchColumn(),
         'ready_count'     => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'ready'")->fetchColumn(),
+        'completed_today' => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'completed' AND DATE(updated_at) = CURDATE()")->fetchColumn(),
     ];
 
     $recentRequests = enrichCitizenNameRows($pdo->query(

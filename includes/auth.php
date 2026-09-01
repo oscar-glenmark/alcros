@@ -188,19 +188,12 @@ function redirectWithAuth(string $path, array $query = []): void
 
 function outputAuthBootstrap(): void
 {
+    require_once __DIR__ . '/scripts.php';
     $redirect = basename($_SERVER['PHP_SELF']);
-    echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><link rel="icon" type="image/png" href="images/favicon.png?v=2"><title>Loading...</title><script>
-    (function () {
-        var token = sessionStorage.getItem("alcros_auth");
-        if (token) {
-            var params = new URLSearchParams(window.location.search);
-            params.set("alcros_auth", token);
-            window.location.replace(window.location.pathname + "?" + params.toString() + window.location.hash);
-            return;
-        }
-        window.location.replace("login.php?redirect=' . rawurlencode($redirect) . '");
-    })();
-    </script></head><body></body></html>';
+    echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><link rel="icon" type="image/png" href="images/favicon.png?v=2"><title>Loading...</title>';
+    echo pageConfigJson(['redirect' => $redirect], 'auth-bootstrap-config');
+    echo scriptTag('core/auth-bootstrap.js');
+    echo '</head><body></body></html>';
     exit;
 }
 

@@ -2,16 +2,41 @@
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/api_helpers.php';
 
 requireStaffLogin();
 
+$headerStats = [
+    'queue_count'     => 0,
+    'today_appts'     => 0,
+    'completed_today' => 0,
+];
+
+try {
+    $headerStats = fetchDashboardStats(getDB(), isAdmin(), staffId())['stats'];
+} catch (Throwable $e) {
+    // Keep zero defaults when stats cannot be loaded.
+}
+
 ?>
 
-<header class="admin-header min-h-14 sm:min-h-16 border-b border-gray-100 flex items-center justify-end gap-2 sm:gap-3 px-3 sm:px-4 lg:px-6 xl:px-8 py-2 min-w-0 shrink-0">
+<header class="admin-header w-full min-h-14 sm:min-h-16 border-b border-gray-100 flex items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4 lg:px-6 xl:px-8 py-2 min-w-0 shrink-0">
 
-    <div class="flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0">
+    <div id="admin-header-status" class="hidden md:flex items-center gap-3 xl:gap-4 bg-white border border-gray-100 rounded-2xl px-3 sm:px-4 py-2 min-w-0 shrink-0">
+        <div class="flex items-center gap-2 shrink-0">
+            <span class="relative flex h-2.5 w-2.5">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60"></span>
+                <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+            </span>
+            <span class="text-xs font-semibold text-slate-700 whitespace-nowrap">System online</span>
+        </div>
+        <div class="h-4 w-px bg-gray-200 shrink-0"></div>
+        <div class="text-xs text-gray-500 whitespace-nowrap"><span class="font-bold text-slate-800" id="header-queue-count"><?= (int) ($headerStats['queue_count'] ?? 0) ?></span> in queue</div>
+        <div class="text-xs text-gray-500 whitespace-nowrap hidden lg:block"><span class="font-bold text-slate-800" id="header-appts-count"><?= (int) ($headerStats['today_appts'] ?? 0) ?></span> appointments today</div>
+    </div>
 
-        <!-- Notification Bell -->
+    <div class="flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0 ml-auto">
         <div class="relative" id="notif-wrapper" data-staff-id="<?= htmlspecialchars(staffId()) ?>">
 
             <button

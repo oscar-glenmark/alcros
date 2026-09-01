@@ -88,12 +88,20 @@
         });
     }
 
-    try {
-        var stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-        if (stored && stored.version === STORAGE_VERSION && stored.accepted === true) {
-            return;
-        }
-    } catch (e) {}
+    function runPrivacyAutoShow() {
+        try {
+            var stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+            if (stored && stored.version === STORAGE_VERSION && stored.accepted === true) {
+                return;
+            }
+        } catch (e) {}
 
-    openModal('consent');
+        openModal('consent');
+    }
+
+    if (document.getElementById('alcros-maintenance-overlay')) {
+        document.addEventListener('alcros:maintenance-acknowledged', runPrivacyAutoShow, { once: true });
+    } else {
+        runPrivacyAutoShow();
+    }
 })();

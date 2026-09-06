@@ -27,6 +27,7 @@ $serviceType = appointmentServiceLabel(trim($_POST['service_type'] ?? $service))
 $date        = $_POST['appointment_date'] ?? '';
 $time        = $_POST['appointment_time'] ?? '';
 $notifyEmail = isset($_POST['notify_email']);
+$notifySms   = isset($_POST['notify_sms']);
 $gmailVerified = isGmailVerifiedInSession($email);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -42,6 +43,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!isGmailVerifiedInSession($email)) {
         $error = 'Please verify your Gmail is an active Google account before continuing.';
         $gmailVerified = false;
+    } elseif (!isValidPhilippineMobile($phone)) {
+        $error = 'Please enter a valid cellphone number (09XXXXXXXXX).';
     } elseif (empty($_FILES['id_front']['name'])) {
         $error = 'Please upload the front side of your valid ID.';
     } else {
@@ -63,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ensureCitizenNotifyColumns($pdo);
                 $pdo->beginTransaction();
 
-                $bookingError = validateAppointmentBooking($pdo, $date, $time, $email, true);
+                $bookingError = validateAppointmentBooking($pdo, $date, $time, $email, true, 'standalone');
                 if ($bookingError !== null) {
                     $pdo->rollBack();
                     deleteIdUploadFiles($frontPath, $backPath);
@@ -71,8 +74,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $appointmentCode = generateAppointmentCode();
                     $stmt = $pdo->prepare(
-                        'INSERT INTO appointments (appointment_code, first_name, middle_name, last_name, email, phone, notify_email, service_type, appointment_date, appointment_time, status, source, id_front_path, id_back_path)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                        'INSERT INTO appointments (appointment_code, first_name, middle_name, last_name, email, phone, notify_email, notify_sms, service_type, appointment_date, appointment_time, status, source, id_front_path, id_back_path)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
                     );
                     $stmt->execute([
                         $appointmentCode,
@@ -80,8 +83,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $middleName,
                         $lastName,
                         $email,
-                        $phone ?: null,
+                        $phone,
                         $notifyEmail ? 1 : 0,
+                        $notifySms ? 1 : 0,
                         $serviceType,
                         $date,
                         normalizeAppointmentTime($time),
@@ -125,9 +129,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Schedule Appointment - ALCROS</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <?= vendorScriptTag('tailwindcss.js') ?>
+    <?= vendorScriptTag('lucide.min.js') ?>
+    <?= vendorStylesheetTag('inter/inter.css') ?>
     <?= publicStylesheet('citizen-site') ?>
     <?= publicStylesheet('citizen-request') ?>
     <?= publicStylesheet('id-upload') ?>
@@ -206,27 +210,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </button>
         </div>
         <?php else: ?>
-        <form method="POST" enctype="multipart/form-data" class="citizen-request-card p-6 space-y-4" id="bookAppointmentForm">
+        <form method="POST" enctype="multipart/form-data" class="citizen-request-card p-6 space-y-4" id="bookAppointmentForm" data-continue-hint="bookContinueHint" data-slot-type="standalone">
             <?= publicCsrfField() ?>
             <input type="hidden" name="service" value="<?= htmlspecialchars($service) ?>">
             <input type="hidden" name="email_verified" id="emailVerified" value="<?= $gmailVerified ? '1' : '0' ?>">
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                     <label class="block text-[11px] font-bold mb-1">First Name *</label>
-                    <input type="text" name="first_name" required value="<?= htmlspecialchars($firstName) ?>" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
+                    <input type="text" name="first_name" required placeholder="First name" value="<?= htmlspecialchars($firstName) ?>" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
                 </div>
                 <div>
                     <label class="block text-[11px] font-bold mb-1">Middle Name</label>
-                    <input type="text" name="middle_name" value="<?= htmlspecialchars((string) ($middleName ?? '')) ?>" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
+                    <input type="text" name="middle_name" placeholder="Middle name (optional)" value="<?= htmlspecialchars((string) ($middleName ?? '')) ?>" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
                 </div>
                 <div>
                     <label class="block text-[11px] font-bold mb-1">Last Name *</label>
-                    <input type="text" name="last_name" required value="<?= htmlspecialchars($lastName) ?>" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
+                    <input type="text" name="last_name" required placeholder="Last name" value="<?= htmlspecialchars($lastName) ?>" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
                 </div>
             </div>
             <div>
                 <label class="block text-[11px] font-bold mb-1">Service Type *</label>
-                <input type="text" name="service_type" value="<?= htmlspecialchars($serviceType !== '' ? $serviceType : $serviceLabel) ?>" required class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
+                <input type="text" name="service_type" value="<?= htmlspecialchars($serviceType !== '' ? $serviceType : $serviceLabel) ?>" required placeholder="Service type" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
             </div>
             <div class="grid grid-cols-2 gap-4">
                 <div>
@@ -235,10 +239,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
                 <div>
                     <label class="block text-[11px] font-bold mb-1">Time *</label>
-                    <input type="time" id="appointmentTimeInput" name="appointment_time" required min="08:00" max="17:00" value="<?= htmlspecialchars($time) ?>" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
+                    <select id="appointmentTimeInput" name="appointment_time" required
+                            class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm" disabled>
+                        <option value="" disabled <?= $time === '' ? 'selected' : '' ?>>Select a time slot</option>
+                        <?php if ($time !== ''): ?>
+                        <option value="<?= htmlspecialchars(substr(normalizeAppointmentTime($time), 0, 5)) ?>" selected>
+                            <?= htmlspecialchars(formatAppointmentSlotLabel($time)) ?>
+                        </option>
+                        <?php endif; ?>
+                    </select>
                 </div>
             </div>
-            <p class="text-[10px] text-gray-500">Office hours: 8:00 AM – 5:00 PM (Monday to Friday). One booking per time slot.</p>
+            <p class="text-[10px] text-gray-500">Special service appointments: Monday to Friday only, excluding holidays. Morning 8:00 AM–12:00 NN and afternoon 1:00–5:00 PM, every 20 minutes. Lunch break 12:00–1:00 PM. One booking per slot.</p>
             <p id="slotAvailabilityStatus" class="hidden text-xs mt-2"></p>
             <div>
                 <label class="flex items-center gap-2 text-[11px] font-bold mb-1">
@@ -256,8 +268,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <p id="gmailStatus" class="text-xs mt-2 <?= $gmailVerified ? 'font-semibold text-green-600' : 'hidden' ?>"><?= $gmailVerified ? 'Gmail verified — this is an active Google account.' : '' ?></p>
             </div>
             <div>
-                <label class="block text-[11px] font-bold mb-1">Phone</label>
-                <input type="tel" name="phone" value="<?= htmlspecialchars($phone) ?>" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
+                <label class="block text-[11px] font-bold mb-1">Phone *</label>
+                <input type="tel" name="phone" required placeholder="09XXXXXXXXX" pattern="09[0-9]{9}" value="<?= htmlspecialchars($phone) ?>" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
             </div>
             <div>
                 <label class="text-[11px] font-bold mb-2 block">Upload Valid IDs (National ID / Driver's License) *</label>
@@ -300,9 +312,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <label class="flex items-start gap-2 cursor-pointer">
                 <input type="checkbox" name="notify_email" value="1" id="notifyEmailCheckbox" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" <?= $notifyEmail ? 'checked' : '' ?>>
-                <span class="text-xs font-semibold text-slate-700">Send Gmail updates when staff confirm my visit or change my appointment status</span>
+                <span class="text-xs font-semibold text-slate-700">Send Gmail updates when staff confirm my visit or change my appointment status — and reminders at 5 hours, 3 hours, and 1 hour before my appointment</span>
             </label>
-            <button type="submit" id="bookSubmitBtn" class="citizen-btn-gold w-full rounded-xl py-3 text-sm disabled:opacity-40 disabled:cursor-not-allowed" data-loading-text="Booking…" <?= $gmailVerified ? '' : 'disabled' ?>>Book Appointment</button>
+            <label class="flex items-start gap-2 cursor-pointer">
+                <input type="checkbox" name="notify_sms" value="1" id="notifySmsCheckbox" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" <?= $notifySms ? 'checked' : '' ?>>
+                <span class="text-xs font-semibold text-slate-700">Send SMS reminder to my cellphone 3 hours before my appointment</span>
+            </label>
+            <div class="citizen-form-actions pt-2">
+                <a href="services.php" class="back-home back-home--step">
+                    <i data-lucide="chevron-left" class="back-home__icon w-4 h-4"></i>
+                    <span>Back</span>
+                </a>
+                <div class="citizen-form-actions__forward w-full sm:w-auto">
+                    <p id="bookContinueHint" class="citizen-continue-hint">Complete all required fields, then click <strong>Verify Gmail</strong> to unlock booking.</p>
+                    <button type="submit" id="bookSubmitBtn" class="citizen-btn-gold w-full sm:w-auto sm:min-w-[12rem] rounded-xl py-3 text-sm disabled:opacity-40 disabled:cursor-not-allowed" data-loading-text="Booking…" <?= $gmailVerified ? '' : 'disabled' ?>>Book Appointment</button>
+                </div>
+            </div>
         </form>
         <?php endif; ?>
         </section>

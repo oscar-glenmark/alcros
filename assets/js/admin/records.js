@@ -23,7 +23,12 @@
         var el = document.getElementById(id);
         if (!el) return;
         el.classList.remove('hidden');
-        el.classList.add('flex');
+        if (id !== 'viewModal') {
+            el.classList.add('flex');
+        } else {
+            el.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('records-view-modal-open');
+        }
         refreshIcons();
     }
 
@@ -31,7 +36,11 @@
         document.querySelectorAll('#entryModal, #importModal, #viewModal').forEach(function (el) {
             el.classList.add('hidden');
             el.classList.remove('flex');
+            if (el.id === 'viewModal') {
+                el.setAttribute('aria-hidden', 'true');
+            }
         });
+        document.body.classList.remove('records-view-modal-open');
     }
 
     function formatDate(val) {
@@ -111,13 +120,43 @@
             tab.className = 'record-type-tab rounded-xl border-2 px-3 py-3 text-center transition ' + (active ? (recordTypeStyles[type] || recordTypeIdle) : recordTypeIdle);
         });
 
+        var useCompletePrintForm = !!cfg.entryUseCompletePrintForm;
         var panels = {
             birth: document.getElementById('birthFieldsPanel'),
             death: document.getElementById('deathFieldsPanel'),
             marriage: document.getElementById('marriageFieldsPanel')
         };
-        Object.keys(panels).forEach(function (key) {
-            var panel = panels[key];
+        var printFillPanels = {
+            birth: document.getElementById('birthPrintFillPanel'),
+            death: document.getElementById('deathPrintFillPanel'),
+            marriage: document.getElementById('marriagePrintFillPanel')
+        };
+
+        if (!useCompletePrintForm) {
+            Object.keys(panels).forEach(function (key) {
+                var panel = panels[key];
+                if (!panel) return;
+                var active = key === type;
+                panel.classList.toggle('hidden', !active);
+                panel.querySelectorAll('input, select, textarea').forEach(function (el) {
+                    el.disabled = !active;
+                });
+            });
+        } else {
+            document.querySelectorAll('.entry-detail-panel').forEach(function (panel) {
+                panel.classList.add('hidden');
+                panel.querySelectorAll('input, select, textarea').forEach(function (el) {
+                    el.disabled = true;
+                });
+            });
+            var entryTitle = document.getElementById('entryModalTitle');
+            if (entryTitle) {
+                entryTitle.textContent = 'Add ' + type.charAt(0).toUpperCase() + type.slice(1) + ' Record';
+            }
+        }
+
+        Object.keys(printFillPanels).forEach(function (key) {
+            var panel = printFillPanels[key];
             if (!panel) return;
             var active = key === type;
             panel.classList.toggle('hidden', !active);
@@ -126,21 +165,28 @@
             });
         });
 
-        ['birthFirstName', 'birthMiddleName', 'birthLastName'].forEach(function (id) {
-            var el = document.getElementById(id);
-            if (el) el.required = type === 'birth';
-        });
-        ['deathFirstName', 'deathMiddleName', 'deathLastName'].forEach(function (id) {
-            var el = document.getElementById(id);
-            if (el) el.required = type === 'death';
-        });
-        if (type === 'birth') syncSingleBirthDetails();
+        if (!useCompletePrintForm) {
+            ['birthFirstName', 'birthMiddleName', 'birthLastName'].forEach(function (id) {
+                var el = document.getElementById(id);
+                if (el) el.required = type === 'birth';
+            });
+            ['deathFirstName', 'deathMiddleName', 'deathLastName'].forEach(function (id) {
+                var el = document.getElementById(id);
+                if (el) el.required = type === 'death';
+            });
+            if (type === 'birth') syncSingleBirthDetails();
+        } else {
+            document.querySelectorAll('.entry-detail-panel input, .entry-detail-panel select, .entry-detail-panel textarea').forEach(function (el) {
+                el.required = false;
+            });
+        }
         refreshIcons();
     }
 
-    function openSingleEntryModal() {
+    function openSingleEntryModal(type) {
+        type = type || cfg.defaultEntryType || 'birth';
         openModal('entryModal');
-        setRecordType('birth');
+        setRecordType(type);
     }
 
     function openImportModal(type) {
@@ -153,11 +199,16 @@
 
         importType.value = type;
         importModalTitle.textContent = 'Import ' + type.charAt(0).toUpperCase() + type.slice(1) + ' Records';
-        importTemplateLink.href = recordsAuthUrl + (recordsAuthUrl.indexOf('?') !== -1 ? '&' : '?') + 'action=template&type=' + encodeURIComponent(type) + '&v=2';
+        importTemplateLink.href = recordsAuthUrl + (recordsAuthUrl.indexOf('?') !== -1 ? '&' : '?') + 'action=template&type=' + encodeURIComponent(type) + '&v=3';
         importTemplateLink.download = 'alcros_' + type + '_import_template.csv';
         var cols = csvTemplateColumns[type] || [];
+        var requiredHint = type === 'marriage'
+            ? '<strong>husband_first_name</strong> + <strong>husband_last_name</strong> and <strong>wife_first_name</strong> + <strong>wife_last_name</strong>'
+            : (type === 'death'
+                ? '<strong>deceased_first_name</strong> and <strong>deceased_last_name</strong>'
+                : '<strong>child_first_name</strong> and <strong>child_last_name</strong>');
         importColumnsHelp.innerHTML =
-            'Upload a CSV with the template headers for <strong>' + type + '</strong> records. Put each value in its own column — do not paste a whole row into cell A. Required: <strong>first_name</strong> and <strong>last_name</strong> (or legacy <strong>person_name</strong> / <strong>full_name</strong>), or <strong>husband_name</strong> + <strong>wife_name</strong> for marriage. Dates: YYYY-MM-DD or MM/DD/YYYY. Template sample rows are skipped automatically.<br><span class="text-[10px] text-gray-400 mt-1 inline-block">' + cols.join(', ') + '</span>';
+            'Upload a CSV using the same column names as the print certificate fill-in fields for <strong>' + type + '</strong>. Put each value in its own column — do not paste a whole row into cell A. Required: ' + requiredHint + ' (legacy columns such as first_name / last_name or husband_name / wife_name still work). Dates may use YYYY-MM-DD, MM/DD/YYYY, or separate day / month / year columns. Template sample rows are skipped automatically.<br><span class="text-[10px] text-gray-400 mt-1 inline-block">' + cols.join(', ') + '</span>';
         var fileInput = document.querySelector('#importForm input[name="csv_file"]');
         if (fileInput) fileInput.value = '';
         openModal('importModal');
@@ -184,11 +235,11 @@
                 openImportModal(importBtn.getAttribute('data-import-type'));
                 return;
             }
-            if (e.target.closest('#addSingleRecordBtn')) {
+            if (e.target.closest('[data-single-entry-type]')) {
                 e.preventDefault();
                 e.stopPropagation();
                 newEntryMenu.classList.add('hidden');
-                openSingleEntryModal();
+                openSingleEntryModal(e.target.closest('[data-single-entry-type]').getAttribute('data-single-entry-type'));
             }
         });
 
@@ -196,6 +247,24 @@
             if (!newEntryWrapper.contains(e.target)) {
                 newEntryMenu.classList.add('hidden');
             }
+        });
+    }
+
+    function bindEntryPrintFillTabs() {
+        document.querySelectorAll('.records-entry-print-fill').forEach(function (section) {
+            section.querySelectorAll('[data-entry-fill-tab]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var side = btn.getAttribute('data-entry-fill-tab');
+                    section.querySelectorAll('[data-entry-fill-tab]').forEach(function (tab) {
+                        var active = tab.getAttribute('data-entry-fill-tab') === side;
+                        tab.classList.toggle('is-active', active);
+                        tab.setAttribute('aria-selected', active ? 'true' : 'false');
+                    });
+                    section.querySelectorAll('[data-entry-fill-panel]').forEach(function (panel) {
+                        panel.hidden = panel.getAttribute('data-entry-fill-panel') !== side;
+                    });
+                });
+            });
         });
     }
 
@@ -278,19 +347,179 @@
         return text;
     }
 
-    function marriageSpouseRows(r, prefix, label) {
-        return [
-            [label + ' — Name', r[prefix + '_name'] || '—'],
-            [label + ' — Date of Birth', formatDate(r[prefix + '_birth_date'])],
-            [label + ' — Age', r[prefix + '_age'] ?? '—'],
-            [label + ' — Place of Birth', r[prefix + '_birth_place'] || '—'],
-            [label + ' — Citizenship', r[prefix + '_citizenship'] || '—'],
-            [label + ' — Religion', r[prefix + '_religion'] || '—'],
-            [label + ' — Civil Status', r[prefix + '_civil_status'] || '—'],
-            [label + ' — Residence', r[prefix + '_residence'] || '—'],
-            [label + " — Father's Name", r[prefix + '_father_name'] || '—'],
-            [label + " — Mother's Maiden Name", r[prefix + '_mother_maiden_name'] || '—']
-        ];
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function detailRow(label, value, full) {
+        var text = value === null || value === undefined ? '—' : String(value);
+        var empty = text.trim() === '' || text === '—';
+        if (empty) {
+            text = '—';
+        }
+        var rowClass = 'records-detail-row' + (full ? ' records-detail-row--full' : '');
+        var valueClass = empty ? ' records-detail-value--empty' : '';
+        return '<div class="' + rowClass + '"><dt>' + escapeHtml(label) + '</dt><dd class="' + valueClass.trim() + '">' + escapeHtml(text) + '</dd></div>';
+    }
+
+    function detailSection(title, rows, fullLabels) {
+        var fullSet = fullLabels || [];
+        var rowHtml = rows.map(function (entry) {
+            var full = fullSet.indexOf(entry[0]) !== -1;
+            return detailRow(entry[0], entry[1], full);
+        }).join('');
+        return '<section class="records-detail-block"><h3>' + escapeHtml(title) + '</h3><dl class="records-detail-rows">' + rowHtml + '</dl></section>';
+    }
+
+    function recordTypeLabel(type) {
+        var labels = { birth: 'Birth', death: 'Death', marriage: 'Marriage' };
+        return labels[type] || displayValue(type);
+    }
+
+    function formatFieldValue(r, fieldDef) {
+        var key = fieldDef.key;
+        var format = fieldDef.format;
+
+        if (key === '_person_name') {
+            return displayValue(formatPersonName(r));
+        }
+        if (key === '_age_at_death') {
+            return formatAgeAtDeath(r);
+        }
+        if (key === '_death_time') {
+            var time = displayValue(r.death_time);
+            if (time === '—') {
+                return '—';
+            }
+            return time + (r.death_time_period ? ' ' + r.death_time_period : '');
+        }
+        if (format === 'date') {
+            if (key === 'created_at') {
+                return formatDate(String(r.created_at || '').substring(0, 10));
+            }
+            return formatDate(r[key]);
+        }
+        if (format === 'bool') {
+            return r[key] == 1 ? 'Yes' : 'No';
+        }
+
+        return displayValue(r[key]);
+    }
+
+    function buildPrintFillSection(r, printValues) {
+        var type = r.record_type || '';
+        var labels = (cfg.printFillFieldLabels && cfg.printFillFieldLabels[type]) || {};
+        var rows = [];
+
+        Object.keys(labels).forEach(function (key) {
+            var value = printValues && printValues[key] !== undefined ? printValues[key] : '';
+            if (String(value || '').trim() === '') {
+                return;
+            }
+            rows.push([labels[key], value]);
+        });
+
+        if (!rows.length) {
+            return '';
+        }
+
+        return detailSection(
+            'Print Certificate Fields',
+            rows,
+            rows.map(function (entry) { return entry[0]; })
+        );
+    }
+
+    function buildViewRecordPresentation(r, printValues) {
+        var sections = [];
+        var type = r.record_type || '';
+        var registry = displayValue(recordRegistryNumber(r));
+        var eventDate = formatDate(recordEventDate(r));
+        var created = formatDate(String(r.created_at || '').substring(0, 10));
+        var title = displayValue(formatPersonName(r));
+        var subtitleParts = [];
+        var viewSections = (cfg.recordViewSections && cfg.recordViewSections[type]) || [];
+
+        if (registry !== '—') {
+            subtitleParts.push('Registry #' + registry);
+        }
+        if (eventDate !== '—') {
+            subtitleParts.push(type === 'birth' ? 'Born ' + eventDate : type === 'death' ? 'Died ' + eventDate : 'Married ' + eventDate);
+        }
+
+        viewSections.forEach(function (section) {
+            var rows = section.fields.map(function (field) {
+                return [field.label, formatFieldValue(r, field), !!field.full];
+            });
+            var fullLabels = rows.filter(function (entry) { return entry[2]; }).map(function (entry) { return entry[0]; });
+            sections.push(detailSection(
+                section.title,
+                rows.map(function (entry) { return [entry[0], entry[1]]; }),
+                fullLabels
+            ));
+        });
+
+        var printSection = buildPrintFillSection(r, printValues || {});
+        if (printSection) {
+            sections.push(printSection);
+        }
+
+        if (!viewSections.length) {
+            sections.push(detailSection('Record', [
+                ['Person Name', displayValue(formatPersonName(r))],
+                ['Birth Date', formatDate(r.birth_date)],
+                ['Event Date', formatDate(recordEventDate(r))],
+                ['Place', displayValue(r.place)]
+            ], ['Place']));
+        }
+
+        sections.push(detailSection('System', [
+            ['Record Type', recordTypeLabel(type)],
+            ['Registry Number', registry],
+            ['Created', created]
+        ]));
+
+        return {
+            title: title,
+            subtitle: subtitleParts.join(' · ') || 'Civil registry record',
+            badgeLabel: recordTypeLabel(type),
+            badgeClass: 'records-type-badge records-type-badge--' + (type || 'birth'),
+            html: sections.join('')
+        };
+    }
+
+    function renderViewRecordPresentation(r, printValues) {
+        var viewContent = document.getElementById('viewContent');
+        var viewEditLink = document.getElementById('viewEditLink');
+        var viewPrintLink = document.getElementById('viewPrintLink');
+        var viewModalTitle = document.getElementById('viewModalTitle');
+        var viewModalSubtitle = document.getElementById('viewModalSubtitle');
+        var viewModalBadge = document.getElementById('viewModalBadge');
+        if (!viewContent || !viewEditLink || !r || !r.id) {
+            return;
+        }
+
+        var presentation = buildViewRecordPresentation(r, printValues);
+        viewContent.innerHTML = presentation.html;
+        if (viewModalTitle) {
+            viewModalTitle.textContent = presentation.title;
+        }
+        if (viewModalSubtitle) {
+            viewModalSubtitle.textContent = presentation.subtitle;
+        }
+        if (viewModalBadge) {
+            viewModalBadge.textContent = presentation.badgeLabel;
+            viewModalBadge.className = presentation.badgeClass;
+        }
+        viewEditLink.href = recordsAuthUrl + (recordsAuthUrl.indexOf('?') !== -1 ? '&' : '?') + 'edit=' + r.id;
+        if (viewPrintLink) {
+            var printBase = cfg.printCertificateUrl || 'print_certificate.php';
+            viewPrintLink.href = printBase + (printBase.indexOf('?') !== -1 ? '&' : '?') + 'record_id=' + r.id;
+        }
     }
 
     function bindViewRecordButtons() {
@@ -302,99 +531,31 @@
                 } catch (err) {
                     return;
                 }
-                var rows = [];
-
-                if (r.record_type === 'birth') {
-                    rows = [
-                        ['Type', displayValue(r.record_type)],
-                        ['Registry Number', displayValue(recordRegistryNumber(r))],
-                        ['Full Name', displayValue(formatPersonName(r))],
-                        ['Date of Birth', formatDate(r.birth_date)],
-                        ['Sex', displayValue(r.sex)],
-                        ['Time of Birth', displayValue(r.birth_time)],
-                        ['Type of Birth', displayValue(r.birth_type)],
-                        ['Birth Order', displayValue(r.birth_order)],
-                        ['Place of Birth', displayValue(r.place)]
-                    ];
-                    if (r.birth_type === 'Single' || !r.birth_type) {
-                        rows.push(
-                            ['Mother', displayValue(r.mother_name)],
-                            ['Mother Age', displayValue(r.mother_age)],
-                            ['Mother Nationality', displayValue(r.mother_nationality)],
-                            ['Mother Religion', displayValue(r.mother_religion)],
-                            ['Father', displayValue(r.father_name)],
-                            ['Father Age', displayValue(r.father_age)],
-                            ['Father Nationality', displayValue(r.father_nationality)],
-                            ['Father Religion', displayValue(r.father_religion)],
-                            ['Parents Marriage Date', formatDate(r.parents_marriage_date)],
-                            ['Parents Marriage Place', displayValue(r.parents_marriage_place)]
-                        );
-                    }
-                    rows.push(['Created', formatDate((r.created_at || '').substring(0, 10))]);
-                } else if (r.record_type === 'death') {
-                    rows = [
-                        ['Type', displayValue(r.record_type)],
-                        ['Registry Number', displayValue(recordRegistryNumber(r))],
-                        ['Name of Deceased', displayValue(formatPersonName(r))],
-                        ['Date of Birth', formatDate(r.birth_date)],
-                        ['Sex', displayValue(r.sex)],
-                        ['Date of Registration', formatDate(r.registration_date)],
-                        ['Residence', displayValue(r.residence_deceased)],
-                        ['Residence (Place of Death)', displayValue(r.residence_length_place)],
-                        ['Residence (Philippines)', displayValue(r.residence_length_ph)],
-                        ['Nationality', displayValue(r.nationality)],
-                        ['Civil Status', displayValue(r.civil_status)],
-                        ['Age at Death', formatAgeAtDeath(r)],
-                        ['Occupation', displayValue(r.occupation)],
-                        ['Surviving Spouse', displayValue(r.surviving_spouse_name)],
-                        ['Spouse Address', displayValue(r.surviving_spouse_address)],
-                        ['Place of Burial', displayValue(r.place_of_burial)],
-                        ['Date of Death', formatDate(recordEventDate(r))],
-                        ['Time of Death', (displayValue(r.death_time) === '—' ? '—' : displayValue(r.death_time) + (r.death_time_period ? ' ' + r.death_time_period : ''))],
-                        ['Immediate Cause', displayValue(r.immediate_cause)],
-                        ['Contributory Cause', displayValue(r.contributory_cause)],
-                        ['Attending Physician', displayValue(r.attending_physician)],
-                        ['Autopsy Performed', displayValue(r.autopsy_performed)],
-                        ['Code Number', displayValue(r.code_number)],
-                        ['Created', formatDate((r.created_at || '').substring(0, 10))]
-                    ];
-                } else if (r.record_type === 'marriage') {
-                    rows = [
-                        ['Type', displayValue(r.record_type)],
-                        ['Registry Number', displayValue(recordRegistryNumber(r))],
-                        ['Couple', displayValue(formatPersonName(r))],
-                        ...marriageSpouseRows(r, 'husband', 'Husband'),
-                        ...marriageSpouseRows(r, 'wife', 'Wife'),
-                        ['Date of Marriage', formatDate(recordEventDate(r))],
-                        ['Time of Marriage', displayValue(r.marriage_time)],
-                        ['Place of Marriage', displayValue(r.place)],
-                        ['Solemnized By', displayValue(r.solemnized_by)],
-                        ['Witnesses', displayValue(r.witnesses)],
-                        ['Created', formatDate((r.created_at || '').substring(0, 10))]
-                    ];
-                } else {
-                    rows = [
-                        ['Type', displayValue(r.record_type)],
-                        ['Registry Number', displayValue(recordRegistryNumber(r))],
-                        ['Person Name', displayValue(formatPersonName(r))],
-                        ['Birth Date', formatDate(r.birth_date)],
-                        ['Event Date', formatDate(recordEventDate(r))],
-                        ['Place', displayValue(r.place)],
-                        ['Created', formatDate((r.created_at || '').substring(0, 10))]
-                    ];
+                if (!r.id) {
+                    return;
                 }
 
                 var viewContent = document.getElementById('viewContent');
-                var viewEditLink = document.getElementById('viewEditLink');
-                if (!viewContent || !viewEditLink) return;
-
-                viewContent.innerHTML = rows.map(function (entry) {
-                    var k = entry[0];
-                    var v = entry[1];
-                    return '<div class="flex justify-between gap-4 border-b border-gray-50 pb-2"><span class="text-gray-400 text-xs font-bold uppercase">' + k + '</span><span class="text-slate-800 text-xs font-semibold text-right">' + String(v).replace(/</g, '&lt;') + '</span></div>';
-                }).join('');
-                viewEditLink.href = (cfg.recordsAuthUrl || 'records.php') + (recordsAuthUrl.indexOf('?') !== -1 ? '&' : '?') + 'edit=' + r.id;
+                if (viewContent) {
+                    viewContent.innerHTML = '<p class="records-detail-loading">Loading record details…</p>';
+                }
                 openModal('viewModal');
+
+                var viewUrl = new URL(recordsAuthUrl, window.location.href);
+                viewUrl.searchParams.set('action', 'view_record');
+                viewUrl.searchParams.set('id', String(r.id));
+
+                fetch(viewUrl.pathname + viewUrl.search, { credentials: 'same-origin' })
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) {
+                        if (!data || !data.ok || !data.record) {
+                            throw new Error((data && data.error) || 'Could not load record.');
+                        }
+                        renderViewRecordPresentation(data.record, data.print_values || {});
+                    })
+                    .catch(function () {
+                        renderViewRecordPresentation(r, {});
+                    });
             });
         });
     }
@@ -431,6 +592,7 @@
         refreshIcons();
         bindNewEntryMenu();
         bindRecordTypeTabs();
+        bindEntryPrintFillTabs();
         bindImportForm();
         bindModalClose();
         bindViewRecordButtons();
@@ -442,7 +604,7 @@
         }
 
         if (cfg.openEntryModal) {
-            openSingleEntryModal();
+            openSingleEntryModal(cfg.defaultEntryType || 'birth');
         }
     }
 

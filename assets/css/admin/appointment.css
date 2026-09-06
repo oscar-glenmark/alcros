@@ -1,13 +1,95 @@
-@import url('id-preview.css');
+@import url('manage-requests.css');
 
-.date-navigator {
-    background-color: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    padding: 6px 12px;
+.appointments-page {
+    gap: 1.25rem;
 }
 
-.row-pending-delete {
-    opacity: 0.45;
-    pointer-events: none;
+.appointments-page .manage-section--controls {
+    margin-bottom: 0;
+}
+
+.appointments-controls__tools {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    min-width: 0;
+    flex: 1 1 16rem;
+    max-width: 100%;
+}
+
+.appointments-page .manage-controls__search {
+    flex: 1 1 12rem;
+    max-width: 22rem;
+}
+
+.appointments-date-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.125rem;
+    height: 1.875rem;
+    padding: 0 0.25rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.4375rem;
+    flex-shrink: 0;
+}
+
+.appointments-date-nav__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 0.3125rem;
+    color: #64748b;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.appointments-date-nav__btn:hover {
+    background: #eef2f7;
+    color: #0f172a;
+}
+
+.appointments-date-nav__date {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3125rem;
+    padding: 0 0.1875rem;
+    min-width: 0;
+}
+
+.appointments-date-nav__input {
+    border: none;
+    background: transparent;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: #0f172a;
+    min-width: 0;
+    width: 6.75rem;
+    padding: 0;
+    line-height: 1.2;
+}
+
+.appointments-date-nav__input:focus {
+    outline: none;
+}
+
+@media (max-width: 767px) {
+    .appointments-controls__tools {
+        width: 100%;
+        flex-wrap: wrap;
+        justify-content: stretch;
+    }
+
+    .appointments-page .manage-controls__search {
+        flex: 1 1 100%;
+        max-width: none;
+    }
+
+    .appointments-date-nav {
+        width: 100%;
+        justify-content: center;
+    }
 }

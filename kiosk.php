@@ -22,17 +22,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         try {
             $pdo = getDB();
-            $ticketNumber = generateTicketNumber($pdo, $purpose);
-            $tableNum = queueTableForPurpose($purpose);
-            $pdo->prepare(
-                'INSERT INTO queue_tickets (ticket_number, purpose, status, window_number) VALUES (?, ?, ?, ?)'
-            )->execute([$ticketNumber, $purpose, 'waiting', $tableNum]);
-            $ticket = [
-                'number' => $ticketNumber,
-                'table'  => $tableNum,
-                'label'  => $tables[$purpose]['label'],
-            ];
-        } catch (PDOException $e) {
+            $ticket = createQueueTicket($pdo, $purpose);
+        } catch (Throwable $e) {
             $error = 'Could not issue ticket. Please ask staff for help.';
         }
     }
@@ -45,8 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ALCROS Queue Kiosk</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <?= alcrosUiHead() ?>
     <?= publicStylesheet('kiosk') ?>
 </head>
 <body class="flex items-center justify-center min-h-screen p-6">

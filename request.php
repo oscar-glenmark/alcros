@@ -37,7 +37,9 @@ if ($type && in_array($type, $validTypes, true)) {
 $step = max(1, min(4, (int) ($_GET['step'] ?? $_POST['step'] ?? 1)));
 $recordVerified = isCivilRecordVerifiedInSession(
     $draftCitizenName,
-    (string) ($draft['date_of_birth'] ?? '')
+    (string) ($draft['date_of_birth'] ?? ''),
+    (string) ($draft['document_type'] ?? ''),
+    !empty($draft['date_of_marriage']) ? (string) $draft['date_of_marriage'] : null
 );
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
@@ -52,27 +54,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
 
     if ($step === 1) {
         $nameParts    = personNamePartsFromInput($_POST);
-        $dateOfBirth  = $_POST['date_of_birth'] ?? '';
-        $sex          = $_POST['sex'] ?? '';
-        $documentType = $_POST['document_type'] ?? '';
-        $citizenName  = formatPersonName($nameParts['first_name'], $nameParts['middle_name'], $nameParts['last_name']);
+        $dateOfBirth    = $_POST['date_of_birth'] ?? '';
+        $dateOfMarriage = trim($_POST['date_of_marriage'] ?? '');
+        $sex            = $_POST['sex'] ?? '';
+        $documentType   = $_POST['document_type'] ?? '';
+        $citizenName    = formatPersonName($nameParts['first_name'], $nameParts['middle_name'], $nameParts['last_name']);
 
         if (($nameError = validatePersonNameParts($nameParts)) !== null || !in_array($documentType, $validTypes, true)) {
             $error = $nameError ?? 'Please enter your name and select a service type.';
         } elseif ($dateOfBirth === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfBirth)) {
             $error = 'Please enter a valid date of birth.';
+        } elseif ($documentType === 'marriage' && ($dateOfMarriage === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfMarriage))) {
+            $error = 'Please enter a valid date of marriage.';
         } elseif (!in_array($sex, ['male', 'female'], true)) {
             $error = 'Please select your sex.';
-        } elseif (!isCivilRecordVerifiedInSession($citizenName, $dateOfBirth)) {
+        } elseif (!isCivilRecordVerifiedInSession($citizenName, $dateOfBirth, $documentType, $dateOfMarriage !== '' ? $dateOfMarriage : null)) {
             $error = 'Please check your civil registry record before continuing. If you are not registered, visit the LCRO office in person.';
             $recordVerified = false;
         } else {
-            $draft['first_name']     = $nameParts['first_name'];
-            $draft['middle_name']    = $nameParts['middle_name'];
-            $draft['last_name']      = $nameParts['last_name'];
-            $draft['date_of_birth']  = $dateOfBirth;
-            $draft['sex']            = $sex;
-            $draft['document_type']  = $documentType;
+            $draft['first_name']        = $nameParts['first_name'];
+            $draft['middle_name']       = $nameParts['middle_name'];
+            $draft['last_name']         = $nameParts['last_name'];
+            $draft['date_of_birth']     = $dateOfBirth;
+            $draft['date_of_marriage']  = $documentType === 'marriage' ? $dateOfMarriage : null;
+            $draft['sex']               = $sex;
+            $draft['document_type']     = $documentType;
             unset($draft['citizen_name']);
             header('Location: request.php?step=2');
             exit;
@@ -152,7 +158,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                     $appointmentDate,
                     $appointmentTime,
                     $draft['email'] ?? null,
-                    true
+                    true,
+                    'certificate'
                 );
                 if ($bookingError !== null) {
                     $pdo->rollBack();
@@ -161,10 +168,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                     $trackingCode = generateTrackingCode();
                     $stmt = $pdo->prepare(
                         'INSERT INTO document_requests
-                         (tracking_code, first_name, middle_name, last_name, date_of_birth, sex, email, email_verified, phone,
+                         (tracking_code, first_name, middle_name, last_name, date_of_birth, date_of_marriage, sex, email, email_verified, phone,
                           document_type, purpose, id_front_path, id_back_path, privacy_agreed, notify_email, notify_sms,
                           appointment_date, appointment_time, status)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
                     );
                     $stmt->execute([
                         $trackingCode,
@@ -172,6 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                         $draft['middle_name'] ?? null,
                         $draft['last_name'],
                         $draft['date_of_birth'],
+                        !empty($draft['date_of_marriage']) ? $draft['date_of_marriage'] : null,
                         $draft['sex'],
                         $draft['email'],
                         (int) ($draft['email_verified'] ?? 0),
@@ -251,9 +259,9 @@ $requestDocumentLabel = !empty($draft['document_type'])
     <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Request Document - ALCROS</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <?= vendorScriptTag('tailwindcss.js') ?>
+    <?= vendorScriptTag('lucide.min.js') ?>
+    <?= vendorStylesheetTag('inter/inter.css') ?>
     <?= publicStylesheet('citizen-site') ?>
     <?= publicStylesheet('citizen-request') ?>
     <?= publicStylesheet('id-upload') ?>
@@ -417,16 +425,16 @@ $requestDocumentLabel = !empty($draft['document_type'])
             <p class="text-gray-400 text-sm mb-6"><?= htmlspecialchars($stepTitles[$step]['subtitle'] ?? '') ?></p>
 
             <?php if ($step === 1): ?>
-            <form method="POST" class="space-y-5" id="identificationForm">
+            <form method="POST" class="space-y-5" id="identificationForm" data-continue-hint="step1ContinueHint">
                 <?= publicCsrfField() ?>
                 <input type="hidden" name="step" value="1">
                 <input type="hidden" name="record_verified" id="recordVerified" value="<?= $recordVerified ? '1' : '0' ?>">
                 <div>
                     <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                        <i data-lucide="file-text" class="w-3.5 h-3.5 text-blue-500"></i> Current Service Type
+                        <i data-lucide="file-text" class="w-3.5 h-3.5 text-blue-500"></i> Current Service Type *
                     </label>
                     <select name="document_type" required class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                        <option value="">Select document</option>
+                        <option value="" disabled <?= empty($draft['document_type']) ? 'selected' : '' ?>>Select document</option>
                         <?php foreach ($validTypes as $t): ?>
                         <option value="<?= $t ?>" <?= ($draft['document_type'] ?? '') === $t ? 'selected' : '' ?>><?= documentTypeLabel($t) ?></option>
                         <?php endforeach; ?>
@@ -434,7 +442,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 </div>
                 <div>
                     <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                        <i data-lucide="user" class="w-3.5 h-3.5 text-blue-500"></i> Name on Record
+                        <i data-lucide="user" class="w-3.5 h-3.5 text-blue-500"></i> Name on Record *
                     </label>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-2">
                         <input type="text" id="firstNameInput" name="first_name" required placeholder="First name"
@@ -457,14 +465,21 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 </div>
                 <div>
                     <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                        <i data-lucide="calendar" class="w-3.5 h-3.5 text-blue-500"></i> Date of Birth
+                        <i data-lucide="calendar" class="w-3.5 h-3.5 text-blue-500"></i> Date of Birth *
                     </label>
                     <input type="date" id="dateOfBirthInput" name="date_of_birth" required value="<?= htmlspecialchars($draft['date_of_birth'] ?? '') ?>"
                            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
                 </div>
+                <div id="dateOfMarriageWrap" class="<?= ($draft['document_type'] ?? '') === 'marriage' ? '' : 'hidden' ?>">
+                    <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
+                        <i data-lucide="heart" class="w-3.5 h-3.5 text-blue-500"></i> Date of Marriage *
+                    </label>
+                    <input type="date" id="dateOfMarriageInput" name="date_of_marriage" <?= ($draft['document_type'] ?? '') === 'marriage' ? 'required' : '' ?> value="<?= htmlspecialchars($draft['date_of_marriage'] ?? '') ?>"
+                           class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                </div>
                 <div>
                     <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                        <i data-lucide="users" class="w-3.5 h-3.5 text-blue-500"></i> Sex
+                        <i data-lucide="users" class="w-3.5 h-3.5 text-blue-500"></i> Sex *
                     </label>
                     <div class="flex gap-3">
                         <?php foreach (['male' => 'Male', 'female' => 'Female'] as $val => $label): ?>
@@ -475,20 +490,26 @@ $requestDocumentLabel = !empty($draft['document_type'])
                         <?php endforeach; ?>
                     </div>
                 </div>
-                <div class="flex justify-between items-center pt-4">
-                    <a href="index.php" class="text-gray-400 text-sm flex items-center gap-1 hover:text-gray-600"><i data-lucide="chevron-left" class="w-4 h-4"></i> Back</a>
-                    <button type="submit" name="action" value="next" id="step1ContinueBtn" class="citizen-btn-gold disabled:opacity-40 disabled:cursor-not-allowed px-8 py-3 rounded-full text-sm flex items-center gap-2" data-loading-text="Saving…" <?= $recordVerified ? '' : 'disabled' ?>>Continue <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                <div class="citizen-form-actions">
+                    <a href="index.php" class="back-home back-home--step">
+                        <i data-lucide="chevron-left" class="back-home__icon w-4 h-4"></i>
+                        <span>Back</span>
+                    </a>
+                    <div class="citizen-form-actions__forward">
+                        <p id="step1ContinueHint" class="citizen-continue-hint">Fill in all required fields, then click <strong>Check Record</strong> to unlock Continue.</p>
+                        <button type="submit" name="action" value="next" id="step1ContinueBtn" class="citizen-btn-gold disabled:opacity-40 disabled:cursor-not-allowed px-8 py-3 rounded-full text-sm inline-flex items-center gap-2 ml-auto" data-loading-text="Saving…" <?= $recordVerified ? '' : 'disabled' ?>>Continue <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                    </div>
                 </div>
             </form>
 
             <?php elseif ($step === 2): ?>
-            <form method="POST" enctype="multipart/form-data" class="space-y-5" id="requirementsForm">
+            <form method="POST" enctype="multipart/form-data" class="space-y-5" id="requirementsForm" data-continue-hint="step2ContinueHint">
                 <?= publicCsrfField() ?>
                 <input type="hidden" name="step" value="2">
                 <input type="hidden" name="email_verified" id="emailVerified" value="<?= isGmailVerifiedInSession($draft['email'] ?? '') ? '1' : '0' ?>">
                 <div>
                     <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                        <i data-lucide="mail" class="w-3.5 h-3.5 text-blue-500"></i> Active Gmail Account
+                        <i data-lucide="mail" class="w-3.5 h-3.5 text-blue-500"></i> Active Gmail Account *
                     </label>
                     <div class="flex gap-2">
                         <input type="email" id="gmailInput" name="email" required placeholder="example@gmail.com"
@@ -503,10 +524,10 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 </div>
                 <div>
                     <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                        <i data-lucide="clipboard-list" class="w-3.5 h-3.5 text-blue-500"></i> Purpose of Request
+                        <i data-lucide="clipboard-list" class="w-3.5 h-3.5 text-blue-500"></i> Purpose of Request *
                     </label>
                     <select name="purpose" required class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                        <option value="">Select Purpose</option>
+                        <option value="" disabled <?= empty($draft['purpose']) ? 'selected' : '' ?>>Select purpose</option>
                         <?php foreach ($purposeOptions as $key => $label): ?>
                         <option value="<?= $key ?>" <?= ($draft['purpose'] ?? '') === $key ? 'selected' : '' ?>><?= htmlspecialchars($label) ?></option>
                         <?php endforeach; ?>
@@ -514,14 +535,14 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 </div>
                 <div>
                     <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                        <i data-lucide="phone" class="w-3.5 h-3.5 text-blue-500"></i> Cellphone Number
+                        <i data-lucide="phone" class="w-3.5 h-3.5 text-blue-500"></i> Cellphone Number *
                     </label>
                     <input type="tel" name="phone" required placeholder="09XXXXXXXXX" pattern="09[0-9]{9}"
                            value="<?= htmlspecialchars($draft['phone'] ?? '') ?>"
                            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
                 </div>
                 <div>
-                    <label class="text-[11px] font-bold text-gray-700 mb-2 block">Upload Valid IDs (National ID / Driver's License)</label>
+                    <label class="text-[11px] font-bold text-gray-700 mb-2 block">Upload Valid IDs (National ID / Driver's License) *</label>
                     <div class="grid grid-cols-2 gap-4">
                         <label class="citizen-id-upload" data-id-upload>
                             <input type="file" name="id_front" accept="image/*,.pdf" class="hidden" id="idFront" <?= empty($draft['id_front_path']) ? 'required' : '' ?>>
@@ -580,14 +601,20 @@ $requestDocumentLabel = !empty($draft['document_type'])
                         <span class="text-xs font-semibold text-amber-800">Send SMS text updates to my cellphone when my request is accepted, ready for pickup, and 3 hours before my confirmed visit</span>
                     </label>
                 </div>
-                <div class="flex justify-between items-center pt-4">
-                    <button type="submit" name="action" value="back" class="text-gray-400 text-sm flex items-center gap-1 hover:text-gray-600"><i data-lucide="chevron-left" class="w-4 h-4"></i> Back</button>
-                    <button type="submit" name="action" value="next" id="step2ContinueBtn" class="citizen-btn-gold disabled:opacity-40 disabled:cursor-not-allowed px-8 py-3 rounded-full text-sm flex items-center gap-2" data-loading-text="Saving…" <?= isGmailVerifiedInSession($draft['email'] ?? '') ? '' : 'disabled' ?>>Continue <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                <div class="citizen-form-actions">
+                    <a href="request.php?step=1" class="back-home back-home--step">
+                        <i data-lucide="chevron-left" class="back-home__icon w-4 h-4"></i>
+                        <span>Back</span>
+                    </a>
+                    <div class="citizen-form-actions__forward">
+                        <p id="step2ContinueHint" class="citizen-continue-hint">Complete all required fields, then click <strong>Verify Gmail</strong> to unlock Continue.</p>
+                        <button type="submit" name="action" value="next" id="step2ContinueBtn" class="citizen-btn-gold disabled:opacity-40 disabled:cursor-not-allowed px-8 py-3 rounded-full text-sm inline-flex items-center gap-2 ml-auto" data-loading-text="Saving…" <?= isGmailVerifiedInSession($draft['email'] ?? '') ? '' : 'disabled' ?>>Continue <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                    </div>
                 </div>
             </form>
 
             <?php elseif ($step === 3): ?>
-            <form method="POST" class="space-y-5">
+            <form method="POST" class="space-y-5" id="requestScheduleForm" data-continue-hint="step3ContinueHint" data-slot-type="certificate">
                 <?= publicCsrfField() ?>
                 <input type="hidden" name="step" value="3">
                 <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-2">
@@ -606,16 +633,28 @@ $requestDocumentLabel = !empty($draft['document_type'])
                         <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
                             <i data-lucide="clock" class="w-3.5 h-3.5 text-blue-500"></i> Preferred Time *
                         </label>
-                        <input type="time" id="appointmentTimeInput" name="appointment_time" required min="08:00" max="17:00"
-                               value="<?= htmlspecialchars($draft['appointment_time'] ?? '') ?>"
-                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                        <select id="appointmentTimeInput" name="appointment_time" required
+                                class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" disabled>
+                            <option value="" disabled <?= empty($draft['appointment_time']) ? 'selected' : '' ?>>Select a time slot</option>
+                            <?php if (!empty($draft['appointment_time'])): ?>
+                            <option value="<?= htmlspecialchars(substr(normalizeAppointmentTime($draft['appointment_time']), 0, 5)) ?>" selected>
+                                <?= htmlspecialchars(formatAppointmentSlotLabel($draft['appointment_time'])) ?>
+                            </option>
+                            <?php endif; ?>
+                        </select>
                     </div>
                 </div>
-                <p class="text-[11px] text-gray-400">Office hours: 8:00 AM – 5:00 PM (Monday to Friday). One booking per time slot.</p>
+                <p class="text-[11px] text-gray-400">Certificate pickup visits: Monday to Friday only, excluding holidays. Morning 8:00 AM–12:00 NN and afternoon 1:00–5:00 PM, every 10 minutes. Lunch break 12:00–1:00 PM. One booking per slot.</p>
                 <p id="slotAvailabilityStatus" class="hidden text-xs mt-2"></p>
-                <div class="flex justify-between items-center pt-4">
-                    <button type="submit" name="action" value="back" class="text-gray-400 text-sm flex items-center gap-1 hover:text-gray-600"><i data-lucide="chevron-left" class="w-4 h-4"></i> Back</button>
-                    <button type="submit" name="action" value="next" data-appointment-submit class="citizen-btn-gold px-8 py-3 rounded-full text-sm flex items-center gap-2" data-loading-text="Submitting…">Submit Request <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                <div class="citizen-form-actions">
+                    <a href="request.php?step=2" class="back-home back-home--step">
+                        <i data-lucide="chevron-left" class="back-home__icon w-4 h-4"></i>
+                        <span>Back</span>
+                    </a>
+                    <div class="citizen-form-actions__forward">
+                        <p id="step3ContinueHint" class="citizen-continue-hint">Choose a weekday date, then pick an open pickup time slot.</p>
+                        <button type="submit" name="action" value="next" id="step3SubmitBtn" data-appointment-submit class="citizen-btn-gold px-8 py-3 rounded-full text-sm inline-flex items-center gap-2 ml-auto" data-loading-text="Submitting…" disabled>Submit Request <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                    </div>
                 </div>
             </form>
             <?php endif; ?>

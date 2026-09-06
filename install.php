@@ -16,33 +16,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($alreadyInstalled) {
         $error = 'Database is already installed. Re-running setup from the web is disabled for security.';
     } else {
-    try {
-        if (!mysqlServerUp()) {
-            throw new RuntimeException('MySQL is not running. Start it in the XAMPP Control Panel first.');
-        }
-        if (!is_file($sqlFile)) {
-            throw new RuntimeException('SQL file not found: database/alcros.sql');
-        }
+        try {
+            if (!mysqlServerUp()) {
+                throw new RuntimeException('MySQL is not running. Start it in the XAMPP Control Panel first.');
+            }
+            if (!is_file($sqlFile)) {
+                throw new RuntimeException('SQL file not found: database/alcros.sql');
+            }
 
-        $pdo = new PDO('mysql:host=' . DB_HOST . ';charset=' . DB_CHARSET, DB_USER, DB_PASS, [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        ]);
-        $pdo->exec(file_get_contents($sqlFile));
+            $pdo = new PDO('mysql:host=' . DB_HOST . ';charset=' . DB_CHARSET, DB_USER, DB_PASS, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            ]);
+            $pdo->exec(file_get_contents($sqlFile));
 
-        $flagDir = __DIR__ . '/storage';
-        if (!is_dir($flagDir)) {
-            mkdir($flagDir, 0755, true);
+            $flagDir = __DIR__ . '/storage';
+            if (!is_dir($flagDir)) {
+                mkdir($flagDir, 0755, true);
+            }
+            file_put_contents($flagDir . '/installed.txt', date('c'));
+
+            $messages[] = 'Database installed successfully.';
+            $messages[] = 'Sign in at the staff portal and change the default administrator password immediately.';
+            $alreadyInstalled = true;
+        } catch (Throwable $e) {
+            $error = $e->getMessage();
         }
-        file_put_contents($flagDir . '/installed.txt', date('c'));
-
-        $messages[] = $alreadyInstalled
-            ? 'Database refreshed successfully.'
-            : 'Database installed successfully.';
-        $messages[] = 'Sign in at the staff portal and change the default administrator password immediately.';
-        $alreadyInstalled = true;
-    } catch (Throwable $e) {
-        $error = $e->getMessage();
-    }
     }
 }
 ?>
@@ -53,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ALCROS Database Setup</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <?= vendorScriptTag('tailwindcss.js') ?>
     <?= publicStylesheet('back-home') ?>
 </head>
 <body class="bg-gray-50 min-h-screen flex items-center justify-center p-6">

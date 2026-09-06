@@ -274,6 +274,7 @@ function staffMenuPages(): array
         'records.php',
         'report.php',
         'live-queue.php',
+        'print_certificate.php',
         'system_settings.php',
     ];
 }

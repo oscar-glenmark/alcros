@@ -3,6 +3,7 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
+require_once __DIR__ . '/includes/printing.php';
 requireStaffLogin();
 requirePageAccess('manage_request.php');
 
@@ -10,12 +11,17 @@ $activePage = 'manage_request.php';
 $pdo = getDB();
 migrateLegacyProcessingStatus($pdo);
 ensureCitizenNotifyColumns($pdo);
+ensurePrintTables($pdo);
+
+function manageRequestStatusFilters(): array
+{
+    return ['all', 'pending', 'ready', 'rejected', 'completed', 'all_requests', 'recently_deleted'];
+}
 
 function manageRequestsRedirectFilters(): array
 {
     $status = $_POST['redirect_status'] ?? $_GET['status'] ?? 'all';
-    $allowed = ['all', 'pending', 'rejected'];
-    if (!in_array($status, $allowed, true)) {
+    if (!in_array($status, manageRequestStatusFilters(), true)) {
         $status = 'all';
     }
 
@@ -25,10 +31,9 @@ function manageRequestsRedirectFilters(): array
     ];
 }
 
-function updateDocumentRequestStatus(PDO $pdo, int $id, string $status): bool
+function updateDocumentRequestStatus(PDO $pdo, int $id, string $status, bool $deferNotifications = false): bool
 {
-    $valid = requestStatusUpdateOptions();
-    if ($id <= 0 || !in_array($status, $valid, true)) {
+    if ($id <= 0) {
         return false;
     }
 
@@ -39,9 +44,17 @@ function updateDocumentRequestStatus(PDO $pdo, int $id, string $status): bool
         return false;
     }
 
-    $oldStatus = (string) $row['status'];
+    $oldStatus = normalizeRequestStatus((string) $row['status']);
     $staffAction = $status;
-    $saveStatus = $staffAction === 'verified' ? 'ready' : $staffAction;
+
+    if (!isAllowedRequestStatusTransition($oldStatus, $staffAction)) {
+        return false;
+    }
+
+    $saveStatus = match ($staffAction) {
+        'verified' => 'ready',
+        default    => $staffAction,
+    };
 
     if ($oldStatus === $saveStatus) {
         return true;
@@ -67,53 +80,142 @@ function updateDocumentRequestStatus(PDO $pdo, int $id, string $status): bool
         // Status is already saved; appointment sync failure should not block staff.
     }
 
-    try {
-        notifyRequestStatusChange($pdo, $id, $saveStatus);
-    } catch (Throwable $e) {
-        // Status is already saved; email failure should not block staff.
+    $runNotifications = static function () use ($pdo, $id, $saveStatus, $staffAction): void {
+        try {
+            notifyRequestStatusChange($pdo, $id, $saveStatus);
+        } catch (Throwable $e) {
+            // Status is already saved; email failure should not block staff.
+        }
+
+        try {
+            require_once __DIR__ . '/includes/sms.php';
+            $smsStatus = $saveStatus;
+            notifyRequestStatusSms($pdo, $id, $smsStatus);
+        } catch (Throwable $e) {
+            // Status is already saved; SMS failure should not block staff.
+        }
+    };
+
+    if ($deferNotifications) {
+        register_shutdown_function(static function () use ($runNotifications): void {
+            $runNotifications();
+        });
+    } else {
+        $runNotifications();
     }
 
-    try {
-        require_once __DIR__ . '/includes/sms.php';
-        $smsStatus = $staffAction === 'verified' ? 'verified' : $saveStatus;
-        notifyRequestStatusSms($pdo, $id, $smsStatus);
-    } catch (Throwable $e) {
-        // Status is already saved; SMS failure should not block staff.
-    }
     logRequestStatusChange($pdo, $id, (string) $row['tracking_code'], $oldStatus, $saveStatus, staffId());
     $logLabel = requestStatusLabel($saveStatus);
     if ($staffAction === 'verified') {
-        $logLabel = 'Ready for Pickup (verified)';
+        $logLabel = 'Ready for Pickup';
     }
     logActivity(staffId(), 'Request Updated', 'Changed ' . $row['tracking_code'] . ' to ' . $logLabel);
 
     return true;
 }
 
+function isManageRequestAjax(): bool
+{
+    return ($_POST['ajax'] ?? '') === '1';
+}
+
+function manageRequestJsonResponse(bool $ok, string $message): never
+{
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'ok'      => $ok,
+        'type'    => $ok ? 'success' : 'error',
+        'message' => $message,
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $filters = manageRequestsRedirectFilters();
     $id = (int) ($_POST['request_id'] ?? 0);
+    $isAjax = isManageRequestAjax();
+    $responseOk = false;
+    $responseMessage = 'Could not complete this action. Please try again.';
 
     $isDelete = isset($_POST['delete_request']);
-    $isUpdate = isset($_POST['update_status']) || (!$isDelete && isset($_POST['status']));
+    $isBulkDelete = isset($_POST['bulk_delete']);
+    $isBulkDeleteAll = isset($_POST['bulk_delete_all']);
+    $isBulkRestore = isset($_POST['bulk_restore']);
+    $isBulkPurge = isset($_POST['bulk_purge']);
+    $isUpdate = isset($_POST['update_status']) || (!$isDelete && !$isBulkDelete && !$isBulkDeleteAll && !$isBulkRestore && !$isBulkPurge && isset($_POST['status']));
 
     if ($isUpdate) {
         $status = (string) ($_POST['status'] ?? '');
-        if (updateDocumentRequestStatus($pdo, $id, $status)) {
+        if (updateDocumentRequestStatus($pdo, $id, $status, $isAjax)) {
+            $responseOk = true;
             if ($status === 'verified') {
-                manageRequestsFlashSet('success', 'Request verified — moved to Appointments as ready for pickup.');
+                $responseMessage = 'Request accepted — moved to Ready for Pickup. Print the certificate when ready.';
+            } elseif ($status === 'completed') {
+                $responseMessage = 'Request marked completed — document claimed by citizen.';
+            } elseif ($status === 'rejected') {
+                $responseMessage = 'Request rejected.';
             } else {
-                manageRequestsFlashSet('success', 'Request status saved as ' . requestStatusLabel($status) . '.');
+                $responseMessage = 'Request status saved as ' . requestStatusLabel($status) . '.';
+            }
+            if (!$isAjax) {
+                manageRequestsFlashSet('success', $responseMessage);
             }
         } else {
-            manageRequestsFlashSet('error', 'Could not update request status. Please try again.');
+            $responseMessage = 'Could not update request status. Please try again.';
+            if (!$isAjax) {
+                manageRequestsFlashSet('error', $responseMessage);
+            }
+        }
+    } elseif ($isBulkDelete || $isBulkDeleteAll || $isBulkRestore || $isBulkPurge) {
+        $bulkIds = parseBulkIdsFromPost();
+        $count = 0;
+
+        if ($isBulkDelete) {
+            $count = softDeleteDocumentRequests($pdo, $bulkIds);
+            $responseOk = $count > 0;
+            $responseMessage = $count > 0
+                ? ($count === 1 ? '1 request moved to recently deleted.' : $count . ' requests moved to recently deleted.')
+                : 'No completed requests were selected for deletion.';
+        } elseif ($isBulkDeleteAll) {
+            $count = softDeleteAllDeletableDocumentRequests($pdo);
+            $responseOk = $count > 0;
+            $responseMessage = $count > 0
+                ? ($count === 1 ? '1 completed request moved to recently deleted.' : $count . ' completed requests moved to recently deleted.')
+                : 'No completed requests are available to delete.';
+        } elseif ($isBulkRestore) {
+            $count = restoreDocumentRequests($pdo, $bulkIds);
+            $responseOk = $count > 0;
+            $responseMessage = $count > 0
+                ? ($count === 1 ? '1 request restored.' : $count . ' requests restored.')
+                : 'No requests were selected for restore.';
+        } elseif ($isBulkPurge) {
+            $count = purgeDocumentRequests($pdo, $bulkIds);
+            $responseOk = $count > 0;
+            $responseMessage = $count > 0
+                ? ($count === 1 ? '1 request permanently deleted.' : $count . ' requests permanently deleted.')
+                : 'No requests were selected for permanent deletion.';
+        }
+
+        if (!$isAjax) {
+            manageRequestsFlashSet($responseOk ? 'success' : 'error', $responseMessage);
         }
     } elseif ($isDelete) {
         if (deleteCompletedDocumentRequest($pdo, $id)) {
-            manageRequestsFlashSet('success', 'Completed request deleted successfully.');
+            $responseOk = true;
+            $responseMessage = 'Completed request deleted successfully.';
+            if (!$isAjax) {
+                manageRequestsFlashSet('success', $responseMessage);
+            }
         } else {
-            manageRequestsFlashSet('error', 'Only completed requests can be deleted.');
+            $responseMessage = 'Only completed requests can be deleted.';
+            if (!$isAjax) {
+                manageRequestsFlashSet('error', $responseMessage);
+            }
         }
+    }
+
+    if ($isAjax) {
+        manageRequestJsonResponse($responseOk, $responseMessage);
     }
 
     redirectWithAuth('manage_request.php', array_filter($filters, static fn ($value) => $value !== '' && $value !== 'all'));
@@ -123,18 +225,26 @@ $filterStatus = $_GET['status'] ?? 'all';
 $search       = trim($_GET['q'] ?? '');
 $flash        = manageRequestsFlashGet();
 
-$statusFilters = ['all' => 'Pending queue', 'pending' => 'Pending', 'rejected' => 'Rejected'];
-if (!isset($statusFilters[$filterStatus])) {
+if (!in_array($filterStatus, manageRequestStatusFilters(), true)) {
     $filterStatus = 'all';
 }
 
 $sql = 'SELECT * FROM document_requests WHERE 1=1';
 $params = [];
+if ($filterStatus === 'recently_deleted') {
+    $sql .= ' AND deleted_at IS NOT NULL';
+} else {
+    $sql .= ' AND deleted_at IS NULL';
+}
 if ($search !== '') {
-    if ($filterStatus !== 'all' && $filterStatus !== '') {
+    if ($filterStatus !== 'all' && $filterStatus !== '' && $filterStatus !== 'all_requests') {
         $sql .= ' AND status = ?';
         $params[] = $filterStatus;
     }
+} elseif ($filterStatus === 'all_requests') {
+    // Show every active request regardless of status.
+} elseif ($filterStatus === 'recently_deleted') {
+    // Deleted items only — no status filter.
 } elseif ($filterStatus === 'all' || $filterStatus === '') {
     $sql .= " AND status = 'pending'";
 } elseif ($filterStatus !== 'all' && $filterStatus !== '') {
@@ -148,12 +258,46 @@ if ($search !== '') {
     $params[] = "%$search%";
     $params[] = "%$search%";
 }
-$sql .= ' ORDER BY submitted_at DESC';
+$sql .= $filterStatus === 'recently_deleted' ? ' ORDER BY deleted_at DESC' : ' ORDER BY submitted_at DESC';
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $requests = $stmt->fetchAll();
 
-$statusOptions = requestStatusUpdateOptions();
+$pageTitle = 'Manage Requests';
+$pageSubtitle = 'Review and process certificate requests from citizens.';
+
+$activeSql = documentRequestActiveSql();
+$requestStats = [
+    'total'            => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$activeSql}")->fetchColumn(),
+    'pending'          => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$activeSql} AND status = 'pending'")->fetchColumn(),
+    'ready'            => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$activeSql} AND status = 'ready'")->fetchColumn(),
+    'completed'        => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$activeSql} AND status = 'completed'")->fetchColumn(),
+    'rejected'         => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$activeSql} AND status = 'rejected'")->fetchColumn(),
+    'recently_deleted' => (int) $pdo->query('SELECT COUNT(*) FROM document_requests WHERE deleted_at IS NOT NULL')->fetchColumn(),
+];
+
+$statCards = [
+    ['label' => 'Total Requests', 'hint' => 'All time', 'value' => $requestStats['total'], 'icon' => 'files', 'tone' => 'blue', 'filter' => 'all_requests'],
+    ['label' => 'Pending', 'hint' => 'Awaiting review', 'value' => $requestStats['pending'], 'icon' => 'clock', 'tone' => 'amber', 'filter' => 'pending'],
+    ['label' => 'Ready', 'hint' => 'Ready for pickup', 'value' => $requestStats['ready'], 'icon' => 'package', 'tone' => 'violet', 'filter' => 'ready'],
+    ['label' => 'Completed', 'hint' => 'Released to citizen', 'value' => $requestStats['completed'], 'icon' => 'check-circle-2', 'tone' => 'emerald', 'filter' => 'completed'],
+    ['label' => 'Rejected', 'hint' => 'Declined requests', 'value' => $requestStats['rejected'], 'icon' => 'x-circle', 'tone' => 'rose', 'filter' => 'rejected'],
+];
+
+$filterLabels = [
+    'all'              => 'Pending Queue',
+    'pending'          => 'Pending',
+    'rejected'         => 'Rejected',
+    'ready'            => 'Ready for Pickup',
+    'completed'        => 'Completed',
+    'all_requests'     => 'All Requests',
+    'recently_deleted' => 'Recently Deleted',
+];
+$currentFilterLabel = $filterLabels[$filterStatus] ?? 'Pending Queue';
+$resultCount = count($requests);
+$showSidePanel = !in_array($filterStatus, ['ready', 'recently_deleted'], true);
+$showBulkActions = in_array($filterStatus, ['all_requests', 'recently_deleted'], true);
+$isRecentlyDeletedView = $filterStatus === 'recently_deleted';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -162,10 +306,10 @@ $statusOptions = requestStatusUpdateOptions();
     <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Requests - ALCROS</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <?= vendorScriptTag('tailwindcss.js') ?>
+    <?= vendorStylesheetTag('inter/inter.css') ?>
     <?= adminLayoutHeadStyles('manage-requests') ?>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <?= vendorScriptTag('lucide.min.js') ?>
 </head>
 <body class="flex min-h-screen">
 
@@ -174,98 +318,206 @@ $statusOptions = requestStatusUpdateOptions();
     <main class="admin-main flex flex-col min-h-screen">
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
 
-        <div class="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full admin-page-wrap">
-            <div class="admin-page-head">
-                <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                    <div>
-                        <h1>Manage Requests</h1>
-                        <p>Review pending certificate requests. Verified requests move to Appointments as ready for pickup.</p>
+        <div class="p-4 sm:p-6 lg:p-8 w-full admin-page-wrap manage-requests-page">
+
+            <section class="manage-section" aria-label="Request overview">
+                <div class="manage-section__head">
+                    <h2 class="manage-section__title">Overview</h2>
+                    <p class="manage-section__hint">Click a card to filter the list below</p>
+                </div>
+                <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                <?php foreach ($statCards as $card):
+                    $cardFilter = $card['filter'];
+                    $cardHref = buildAuthUrl('manage_request.php', array_filter([
+                        'status' => $cardFilter,
+                        'q'      => $search !== '' ? $search : null,
+                    ]));
+                    $cardActive = $filterStatus === $cardFilter
+                        || ($cardFilter === 'pending' && $filterStatus === 'all');
+                ?>
+                <a href="<?= htmlspecialchars($cardHref) ?>"
+                   class="manage-stat-card manage-stat-card--<?= htmlspecialchars($card['tone']) ?><?= $cardActive ? ' is-active' : '' ?>">
+                    <div class="manage-stat-card__icon">
+                        <i data-lucide="<?= htmlspecialchars($card['icon']) ?>" class="w-4 h-4"></i>
                     </div>
+                    <div class="min-w-0">
+                        <p class="manage-stat-card__value"><?= number_format($card['value']) ?></p>
+                        <p class="manage-stat-card__label"><?= htmlspecialchars($card['label']) ?></p>
+                        <p class="manage-stat-card__hint"><?= htmlspecialchars($card['hint']) ?></p>
+                    </div>
+                </a>
+                <?php endforeach; ?>
                 </div>
-            </div>
+            </section>
 
-            <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="admin-toolbar">
-                <?= authFormField() ?>
-                <div class="relative flex-1 w-full admin-toolbar-search">
-                    <i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-gray-400"></i>
-                    <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search citizen name or tracking code..." class="w-full pl-10 pr-4 py-2 text-sm bg-gray-50 border-none rounded-lg focus:ring-0 text-slate-600 placeholder-gray-400">
+            <section class="manage-section manage-section--controls" aria-label="Search and filters">
+                <div class="manage-controls">
+                    <div class="manage-controls__context">
+                        <span class="manage-controls__label">Current view</span>
+                        <span class="manage-controls__view"><?= htmlspecialchars($currentFilterLabel) ?></span>
+                        <span class="manage-controls__count"><?= number_format($resultCount) ?> shown</span>
+                        <?php if ($filterStatus !== 'all' || $search !== ''): ?>
+                        <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="manage-controls__reset">Reset</a>
+                        <?php endif; ?>
+                    </div>
+                    <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="manage-controls__search">
+                        <?= authFormField() ?>
+                        <?php if ($filterStatus !== 'all' && $filterStatus !== 'all_requests'): ?>
+                        <input type="hidden" name="status" value="<?= htmlspecialchars($filterStatus) ?>">
+                        <?php elseif ($filterStatus === 'all_requests'): ?>
+                        <input type="hidden" name="status" value="all_requests">
+                        <?php elseif ($filterStatus === 'recently_deleted'): ?>
+                        <input type="hidden" name="status" value="recently_deleted">
+                        <?php endif; ?>
+                        <div class="manage-requests-toolbar__search">
+                            <i data-lucide="search" class="w-3.5 h-3.5 text-gray-400"></i>
+                            <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search ID, name, or certificate…" class="manage-requests-toolbar__input">
+                        </div>
+                        <button type="submit" class="manage-requests-toolbar__btn manage-requests-toolbar__btn--primary" data-loading-text="Searching…">
+                            Search
+                        </button>
+                    </form>
                 </div>
-                <div class="admin-toolbar-filters">
-                    <?php foreach ($statusFilters as $key => $label): ?>
-                    <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php', array_filter(['status' => $key !== 'all' ? $key : null, 'q' => $search !== '' ? $search : null]))) ?>" class="status-btn whitespace-nowrap shrink-0 <?= $filterStatus === $key ? 'status-btn-active' : 'status-btn-inactive px-4' ?>"><?= $label ?></a>
-                    <?php endforeach; ?>
-                </div>
-                <?php if ($filterStatus !== 'all'): ?>
-                <input type="hidden" name="status" value="<?= htmlspecialchars($filterStatus) ?>">
-                <?php endif; ?>
-                <button type="submit" class="w-full lg:w-auto bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold" data-loading-text="Searching…">Search</button>
-            </form>
+            </section>
 
+            <div class="manage-requests-body" id="manageRequestsBody">
+                <div class="manage-requests-main">
             <?php if (empty($requests)): ?>
-            <div class="bg-white rounded-2xl border border-dashed border-gray-200 min-h-[400px] flex flex-col items-center justify-center text-center p-12">
-                <div class="bg-gray-50 p-6 rounded-full mb-6">
-                    <i data-lucide="file-text" class="w-12 h-12 text-gray-200"></i>
+            <div class="manage-requests-empty">
+                <div class="manage-requests-empty__icon">
+                    <i data-lucide="file-text" class="w-10 h-10"></i>
                 </div>
-                <h2 class="text-xl font-black text-slate-900 mb-2">No requests found</h2>
-                <p class="text-gray-400 text-sm max-w-xs font-medium">Try adjusting your filters or search terms.</p>
+                <h2>No requests in this view</h2>
+                <p><?= $search !== '' ? 'No matches for your search. Try different keywords or reset filters.' : 'There are no requests for the selected filter.' ?></p>
+                <?php if ($filterStatus !== 'all' || $search !== ''): ?>
+                <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="manage-empty-reset">View pending queue</a>
+                <?php endif; ?>
             </div>
             <?php else: ?>
-            <div class="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+            <div class="manage-requests-table-card">
+                <div class="manage-table-head">
+                    <div>
+                        <h2 class="manage-table-head__title"><?= htmlspecialchars($currentFilterLabel) ?></h2>
+                        <p class="manage-table-head__meta">
+                            <?= number_format($resultCount) ?> request<?= $resultCount === 1 ? '' : 's' ?>
+                            <?= $search !== '' ? ' · matching “' . htmlspecialchars($search) . '”' : '' ?>
+                            <?php if ($showBulkActions && !$isRecentlyDeletedView): ?>
+                            · <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php', ['status' => 'recently_deleted'])) ?>" class="manage-bulk-meta-link">Recently deleted<?= $requestStats['recently_deleted'] > 0 ? ' (' . number_format($requestStats['recently_deleted']) . ')' : '' ?></a>
+                            <?php elseif ($isRecentlyDeletedView): ?>
+                            · <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php', ['status' => 'all_requests'])) ?>" class="manage-bulk-meta-link">Back to all requests</a>
+                            <?php endif; ?>
+                        </p>
+                    </div>
+                    <p class="manage-table-head__tip"><?= $isRecentlyDeletedView ? 'Select items to restore or permanently delete them' : ($showSidePanel ? 'Click Verify to review details, then accept the request in the popup' : 'Click Complete to open the request popup and mark it claimed') ?></p>
+                </div>
+                <?php if ($showBulkActions): ?>
+                <form method="POST" action="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" id="manageBulkForm" class="manage-bulk-form" data-manage-bulk-form>
+                    <?= authFormField() ?>
+                    <input type="hidden" name="redirect_status" value="<?= htmlspecialchars($filterStatus) ?>">
+                    <input type="hidden" name="redirect_q" value="<?= htmlspecialchars($search) ?>">
+                    <div class="manage-bulk-toolbar hidden" data-bulk-toolbar aria-hidden="true">
+                        <label class="manage-bulk-toolbar__all">
+                            <input type="checkbox" class="manage-bulk-check manage-bulk-check--all" aria-label="Select all">
+                            <span>All</span>
+                        </label>
+                        <?php if ($isRecentlyDeletedView): ?>
+                        <button type="submit" name="bulk_restore" value="1" class="manage-bulk-toolbar__btn manage-bulk-toolbar__btn--primary" data-bulk-require-selection data-loading-text="Restoring…">Restore</button>
+                        <button type="submit" name="bulk_purge" value="1" class="manage-bulk-toolbar__btn manage-bulk-toolbar__btn--danger" data-bulk-require-selection data-bulk-confirm="Permanently delete the selected requests? This cannot be undone." data-loading-text="Deleting…">Delete</button>
+                        <?php else: ?>
+                        <button type="submit" name="bulk_delete" value="1" class="manage-bulk-toolbar__btn manage-bulk-toolbar__btn--danger" data-bulk-delete-btn data-bulk-require-selection data-bulk-confirm="Move the selected completed requests to recently deleted?" data-loading-text="Deleting…">Delete</button>
+                        <?php endif; ?>
+                    </div>
+                </form>
+                <?php endif; ?>
                 <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm min-w-[720px]">
-                    <thead class="bg-gray-50 text-[10px] font-bold uppercase text-gray-400">
+                <table class="manage-requests-table w-full text-left text-sm min-w-[800px]">
+                    <thead>
                         <tr>
-                            <th class="px-4 py-3">Tracking</th>
-                            <th class="px-4 py-3">Citizen</th>
-                            <th class="px-4 py-3">Document</th>
-                            <th class="px-4 py-3">Status</th>
-                            <th class="px-4 py-3">Submitted</th>
-                            <th class="px-4 py-3">Action</th>
+                            <?php if ($showBulkActions): ?><th class="manage-bulk-col"><span class="sr-only">Select</span></th><?php endif; ?>
+                            <th>Request ID</th>
+                            <th>Citizen</th>
+                            <th>Certificate</th>
+                            <th>Submitted</th>
+                            <?php if ($isRecentlyDeletedView): ?><th>Deleted</th><?php endif; ?>
+                            <th>Status</th>
+                            <th class="manage-cell-actions">Actions</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-50">
+                    <tbody>
                         <?php foreach ($requests as $req): ?>
-                        <tr data-request-row="<?= (int) $req['id'] ?>">
-                            <td class="px-4 py-3 font-mono text-xs font-bold text-blue-600"><?= htmlspecialchars($req['tracking_code']) ?></td>
-                            <td class="px-4 py-3 font-semibold"><?= htmlspecialchars(personNameFromRow($req)) ?></td>
-                            <td class="px-4 py-3 text-gray-500"><?= htmlspecialchars(documentTypeLabel($req['document_type'])) ?></td>
-                            <td class="px-4 py-3"><?= requestStatusBadge($req['status']) ?></td>
-                            <td class="px-4 py-3 text-gray-400 text-xs"><?= formatDateDisplay($req['submitted_at']) ?></td>
-                            <td class="px-4 py-3">
-                                <div class="flex gap-1 items-center">
+                        <?php
+                        $viewData = documentRequestViewData($req);
+                        $canBulkSelect = $isRecentlyDeletedView || documentRequestIsDeletable($req);
+                        ?>
+                        <tr class="manage-requests-row"
+                            data-request-row="<?= (int) $req['id'] ?>"
+                            data-request="<?= htmlspecialchars(json_encode($viewData, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP), ENT_QUOTES, 'UTF-8') ?>">
+                            <?php if ($showBulkActions): ?>
+                            <td class="manage-bulk-col" onclick="event.stopPropagation()">
+                                <?php if ($canBulkSelect): ?>
+                                <input type="checkbox" form="manageBulkForm" name="bulk_ids[]" value="<?= (int) $req['id'] ?>" class="manage-bulk-check manage-bulk-row-check" aria-label="Select request <?= htmlspecialchars($req['tracking_code']) ?>">
+                                <?php endif; ?>
+                            </td>
+                            <?php endif; ?>
+                            <td>
+                                <span class="manage-id"><?= htmlspecialchars($req['tracking_code']) ?></span>
+                            </td>
+                            <td>
+                                <p class="manage-citizen-name"><?= htmlspecialchars(personNameFromRow($req)) ?></p>
+                                <p class="manage-citizen-meta"><?= htmlspecialchars($req['phone'] ?: 'No phone on file') ?></p>
+                            </td>
+                            <td><span class="manage-doc-type"><?= htmlspecialchars(documentTypeLabel($req['document_type'])) ?></span></td>
+                            <td><span class="manage-date"><?= htmlspecialchars(formatReportDateTime($req['submitted_at'])) ?></span></td>
+                            <?php if ($isRecentlyDeletedView): ?>
+                            <td><span class="manage-date"><?= !empty($req['deleted_at']) ? htmlspecialchars(formatReportDateTime($req['deleted_at'])) : '—' ?></span></td>
+                            <?php endif; ?>
+                            <td><?= requestStatusBadge($req['status']) ?></td>
+                            <td class="manage-cell-actions">
+                                <div class="manage-row-actions" onclick="event.stopPropagation()">
+                                    <?php if (!$isRecentlyDeletedView): ?>
+                                    <?php
+                                    $rowStatus = normalizeRequestStatus((string) ($req['status'] ?? 'pending'));
+                                    $rowCanPrint = canPrintRequestStatus($rowStatus) && ($req['document_type'] ?? '') !== 'cenomar';
+                                    $viewLabel = match ($rowStatus) {
+                                        'pending' => 'Verify',
+                                        'ready'   => 'Complete',
+                                        default   => 'View',
+                                    };
+                                    $isReadyAction = $rowStatus === 'ready';
+                                    ?>
+                                    <?php if ($rowCanPrint): ?>
+                                    <a href="<?= htmlspecialchars(buildAuthUrl('print_certificate.php', ['request_id' => (int) $req['id']])) ?>"
+                                       class="manage-row-action manage-row-action--labeled manage-row-action--print"
+                                       title="Print certificate"
+                                       aria-label="Print certificate for <?= htmlspecialchars(personNameFromRow($req)) ?>">
+                                        <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+                                        <span class="manage-row-action__label">PRINT</span>
+                                    </a>
+                                    <?php endif; ?>
                                     <button type="button"
-                                            class="view-request-btn text-gray-400 hover:text-blue-600 p-1"
-                                            title="View request details"
-                                            data-request="<?= htmlspecialchars(json_encode(documentRequestViewData($req), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP), ENT_QUOTES, 'UTF-8') ?>">
-                                        <i data-lucide="eye" class="w-4 h-4"></i>
+                                            class="view-request-btn manage-row-action manage-row-action--labeled<?= $isReadyAction ? ' manage-row-action--complete' : '' ?>"
+                                            title="<?= htmlspecialchars($viewLabel . ' request') ?>"
+                                            aria-label="<?= htmlspecialchars($viewLabel . ' request') ?>"
+                                            data-request="<?= htmlspecialchars(json_encode($viewData, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP), ENT_QUOTES, 'UTF-8') ?>">
+                                        <?php if (!$isReadyAction): ?>
+                                        <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+                                        <?php endif; ?>
+                                        <span class="manage-row-action__label"><?= htmlspecialchars($isReadyAction ? $viewLabel : strtoupper($viewLabel)) ?></span>
                                     </button>
-                                    <form method="POST" action="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="flex gap-1 items-center">
-                                        <?= authFormField() ?>
-                                        <input type="hidden" name="redirect_status" value="<?= htmlspecialchars($filterStatus) ?>">
-                                        <input type="hidden" name="redirect_q" value="<?= htmlspecialchars($search) ?>">
-                                        <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
-                                        <input type="hidden" name="update_status" value="1">
-                                        <select name="status" required class="text-[10px] border rounded px-2 py-1">
-                                            <?php if (!in_array($req['status'], $statusOptions, true)): ?>
-                                            <option value="<?= htmlspecialchars($req['status']) ?>" selected disabled><?= htmlspecialchars(requestStatusLabel($req['status'])) ?></option>
-                                            <?php endif; ?>
-                                            <?php foreach ($statusOptions as $s): ?>
-                                            <option value="<?= $s ?>" <?= $req['status'] === $s ? 'selected' : '' ?>><?= htmlspecialchars(requestStatusLabel($s)) ?></option>
-                                            <?php endforeach; ?>
-                                        </select>
-                                        <button type="submit" class="bg-blue-600 text-white px-2 py-1 rounded text-[10px] font-bold" data-loading-text="Saving…">Save</button>
-                                    </form>
-                                    <?php if ($req['status'] === 'completed'): ?>
-                                    <form method="POST" action="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="inline">
+                                    <?php if ($req['status'] === 'completed' && !$showBulkActions): ?>
+                                    <form method="POST" action="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="manage-delete-form">
                                         <?= authFormField() ?>
                                         <input type="hidden" name="redirect_status" value="<?= htmlspecialchars($filterStatus) ?>">
                                         <input type="hidden" name="redirect_q" value="<?= htmlspecialchars($search) ?>">
                                         <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
                                         <input type="hidden" name="delete_request" value="1">
-                                        <button type="submit" title="Delete completed request" class="text-gray-400 hover:text-red-500 p-1" data-loading-text="Deleting…">
+                                        <button type="submit" title="Delete completed request" class="manage-row-action manage-row-action--danger" data-loading-text="Deleting…">
                                             <i data-lucide="trash-2" class="w-4 h-4"></i>
                                         </button>
                                     </form>
+                                    <?php endif; ?>
+                                    <?php else: ?>
+                                    <span class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Deleted</span>
                                     <?php endif; ?>
                                 </div>
                             </td>
@@ -276,62 +528,138 @@ $statusOptions = requestStatusUpdateOptions();
                 </div>
             </div>
             <?php endif; ?>
+                </div>
+
+                <?php if ($showSidePanel): ?>
+                <aside id="requestDetailPanel" class="manage-request-detail">
+                    <div id="requestDetailEmpty" class="manage-request-detail__empty">
+                        <i data-lucide="mouse-pointer-click" class="w-8 h-8 text-gray-300"></i>
+                        <p class="manage-detail-empty__title">Select a request</p>
+                        <p class="manage-detail-empty__hint">Click Verify on a request to review and accept it</p>
+                    </div>
+
+                    <div id="requestDetailContent" class="manage-request-detail__content hidden">
+                        <div class="manage-request-detail__header">
+                            <div class="min-w-0 flex-1">
+                                <h2 id="requestViewTitle" class="manage-detail-title truncate">—</h2>
+                                <p id="requestViewCode" class="manage-detail-code"></p>
+                                <p id="view-submitted" class="manage-detail-meta"></p>
+                            </div>
+                            <button type="button" id="requestDetailClose" class="manage-request-detail__close" aria-label="Close details">
+                                <i data-lucide="x" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+
+                        <div class="manage-request-detail__body">
+                            <section class="manage-detail-block">
+                                <h3>Citizen</h3>
+                                <dl class="manage-detail-rows">
+                                    <div class="manage-detail-row"><dt>DOB</dt><dd id="view-dob"></dd></div>
+                                    <div class="manage-detail-row hidden" id="view-dom-wrap"><dt>DOM</dt><dd id="view-dom"></dd></div>
+                                    <div class="manage-detail-row"><dt>Sex</dt><dd id="view-sex"></dd></div>
+                                    <div class="manage-detail-row"><dt>Phone</dt><dd id="view-phone"></dd></div>
+                                    <div class="manage-detail-row manage-detail-row--full"><dt>Email</dt><dd id="view-email"></dd></div>
+                                    <div class="manage-detail-row"><dt>Email OK</dt><dd id="view-email-verified"></dd></div>
+                                </dl>
+                            </section>
+
+                            <section class="manage-detail-block">
+                                <h3>Request</h3>
+                                <dl class="manage-detail-rows">
+                                    <div class="manage-detail-row"><dt>Document</dt><dd id="view-document-type"></dd></div>
+                                    <div class="manage-detail-row manage-detail-row--full"><dt>Purpose</dt><dd id="view-purpose"></dd></div>
+                                    <div class="manage-detail-row manage-detail-row--full"><dt>Visit</dt><dd id="view-appointment"></dd></div>
+                                    <div class="manage-detail-row"><dt>Status</dt><dd id="view-status"></dd></div>
+                                    <div class="manage-detail-row"><dt>Privacy</dt><dd id="view-privacy"></dd></div>
+                                    <div class="manage-detail-row manage-detail-row--full"><dt>Updated</dt><dd id="view-updated"></dd></div>
+                                </dl>
+                            </section>
+
+                            <section class="manage-detail-block">
+                                <h3>IDs</h3>
+                                <div id="view-id-files" class="manage-detail-ids"></div>
+                            </section>
+
+                            <section id="view-notes-wrap" class="manage-detail-block hidden">
+                                <h3>Notes</h3>
+                                <p id="view-notes" class="manage-detail-notes"></p>
+                            </section>
+                        </div>
+
+                        <div id="requestDetailActions" class="manage-request-detail__actions hidden" aria-label="Request actions"></div>
+                    </div>
+                </aside>
+                <?php endif; ?>
+            </div>
         </div>
     </main>
 
-    <div id="requestViewModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-black/40" role="dialog" aria-modal="true" aria-labelledby="requestViewTitle">
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-            <div class="px-6 py-4 border-b border-gray-100 flex items-start justify-between gap-4">
-                <div>
-                    <p class="text-[10px] font-bold uppercase tracking-wider text-blue-600 mb-1">Request Details</p>
-                    <h2 id="requestViewTitle" class="text-lg font-black text-slate-900">Citizen Submission</h2>
-                    <p id="requestViewCode" class="text-xs font-mono font-bold text-blue-600 mt-1"></p>
+    <div id="requestReviewModal" class="manage-request-modal hidden" aria-hidden="true">
+        <div class="manage-request-modal__backdrop" data-close-request-modal></div>
+        <div class="manage-request-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="modalRequestViewTitle">
+            <div class="manage-request-modal__header">
+                <div class="min-w-0 flex-1">
+                    <h2 id="modalRequestViewTitle" class="manage-detail-title truncate">—</h2>
+                    <p id="modalRequestViewCode" class="manage-detail-code"></p>
+                    <p id="modal-view-submitted" class="manage-detail-meta"></p>
                 </div>
-                <button type="button" id="requestViewClose" class="text-gray-400 hover:text-slate-700 p-1 rounded-lg hover:bg-gray-50" aria-label="Close">
-                    <i data-lucide="x" class="w-5 h-5"></i>
+                <button type="button" class="manage-request-modal__close" data-close-request-modal aria-label="Close review popup">
+                    <i data-lucide="x" class="w-4 h-4"></i>
                 </button>
             </div>
-            <div class="px-6 py-5 overflow-y-auto space-y-5 text-sm">
-                <div>
-                    <p class="text-[10px] font-bold uppercase text-gray-400 mb-2">Personal Information</p>
-                    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div><dt class="text-[11px] text-gray-400">Full Name</dt><dd id="view-citizen-name" class="font-semibold text-slate-800"></dd></div>
-                        <div><dt class="text-[11px] text-gray-400">Date of Birth</dt><dd id="view-dob" class="font-semibold text-slate-800"></dd></div>
-                        <div><dt class="text-[11px] text-gray-400">Sex</dt><dd id="view-sex" class="font-semibold text-slate-800"></dd></div>
-                        <div><dt class="text-[11px] text-gray-400">Phone</dt><dd id="view-phone" class="font-semibold text-slate-800"></dd></div>
-                        <div class="sm:col-span-2"><dt class="text-[11px] text-gray-400">Email</dt><dd id="view-email" class="font-semibold text-slate-800"></dd></div>
-                        <div><dt class="text-[11px] text-gray-400">Email Verified</dt><dd id="view-email-verified" class="font-semibold text-slate-800"></dd></div>
+
+            <div class="manage-request-modal__body">
+                <section class="manage-detail-block">
+                    <h3>Citizen</h3>
+                    <dl class="manage-detail-rows">
+                        <div class="manage-detail-row"><dt>DOB</dt><dd id="modal-view-dob"></dd></div>
+                        <div class="manage-detail-row hidden" id="modal-view-dom-wrap"><dt>DOM</dt><dd id="modal-view-dom"></dd></div>
+                        <div class="manage-detail-row"><dt>Sex</dt><dd id="modal-view-sex"></dd></div>
+                        <div class="manage-detail-row"><dt>Phone</dt><dd id="modal-view-phone"></dd></div>
+                        <div class="manage-detail-row manage-detail-row--full"><dt>Email</dt><dd id="modal-view-email"></dd></div>
+                        <div class="manage-detail-row"><dt>Email OK</dt><dd id="modal-view-email-verified"></dd></div>
                     </dl>
-                </div>
-                <div>
-                    <p class="text-[10px] font-bold uppercase text-gray-400 mb-2">Request Information</p>
-                    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div><dt class="text-[11px] text-gray-400">Document Type</dt><dd id="view-document-type" class="font-semibold text-slate-800"></dd></div>
-                        <div><dt class="text-[11px] text-gray-400">Purpose</dt><dd id="view-purpose" class="font-semibold text-slate-800"></dd></div>
-                        <div><dt class="text-[11px] text-gray-400">Preferred Visit</dt><dd id="view-appointment" class="font-semibold text-slate-800"></dd></div>
-                        <div><dt class="text-[11px] text-gray-400">Status</dt><dd id="view-status" class="font-semibold text-slate-800"></dd></div>
-                        <div><dt class="text-[11px] text-gray-400">Privacy Agreed</dt><dd id="view-privacy" class="font-semibold text-slate-800"></dd></div>
-                        <div><dt class="text-[11px] text-gray-400">Submitted</dt><dd id="view-submitted" class="font-semibold text-slate-800"></dd></div>
-                        <div><dt class="text-[11px] text-gray-400">Last Updated</dt><dd id="view-updated" class="font-semibold text-slate-800"></dd></div>
+                </section>
+
+                <section class="manage-detail-block">
+                    <h3>Request</h3>
+                    <dl class="manage-detail-rows">
+                        <div class="manage-detail-row"><dt>Document</dt><dd id="modal-view-document-type"></dd></div>
+                        <div class="manage-detail-row manage-detail-row--full"><dt>Purpose</dt><dd id="modal-view-purpose"></dd></div>
+                        <div class="manage-detail-row manage-detail-row--full"><dt>Visit</dt><dd id="modal-view-appointment"></dd></div>
+                        <div class="manage-detail-row"><dt>Status</dt><dd id="modal-view-status"></dd></div>
+                        <div class="manage-detail-row"><dt>Privacy</dt><dd id="modal-view-privacy"></dd></div>
+                        <div class="manage-detail-row manage-detail-row--full"><dt>Updated</dt><dd id="modal-view-updated"></dd></div>
                     </dl>
-                </div>
-                <div>
-                    <p class="text-[10px] font-bold uppercase text-gray-400 mb-2">Uploaded IDs</p>
-                    <div id="view-id-files" class="flex flex-wrap gap-2"></div>
-                </div>
-                <div id="view-notes-wrap" class="hidden">
-                    <p class="text-[10px] font-bold uppercase text-gray-400 mb-2">Staff Notes</p>
-                    <p id="view-notes" class="text-sm text-slate-700 bg-gray-50 rounded-xl p-3 border border-gray-100"></p>
-                </div>
+                </section>
+
+                <section class="manage-detail-block">
+                    <h3>IDs</h3>
+                    <div id="modal-view-id-files" class="manage-detail-ids"></div>
+                </section>
+
+                <section id="modal-view-notes-wrap" class="manage-detail-block hidden">
+                    <h3>Notes</h3>
+                    <p id="modal-view-notes" class="manage-detail-notes"></p>
+                </section>
             </div>
-            <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end">
-                <button type="button" id="requestViewCloseFooter" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold">Close</button>
-            </div>
+
+            <div id="modalRequestDetailActions" class="manage-request-modal__actions hidden" aria-label="Request actions"></div>
         </div>
     </div>
+
+    <?= pageConfigJson([
+        'formAction'     => buildAuthUrl('manage_request.php'),
+        'redirectStatus' => $filterStatus,
+        'redirectQ'      => $search,
+        'useSidePanel'   => $showSidePanel,
+        'bulkActions'    => $showBulkActions,
+    ]) ?>
+    <div id="requestActionAuthFields" class="hidden" aria-hidden="true"><?= authFormField() ?></div>
     <?= actionResultScript($flash) ?>
     <?= scriptTag('admin/id-preview.js') ?>
     <?= scriptTag('core/page-config.js') ?>
+    <?= scriptTag('admin/manage-bulk.js') ?>
     <?= scriptTag('admin/manage-request.js') ?>
     <?= lucideInitScript() ?>
 </body>

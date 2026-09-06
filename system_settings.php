@@ -358,6 +358,9 @@ function settingsPageUrl(string $tab, ?string $adminSub = null): string
 
 $flash = settingsFlashGet();
 $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
+
+$pageTitle = $isAdmin ? 'System Settings' : 'My Settings';
+$pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts, and system-wide configurations' : ', and credentials') . '.';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -366,11 +369,11 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
     <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= $isAdmin ? 'System Settings' : 'My Settings' ?> - ALCROS</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <?= vendorScriptTag('tailwindcss.js') ?>
+    <?= vendorStylesheetTag('inter/inter.css') ?>
     <?= publicStylesheet('password-toggle') ?>
     <?= adminLayoutHeadStyles('settings') ?>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <?= vendorScriptTag('lucide.min.js') ?>
 </head>
 <body class="flex min-h-screen">
     <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
@@ -379,11 +382,6 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
 
         <div class="p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto admin-page-wrap">
-            <div class="admin-page-head mb-6">
-                <h1><?= $isAdmin ? 'System Settings' : 'My Settings' ?></h1>
-                <p>Manage your account, security<?= $isAdmin ? ', staff accounts, and system-wide configurations' : ', and credentials' ?>.</p>
-            </div>
-
             <div class="settings-layout grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start min-w-0">
                 <aside class="settings-tab-nav lg:col-span-3 bg-white border border-slate-100 rounded-2xl p-3 shadow-sm space-y-1 min-w-0">
                     <?php
@@ -861,7 +859,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                     $adminQuickLinks = [
                                         ['url' => buildAuthUrl('analytics.php'), 'label' => 'Analytics', 'desc' => 'Charts and live metrics', 'icon' => 'bar-chart-2'],
                                         ['url' => buildAuthUrl('report.php'), 'label' => 'Operational Reports', 'desc' => 'Export period reports', 'icon' => 'file-bar-chart-2'],
-                                        ['url' => buildAuthUrl('Activity-log.php'), 'label' => 'Full Activity Log', 'desc' => 'Search all staff actions', 'icon' => 'scroll-text'],
+                                        ['url' => buildAuthUrl('activity-log.php'), 'label' => 'Full Activity Log', 'desc' => 'Search all staff actions', 'icon' => 'scroll-text'],
                                         ['url' => settingsPageUrl('system-configuration'), 'label' => 'Configuration', 'desc' => 'Office & portal settings', 'icon' => 'settings'],
                                     ];
                                     foreach ($adminQuickLinks as $link):
@@ -888,7 +886,7 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                         <h3 class="text-sm font-bold text-slate-900">Recent staff actions</h3>
                                         <p class="text-xs text-slate-500">Latest 8 entries — open the full log to search and filter.</p>
                                     </div>
-                                    <a href="<?= htmlspecialchars(buildAuthUrl('Activity-log.php')) ?>" class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline">
+                                    <a href="<?= htmlspecialchars(buildAuthUrl('activity-log.php')) ?>" class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline">
                                         Open full log <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
                                     </a>
                                 </div>
@@ -921,6 +919,9 @@ $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
                                 <div class="flex flex-wrap gap-3 mb-8">
                                     <a href="<?= htmlspecialchars(buildAuthUrl('system_settings.php', ['action' => 'export_logs'])) ?>" class="inline-flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold">
                                         <i data-lucide="download" class="w-4 h-4"></i> Export activity logs (CSV)
+                                    </a>
+                                    <a href="<?= htmlspecialchars(buildAuthUrl('test.php')) ?>" class="inline-flex items-center gap-2 border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-800 px-4 py-2.5 rounded-xl text-xs font-bold">
+                                        <i data-lucide="flask-conical" class="w-4 h-4"></i> Test request generator
                                     </a>
                                     <a href="install.php" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800 px-4 py-2.5 rounded-xl text-xs font-bold">
                                         <i data-lucide="database" class="w-4 h-4"></i> Database installer

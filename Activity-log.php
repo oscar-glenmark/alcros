@@ -5,7 +5,7 @@ require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 requireAdmin();
 
-$activePage = 'Activity-log.php';
+$activePage = 'activity-log.php';
 $pdo = getDB();
 
 $search = trim($_GET['q'] ?? '');
@@ -69,7 +69,7 @@ function activityLogPageUrl(array $overrides = []): string
         'page' => $page > 1 ? (string) $page : null,
     ], $overrides), static fn ($value) => $value !== null && $value !== '');
 
-    return buildAuthUrl('Activity-log.php', $params);
+    return buildAuthUrl('activity-log.php', $params);
 }
 
 if (isset($_GET['action']) && $_GET['action'] === 'export') {
@@ -124,10 +124,10 @@ $showingTo = min($offset + $perPage, $totalCount);
     <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Activity Log - ALCROS</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <?= vendorScriptTag('tailwindcss.js') ?>
+    <?= vendorStylesheetTag('inter/inter.css') ?>
     <?= adminLayoutHeadStyles('activity-log') ?>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <?= vendorScriptTag('lucide.min.js') ?>
 </head>
 <body class="flex min-h-screen">
     <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
@@ -148,7 +148,7 @@ $showingTo = min($offset + $perPage, $totalCount);
             </div>
 
             <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden mb-5">
-                <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('Activity-log.php')) ?>" class="admin-toolbar !mb-0 !rounded-none !border-0 !shadow-none border-b border-slate-100">
+                <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('activity-log.php')) ?>" class="admin-toolbar !mb-0 !rounded-none !border-0 !shadow-none border-b border-slate-100">
                     <div class="relative flex-1 admin-toolbar-search">
                         <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
                         <input type="search" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search action, details, or staff ID…"

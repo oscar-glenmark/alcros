@@ -11,7 +11,12 @@
 
     function authInputHtml() {
         var token = AlcrosPoll.authToken();
-        return token ? '<input type="hidden" name="alcros_auth" value="' + token.replace(/"/g, '&quot;') + '">' : '';
+        var html = token ? '<input type="hidden" name="alcros_auth" value="' + token.replace(/"/g, '&quot;') + '">' : '';
+        var csrfEl = document.querySelector('input[name="csrf_token"]');
+        if (csrfEl && csrfEl.value) {
+            html += '<input type="hidden" name="csrf_token" value="' + csrfEl.value.replace(/"/g, '&quot;') + '">';
+        }
+        return html;
     }
 
     function renderQueueTableColumn(purpose, cfg, group) {
@@ -74,10 +79,11 @@
                 '<input type="hidden" name="purpose" value="' + purpose + '">' +
                 '<input type="hidden" name="action" value="call_again">' +
                 '<button type="submit" class="queue-call-again-btn w-full py-2.5 rounded-xl border-2 border-slate-200 text-slate-600 font-bold text-xs uppercase tracking-wide hover:bg-slate-50 flex items-center justify-center gap-2">' +
-                '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg> Call again</button>';
+                '<i data-lucide="volume-2" class="w-4 h-4"></i> Call again</button>';
             var nextForm = section.querySelector('form input[name="action"][value="next"]');
             if (nextForm && nextForm.closest('form')) {
                 nextForm.closest('form').insertAdjacentElement('afterend', callForm);
+                if (typeof lucide !== 'undefined') lucide.createIcons();
             }
         } else if (!hasServing && callAgainForm) {
             callAgainForm.remove();
@@ -94,7 +100,8 @@
                 '<input type="hidden" name="purpose" value="' + purpose + '">' +
                 '<input type="hidden" name="action" value="skip">' +
                 '<button type="submit" class="text-[11px] text-slate-400 hover:text-red-500 font-medium">No-show — skip current</button>';
-            section.querySelector('.p-5').appendChild(actions);
+            var body = section.querySelector('.p-5');
+            if (body) body.appendChild(actions);
         } else if (!hasServing && skipParent) {
             skipParent.remove();
         }
@@ -111,43 +118,36 @@
         AlcrosPoll.setText('stat-queue-waiting', totalWaiting);
     }
 
-    function renderQueueTickets(tickets) {
-        var container = document.getElementById('queue-tickets');
-        if (!container) return;
+    function queuePollInterval(ctx) {
+        if (ctx.failCount > 0) return Math.min(30000, 4000 * Math.pow(2, Math.min(ctx.failCount, 3)));
+        return 5000;
+    }
 
-        if (!tickets || !tickets.length) {
-            container.innerHTML = '<p class="text-gray-400 text-sm italic">No active tickets today. Citizens can get tickets at the kiosk.</p>';
-            return;
-        }
-
-        container.innerHTML = tickets.map(function (t) {
-            var border = t.status === 'serving' ? 'border-green-400' : 'border-yellow-400';
-            var label = escapeHtml(purposeLabels[t.purpose] || t.purpose);
-            var ticketNum = escapeHtml(t.ticket_number);
-            var ticketId = escapeHtml(String(t.id));
-            var windowBadge = t.window_number ? '<span class="bg-blue-50 text-blue-600 text-[10px] font-bold px-3 py-1 rounded">WINDOW ' + escapeHtml(String(t.window_number)) + '</span>' : '';
-            var actions = t.status === 'waiting'
-                ? '<form method="POST">' + authInputHtml() + '<input type="hidden" name="ticket_id" value="' + ticketId + '"><button type="submit" name="action" value="serve" class="w-full bg-blue-600 text-white py-3 rounded-2xl font-bold flex items-center justify-center gap-2"><i data-lucide="play" class="w-4 h-4"></i> SERVE</button></form>'
-                : '<form method="POST" class="flex gap-2">' + authInputHtml() + '<input type="hidden" name="ticket_id" value="' + ticketId + '"><button type="submit" name="action" value="complete" class="flex-1 bg-green-600 text-white py-3 rounded-2xl font-bold text-xs">DONE</button><button type="submit" name="action" value="skip" class="bg-red-50 text-red-500 py-3 px-4 rounded-2xl"><i data-lucide="x-circle" class="w-5 h-5"></i></button></form>';
-
-            return '<div class="w-72 bg-white rounded-[40px] border-2 ' + border + ' shadow-xl p-8">' +
-                '<span class="bg-purple-100 text-purple-600 text-[10px] font-black px-2 py-0.5 rounded-full uppercase">' + label + '</span>' +
-                '<div class="text-center my-6"><h2 class="text-5xl font-black text-slate-900 mb-1">' + ticketNum + '</h2>' + windowBadge + '</div>' +
-                actions + '</div>';
-        }).join('');
-
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+    function queueDisplayPollInterval(ctx) {
+        if (ctx.failCount > 0) return Math.min(30000, 3000 * Math.pow(2, Math.min(ctx.failCount, 3)));
+        return 3000;
     }
 
     function initLiveQueue() {
-        AlcrosPoll.pollJson('api/queue_status.php', {}, 12000, function (data) {
+        var idlePolls = 0;
+
+        AlcrosPoll.pollJson('api/queue_status.php', function (revision) {
+            return revision ? { since: revision } : {};
+        }, queuePollInterval, function (data) {
+            idlePolls = 0;
             if (document.getElementById('queue-tables') && data.grouped && data.tables) {
                 renderQueueTables(data.grouped, data.tables);
-            } else {
-                AlcrosPoll.setText('stat-queue-waiting', data.stats.waiting);
-                renderQueueTickets(data.tickets);
             }
-            AlcrosPoll.markLiveIndicator();
+        }, null, {
+            pollInBackground: true,
+            getInterval: function (ctx) {
+                if (ctx.failCount > 0) return queuePollInterval(ctx);
+                if (idlePolls > 2) return 10000;
+                return 5000;
+            },
+            onUnchanged: function () {
+                idlePolls++;
+            }
         });
     }
 
@@ -169,8 +169,12 @@
 
     function initQueueDisplay() {
         var voiceReady = false;
+        var idlePolls = 0;
 
-        AlcrosPoll.pollJson('api/queue_status.php', { mode: 'display' }, 8000, function (data) {
+        AlcrosPoll.pollJson('api/queue_status.php', function (revision) {
+            return { mode: 'display', since: revision || undefined };
+        }, queueDisplayPollInterval, function (data) {
+            idlePolls = 0;
             var servingEl = document.getElementById('display-serving');
             var waitingEl = document.getElementById('display-waiting');
             if (!servingEl || !waitingEl) return;
@@ -212,8 +216,17 @@
             } else {
                 waitingEl.innerHTML = '<p class="text-[10px] italic text-gray-700 text-center pt-8">No one in line.</p>';
             }
-            AlcrosPoll.markLiveIndicator();
-        }, null, { pollInBackground: true });
+        }, null, {
+            pollInBackground: true,
+            getInterval: function (ctx) {
+                if (ctx.failCount > 0) return queueDisplayPollInterval(ctx);
+                if (idlePolls > 2) return 12000;
+                return 3000;
+            },
+            onUnchanged: function () {
+                idlePolls++;
+            }
+        });
     }
 
     function formatTimeAgo(datetime) {
@@ -239,7 +252,6 @@
             AlcrosPoll.setText('stat-pending', s.pending_count);
             AlcrosPoll.setText('stat-queue', s.queue_count);
             AlcrosPoll.setText('stat-appts', s.today_appts);
-            AlcrosPoll.setText('stat-pipeline', s.pipeline_count);
             AlcrosPoll.setText('stat-ready', s.ready_count);
             AlcrosPoll.setText('header-queue-count', s.queue_count);
             AlcrosPoll.setText('header-appts-count', s.today_appts);
@@ -277,6 +289,48 @@
                         return '<div class="px-5 py-3 flex items-center gap-3"><div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex flex-col items-center justify-center shrink-0 leading-none"><span class="text-[9px] font-bold">' + escapeHtml(h.replace(/ [AP]M/i, '')) + '</span><span class="text-[8px] uppercase">' + escapeHtml(ampm) + '</span></div><div class="min-w-0 flex-1"><p class="text-sm font-semibold text-slate-800 truncate">' + escapeHtml(a.citizen_name) + '</p><p class="text-[10px] text-gray-400 truncate">' + escapeHtml(a.service_type) + '</p></div>' + status + '</div>';
                     }).join('') : '';
                     if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+            }
+
+            if (data.incoming_appts) {
+                var incomingList = document.getElementById('incoming-appts-list');
+                var incomingEmpty = document.getElementById('incoming-appts-empty');
+                var incomingCount = document.getElementById('incoming-appts-count');
+                var incomingDateEl = document.getElementById('incoming-appts-date');
+                var incomingOpen = document.getElementById('incoming-appts-open-link');
+
+                if (incomingCount) incomingCount.textContent = String(data.incoming_appts.length);
+                if (incomingDateEl && data.incoming_date) {
+                    incomingDateEl.textContent = formatDateDisplay(data.incoming_date);
+                }
+                if (incomingOpen && data.incoming_date) {
+                    var openUrl = new URL(incomingOpen.href, window.location.href);
+                    openUrl.searchParams.set('date', data.incoming_date);
+                    openUrl.searchParams.set('status', 'all_appointments');
+                    incomingOpen.href = openUrl.pathname + '?' + openUrl.searchParams.toString();
+                }
+
+                if (incomingList && incomingEmpty) {
+                    if (!data.incoming_appts.length) {
+                        incomingList.innerHTML = '';
+                        incomingList.classList.add('hidden');
+                        incomingEmpty.classList.remove('hidden');
+                    } else {
+                        incomingEmpty.classList.add('hidden');
+                        incomingList.classList.remove('hidden');
+                        incomingList.innerHTML = data.incoming_appts.map(function (a) {
+                            var d = new Date('1970-01-01T' + a.appointment_time);
+                            var h = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                            var ampm = d.toLocaleTimeString([], { hour: 'numeric', hour12: true }).split(' ')[1] || '';
+                            var status = a.status ? '<span class="text-[9px] font-bold uppercase text-gray-400 shrink-0">' + escapeHtml(a.status) + '</span>' : '';
+                            return '<div class="px-5 py-3 flex items-center gap-3">' +
+                                '<div class="w-10 h-10 rounded-lg bg-violet-50 text-violet-600 flex flex-col items-center justify-center shrink-0 leading-none">' +
+                                '<span class="text-[9px] font-bold">' + escapeHtml(h.replace(/ [AP]M/i, '')) + '</span>' +
+                                '<span class="text-[8px] uppercase">' + escapeHtml(ampm) + '</span></div>' +
+                                '<div class="min-w-0 flex-1"><p class="text-sm font-semibold text-slate-800 truncate">' + escapeHtml(a.citizen_name) + '</p>' +
+                                '<p class="text-[10px] text-gray-400 truncate">' + escapeHtml(a.service_type) + '</p></div>' + status + '</div>';
+                        }).join('');
+                    }
                 }
             }
 
@@ -343,25 +397,41 @@
         var viewDate = document.body.dataset.appointmentDate;
         if (!viewDate) return;
 
-        AlcrosPoll.pollJson('api/appointments.php', { date: viewDate }, 15000, function (data) {
+        var filterStatus = document.body.dataset.appointmentStatus || 'all';
+        var searchQuery = document.body.dataset.appointmentSearch || '';
+
+        AlcrosPoll.pollJson('api/appointments.php', function () {
+            return {
+                date: viewDate,
+                status: filterStatus,
+                q: searchQuery || undefined
+            };
+        }, 30000, function (data) {
             var appts = data.appointments || [];
             var domIds = new Set();
             document.querySelectorAll('[data-appointment-row]').forEach(function (row) {
                 domIds.add(String(row.getAttribute('data-appointment-row')));
             });
 
+            var apiIds = new Set(appts.map(function (ap) { return String(ap.id); }));
+
             var hasNew = appts.some(function (ap) {
                 return !domIds.has(String(ap.id));
             });
+            var hasRemoved = Array.from(domIds).some(function (id) {
+                return !apiIds.has(id);
+            });
 
-            if (!hasNew) {
+            if (!hasNew && !hasRemoved) {
                 AlcrosPoll.markLiveIndicator();
                 return;
             }
 
-            var active = document.activeElement;
-            var editing = active && active.closest('[data-appointment-row]');
-            if (!editing) {
+            var panelOpen = document.getElementById('appointmentsBody')?.classList.contains('has-detail');
+            var modalOpen = document.getElementById('appointmentReviewModal') && !document.getElementById('appointmentReviewModal').classList.contains('hidden');
+            var editing = document.activeElement && document.activeElement.closest('[data-appointment-row], #appointmentDetailPanel, #appointmentReviewModal');
+
+            if (!panelOpen && !modalOpen && !editing) {
                 window.location.reload();
                 return;
             }

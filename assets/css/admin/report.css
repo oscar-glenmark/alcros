@@ -1,13 +1,3 @@
-.report-tab {
-    transition: color 0.15s, border-color 0.15s, background-color 0.15s;
-}
-
-.report-tab.is-active {
-    color: #2563eb;
-    border-color: #2563eb;
-    background: #eff6ff;
-}
-
 .stat-row {
     display: flex;
     align-items: center;
@@ -24,8 +14,7 @@
 @media print {
     .admin-sidebar,
     .no-print,
-    header,
-    .report-tabs {
+    header {
         display: none !important;
     }
 

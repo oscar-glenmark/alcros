@@ -1,24 +1,32 @@
 (function (global) {
     'use strict';
 
+    if (global.__alcrosLoadingModule) return;
+    global.__alcrosLoadingModule = true;
+
     var overlayEl = null;
 
-    function spinner(size) {
-        size = size || 'w-4 h-4';
-        return '<svg class="' + size + ' animate-spin shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">' +
-            '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
-            '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+    function spinnerMarkup(sizeClass) {
+        return '<svg class="alcros-loading-spinner ' + (sizeClass || '') + '" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">' +
+            '<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" opacity="0.25"></circle>' +
+            '<path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" opacity="0.85"></path>' +
+            '</svg>';
     }
 
     function ensureOverlay() {
         if (overlayEl) return overlayEl;
+
         overlayEl = document.createElement('div');
         overlayEl.id = 'alcros-loading-overlay';
-        overlayEl.className = 'hidden fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/25 backdrop-blur-[2px]';
+        overlayEl.className = 'alcros-loading-overlay is-hidden';
+        overlayEl.setAttribute('role', 'status');
+        overlayEl.setAttribute('aria-live', 'polite');
+        overlayEl.setAttribute('aria-busy', 'true');
         overlayEl.innerHTML =
-            '<div class="bg-white rounded-2xl shadow-xl border border-slate-100 px-6 py-4 flex items-center gap-3">' +
-            spinner('w-5 h-5 text-blue-600') +
-            '<p class="alcros-loading-message text-sm font-semibold text-slate-700">Working…</p></div>';
+            '<div class="alcros-loading-overlay__panel">' +
+                spinnerMarkup('alcros-loading-spinner--lg') +
+                '<p class="alcros-loading-message">Working…</p>' +
+            '</div>';
         document.body.appendChild(overlayEl);
         return overlayEl;
     }
@@ -33,12 +41,12 @@
             }
             el.disabled = true;
             el.setAttribute('aria-busy', 'true');
-            el.classList.add('opacity-80', 'pointer-events-none', 'cursor-wait');
+            el.classList.add('is-loading');
             var label = text || el.dataset.loadingText || 'Please wait…';
-            el.innerHTML = '<span class="inline-flex items-center justify-center gap-2">' + spinner() + '<span>' + label + '</span></span>';
+            el.innerHTML = '<span class="alcros-loading-btn">' + spinnerMarkup() + '<span>' + label + '</span></span>';
         } else {
             el.removeAttribute('aria-busy');
-            el.classList.remove('opacity-80', 'pointer-events-none', 'cursor-wait');
+            el.classList.remove('is-loading');
             if (el.dataset.alcrosOrigHtml) {
                 el.innerHTML = el.dataset.alcrosOrigHtml;
             }
@@ -53,8 +61,13 @@
     function page(on, message) {
         var el = ensureOverlay();
         var msg = el.querySelector('.alcros-loading-message');
-        if (msg && message) msg.textContent = message;
-        el.classList.toggle('hidden', !on);
+        if (msg) msg.textContent = message || 'Working…';
+        el.classList.toggle('is-hidden', !on);
+        el.classList.toggle('is-open', !!on);
+        document.body.classList.toggle('alcros-loading-open', !!on);
+        if (on) {
+            document.body.appendChild(el);
+        }
     }
 
     function wrap(el, promise, text) {
@@ -82,25 +95,29 @@
             var form = e.target;
             if (!(form instanceof HTMLFormElement)) return;
             if (form.dataset.noLoading !== undefined) return;
+            if (form.dataset.ajax === '1') return;
 
             var btn = e.submitter;
             if (!btn || !(btn instanceof HTMLElement)) {
                 btn = form.querySelector('button[type="submit"], input[type="submit"]');
             }
             if (!btn || btn.disabled) return;
-
             if (btn.name === 'action' && btn.value === 'back') return;
 
             preserveSubmitterValue(form, btn);
 
             var loadingText = btn.dataset.loadingText ||
                 (btn.name === 'action' && btn.value === 'next' ? 'Saving…' : 'Working…');
+            var showOverlay = form.dataset.loadingOverlay !== 'false';
+            var submitEvent = e;
 
-            // Do not disable the submitter here — some browsers abort the POST if the
-            // clicked button is disabled during the submit event.
-            if (form.dataset.loadingOverlay !== 'false') {
-                page(true, loadingText);
-            }
+            queueMicrotask(function () {
+                if (submitEvent.defaultPrevented) return;
+
+                if (showOverlay) {
+                    page(true, loadingText);
+                }
+            });
         }, false);
     }
 
@@ -112,15 +129,19 @@
         });
     }
 
+    function init() {
+        if (global.__alcrosLoadingInit) return;
+        global.__alcrosLoadingInit = true;
+        initForms();
+        initClickActions();
+    }
+
     global.AlcrosLoading = {
         button: button,
         page: page,
         wrap: wrap,
-        spinner: spinner,
-        init: function () {
-            initForms();
-            initClickActions();
-        }
+        spinner: spinnerMarkup,
+        init: init
     };
 
     if (document.readyState === 'loading') {

@@ -68,6 +68,15 @@ if (!in_array($section, $validSections, true)) {
     $section = 'overview';
 }
 
+$pageTitle = 'Operational Reports';
+$pageSubtitle = 'Export and print summaries for requests, appointments, queue, and civil records.';
+$pageHeaderMeta = '<p class="admin-header__meta">' . htmlspecialchars($report['office_name']) . ' · Showing <strong>'
+    . htmlspecialchars($rangeLabel) . '</strong>'
+    . ($section === 'records'
+        ? ' · Civil records use calendar year <strong>' . (int) $reportYear . '</strong>'
+        : '')
+    . '</p>';
+
 $yearOptions = [];
 for ($y = (int) date('Y'); $y >= (int) date('Y') - 4; $y--) {
     $yearOptions[] = $y;
@@ -114,10 +123,10 @@ $rangeOptions = [
     <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Operational Reports - ALCROS</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <?= vendorScriptTag('tailwindcss.js') ?>
+    <?= vendorStylesheetTag('inter/inter.css') ?>
     <?= adminLayoutHeadStyles('report') ?>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <?= vendorScriptTag('lucide.min.js') ?>
 </head>
 <body class="flex min-h-screen">
     <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
@@ -125,15 +134,7 @@ $rangeOptions = [
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
 
         <div class="p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto admin-page-wrap space-y-5">
-            <!-- Header -->
-            <div class="no-print admin-page-head">
-                <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                    <div>
-                        <h1>Operational Reports</h1>
-                        <p><?= htmlspecialchars($report['office_name']) ?></p>
-                        <p class="text-xs text-gray-400 mt-0.5">Showing data for <strong class="text-slate-600 font-semibold"><?= htmlspecialchars($rangeLabel) ?></strong><?= $section === 'records' ? ' · Civil records use calendar year <strong class="text-slate-600 font-semibold">' . (int) $reportYear . '</strong>' : '' ?></p>
-                    </div>
-                    <div class="flex flex-wrap gap-2 shrink-0">
+            <div class="no-print flex flex-wrap gap-2 justify-end mb-2">
                         <div class="relative" id="reportPrintMenu">
                             <button type="button" id="reportPrintBtn" class="inline-flex items-center gap-2 bg-white border border-gray-200 hover:border-gray-300 text-slate-700 px-3.5 py-2 rounded-lg text-xs font-bold">
                                 <i data-lucide="printer" class="w-3.5 h-3.5"></i> Print
@@ -180,12 +181,10 @@ $rangeOptions = [
                                 <a href="<?= htmlspecialchars(reportDownloadUrl('records_quarterly', $range, $fromDate, $toDate, $reportYear)) ?>" class="block px-3 py-2 font-semibold text-slate-700 hover:bg-gray-50">Quarterly records (<?= (int) $reportYear ?>)</a>
                             </div>
                         </div>
-                    </div>
-                </div>
             </div>
 
-            <!-- Period filter + section tabs -->
-            <div class="no-print admin-toolbar flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+            <!-- Period filter -->
+            <div class="no-print admin-toolbar flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                 <div class="flex flex-wrap gap-1.5 shrink-0">
                     <?php foreach ($rangeOptions as $key => $label): ?>
                     <a href="<?= htmlspecialchars(reportPageUrl($key, $fromDate, $toDate, $section, $section === 'records' ? $reportYear : null)) ?>"
@@ -210,19 +209,15 @@ $rangeOptions = [
                     <input type="date" name="to" value="<?= htmlspecialchars($toDate) ?>" aria-label="To date" class="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs">
                     <button type="submit" class="bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-bold">Apply</button>
                 </form>
-                <nav class="report-tabs flex gap-1 overflow-x-auto shrink-0 w-full xl:w-auto" aria-label="Report sections">
-                    <?php foreach ($reportTabs as $tabKey => $tab): ?>
-                    <a href="<?= htmlspecialchars(reportPageUrl($range, $fromDate, $toDate, $tabKey, $tabKey === 'records' ? $reportYear : null)) ?>"
-                       class="report-tab flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border border-transparent whitespace-nowrap text-slate-600 hover:text-slate-900 hover:bg-gray-50 <?= $section === $tabKey ? 'is-active' : '' ?>">
-                        <i data-lucide="<?= $tab['icon'] ?>" class="w-3.5 h-3.5"></i>
-                        <?= htmlspecialchars($tab['label']) ?>
-                        <?php if ($tab['count'] !== null): ?>
-                        <span class="min-w-[1.25rem] h-5 px-1.5 rounded-full text-[10px] font-black flex items-center justify-center <?= $section === $tabKey ? 'bg-blue-600 text-white' : 'bg-gray-100 text-slate-600' ?>"><?= (int) $tab['count'] ?></span>
-                        <?php endif; ?>
-                    </a>
-                    <?php endforeach; ?>
-                </nav>
             </div>
+
+            <?php if ($section !== 'overview'): ?>
+            <div class="no-print">
+                <a href="<?= htmlspecialchars(reportPageUrl($range, $fromDate, $toDate, 'overview', $section === 'records' ? $reportYear : null)) ?>" class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline">
+                    <i data-lucide="chevron-left" class="w-3.5 h-3.5"></i> Back to overview
+                </a>
+            </div>
+            <?php endif; ?>
 
             <!-- Print header -->
             <div class="hidden print:block mb-6 pb-4 border-b border-gray-200">

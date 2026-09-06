@@ -83,6 +83,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $flash = queueFlashGet();
 $grouped = fetchQueueTicketsGrouped($pdo);
 $totalWaiting = array_sum(array_map(fn ($g) => count($g['waiting']), $grouped));
+
+$pageTitle = 'Live Queue';
+$pageSubtitle = 'One button per table — tap when you are ready for the next citizen.';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -91,24 +94,16 @@ $totalWaiting = array_sum(array_map(fn ($g) => count($g['waiting']), $grouped));
     <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Live Queue - ALCROS</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <?= alcrosUiHead() ?>
     <?= adminLayoutHeadStyles() ?>
-    <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body class="flex min-h-screen" data-realtime="queue">
     <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
     <main class="admin-main flex flex-col">
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
         <div class="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto w-full admin-page-wrap">
-            <div class="admin-page-head mb-6">
-                <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-                    <div>
-                        <h1>Live Queue</h1>
-                        <p>One button per table — tap when you are ready for the next citizen.</p>
-                    </div>
-                    <a href="queue_display.php" target="_blank" class="text-xs font-bold text-blue-600 hover:underline shrink-0">Open display screen</a>
-                </div>
+            <div class="flex justify-end mb-4">
+                <a href="queue_display.php" target="_blank" rel="noopener noreferrer" class="text-xs font-bold text-blue-600 hover:underline shrink-0">Open display screen</a>
             </div>
 
             <p class="mb-6 text-sm font-semibold text-slate-600">

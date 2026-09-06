@@ -1,9 +1,11 @@
 (function (global) {
     'use strict';
 
+    if (global.__alcrosActionResultModule) return;
+    global.__alcrosActionResultModule = true;
+
     var modal = null;
     var iconWrapEl = null;
-    var iconEl = null;
     var titleEl = null;
     var messageEl = null;
     var okBtn = null;
@@ -25,38 +27,40 @@
 
         modal = document.createElement('div');
         modal.id = 'alcrosActionResultModal';
-        modal.className = 'fixed inset-0 bg-black/40 z-[200] hidden items-center justify-center p-4';
+        modal.className = 'alcros-action-result-modal is-hidden';
         modal.setAttribute('role', 'alertdialog');
         modal.setAttribute('aria-modal', 'true');
         modal.setAttribute('aria-labelledby', 'alcrosActionResultTitle');
         modal.innerHTML =
-            '<div class="bg-white rounded-2xl border border-gray-100 shadow-xl w-full max-w-sm p-6">' +
-                '<div class="flex items-start gap-3 mb-5">' +
-                    '<div id="alcrosActionResultIconWrap" class="p-2 rounded-xl shrink-0">' +
-                        '<i id="alcrosActionResultIcon" data-lucide="check-circle" class="w-5 h-5"></i>' +
+            '<div class="alcros-action-result-modal__panel">' +
+                '<div class="alcros-action-result-modal__head">' +
+                    '<div id="alcrosActionResultIconWrap" class="alcros-action-result-modal__icon alcros-action-result-modal__icon--success">' +
+                        '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>' +
                     '</div>' +
-                    '<div class="min-w-0">' +
-                        '<h3 id="alcrosActionResultTitle" class="text-base font-black text-slate-900"></h3>' +
-                        '<p id="alcrosActionResultMessage" class="text-sm text-gray-500 mt-1 leading-relaxed"></p>' +
+                    '<div class="alcros-action-result-modal__copy">' +
+                        '<h3 id="alcrosActionResultTitle" class="alcros-action-result-modal__title">Action Successful</h3>' +
+                        '<p id="alcrosActionResultMessage" class="alcros-action-result-modal__message"></p>' +
                     '</div>' +
                 '</div>' +
-                '<button type="button" id="alcrosActionResultOkBtn" class="w-full rounded-xl py-2.5 text-sm font-bold text-white">OK</button>' +
+                '<button type="button" id="alcrosActionResultOkBtn" class="alcros-action-result-modal__btn">OK</button>' +
             '</div>';
 
         document.body.appendChild(modal);
 
         iconWrapEl = modal.querySelector('#alcrosActionResultIconWrap');
-        iconEl = modal.querySelector('#alcrosActionResultIcon');
         titleEl = modal.querySelector('#alcrosActionResultTitle');
         messageEl = modal.querySelector('#alcrosActionResultMessage');
         okBtn = modal.querySelector('#alcrosActionResultOkBtn');
 
-        okBtn.addEventListener('click', closeModal);
+        okBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            closeModal();
+        });
         modal.addEventListener('click', function (e) {
             if (e.target === modal) closeModal();
         });
         document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape' && modal.classList.contains('flex')) closeModal();
+            if (e.key === 'Escape' && modal.classList.contains('is-open')) closeModal();
         });
 
         return modal;
@@ -64,26 +68,28 @@
 
     function applyType(type) {
         var isSuccess = type === 'success';
-        iconWrapEl.className = 'p-2 rounded-xl shrink-0 ' + (isSuccess ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600');
-        iconEl.setAttribute('data-lucide', isSuccess ? 'check-circle' : 'alert-circle');
+        iconWrapEl.className = 'alcros-action-result-modal__icon ' + (isSuccess ? 'alcros-action-result-modal__icon--success' : 'alcros-action-result-modal__icon--error');
         titleEl.textContent = isSuccess ? 'Action Successful' : 'Action Failed';
-        okBtn.className = 'w-full rounded-xl py-2.5 text-sm font-bold text-white ' + (isSuccess ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700');
+        okBtn.className = 'alcros-action-result-modal__btn ' + (isSuccess ? 'alcros-action-result-modal__btn--success' : 'alcros-action-result-modal__btn--error');
     }
 
     function openModal(type, message) {
         ensureModal();
+        if (global.AlcrosLoading && typeof global.AlcrosLoading.page === 'function') {
+            global.AlcrosLoading.page(false);
+        }
         applyType(type);
         messageEl.textContent = message || (type === 'success' ? 'The action completed successfully.' : 'The action could not be completed.');
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+        document.body.appendChild(modal);
+        modal.classList.remove('is-hidden');
+        modal.classList.add('is-open');
         if (okBtn) okBtn.focus();
     }
 
     function closeModal() {
         if (!modal) return;
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
+        modal.classList.add('is-hidden');
+        modal.classList.remove('is-open');
     }
 
     function show(type, message) {
@@ -91,6 +97,9 @@
     }
 
     function initFromConfig() {
+        if (global.__alcrosActionResultInit) return;
+        global.__alcrosActionResultInit = true;
+
         var cfg = readConfig();
         if (cfg) show(cfg.type, cfg.message);
     }

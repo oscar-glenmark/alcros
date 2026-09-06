@@ -53,8 +53,8 @@ $faqs = [
     <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ALCROS - Aloran Local Civil Registry Online System</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <?= vendorScriptTag('tailwindcss.js') ?>
+    <?= vendorScriptTag('lucide.min.js') ?>
     <?= publicStylesheet('landing') ?>
 </head>
 <body class="bg-white">
@@ -196,7 +196,7 @@ $faqs = [
                     <h2 class="text-white font-black text-sm sm:text-base md:text-lg uppercase tracking-wider whitespace-nowrap">Track Your Request</h2>
                 </div>
                 <form id="home-track-form" class="flex flex-col sm:flex-row gap-2 flex-1 min-w-0">
-                    <input type="text" id="home-track-input" placeholder="Enter Reference Number (e.g. ALCROS-2026-000123)"
+                    <input type="text" id="home-track-input" placeholder="Enter tracking code (e.g. ALR-ABC12345)"
                         class="flex-1 min-w-0 rounded-sm border-0 px-3 py-2.5 sm:py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400 uppercase">
                     <button type="submit" class="btn-gold px-6 sm:px-7 py-2.5 sm:py-3 rounded-sm shrink-0">Track</button>
                 </form>

@@ -59,14 +59,15 @@ function sidebarSectionLabel(string $label): string
         <?= sidebarLink('dashboard.php', 'Dashboard', 'layout-dashboard', $activePage) ?>
         <?= sidebarLink('notifications.php', 'Notifications', 'bell', $activePage, false, 'sidebar-notif-badge') ?>
         <?= sidebarLink('manage_request.php', 'Manage Requests', 'file-text', $activePage) ?>
-        <?= sidebarLink('appointment.php', 'Appointments', 'calendar', $activePage) ?>
+        <?= sidebarLink('appointment.php', 'Manage Appointments', 'calendar', $activePage) ?>
         <?= sidebarLink('records.php', 'Civil records', 'book-open', $activePage) ?>
         <?= sidebarLink('report.php', 'Operational Reports', 'file-bar-chart-2', $activePage) ?>
         <?= sidebarLink('live-queue.php', 'Live queue', 'users', $activePage, true) ?>
         <?php if (isAdmin()): ?>
         <?= sidebarSectionLabel('Administration') ?>
         <?= sidebarLink('analytics.php', 'Analytics', 'bar-chart-2', $activePage) ?>
-        <?= sidebarLink('Activity-log.php', 'Activity log', 'scroll-text', $activePage) ?>
+        <?= sidebarLink('print_calibration.php', 'Print calibration', 'crosshair', $activePage) ?>
+        <?= sidebarLink('activity-log.php', 'Activity log', 'scroll-text', $activePage) ?>
         <?= sidebarLink('system_settings.php', 'System settings', 'settings', $activePage) ?>
         <?php else: ?>
         <?= sidebarSectionLabel('Account') ?>

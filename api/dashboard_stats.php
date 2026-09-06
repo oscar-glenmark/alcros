@@ -8,6 +8,8 @@ requireStaffLogin();
 
 try {
     $pdo = getDB();
+    ensureCitizenNotifyColumns($pdo);
+    ensureSoftDeleteColumns($pdo);
     $month = (string) ($_GET['month'] ?? date('Y-m'));
     $scheduleDate = (string) ($_GET['date'] ?? date('Y-m-d'));
     $data = fetchDashboardStats($pdo, isAdmin(), staffId());

@@ -68,8 +68,8 @@ $sections = [
     <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Privacy &amp; Safety - <?= htmlspecialchars($site['name']) ?></title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <?= vendorScriptTag('tailwindcss.js') ?>
+    <?= vendorScriptTag('lucide.min.js') ?>
     <?= publicStylesheet('back-home') ?>
     <?= publicStylesheet('privacy') ?>
 </head>

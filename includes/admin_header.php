@@ -7,49 +7,40 @@ require_once __DIR__ . '/api_helpers.php';
 
 requireStaffLogin();
 
-$headerStats = [
-    'queue_count'     => 0,
-    'today_appts'     => 0,
-    'completed_today' => 0,
-];
-
-try {
-    $headerStats = fetchDashboardStats(getDB(), isAdmin(), staffId())['stats'];
-} catch (Throwable $e) {
-    // Keep zero defaults when stats cannot be loaded.
-}
+$pageTitle = $pageTitle ?? '';
+$pageSubtitle = $pageSubtitle ?? '';
+$pageHeaderMeta = $pageHeaderMeta ?? '';
 
 ?>
 
-<header class="admin-header w-full min-h-14 sm:min-h-16 border-b border-gray-100 flex items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4 lg:px-6 xl:px-8 py-2 min-w-0 shrink-0">
+<header class="admin-header w-full border-b border-gray-100 flex items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4 lg:px-6 xl:px-8 min-w-0 shrink-0">
 
-    <div id="admin-header-status" class="hidden md:flex items-center gap-3 xl:gap-4 bg-white border border-gray-100 rounded-2xl px-3 sm:px-4 py-2 min-w-0 shrink-0">
-        <div class="flex items-center gap-2 shrink-0">
-            <span class="relative flex h-2.5 w-2.5">
-                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60"></span>
-                <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
-            </span>
-            <span class="text-xs font-semibold text-slate-700 whitespace-nowrap">System online</span>
+    <div class="admin-header__lead flex items-center gap-2 min-w-0 flex-1">
+        <?php if ($pageTitle !== ''): ?>
+        <div class="admin-header__titles min-w-0">
+            <h1 class="admin-header__title"><?= htmlspecialchars($pageTitle) ?></h1>
+            <?php if ($pageSubtitle !== ''): ?>
+            <p class="admin-header__subtitle"><?= htmlspecialchars($pageSubtitle) ?></p>
+            <?php endif; ?>
+            <?= $pageHeaderMeta ?>
         </div>
-        <div class="h-4 w-px bg-gray-200 shrink-0"></div>
-        <div class="text-xs text-gray-500 whitespace-nowrap"><span class="font-bold text-slate-800" id="header-queue-count"><?= (int) ($headerStats['queue_count'] ?? 0) ?></span> in queue</div>
-        <div class="text-xs text-gray-500 whitespace-nowrap hidden lg:block"><span class="font-bold text-slate-800" id="header-appts-count"><?= (int) ($headerStats['today_appts'] ?? 0) ?></span> appointments today</div>
+        <?php endif; ?>
     </div>
 
-    <div class="flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0 ml-auto">
-        <div class="relative" id="notif-wrapper" data-staff-id="<?= htmlspecialchars(staffId()) ?>">
+    <div class="admin-header__toolbar flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0">
+        <div class="relative admin-header__notif" id="notif-wrapper" data-staff-id="<?= htmlspecialchars(staffId()) ?>">
 
             <button
                 type="button"
                 id="notif-bell-btn"
-                class="relative p-2 rounded-lg hover:bg-gray-50 transition-colors focus:outline-none"
+                class="relative p-1.5 rounded-lg hover:bg-gray-50 transition-colors focus:outline-none"
                 aria-label="Notifications"
                 aria-expanded="false"
                 aria-haspopup="true"
             >
                 <i
                     data-lucide="bell"
-                    class="w-5 h-5 text-gray-400 pointer-events-none"
+                    class="w-4 h-4 text-gray-400 pointer-events-none"
                 ></i>
 
                 <span
@@ -60,7 +51,6 @@ try {
                 </span>
             </button>
 
-            <!-- Notification Dropdown -->
             <div
                 id="notif-dropdown"
                 class="hidden fixed sm:absolute left-4 right-4 sm:left-auto sm:right-0 top-16 sm:top-full sm:mt-2 w-auto sm:w-80 lg:w-96 bg-white rounded-xl border border-gray-100 shadow-xl z-50 overflow-hidden"
@@ -78,24 +68,18 @@ try {
             </div>
         </div>
 
-
-        <!-- Staff Name + Profile -->
-        <div class="flex items-center space-x-2 sm:space-x-3">
-
+        <div class="flex items-center space-x-1.5 sm:space-x-2">
             <div class="text-right hidden md:block min-w-0">
-                <p class="text-xs font-bold text-slate-900 leading-none truncate max-w-[6rem] sm:max-w-[8rem] lg:max-w-[10rem] xl:max-w-none">
+                <p class="text-[11px] font-bold text-slate-900 leading-none truncate max-w-[6rem] sm:max-w-[8rem] lg:max-w-[10rem] xl:max-w-none">
                     <?= htmlspecialchars(staffName()) ?>
                 </p>
-
-                <p class="text-[9px] text-gray-400 uppercase font-bold tracking-tighter">
+                <p class="text-[8px] text-gray-400 uppercase font-bold tracking-tighter">
                     <?= htmlspecialchars(staffRole()) ?>
                 </p>
             </div>
 
-            <?= renderStaffAvatar(staffPhotoPath(), staffName()) ?>
-
+            <?= renderStaffAvatar(staffPhotoPath(), staffName(), 'w-7 h-7 text-[10px]') ?>
         </div>
-
     </div>
 
 </header>

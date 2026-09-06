@@ -1,6 +1,37 @@
 (function () {
     'use strict';
 
+    var sidebarToggle = document.getElementById('adminSidebarToggle');
+
+    function setSidebarDrawerOpen(open) {
+        document.body.classList.toggle('admin-sidebar-drawer-open', open);
+        if (sidebarToggle) {
+            sidebarToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+    }
+
+    if (sidebarToggle) {
+        sidebarToggle.addEventListener('click', function () {
+            setSidebarDrawerOpen(!document.body.classList.contains('admin-sidebar-drawer-open'));
+        });
+
+        document.addEventListener('click', function (e) {
+            if (!document.body.classList.contains('admin-sidebar-drawer-open')) {
+                return;
+            }
+            if (e.target.closest('.admin-sidebar') || e.target.closest('#adminSidebarToggle')) {
+                return;
+            }
+            setSidebarDrawerOpen(false);
+        });
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                setSidebarDrawerOpen(false);
+            }
+        });
+    }
+
     var navScroll = document.getElementById('sidebarNavScroll');
     if (navScroll) {
         var savedScroll = sessionStorage.getItem('sidebar_scroll_pos');

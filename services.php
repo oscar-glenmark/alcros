@@ -44,11 +44,11 @@ $year = date('Y');
 
     <title>All Services - ALCROS</title>
 
-    <script src="https://cdn.tailwindcss.com"></script>
+    <?= vendorScriptTag('tailwindcss.js') ?>
 
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <?= vendorScriptTag('lucide.min.js') ?>
 
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <?= vendorStylesheetTag('inter/inter.css') ?>
 
     <?= publicStylesheet('citizen-site') ?>
 

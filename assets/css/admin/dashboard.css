@@ -1,3 +1,12 @@
+.dash-brand-logo {
+    width: 4rem;
+    height: 4rem;
+    border-radius: 1rem;
+    object-fit: cover;
+    background: #fff;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+
 .dash-card {
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
     transition: box-shadow 0.2s, border-color 0.2s;
@@ -128,4 +137,23 @@
 
 .dash-cal-day-num {
     line-height: 1;
+}
+
+.dash-schedule-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    text-decoration: none;
+    color: inherit;
+    transition: background-color 0.15s ease;
+}
+
+.dash-schedule-row:hover {
+    background-color: #f8fafc;
+}
+
+.dash-schedule-row:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: -2px;
+    background-color: #eff6ff;
 }

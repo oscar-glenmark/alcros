@@ -45,7 +45,7 @@ function adminPageStyles(string $page): string
 
 function adminLayoutHeadStyles(?string $page = null): string
 {
-    $tags = [adminCoreStyles()];
+    $tags = [adminCoreStyles(), actionCoreStyles()];
     if ($page !== null && $page !== '') {
         $pageStyles = adminPageStyles($page);
         if ($pageStyles !== '') {
@@ -64,6 +64,43 @@ function publicStylesheet(string $name): string
 function jsAsset(string $path): string
 {
     return 'assets/js/' . ltrim(str_replace('\\', '/', $path), '/');
+}
+
+function vendorAsset(string $path): string
+{
+    return 'assets/vendor/' . ltrim(str_replace('\\', '/', $path), '/');
+}
+
+function vendorScriptTag(string $path): string
+{
+    $relative = vendorAsset($path);
+    $src = $relative;
+    $fullPath = dirname(__DIR__) . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative);
+    if (is_file($fullPath)) {
+        $src .= '?v=' . filemtime($fullPath);
+    }
+
+    return '<script src="' . htmlspecialchars($src) . '"></script>';
+}
+
+function vendorStylesheetTag(string $path): string
+{
+    $relative = vendorAsset($path);
+    $href = $relative;
+    $fullPath = dirname(__DIR__) . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative);
+    if (is_file($fullPath)) {
+        $href .= '?v=' . filemtime($fullPath);
+    }
+
+    return '<link rel="stylesheet" href="' . htmlspecialchars($href) . '">';
+}
+
+/** Local Tailwind + Inter + Lucide — works on LAN without internet. */
+function alcrosUiHead(): string
+{
+    return vendorScriptTag('tailwindcss.js') . "\n    "
+        . vendorStylesheetTag('inter/inter.css') . "\n    "
+        . vendorScriptTag('lucide.min.js');
 }
 
 function scriptTag(string $path, array $attrs = []): string
@@ -110,9 +147,14 @@ function actionResultScript(?array $flash): string
     ], 'alcros-action-result');
 }
 
+function actionCoreStyles(): string
+{
+    return stylesheetTag('core/action-ui.css');
+}
+
 function actionCoreScripts(): string
 {
-    return scriptTags([
+    return actionCoreStyles() . "\n    " . scriptTags([
         'core/confirm.js',
         'core/loading.js',
         'core/action-result.js',

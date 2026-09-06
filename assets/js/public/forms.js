@@ -1,6 +1,77 @@
 (function () {
     'use strict';
 
+    function fieldMeetsRequirement(el) {
+        if (!el || el.disabled) return true;
+        if (el.type === 'checkbox') {
+            return !el.required || el.checked;
+        }
+        if (el.type === 'radio') {
+            if (!el.required) return true;
+            var form = el.form || document;
+            var nodes = form.querySelectorAll('input[type="radio"][name="' + el.name.replace(/"/g, '\\"') + '"]');
+            for (var i = 0; i < nodes.length; i++) {
+                if (nodes[i].checked) return true;
+            }
+            return false;
+        }
+        if (el.type === 'file') {
+            if (!el.required) return true;
+            return !!(el.files && el.files.length);
+        }
+        if (el.tagName === 'SELECT') {
+            return String(el.value || '').trim() !== '';
+        }
+        var value = String(el.value || '').trim();
+        if (value === '') return false;
+        if (el.pattern) {
+            try {
+                return new RegExp('^(?:' + el.pattern + ')$').test(value);
+            } catch (err) {
+                return true;
+            }
+        }
+        return true;
+    }
+
+    function formFieldsReady(form) {
+        if (!form) return false;
+        var seenRadio = {};
+        var ok = true;
+        form.querySelectorAll('[required]').forEach(function (el) {
+            if (el.type === 'radio') {
+                if (seenRadio[el.name]) return;
+                seenRadio[el.name] = true;
+            }
+            if (!fieldMeetsRequirement(el)) ok = false;
+        });
+        return ok;
+    }
+
+    function bindFormContinueGate(form, btn, extraReady) {
+        if (!form || !btn) return function () {};
+
+        function refresh() {
+            var ready = formFieldsReady(form);
+            if (typeof extraReady === 'function') {
+                ready = ready && extraReady();
+            }
+            btn.disabled = !ready;
+            btn.classList.toggle('is-locked', !ready);
+            btn.setAttribute('aria-disabled', ready ? 'false' : 'true');
+            var hintId = form.dataset.continueHint;
+            if (hintId) {
+                var hint = document.getElementById(hintId);
+                if (hint) hint.classList.toggle('hidden', ready);
+            }
+        }
+
+        form.addEventListener('input', refresh);
+        form.addEventListener('change', refresh);
+        refresh();
+        return refresh;
+    }
+
     function initGmailVerify(options) {
         options = options || {};
         var verifyBtn = document.getElementById(options.verifyBtnId || 'verifyGmailBtn');
@@ -11,6 +82,7 @@
         var submitBtn = document.getElementById(options.submitBtnId || 'bookSubmitBtn');
         var form = document.getElementById(options.formId || 'requirementsForm');
         var blockTarget = continueBtn || submitBtn;
+        var refreshGate = null;
 
         function setStatus(text, type) {
             if (!gmailStatus) return;
@@ -21,10 +93,19 @@
             );
         }
 
+        function isEmailVerified() {
+            return emailVerified && emailVerified.value === '1';
+        }
+
         function setVerified(ok, email) {
             if (emailVerified) emailVerified.value = ok ? '1' : '0';
-            if (blockTarget) blockTarget.disabled = !ok;
             if (ok && email && gmailInput) gmailInput.value = email;
+            if (refreshGate) refreshGate();
+            else if (blockTarget) blockTarget.disabled = !ok;
+        }
+
+        if (form && blockTarget) {
+            refreshGate = bindFormContinueGate(form, blockTarget, isEmailVerified);
         }
 
         if (verifyBtn && gmailInput) {
@@ -75,6 +156,10 @@
                 if (emailVerified && emailVerified.value !== '1') {
                     e.preventDefault();
                     setStatus('Click Verify Gmail before continuing.', 'err');
+                    return;
+                }
+                if (blockTarget && blockTarget.disabled) {
+                    e.preventDefault();
                 }
             });
         }
@@ -86,10 +171,31 @@
         var middleNameInput = document.getElementById('middleNameInput');
         var lastNameInput = document.getElementById('lastNameInput');
         var dobInput = document.getElementById('dateOfBirthInput');
+        var domInput = document.getElementById('dateOfMarriageInput');
+        var domWrap = document.getElementById('dateOfMarriageWrap');
+        var documentTypeSelect = document.querySelector('#identificationForm select[name="document_type"]');
         var recordVerified = document.getElementById('recordVerified');
         var recordStatus = document.getElementById('recordStatus');
         var continueBtn = document.getElementById('step1ContinueBtn');
         var form = document.getElementById('identificationForm');
+        var refreshGate = null;
+
+        function syncMarriageField() {
+            var isMarriage = documentTypeSelect && documentTypeSelect.value === 'marriage';
+            if (domWrap) domWrap.classList.toggle('hidden', !isMarriage);
+            if (domInput) {
+                domInput.required = isMarriage;
+                if (!isMarriage) domInput.value = '';
+            }
+        }
+
+        if (documentTypeSelect) {
+            documentTypeSelect.addEventListener('change', function () {
+                syncMarriageField();
+                resetRecordCheck();
+            });
+            syncMarriageField();
+        }
 
         function setRecordStatus(text, type) {
             if (!recordStatus) return;
@@ -100,14 +206,23 @@
             );
         }
 
+        function isRecordVerified() {
+            return recordVerified && recordVerified.value === '1';
+        }
+
         function setRecordVerified(ok) {
             if (recordVerified) recordVerified.value = ok ? '1' : '0';
-            if (continueBtn) continueBtn.disabled = !ok;
+            if (refreshGate) refreshGate();
+            else if (continueBtn) continueBtn.disabled = !ok;
         }
 
         function resetRecordCheck() {
             setRecordVerified(false);
             if (recordStatus) recordStatus.classList.add('hidden');
+        }
+
+        if (form && continueBtn) {
+            refreshGate = bindFormContinueGate(form, continueBtn, isRecordVerified);
         }
 
         if (checkBtn && firstNameInput && lastNameInput && dobInput) {
@@ -116,12 +231,18 @@
                 var middleName = middleNameInput ? middleNameInput.value.trim() : '';
                 var lastName = lastNameInput.value.trim();
                 var dob = dobInput.value.trim();
+                var documentType = documentTypeSelect ? documentTypeSelect.value : '';
+                var dom = domInput ? domInput.value.trim() : '';
                 if (!firstName || !lastName) {
                     setRecordStatus('Enter your first name and last name on record first.', 'err');
                     return;
                 }
                 if (!dob) {
                     setRecordStatus('Enter your date of birth first.', 'err');
+                    return;
+                }
+                if (documentType === 'marriage' && !dom) {
+                    setRecordStatus('Enter your date of marriage first.', 'err');
                     return;
                 }
                 setRecordVerified(false);
@@ -133,6 +254,8 @@
                 body.append('middle_name', middleName);
                 body.append('last_name', lastName);
                 body.append('date_of_birth', dob);
+                if (documentType) body.append('document_type', documentType);
+                if (documentType === 'marriage') body.append('date_of_marriage', dom);
 
                 fetch('api/check_civil_record.php', { method: 'POST', body: body, credentials: 'same-origin' })
                     .then(function (r) { return r.json(); })
@@ -160,15 +283,32 @@
         if (middleNameInput) middleNameInput.addEventListener('input', resetRecordCheck);
         if (lastNameInput) lastNameInput.addEventListener('input', resetRecordCheck);
         if (dobInput) dobInput.addEventListener('input', resetRecordCheck);
+        if (domInput) domInput.addEventListener('input', resetRecordCheck);
 
         if (form) {
             form.addEventListener('submit', function (e) {
                 if (recordVerified && recordVerified.value !== '1') {
                     e.preventDefault();
                     setRecordStatus('Click Check Record before continuing.', 'err');
+                    return;
+                }
+                if (continueBtn && continueBtn.disabled) {
+                    e.preventDefault();
                 }
             });
         }
+    }
+
+    function initScheduleSubmitGate() {
+        var form = document.getElementById('requestScheduleForm');
+        var submitBtn = document.getElementById('step3SubmitBtn');
+        if (!form || !submitBtn) return;
+
+        bindFormContinueGate(form, submitBtn);
+
+        form.addEventListener('submit', function (e) {
+            if (submitBtn.disabled) e.preventDefault();
+        });
     }
 
     function initIdUploadPreview(ids) {
@@ -184,6 +324,13 @@
             var img = label.querySelector('[data-id-upload-image]');
             var pdfNote = label.querySelector('[data-id-upload-pdf]');
             var caption = label.querySelector('[data-id-upload-caption]');
+            var form = input.form;
+
+            function notifyFormChange() {
+                if (form) {
+                    form.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
 
             function showEmpty() {
                 label.classList.remove('has-preview');
@@ -195,6 +342,7 @@
                 }
                 if (pdfNote) pdfNote.classList.add('hidden');
                 if (caption) caption.textContent = '';
+                notifyFormChange();
             }
 
             function showPreview(file) {
@@ -207,11 +355,15 @@
                 if (isPdf) {
                     if (img) img.classList.add('hidden');
                     if (pdfNote) pdfNote.classList.remove('hidden');
+                    notifyFormChange();
                     return;
                 }
 
                 if (pdfNote) pdfNote.classList.add('hidden');
-                if (!img) return;
+                if (!img) {
+                    notifyFormChange();
+                    return;
+                }
 
                 img.classList.remove('hidden');
                 var reader = new FileReader();
@@ -219,6 +371,7 @@
                     img.src = e.target.result;
                 };
                 reader.readAsDataURL(file);
+                notifyFormChange();
             }
 
             input.addEventListener('change', function () {
@@ -238,8 +391,10 @@
     window.AlcrosForms = {
         initGmailVerify: initGmailVerify,
         initCivilRecordCheck: initCivilRecordCheck,
+        initScheduleSubmitGate: initScheduleSubmitGate,
         initFileInputLabels: initFileInputLabels,
-        initIdUploadPreview: initIdUploadPreview
+        initIdUploadPreview: initIdUploadPreview,
+        bindFormContinueGate: bindFormContinueGate
     };
 
     document.addEventListener('DOMContentLoaded', function () {
@@ -251,6 +406,7 @@
                 submitBtnId: document.body.dataset.gmailSubmit || 'bookSubmitBtn'
             });
         }
+        if (document.getElementById('requestScheduleForm')) initScheduleSubmitGate();
         if (document.getElementById('idFront') || document.getElementById('idBack')) {
             initFileInputLabels((document.body.dataset.fileInputLabels || 'idFront,idBack').split(','));
         }

@@ -18,8 +18,7 @@ $purposeLabels = queuePurposeLabels();
     <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ALCROS LIVE - Public Announcement Display</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <?= alcrosUiHead() ?>
     <?= publicStylesheet('queue-display') ?>
 </head>
 <body class="h-screen w-screen flex flex-col relative p-4" data-realtime="queue-display">

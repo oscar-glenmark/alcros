@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS document_requests (
     middle_name VARCHAR(80) DEFAULT NULL,
     last_name VARCHAR(80) NOT NULL,
     date_of_birth DATE DEFAULT NULL,
+    date_of_marriage DATE DEFAULT NULL,
     sex ENUM('male','female') DEFAULT NULL,
     email VARCHAR(150) DEFAULT NULL,
     email_verified TINYINT(1) NOT NULL DEFAULT 0,
@@ -43,7 +44,9 @@ CREATE TABLE IF NOT EXISTS document_requests (
     sms_reminder_3h_sent_at TIMESTAMP NULL DEFAULT NULL,
     appointment_date DATE DEFAULT NULL,
     appointment_time TIME DEFAULT NULL,
-    status ENUM('pending','verified','ready','completed','rejected') NOT NULL DEFAULT 'pending',
+    status ENUM('pending','processing','printing','printed','quality_check','verified','ready','completed','rejected') NOT NULL DEFAULT 'pending',
+    civil_record_id INT DEFAULT NULL,
+    print_fill_data JSON DEFAULT NULL,
     notes TEXT DEFAULT NULL,
     submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -97,6 +100,7 @@ CREATE TABLE IF NOT EXISTS queue_tickets (
     INDEX idx_date (created_at)
 ) ENGINE=InnoDB;
 
+-- Shared civil registry row (all record types).
 CREATE TABLE IF NOT EXISTS civil_records (
     id INT AUTO_INCREMENT PRIMARY KEY,
     record_type ENUM('birth','death','marriage') NOT NULL,
@@ -105,28 +109,58 @@ CREATE TABLE IF NOT EXISTS civil_records (
     middle_name VARCHAR(80) DEFAULT NULL,
     last_name VARCHAR(80) DEFAULT NULL,
     birth_date DATE DEFAULT NULL,
-    sex VARCHAR(10) DEFAULT NULL,
-    birth_time VARCHAR(20) DEFAULT NULL,
-    birth_type VARCHAR(20) DEFAULT 'Single',
-    birth_order VARCHAR(50) DEFAULT NULL,
     event_date DATE DEFAULT NULL,
     place VARCHAR(255) DEFAULT NULL,
     father_name VARCHAR(150) DEFAULT NULL,
     mother_name VARCHAR(150) DEFAULT NULL,
+    notes TEXT DEFAULT NULL,
+    print_fill_data JSON DEFAULT NULL,
+    deleted_at TIMESTAMP NULL DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_type (record_type),
+    INDEX idx_person_name (last_name, first_name),
+    INDEX idx_deleted (deleted_at)
+) ENGINE=InnoDB;
+
+-- Birth certificate fields (Form 102).
+CREATE TABLE IF NOT EXISTS birth_record_details (
+    civil_record_id INT NOT NULL PRIMARY KEY,
+    sex VARCHAR(10) DEFAULT NULL,
+    birth_time VARCHAR(20) DEFAULT NULL,
+    birth_type VARCHAR(20) DEFAULT 'Single',
+    birth_order VARCHAR(50) DEFAULT NULL,
+    birth_weight VARCHAR(20) DEFAULT NULL,
     mother_age INT DEFAULT NULL,
     mother_nationality VARCHAR(100) DEFAULT NULL,
     mother_religion VARCHAR(100) DEFAULT NULL,
+    mother_occupation VARCHAR(150) DEFAULT NULL,
+    mother_residence VARCHAR(255) DEFAULT NULL,
+    mother_children_born_alive VARCHAR(10) DEFAULT NULL,
+    mother_children_still_living VARCHAR(10) DEFAULT NULL,
+    mother_children_born_alive_now_dead VARCHAR(10) DEFAULT NULL,
     father_age INT DEFAULT NULL,
     father_nationality VARCHAR(100) DEFAULT NULL,
     father_religion VARCHAR(100) DEFAULT NULL,
+    father_occupation VARCHAR(150) DEFAULT NULL,
+    father_residence VARCHAR(255) DEFAULT NULL,
     parents_marriage_date DATE DEFAULT NULL,
     parents_marriage_place VARCHAR(255) DEFAULT NULL,
+    registration_date DATE DEFAULT NULL,
+    CONSTRAINT fk_birth_record_details_record
+        FOREIGN KEY (civil_record_id) REFERENCES civil_records(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Death certificate fields (Form 103).
+CREATE TABLE IF NOT EXISTS death_record_details (
+    civil_record_id INT NOT NULL PRIMARY KEY,
+    sex VARCHAR(10) DEFAULT NULL,
     registration_date DATE DEFAULT NULL,
     residence_deceased VARCHAR(255) DEFAULT NULL,
     residence_length_place VARCHAR(100) DEFAULT NULL,
     residence_length_ph VARCHAR(100) DEFAULT NULL,
     nationality VARCHAR(100) DEFAULT NULL,
     civil_status VARCHAR(50) DEFAULT NULL,
+    religion VARCHAR(100) DEFAULT NULL,
     age_death_years INT DEFAULT NULL,
     age_death_months INT DEFAULT NULL,
     age_death_days INT DEFAULT NULL,
@@ -144,6 +178,24 @@ CREATE TABLE IF NOT EXISTS civil_records (
     attending_physician VARCHAR(150) DEFAULT NULL,
     autopsy_performed VARCHAR(10) DEFAULT NULL,
     code_number VARCHAR(50) DEFAULT NULL,
+    child_age_mother VARCHAR(20) DEFAULT NULL,
+    child_delivery_method VARCHAR(80) DEFAULT NULL,
+    child_pregnancy_length VARCHAR(40) DEFAULT NULL,
+    child_birth_type VARCHAR(40) DEFAULT NULL,
+    child_birth_order_infant VARCHAR(20) DEFAULT NULL,
+    infant_cause_a VARCHAR(255) DEFAULT NULL,
+    infant_cause_b VARCHAR(255) DEFAULT NULL,
+    infant_cause_c VARCHAR(255) DEFAULT NULL,
+    infant_cause_d VARCHAR(255) DEFAULT NULL,
+    infant_cause_e VARCHAR(255) DEFAULT NULL,
+    postmortem_cause VARCHAR(255) DEFAULT NULL,
+    CONSTRAINT fk_death_record_details_record
+        FOREIGN KEY (civil_record_id) REFERENCES civil_records(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Marriage certificate fields (Form 97).
+CREATE TABLE IF NOT EXISTS marriage_record_details (
+    civil_record_id INT NOT NULL PRIMARY KEY,
     husband_name VARCHAR(150) DEFAULT NULL,
     husband_birth_date DATE DEFAULT NULL,
     husband_age INT DEFAULT NULL,
@@ -154,6 +206,11 @@ CREATE TABLE IF NOT EXISTS civil_records (
     husband_residence VARCHAR(255) DEFAULT NULL,
     husband_father_name VARCHAR(150) DEFAULT NULL,
     husband_mother_maiden_name VARCHAR(150) DEFAULT NULL,
+    husband_father_citizenship VARCHAR(100) DEFAULT NULL,
+    husband_mother_citizenship VARCHAR(100) DEFAULT NULL,
+    husband_consent_person_name VARCHAR(150) DEFAULT NULL,
+    husband_consent_relationship VARCHAR(80) DEFAULT NULL,
+    husband_consent_residence VARCHAR(255) DEFAULT NULL,
     wife_name VARCHAR(150) DEFAULT NULL,
     wife_birth_date DATE DEFAULT NULL,
     wife_age INT DEFAULT NULL,
@@ -164,15 +221,16 @@ CREATE TABLE IF NOT EXISTS civil_records (
     wife_residence VARCHAR(255) DEFAULT NULL,
     wife_father_name VARCHAR(150) DEFAULT NULL,
     wife_mother_maiden_name VARCHAR(150) DEFAULT NULL,
+    wife_father_citizenship VARCHAR(100) DEFAULT NULL,
+    wife_mother_citizenship VARCHAR(100) DEFAULT NULL,
+    wife_consent_person_name VARCHAR(150) DEFAULT NULL,
+    wife_consent_relationship VARCHAR(80) DEFAULT NULL,
+    wife_consent_residence VARCHAR(255) DEFAULT NULL,
     marriage_time VARCHAR(20) DEFAULT NULL,
     solemnized_by VARCHAR(150) DEFAULT NULL,
     witnesses TEXT DEFAULT NULL,
-    notes TEXT DEFAULT NULL,
-    deleted_at TIMESTAMP NULL DEFAULT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_type (record_type),
-    INDEX idx_person_name (last_name, first_name),
-    INDEX idx_deleted (deleted_at)
+    CONSTRAINT fk_marriage_record_details_record
+        FOREIGN KEY (civil_record_id) REFERENCES civil_records(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS activity_logs (
@@ -280,6 +338,89 @@ INSERT INTO system_settings (setting_key, setting_value) VALUES
 ('portal_description', 'Request document submissions or track application statuses online.'),
 ('queue_window', '1'),
 ('smtp_host', 'smtp.gmail.com'),
-('smtp_port', '587')
+('smtp_port', '587'),
+('print_mode', 'preprinted'),
+('print_global_x_offset_mm', '0'),
+('print_global_y_offset_mm', '0'),
+('print_global_scale_x', '1'),
+('print_global_scale_y', '1'),
+('print_back_orientation_hint', 'flip_long_edge'),
+('print_province', 'Misamis Occidental'),
+('print_city_municipality', 'Aloran')
 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value);
+
+CREATE TABLE IF NOT EXISTS print_templates (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    certificate_type ENUM('birth','death','marriage') NOT NULL,
+    page_side ENUM('front','back') NOT NULL,
+    form_number VARCHAR(10) NOT NULL,
+    paper_width_mm DECIMAL(8,2) NOT NULL DEFAULT 215.90,
+    paper_height_mm DECIMAL(8,2) NOT NULL DEFAULT 358.90,
+    orientation ENUM('portrait','landscape') NOT NULL DEFAULT 'portrait',
+    margin_top_mm DECIMAL(8,2) NOT NULL DEFAULT 0.00,
+    margin_left_mm DECIMAL(8,2) NOT NULL DEFAULT 0.00,
+    reference_image VARCHAR(255) DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_cert_page (certificate_type, page_side)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS print_fields (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    template_id INT NOT NULL,
+    field_name VARCHAR(80) NOT NULL,
+    label VARCHAR(120) DEFAULT NULL,
+    x_mm DECIMAL(8,2) NOT NULL DEFAULT 0.00,
+    y_mm DECIMAL(8,2) NOT NULL DEFAULT 0.00,
+    width_mm DECIMAL(8,2) NOT NULL DEFAULT 50.00,
+    height_mm DECIMAL(8,2) NOT NULL DEFAULT 5.00,
+    font_family VARCHAR(60) NOT NULL DEFAULT 'Arial',
+    font_size DECIMAL(4,1) NOT NULL DEFAULT 10.0,
+    font_weight VARCHAR(20) NOT NULL DEFAULT 'normal',
+    alignment ENUM('left','center','right') NOT NULL DEFAULT 'left',
+    max_length INT NOT NULL DEFAULT 120,
+    line_height DECIMAL(4,2) NOT NULL DEFAULT 1.20,
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_template_field (template_id, field_name),
+    CONSTRAINT fk_print_fields_template
+        FOREIGN KEY (template_id) REFERENCES print_templates(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS print_calibrations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    template_id INT NOT NULL,
+    x_offset_mm DECIMAL(8,2) NOT NULL DEFAULT 0.00,
+    y_offset_mm DECIMAL(8,2) NOT NULL DEFAULT 0.00,
+    scale_x DECIMAL(8,4) NOT NULL DEFAULT 1.0000,
+    scale_y DECIMAL(8,4) NOT NULL DEFAULT 1.0000,
+    updated_by VARCHAR(50) DEFAULT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_template_calibration (template_id),
+    CONSTRAINT fk_print_calibrations_template
+        FOREIGN KEY (template_id) REFERENCES print_templates(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS print_jobs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    request_id INT DEFAULT NULL,
+    civil_record_id INT DEFAULT NULL,
+    template_id INT NOT NULL,
+    page_side ENUM('front','back') NOT NULL,
+    certificate_type ENUM('birth','death','marriage') NOT NULL,
+    registry_number VARCHAR(50) DEFAULT NULL,
+    printer_name VARCHAR(120) DEFAULT NULL,
+    printed_by VARCHAR(50) DEFAULT NULL,
+    print_mode ENUM('preview','test','production') NOT NULL DEFAULT 'production',
+    copies INT NOT NULL DEFAULT 1,
+    status ENUM('queued','completed','failed','cancelled') NOT NULL DEFAULT 'completed',
+    notes TEXT DEFAULT NULL,
+    printed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_request (request_id),
+    INDEX idx_record (civil_record_id),
+    INDEX idx_printed (printed_at),
+    CONSTRAINT fk_print_jobs_template
+        FOREIGN KEY (template_id) REFERENCES print_templates(id) ON DELETE RESTRICT
+) ENGINE=InnoDB;
 

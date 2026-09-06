@@ -3,6 +3,7 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
+require_once __DIR__ . '/includes/printing.php';
 requireStaffLogin();
 requirePageAccess('records.php');
 
@@ -18,98 +19,20 @@ try {
 
 function ensureCivilRecordExtendedColumns(PDO $pdo): void
 {
-    static $done = false;
-    if ($done) {
-        return;
-    }
-    $columns = [
-        'sex'                     => 'VARCHAR(10) NULL',
-        'birth_time'              => 'VARCHAR(20) NULL',
-        'birth_type'              => "VARCHAR(20) NULL DEFAULT 'Single'",
-        'birth_order'             => 'VARCHAR(50) NULL',
-        'mother_age'              => 'INT NULL',
-        'mother_nationality'      => 'VARCHAR(100) NULL',
-        'mother_religion'         => 'VARCHAR(100) NULL',
-        'father_age'              => 'INT NULL',
-        'father_nationality'      => 'VARCHAR(100) NULL',
-        'father_religion'         => 'VARCHAR(100) NULL',
-        'parents_marriage_date'   => 'DATE NULL',
-        'parents_marriage_place'  => 'VARCHAR(255) NULL',
-        'registration_date'       => 'DATE NULL',
-        'residence_deceased'      => 'VARCHAR(255) NULL',
-        'residence_length_place'  => 'VARCHAR(100) NULL',
-        'residence_length_ph'     => 'VARCHAR(100) NULL',
-        'nationality'             => 'VARCHAR(100) NULL',
-        'civil_status'            => 'VARCHAR(50) NULL',
-        'age_death_years'         => 'INT NULL',
-        'age_death_months'        => 'INT NULL',
-        'age_death_days'          => 'INT NULL',
-        'age_death_hours'         => 'INT NULL',
-        'age_death_minutes'       => 'INT NULL',
-        'stillbirth'              => 'TINYINT(1) NOT NULL DEFAULT 0',
-        'occupation'              => 'VARCHAR(150) NULL',
-        'surviving_spouse_name'   => 'VARCHAR(150) NULL',
-        'surviving_spouse_address'=> 'VARCHAR(255) NULL',
-        'place_of_burial'         => 'VARCHAR(255) NULL',
-        'death_time'              => 'VARCHAR(20) NULL',
-        'death_time_period'       => 'VARCHAR(10) NULL',
-        'immediate_cause'         => 'VARCHAR(255) NULL',
-        'contributory_cause'      => 'VARCHAR(255) NULL',
-        'attending_physician'     => 'VARCHAR(150) NULL',
-        'autopsy_performed'       => 'VARCHAR(10) NULL',
-        'code_number'             => 'VARCHAR(50) NULL',
-        'husband_name'              => 'VARCHAR(150) NULL',
-        'husband_birth_date'        => 'DATE NULL',
-        'husband_age'               => 'INT NULL',
-        'husband_birth_place'       => 'VARCHAR(255) NULL',
-        'husband_citizenship'       => 'VARCHAR(100) NULL',
-        'husband_religion'          => 'VARCHAR(100) NULL',
-        'husband_civil_status'      => 'VARCHAR(50) NULL',
-        'husband_residence'         => 'VARCHAR(255) NULL',
-        'husband_father_name'       => 'VARCHAR(150) NULL',
-        'husband_mother_maiden_name'=> 'VARCHAR(150) NULL',
-        'wife_name'                 => 'VARCHAR(150) NULL',
-        'wife_birth_date'           => 'DATE NULL',
-        'wife_age'                  => 'INT NULL',
-        'wife_birth_place'          => 'VARCHAR(255) NULL',
-        'wife_citizenship'          => 'VARCHAR(100) NULL',
-        'wife_religion'             => 'VARCHAR(100) NULL',
-        'wife_civil_status'         => 'VARCHAR(50) NULL',
-        'wife_residence'            => 'VARCHAR(255) NULL',
-        'wife_father_name'          => 'VARCHAR(150) NULL',
-        'wife_mother_maiden_name'   => 'VARCHAR(150) NULL',
-        'marriage_time'             => 'VARCHAR(20) NULL',
-        'solemnized_by'             => 'VARCHAR(150) NULL',
-        'witnesses'                 => 'TEXT NULL',
-    ];
-    foreach ($columns as $column => $definition) {
-        try {
-            $pdo->query("SELECT `$column` FROM civil_records LIMIT 1");
-        } catch (PDOException $e) {
-            $pdo->exec("ALTER TABLE civil_records ADD COLUMN `$column` $definition");
-        }
-    }
-    $done = true;
+    ensureCivilRecordTypeTables($pdo);
 }
 
 ensureCivilRecordExtendedColumns($pdo);
-
-// Keep birth key date available as event_date for list/detail views.
-$pdo->exec(
-    "UPDATE civil_records SET event_date = birth_date
-     WHERE record_type = 'birth' AND birth_date IS NOT NULL
-     AND (event_date IS NULL OR event_date = '')"
-);
-
-// Death imports often land in code_number — mirror into registry_number for display/search.
-$pdo->exec(
-    "UPDATE civil_records SET registry_number = code_number
-     WHERE (registry_number IS NULL OR registry_number = '')
-     AND code_number IS NOT NULL AND code_number != ''"
-);
+ensureCivilRecordPrintSchema($pdo);
+syncCivilRecordDerivedFields($pdo);
 
 $validTypes = ['birth', 'death', 'marriage'];
-$validSorts = ['name' => 'last_name, first_name', 'type' => 'record_type', 'date' => 'COALESCE(event_date, birth_date)', 'created' => 'created_at'];
+$validSorts = [
+    'name'    => 'cr.last_name, cr.first_name',
+    'type'    => 'cr.record_type',
+    'date'    => 'COALESCE(cr.event_date, cr.birth_date)',
+    'created' => 'cr.created_at',
+];
 
 function buildRecordsUrl(array $overrides = []): string
 {
@@ -144,32 +67,63 @@ function currentRecordsFilters(): array
 
 function buildRecordsWhere(array $filters): array
 {
-    $where  = 'deleted_at IS NULL';
+    $where  = 'cr.deleted_at IS NULL';
     $params = [];
 
     if ($filters['type'] !== 'all' && in_array($filters['type'], ['birth', 'death', 'marriage'], true)) {
-        $where .= ' AND record_type = ?';
+        $where .= ' AND cr.record_type = ?';
         $params[] = $filters['type'];
     }
     if ($filters['q'] !== '') {
         $term = '%' . $filters['q'] . '%';
-        $likeFields = [
-            'first_name', 'middle_name', 'last_name',
-            'registry_number', 'code_number',
-            'father_name', 'mother_name', 'place', 'marriage_place', 'notes',
-            'husband_name', 'wife_name',
-            'husband_father_name', 'husband_mother_maiden_name',
-            'wife_father_name', 'wife_mother_maiden_name',
-            'solemnized_by', 'witnesses',
+        $clauses = [
+            'cr.first_name LIKE ?',
+            'cr.middle_name LIKE ?',
+            'cr.last_name LIKE ?',
+            'cr.registry_number LIKE ?',
+            'cr.father_name LIKE ?',
+            'cr.mother_name LIKE ?',
+            'cr.place LIKE ?',
+            'cr.notes LIKE ?',
+            'CAST(cr.id AS CHAR) LIKE ?',
+            "DATE_FORMAT(cr.birth_date, '%Y-%m-%d') LIKE ?",
+            "DATE_FORMAT(cr.event_date, '%Y-%m-%d') LIKE ?",
+            "EXISTS (
+                SELECT 1 FROM death_record_details drd
+                WHERE drd.civil_record_id = cr.id
+                AND (drd.code_number LIKE ? OR DATE_FORMAT(drd.registration_date, '%Y-%m-%d') LIKE ?)
+            )",
+            "EXISTS (
+                SELECT 1 FROM birth_record_details brd
+                WHERE brd.civil_record_id = cr.id
+                AND (
+                    DATE_FORMAT(brd.registration_date, '%Y-%m-%d') LIKE ?
+                    OR DATE_FORMAT(brd.parents_marriage_date, '%Y-%m-%d') LIKE ?
+                )
+            )",
+            "EXISTS (
+                SELECT 1 FROM marriage_record_details mrd
+                WHERE mrd.civil_record_id = cr.id
+                AND (
+                    mrd.husband_name LIKE ?
+                    OR mrd.wife_name LIKE ?
+                    OR mrd.husband_father_name LIKE ?
+                    OR mrd.husband_mother_maiden_name LIKE ?
+                    OR mrd.wife_father_name LIKE ?
+                    OR mrd.wife_mother_maiden_name LIKE ?
+                    OR mrd.solemnized_by LIKE ?
+                    OR mrd.witnesses LIKE ?
+                )
+            )",
         ];
-        $clauses = array_map(static fn (string $field) => "`$field` LIKE ?", $likeFields);
-        $clauses[] = 'CAST(id AS CHAR) LIKE ?';
-        $clauses[] = "DATE_FORMAT(birth_date, '%Y-%m-%d') LIKE ?";
-        $clauses[] = "DATE_FORMAT(event_date, '%Y-%m-%d') LIKE ?";
-        $clauses[] = "DATE_FORMAT(registration_date, '%Y-%m-%d') LIKE ?";
-        $clauses[] = "DATE_FORMAT(parents_marriage_date, '%Y-%m-%d') LIKE ?";
         $where .= ' AND (' . implode(' OR ', $clauses) . ')';
-        $params = array_merge($params, array_fill(0, count($clauses), $term));
+        $params = array_merge(
+            $params,
+            array_fill(0, 9, $term),
+            [$term, $term],
+            [$term, $term],
+            array_fill(0, 8, $term)
+        );
     }
 
     return [$where, $params];
@@ -215,34 +169,12 @@ function recordInitial(string $name): string
 
 function civilRecordExtendedFieldNames(): array
 {
-    return [
-        'sex', 'birth_time', 'birth_type', 'birth_order',
-        'mother_age', 'mother_nationality', 'mother_religion',
-        'father_age', 'father_nationality', 'father_religion',
-        'parents_marriage_date', 'parents_marriage_place',
-        'registration_date', 'residence_deceased', 'residence_length_place', 'residence_length_ph',
-        'nationality', 'civil_status',
-        'age_death_years', 'age_death_months', 'age_death_days', 'age_death_hours', 'age_death_minutes',
-        'stillbirth', 'occupation', 'surviving_spouse_name', 'surviving_spouse_address', 'place_of_burial',
-        'death_time', 'death_time_period', 'immediate_cause', 'contributory_cause',
-        'attending_physician', 'autopsy_performed', 'code_number',
-        'husband_name', 'husband_birth_date', 'husband_age', 'husband_birth_place',
-        'husband_citizenship', 'husband_religion', 'husband_civil_status', 'husband_residence',
-        'husband_father_name', 'husband_mother_maiden_name',
-        'wife_name', 'wife_birth_date', 'wife_age', 'wife_birth_place',
-        'wife_citizenship', 'wife_religion', 'wife_civil_status', 'wife_residence',
-        'wife_father_name', 'wife_mother_maiden_name',
-        'marriage_time', 'solemnized_by', 'witnesses',
-    ];
+    return civilRecordAllTypeFieldNames();
 }
 
 function civilRecordExtendedDefaults(): array
 {
-    $defaults = [];
-    foreach (civilRecordExtendedFieldNames() as $field) {
-        $defaults[$field] = $field === 'stillbirth' ? 0 : null;
-    }
-    return $defaults;
+    return [];
 }
 
 function civilRecordOptionalInt($value): ?int
@@ -316,8 +248,11 @@ function csvRowLooksLikeHeader(array $row): bool
     $normalized = array_map('normalizeCsvHeader', $row);
     $headerKeys = [
         'first_name', 'middle_name', 'last_name', 'person_name', 'full_name', 'fullname',
+        'child_first_name', 'child_last_name', 'deceased_first_name', 'deceased_last_name',
+        'husband_first_name', 'husband_last_name', 'wife_first_name', 'wife_last_name',
         'registry_number', 'birth_date', 'death_date', 'marriage_date',
-        'husband_name', 'wife_name', 'record_type',
+        'birth_place', 'place_of_death', 'marriage_place',
+        'husband_name', 'wife_name', 'record_type', 'province', 'city_municipality',
     ];
     foreach ($headerKeys as $key) {
         if (in_array($key, $normalized, true)) {
@@ -464,7 +399,10 @@ function buildCsvInputFromRow(array $headers, array $row, string $importType): a
         }
         $csvType = strtolower(trim((string) ($input['record_type'] ?? '')));
         $input['record_type'] = in_array($csvType, ['birth', 'death', 'marriage'], true) ? $csvType : $importType;
-        return applyCsvDateNormalization(applyCsvTypeAliases($input, $input['record_type']));
+        return civilRecordExpandPrintFieldInput(
+            applyCsvDateNormalization(applyCsvTypeAliases($input, $input['record_type'])),
+            $input['record_type']
+        );
     }
 
     $columns = civilRecordCsvColumns($importType);
@@ -472,79 +410,10 @@ function buildCsvInputFromRow(array $headers, array $row, string $importType): a
         $input[$column] = trim((string) ($row[$i] ?? ''));
     }
 
-    return applyCsvDateNormalization(applyCsvTypeAliases($input, $importType));
-}
-
-function civilRecordCsvColumns(string $type): array
-{
-    if ($type === 'birth') {
-        return [
-            'registry_number', 'first_name', 'middle_name', 'last_name', 'birth_date', 'sex', 'birth_time', 'place',
-            'birth_type', 'birth_order',
-            'mother_name', 'mother_age', 'mother_nationality', 'mother_religion',
-            'father_name', 'father_age', 'father_nationality', 'father_religion',
-            'parents_marriage_date', 'parents_marriage_place',
-        ];
-    }
-    if ($type === 'death') {
-        return [
-            'registry_number', 'first_name', 'middle_name', 'last_name', 'birth_date', 'registration_date', 'sex',
-            'residence_deceased', 'residence_length_place', 'residence_length_ph',
-            'nationality', 'civil_status',
-            'age_death_years', 'age_death_months', 'age_death_days', 'age_death_hours', 'age_death_minutes',
-            'stillbirth', 'occupation', 'surviving_spouse_name', 'surviving_spouse_address', 'place_of_burial',
-            'death_date', 'death_time', 'death_time_period', 'immediate_cause', 'contributory_cause',
-            'attending_physician', 'autopsy_performed', 'code_number',
-        ];
-    }
-    if ($type === 'marriage') {
-        return [
-            'registry_number',
-            'husband_name', 'husband_birth_date', 'husband_age', 'husband_birth_place',
-            'husband_citizenship', 'husband_religion', 'husband_civil_status', 'husband_residence',
-            'husband_father_name', 'husband_mother_maiden_name',
-            'wife_name', 'wife_birth_date', 'wife_age', 'wife_birth_place',
-            'wife_citizenship', 'wife_religion', 'wife_civil_status', 'wife_residence',
-            'wife_father_name', 'wife_mother_maiden_name',
-            'marriage_date', 'marriage_time', 'marriage_place', 'solemnized_by', 'witnesses',
-        ];
-    }
-
-    return ['registry_number', 'first_name', 'middle_name', 'last_name', 'birth_date'];
-}
-
-function civilRecordCsvSampleRow(string $type): array
-{
-    if ($type === 'birth') {
-        return [
-            '2024-0001', 'Juan', 'Dela', 'Cruz', '2024-01-15', 'Male', '10:30 AM',
-            'Aloran Municipal Hospital, Poblacion', 'Single', 'First',
-            'Maria Santos', '28', 'Filipino', 'Catholic',
-            'Pedro Dela Cruz', '32', 'Filipino', 'Catholic',
-            '2018-06-12', 'Aloran, Misamis Occidental',
-        ];
-    }
-    if ($type === 'death') {
-        return [
-            '2024-D001', 'Maria', '', 'Santos', '1950-03-10', '2024-02-05', 'Female',
-            '123 Poblacion, Aloran', '5 years', 'Lifetime', 'Filipino', 'Married',
-            '74', '0', '0', '0', '0', '0', 'Retired', 'Pedro Santos', '123 Poblacion, Aloran', 'Aloran Cemetery',
-            '2024-02-01', '10:30', 'A.M.', 'Cardiac arrest', 'Hypertension',
-            'Dr. Juan Reyes', 'No', '2024-D001',
-        ];
-    }
-    if ($type === 'marriage') {
-        return [
-            '2024-M001',
-            'Juan Dela Cruz', '1990-01-01', '34', 'Aloran', 'Filipino', 'Catholic', 'Single', 'Poblacion, Aloran',
-            'Pedro Dela Cruz', 'Ana Reyes',
-            'Maria Santos', '1992-05-20', '32', 'Ozamiz City', 'Filipino', 'Catholic', 'Single', 'Poblacion, Aloran',
-            'Jose Santos', 'Rosa Garcia',
-            '2024-03-15', '09:00 AM', 'Municipal Hall, Aloran', 'Hon. Municipal Mayor', 'Pedro Reyes (Poblacion) / Rosa Lim (Lower)',
-        ];
-    }
-
-    return ['2024-0001', 'Juan', 'Dela', 'Cruz', '2024-01-15'];
+    return civilRecordExpandPrintFieldInput(
+        applyCsvDateNormalization(applyCsvTypeAliases($input, $importType)),
+        $importType
+    );
 }
 
 function normalizeCsvHeader(?string $header): string
@@ -563,9 +432,30 @@ function normalizeCsvHeader(?string $header): string
         'firstname', 'first_name' => 'first_name',
         'middlename', 'middle_name' => 'middle_name',
         'lastname', 'last_name' => 'last_name',
+        'child_firstname' => 'child_first_name',
+        'child_middlename' => 'child_middle_name',
+        'child_lastname' => 'child_last_name',
+        'deceased_firstname' => 'deceased_first_name',
+        'deceased_middlename' => 'deceased_middle_name',
+        'deceased_lastname' => 'deceased_last_name',
+        'husband_firstname' => 'husband_first_name',
+        'husband_middlename' => 'husband_middle_name',
+        'husband_lastname' => 'husband_last_name',
+        'wife_firstname' => 'wife_first_name',
+        'wife_middlename' => 'wife_middle_name',
+        'wife_lastname' => 'wife_last_name',
+        'mother_firstname' => 'mother_first_name',
+        'mother_middlename' => 'mother_middle_name',
+        'mother_lastname' => 'mother_last_name',
+        'father_firstname' => 'father_first_name',
+        'father_middlename' => 'father_middle_name',
+        'father_lastname' => 'father_last_name',
         'name_of_deceased', 'deceased_name', 'full_name', 'fullname', 'name' => 'person_name',
+        'place_of_birth' => 'birth_place',
         'place_of_marriage' => 'marriage_place',
         'time_of_marriage' => 'marriage_time',
+        'solemnized_by', 'solemnizing_officer' => 'solemnizing_officer',
+        'citizenship' => 'citizenship',
         'registry_no', 'registry', 'registry_num', 'registry_id' => 'registry_number',
         default => $key,
     };
@@ -648,11 +538,25 @@ function parseCsvRecordRow(array $headers, array $row, string $importType, ?stri
     $effectiveType = $input['record_type'] ?? $importType;
 
     if ($effectiveType === 'marriage') {
-        if (trim($input['husband_name'] ?? '') === '' || trim($input['wife_name'] ?? '') === '') {
+        $husbandName = trim($input['husband_name'] ?? '');
+        $wifeName = trim($input['wife_name'] ?? '');
+        if ($husbandName === '' || $wifeName === '') {
+            $husbandParts = personNamePartsFromInput($input, 'husband_');
+            $wifeParts = personNamePartsFromInput($input, 'wife_');
+            if ($husbandName === '' && $husbandParts['first_name'] !== '' && $husbandParts['last_name'] !== '') {
+                $input['husband_name'] = formatPersonName($husbandParts['first_name'], $husbandParts['middle_name'], $husbandParts['last_name']);
+                $husbandName = $input['husband_name'];
+            }
+            if ($wifeName === '' && $wifeParts['first_name'] !== '' && $wifeParts['last_name'] !== '') {
+                $input['wife_name'] = formatPersonName($wifeParts['first_name'], $wifeParts['middle_name'], $wifeParts['last_name']);
+                $wifeName = $input['wife_name'];
+            }
+        }
+        if ($husbandName === '' || $wifeName === '') {
             if (csvRowLooksMergedIntoOneCell($row)) {
                 $error = 'This row is in one Excel column. Open the CSV template, paste each value in its own column (A, B, C…), then Save As → CSV UTF-8.';
             } else {
-                $error = 'husband_name and wife_name are required for marriage records.';
+                $error = 'husband_first_name + husband_last_name and wife_first_name + wife_last_name are required (legacy CSV may use husband_name / wife_name).';
             }
             return null;
         }
@@ -663,10 +567,25 @@ function parseCsvRecordRow(array $headers, array $row, string $importType, ?stri
             $input = array_merge($input, $parts);
         }
         if ($parts['first_name'] === '' || $parts['last_name'] === '') {
+            $namePrefix = $effectiveType === 'death' ? 'deceased_' : 'child_';
+            $altParts = personNamePartsFromInput($input, $namePrefix);
+            if ($altParts['first_name'] !== '' && $altParts['last_name'] !== '') {
+                $input = array_merge($input, [
+                    'first_name'  => $altParts['first_name'],
+                    'middle_name' => $altParts['middle_name'],
+                    'last_name'   => $altParts['last_name'],
+                ]);
+                $parts = $altParts;
+            }
+        }
+        if ($parts['first_name'] === '' || $parts['last_name'] === '') {
             if (csvRowLooksMergedIntoOneCell($row)) {
                 $error = 'This row is in one Excel column. Open the CSV template, paste each value in its own column (A, B, C…), then Save As → CSV UTF-8.';
             } else {
-                $error = 'first_name and last_name are required (legacy CSV may use person_name or full_name).';
+                $required = $effectiveType === 'death'
+                    ? 'deceased_first_name and deceased_last_name are required (legacy CSV may use first_name / last_name or person_name).'
+                    : 'child_first_name and child_last_name are required (legacy CSV may use first_name / last_name or person_name).';
+                $error = $required;
             }
             return null;
         }
@@ -770,47 +689,22 @@ function importCsvRecords(PDO $pdo, string $filePath, string $importType): array
 
 function insertCivilRecord(PDO $pdo, array $data): void
 {
-    $cols = civilRecordInsertColumns();
-    $stmt = $pdo->prepare(
-        'INSERT INTO civil_records (' . implode(', ', $cols) . ') VALUES (' . implode(', ', array_fill(0, count($cols), '?')) . ')'
-    );
-    $stmt->execute(array_map(static fn ($col) => $data[$col], $cols));
-}
-
-function civilRecordExportCellValue(array $row, string $type, string $column): ?string
-{
-    if ($column === 'registry_number') {
-        $registry = civilRecordRegistryNumber($row);
-        return $registry ?? null;
-    }
-    if ($type === 'death' && $column === 'death_date') {
-        $value = $row['event_date'] ?? null;
-        return ($value === null || $value === '') ? null : (string) $value;
-    }
-    if ($type === 'marriage' && $column === 'marriage_date') {
-        $value = $row['event_date'] ?? null;
-        return ($value === null || $value === '') ? null : (string) $value;
-    }
-    if ($type === 'marriage' && $column === 'marriage_place') {
-        $value = $row['place'] ?? null;
-        return ($value === null || $value === '') ? null : (string) $value;
-    }
-    if ($column === 'stillbirth') {
-        return !empty($row['stillbirth']) ? '1' : '0';
-    }
-
-    $value = $row[$column] ?? null;
-    if ($value === null || $value === '') {
-        return null;
-    }
-
-    return (string) $value;
+    saveCivilRecord($pdo, $data);
 }
 
 function civilRecordExportRowValues(array $row, string $type): array
 {
+    $values = printBuildFieldValues($row, $type, ['keep_empty' => true]);
+
     return array_map(
-        static fn (string $column) => civilRecordExportCellValue($row, $type, $column),
+        static function (string $column) use ($values) {
+            $value = $values[$column] ?? null;
+            if ($value === null || trim((string) $value) === '') {
+                return null;
+            }
+
+            return (string) $value;
+        },
         civilRecordCsvColumns($type)
     );
 }
@@ -825,9 +719,10 @@ function exportCivilRecordsCsv(PDO $pdo, array $filters): void
         ? [$exportType]
         : $validTypes;
 
-    $stmt = $pdo->prepare("SELECT * FROM civil_records WHERE $where ORDER BY record_type ASC, last_name ASC, first_name ASC");
+    $stmt = $pdo->prepare("SELECT cr.* FROM civil_records cr WHERE $where ORDER BY cr.record_type ASC, cr.last_name ASC, cr.first_name ASC");
     $stmt->execute($params);
     $rows = $stmt->fetchAll();
+    $rows = array_map(static fn (array $row) => hydrateCivilRecordRow($pdo, $row), $rows);
 
     $grouped = array_fill_keys($validTypes, []);
     foreach ($rows as $row) {
@@ -889,6 +784,7 @@ function civilRecordExportColumns(): array
 function normalizeRecordInput(array $input): array
 {
     global $validTypes;
+    $providedFields = array_keys($input);
     $input = applyCsvDateNormalization($input);
     $type = $input['record_type'] ?? '';
     if (!in_array($type, $validTypes, true)) {
@@ -921,79 +817,48 @@ function normalizeRecordInput(array $input): array
         'place'           => trim($input['place'] ?? '') ?: null,
         'father_name'     => trim($input['father_name'] ?? '') ?: null,
         'mother_name'     => trim($input['mother_name'] ?? '') ?: null,
-        'notes'           => null,
-    ], civilRecordExtendedDefaults());
+        'notes'           => trim($input['notes'] ?? '') ?: null,
+    ], civilRecordTypeDefaults($type));
+
+    if (isset($input['print_fill']) && is_array($input['print_fill'])) {
+        $fill = [];
+        foreach ($input['print_fill'] as $key => $value) {
+            if (!is_string($key)) {
+                continue;
+            }
+            $trimmed = trim((string) $value);
+            if ($trimmed !== '') {
+                $fill[$key] = $trimmed;
+            }
+        }
+        $encoded = $fill !== [] ? json_encode($fill, JSON_UNESCAPED_UNICODE) : false;
+        $data['print_fill_data'] = $encoded !== false ? $encoded : null;
+    } elseif (isset($input['print_fill_data'])) {
+        if (is_array($input['print_fill_data']) && $input['print_fill_data'] !== []) {
+            $encoded = json_encode($input['print_fill_data'], JSON_UNESCAPED_UNICODE);
+            $data['print_fill_data'] = $encoded !== false ? $encoded : null;
+        } elseif (is_string($input['print_fill_data']) && trim($input['print_fill_data']) !== '') {
+            $data['print_fill_data'] = trim($input['print_fill_data']);
+        }
+    }
 
     if ($type === 'birth') {
-        $data['sex'] = trim($input['sex'] ?? '') ?: null;
-        $data['birth_time'] = trim($input['birth_time'] ?? '') ?: null;
-        $data['birth_type'] = trim($input['birth_type'] ?? '') ?: 'Single';
-        $data['birth_order'] = trim($input['birth_order'] ?? '') ?: null;
-        $data['mother_age'] = civilRecordOptionalInt($input['mother_age'] ?? null);
-        $data['mother_nationality'] = trim($input['mother_nationality'] ?? '') ?: null;
-        $data['mother_religion'] = trim($input['mother_religion'] ?? '') ?: null;
-        $data['father_age'] = civilRecordOptionalInt($input['father_age'] ?? null);
-        $data['father_nationality'] = trim($input['father_nationality'] ?? '') ?: null;
-        $data['father_religion'] = trim($input['father_religion'] ?? '') ?: null;
-        $data['parents_marriage_date'] = trim($input['parents_marriage_date'] ?? '') ?: null;
-        $data['parents_marriage_place'] = trim($input['parents_marriage_place'] ?? '') ?: null;
+        civilRecordApplyInputDetailFields($data, $input, $type);
         $data['event_date'] = $data['birth_date'];
     }
 
     if ($type === 'death') {
-        $data['sex'] = trim($input['sex'] ?? '') ?: null;
-        $data['registration_date'] = trim($input['registration_date'] ?? '') ?: null;
+        civilRecordApplyInputDetailFields($data, $input, $type);
         $data['event_date'] = trim($input['death_date'] ?? $input['event_date'] ?? '') ?: null;
-        $data['residence_deceased'] = trim($input['residence_deceased'] ?? '') ?: null;
-        $data['residence_length_place'] = trim($input['residence_length_place'] ?? '') ?: null;
-        $data['residence_length_ph'] = trim($input['residence_length_ph'] ?? '') ?: null;
-        $data['nationality'] = trim($input['nationality'] ?? '') ?: null;
-        $data['civil_status'] = trim($input['civil_status'] ?? '') ?: null;
-        $data['age_death_years'] = civilRecordOptionalInt($input['age_death_years'] ?? null);
-        $data['age_death_months'] = civilRecordOptionalInt($input['age_death_months'] ?? null);
-        $data['age_death_days'] = civilRecordOptionalInt($input['age_death_days'] ?? null);
-        $data['age_death_hours'] = civilRecordOptionalInt($input['age_death_hours'] ?? null);
-        $data['age_death_minutes'] = civilRecordOptionalInt($input['age_death_minutes'] ?? null);
-        $data['stillbirth'] = in_array(strtolower(trim((string) ($input['stillbirth'] ?? ''))), ['1', 'yes', 'true'], true) ? 1 : 0;
-        $data['occupation'] = trim($input['occupation'] ?? '') ?: null;
-        $data['surviving_spouse_name'] = trim($input['surviving_spouse_name'] ?? '') ?: null;
-        $data['surviving_spouse_address'] = trim($input['surviving_spouse_address'] ?? '') ?: null;
-        $data['place_of_burial'] = trim($input['place_of_burial'] ?? '') ?: null;
-        $data['death_time'] = trim($input['death_time'] ?? '') ?: null;
-        $data['death_time_period'] = trim($input['death_time_period'] ?? '') ?: null;
-        $data['immediate_cause'] = trim($input['immediate_cause'] ?? '') ?: null;
-        $data['contributory_cause'] = trim($input['contributory_cause'] ?? '') ?: null;
-        $data['attending_physician'] = trim($input['attending_physician'] ?? '') ?: null;
-        $data['autopsy_performed'] = trim($input['autopsy_performed'] ?? '') ?: null;
-        $data['code_number'] = trim($input['code_number'] ?? '') ?: ($data['registry_number'] ?: null);
+        if (trim((string) ($data['code_number'] ?? '')) === '') {
+            $data['code_number'] = $data['registry_number'] ?: null;
+        }
     }
 
     if ($type === 'marriage') {
-        $data['husband_name'] = trim($input['husband_name'] ?? '') ?: null;
-        $data['husband_birth_date'] = trim($input['husband_birth_date'] ?? '') ?: null;
-        $data['husband_age'] = civilRecordOptionalInt($input['husband_age'] ?? null);
-        $data['husband_birth_place'] = trim($input['husband_birth_place'] ?? '') ?: null;
-        $data['husband_citizenship'] = trim($input['husband_citizenship'] ?? '') ?: null;
-        $data['husband_religion'] = trim($input['husband_religion'] ?? '') ?: null;
-        $data['husband_civil_status'] = trim($input['husband_civil_status'] ?? '') ?: null;
-        $data['husband_residence'] = trim($input['husband_residence'] ?? '') ?: null;
-        $data['husband_father_name'] = trim($input['husband_father_name'] ?? '') ?: null;
-        $data['husband_mother_maiden_name'] = trim($input['husband_mother_maiden_name'] ?? '') ?: null;
-        $data['wife_name'] = trim($input['wife_name'] ?? '') ?: null;
-        $data['wife_birth_date'] = trim($input['wife_birth_date'] ?? '') ?: null;
-        $data['wife_age'] = civilRecordOptionalInt($input['wife_age'] ?? null);
-        $data['wife_birth_place'] = trim($input['wife_birth_place'] ?? '') ?: null;
-        $data['wife_citizenship'] = trim($input['wife_citizenship'] ?? '') ?: null;
-        $data['wife_religion'] = trim($input['wife_religion'] ?? '') ?: null;
-        $data['wife_civil_status'] = trim($input['wife_civil_status'] ?? '') ?: null;
-        $data['wife_residence'] = trim($input['wife_residence'] ?? '') ?: null;
-        $data['wife_father_name'] = trim($input['wife_father_name'] ?? '') ?: null;
-        $data['wife_mother_maiden_name'] = trim($input['wife_mother_maiden_name'] ?? '') ?: null;
+        civilRecordApplyInputDetailFields($data, $input, $type);
         $data['event_date'] = trim($input['marriage_date'] ?? $input['event_date'] ?? '') ?: null;
         $data['place'] = trim($input['marriage_place'] ?? $input['place'] ?? '') ?: null;
-        $data['marriage_time'] = trim($input['marriage_time'] ?? '') ?: null;
-        $data['solemnized_by'] = trim($input['solemnized_by'] ?? '') ?: null;
-        $data['witnesses'] = trim($input['witnesses'] ?? '') ?: null;
     }
 
     if (trim((string) ($data['registry_number'] ?? '')) === '') {
@@ -1002,6 +867,8 @@ function normalizeRecordInput(array $input): array
             $data['registry_number'] = $fallbackRegistry;
         }
     }
+
+    $data['_provided_fields'] = $providedFields;
 
     return $data;
 }
@@ -1013,6 +880,28 @@ function civilRecordInsertColumns(): array
         civilRecordExtendedFieldNames(),
         ['event_date', 'place', 'father_name', 'mother_name', 'notes']
     );
+}
+
+// JSON record details for view modal
+if (isset($_GET['action']) && $_GET['action'] === 'view_record') {
+    header('Content-Type: application/json; charset=UTF-8');
+    $recordId = (int) ($_GET['id'] ?? 0);
+    $record = fetchFullCivilRecord($pdo, $recordId);
+    if (!$record) {
+        http_response_code(404);
+        echo json_encode(['ok' => false, 'error' => 'Record not found.']);
+        exit;
+    }
+    $certificateType = (string) ($record['record_type'] ?? '');
+    $printValues = in_array($certificateType, $validTypes, true)
+        ? printBuildFieldValues($record, $certificateType, ['keep_empty' => false])
+        : [];
+    echo json_encode([
+        'ok'           => true,
+        'record'       => $record,
+        'print_values' => $printValues,
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
 }
 
 // CSV template download
@@ -1047,16 +936,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         if ($action === 'create') {
-            $data = normalizeRecordInput($_POST);
+            $data = normalizeRecordInput(prepareCivilRecordFormInput($_POST));
             insertCivilRecord($pdo, $data);
             logActivity(staffId(), 'Record Created', 'New ' . $data['record_type'] . ' record: ' . civilRecordDisplayName($data));
             recordsFlashSet('success', 'Record saved successfully.');
         } elseif ($action === 'update' && !empty($_POST['record_id'])) {
-            $data = normalizeRecordInput($_POST);
+            $data = normalizeRecordInput(prepareCivilRecordFormInput($_POST));
             $id = (int) $_POST['record_id'];
-            $sets = implode(', ', array_map(static fn ($col) => "$col = ?", civilRecordInsertColumns()));
-            $stmt = $pdo->prepare("UPDATE civil_records SET $sets WHERE id = ?");
-            $stmt->execute([...array_map(static fn ($col) => $data[$col], civilRecordInsertColumns()), $id]);
+            saveCivilRecord($pdo, $data, $id);
             logActivity(staffId(), 'Record Updated', "Updated record #$id: " . civilRecordDisplayName($data));
             recordsFlashSet('success', 'Record updated successfully.');
         } elseif ($action === 'import_csv') {
@@ -1139,22 +1026,21 @@ $deathCount    = (int) $pdo->query("SELECT COUNT(*) FROM civil_records WHERE rec
 $marriageCount = (int) $pdo->query("SELECT COUNT(*) FROM civil_records WHERE record_type = 'marriage' AND deleted_at IS NULL")->fetchColumn();
 
 [$where, $params] = buildRecordsWhere($filters);
-$countStmt = $pdo->prepare("SELECT COUNT(*) FROM civil_records WHERE $where");
+$countStmt = $pdo->prepare("SELECT COUNT(*) FROM civil_records cr WHERE $where");
 $countStmt->execute($params);
 $totalRecords = (int) $countStmt->fetchColumn();
 $totalPages   = max(1, (int) ceil($totalRecords / $perPage));
 
 $orderCol = $validSorts[$sort];
-$sql = "SELECT * FROM civil_records WHERE $where ORDER BY $orderCol $dir LIMIT $perPage OFFSET $offset";
+$sql = "SELECT cr.* FROM civil_records cr WHERE $where ORDER BY $orderCol $dir LIMIT $perPage OFFSET $offset";
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $records = $stmt->fetchAll();
+$records = array_map(static fn (array $row) => hydrateCivilRecordRow($pdo, $row), $records);
 
 $editRecord = null;
 if (isset($_GET['edit'])) {
-    $editStmt = $pdo->prepare('SELECT * FROM civil_records WHERE id = ?');
-    $editStmt->execute([(int) $_GET['edit']]);
-    $editRecord = $editStmt->fetch() ?: null;
+    $editRecord = fetchFullCivilRecord($pdo, (int) $_GET['edit']);
 }
 
 $typeBadgeClass = [
@@ -1166,12 +1052,65 @@ $typeBadgeClass = [
 $showModal = isset($_GET['new']);
 $flash = recordsFlashGet();
 
+function recordEntryPrintFillSource(string $type, array $modalRecord): array
+{
+    if (($modalRecord['record_type'] ?? '') === $type && $modalRecord !== []) {
+        return $modalRecord;
+    }
+
+    return ['record_type' => $type];
+}
+
+function renderRecordEntryPrintFillSection(string $type, array $modalRecord, bool $active, bool $createMode = false): void
+{
+    $fields = printFillEditorFields($type, recordEntryPrintFillSource($type, $modalRecord));
+    $panelId = $type . 'PrintFillPanel';
+    ?>
+    <div id="<?= htmlspecialchars($panelId) ?>" class="records-entry-print-fill <?= $active ? '' : 'hidden' ?>">
+        <div class="records-entry-print-fill__head">
+            <div>
+                <p class="records-entry-print-fill__title"><?= $createMode ? 'Complete Certificate Fields' : 'Print Certificate Fields' ?></p>
+                <p class="records-entry-print-fill__hint"><?= $createMode
+                    ? 'Enter every value for this ' . htmlspecialchars(civilRecordTypeLabel($type)) . ' certificate — same fields as the municipal form and CSV import. Required: ' . ($type === 'marriage' ? 'husband and wife names' : 'first and last name') . '.'
+                    : 'Additional values for the municipal form (attendant, informant, registrar, LCRO, affidavits, etc.).' ?></p>
+            </div>
+        </div>
+        <div class="records-entry-print-fill__tabs" role="tablist" aria-label="<?= htmlspecialchars(ucfirst($type)) ?> fill-in page">
+            <button type="button" class="records-entry-print-fill__tab is-active" data-entry-fill-tab="front" role="tab" aria-selected="true">Front page</button>
+            <button type="button" class="records-entry-print-fill__tab" data-entry-fill-tab="back" role="tab" aria-selected="false">Back page</button>
+        </div>
+        <?php foreach (['front', 'back'] as $fillSide): ?>
+        <div class="records-entry-print-fill__grid" data-entry-fill-panel="<?= $fillSide ?>" role="tabpanel"<?= $fillSide === 'back' ? ' hidden' : '' ?>>
+            <?php foreach ($fields as $fillField):
+                if ($fillField['page_side'] !== $fillSide) {
+                    continue;
+                }
+                $fillGroup = printFillFieldGroup($fillField['field_name']);
+            ?>
+            <label class="records-entry-print-fill__field"<?= $fillGroup !== '' ? ' data-fill-group="' . htmlspecialchars($fillGroup) . '"' : '' ?>>
+                <span><?= htmlspecialchars($fillField['label']) ?></span>
+                <input type="text"
+                       name="print_fill[<?= htmlspecialchars($fillField['field_name']) ?>]"
+                       value="<?= htmlspecialchars($fillField['value']) ?>"
+                       autocomplete="off"
+                       spellcheck="false">
+            </label>
+            <?php endforeach; ?>
+        </div>
+        <?php endforeach; ?>
+    </div>
+    <?php
+}
+
 function sortUrl(string $column): string
 {
     global $sort, $dir;
     $nextDir = ($sort === $column && $dir === 'asc') ? 'desc' : 'asc';
     return buildRecordsUrl(['sort' => $column, 'dir' => $nextDir, 'page' => 1]);
 }
+
+$pageTitle = 'Civil Records';
+$pageSubtitle = 'Manage birth, death, and marriage registry entries with search, export, and import.';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -1180,10 +1119,10 @@ function sortUrl(string $column): string
     <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Civil Records - ALCROS</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <?= vendorScriptTag('tailwindcss.js') ?>
+    <?= vendorStylesheetTag('inter/inter.css') ?>
     <?= adminLayoutHeadStyles('records') ?>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <?= vendorScriptTag('lucide.min.js') ?>
 </head>
 <body class="flex min-h-screen">
 
@@ -1193,13 +1132,7 @@ function sortUrl(string $column): string
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
 
         <div class="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full admin-page-wrap space-y-6">
-            <div class="admin-page-head">
-                <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                    <div class="min-w-0">
-                        <h1>Civil Records</h1>
-                        <p>Manage birth, death, and marriage registry entries with search, export, and import.</p>
-                    </div>
-                    <div class="flex flex-wrap gap-2 sm:gap-3 items-center shrink-0">
+            <div class="flex flex-wrap gap-2 sm:gap-3 items-center justify-end">
                     <a href="<?= htmlspecialchars(buildAuthUrl('records.php', array_filter(['action' => 'export', 'type' => $type !== 'all' ? $type : null, 'q' => $search ?: null]))) ?>"
                        title="<?= $type === 'all' ? 'Download all records grouped by Birth, Death, and Marriage' : 'Download ' . civilRecordTypeLabel($type) . ' records (re-importable CSV)' ?>"
                        class="border border-gray-200 text-slate-700 px-4 py-2 rounded-lg text-[11px] font-bold uppercase flex items-center bg-white shadow-sm hover:bg-gray-50">
@@ -1212,9 +1145,13 @@ function sortUrl(string $column): string
                         </button>
                         <div id="newEntryMenu" class="hidden absolute right-0 top-full mt-2 w-64 bg-white rounded-xl border border-gray-100 entry-dropdown z-50 py-2">
                             <p class="px-4 py-2 text-[9px] font-bold text-gray-400 uppercase tracking-widest">Manual Entry</p>
-                            <button type="button" id="addSingleRecordBtn" class="entry-menu-item w-full px-4 py-2.5 text-left text-sm font-bold text-slate-800 flex items-center gap-2">
-                                <span class="text-blue-600 text-base leading-none">+</span> Add Single Record
+                            <?php foreach (['birth' => ['label' => 'Birth', 'icon' => 'baby'], 'death' => ['label' => 'Death', 'icon' => 'activity'], 'marriage' => ['label' => 'Marriage', 'icon' => 'heart']] as $entryType => $entryMeta): ?>
+                            <button type="button" data-single-entry-type="<?= $entryType ?>" class="entry-menu-item w-full px-4 py-2.5 text-left text-sm font-bold text-slate-800 flex items-center gap-3">
+                                <span class="text-blue-600 text-base leading-none">+</span>
+                                <i data-lucide="<?= $entryMeta['icon'] ?>" class="w-4 h-4 text-gray-400"></i>
+                                Add <?= $entryMeta['label'] ?> Record
                             </button>
+                            <?php endforeach; ?>
                             <div class="my-2 border-t border-gray-100"></div>
                             <p class="px-4 py-2 text-[9px] font-bold text-gray-400 uppercase tracking-widest">Bulk Import (CSV)</p>
                             <?php foreach ($validTypes as $t): ?>
@@ -1224,7 +1161,6 @@ function sortUrl(string $column): string
                             <?php endforeach; ?>
                         </div>
                     </div>
-                </div>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
@@ -1312,6 +1248,12 @@ function sortUrl(string $column): string
                                     <button type="button" class="view-record-btn text-gray-300 hover:text-blue-600" title="View" data-record="<?= htmlspecialchars(json_encode($r, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), ENT_QUOTES, 'UTF-8') ?>">
                                         <i data-lucide="eye" class="w-4 h-4"></i>
                                     </button>
+                                    <a href="<?= htmlspecialchars(buildAuthUrl('print_certificate.php', ['record_id' => (int) $r['id']])) ?>"
+                                       class="text-gray-300 hover:text-emerald-600 records-row-print"
+                                       title="Print certificate"
+                                       aria-label="Print certificate for <?= htmlspecialchars(civilRecordDisplayName($r)) ?>">
+                                        <i data-lucide="printer" class="w-4 h-4"></i>
+                                    </a>
                                     <a href="<?= buildRecordsUrl(['edit' => $r['id']]) ?>" class="text-gray-300 hover:text-slate-600" title="Edit"><i data-lucide="edit-3" class="w-4 h-4"></i></a>
                                 </div>
                             </td>
@@ -1347,12 +1289,15 @@ function sortUrl(string $column): string
     <?php
     $modalRecord = $editRecord ?: [];
     $modalMode = $editRecord ? 'edit' : 'create';
-    $modalTitle = $editRecord ? 'Edit Civil Record' : 'Add New Civil Record';
+    $entryUseCompletePrintForm = $modalMode === 'create';
+    $modalTitle = $editRecord
+        ? 'Edit Civil Record'
+        : 'Add ' . civilRecordTypeLabel($modalRecord['record_type'] ?? ($type !== 'all' ? $type : 'birth')) . ' Record';
     $submitAction = $editRecord ? 'update' : 'create';
     $defaultRecordType = $modalRecord['record_type'] ?? ($type !== 'all' ? $type : 'birth');
     ?>
     <div class="fixed inset-0 bg-black/40 z-50 hidden items-center justify-center p-4" id="entryModal">
-        <div class="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col">
+        <div class="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-4xl max-h-[92vh] overflow-hidden flex flex-col">
             <div class="flex justify-between items-center px-4 sm:px-6 py-4 border-b border-gray-100 shrink-0">
                 <h2 class="text-lg font-black text-slate-900" id="entryModalTitle"><?= htmlspecialchars($modalTitle) ?></h2>
                 <button type="button" class="text-gray-400 hover:text-gray-600 close-modal"><i data-lucide="x" class="w-5 h-5"></i></button>
@@ -1377,7 +1322,7 @@ function sortUrl(string $column): string
                         </div>
                     </div>
 
-                    <div id="birthFieldsPanel" class="space-y-5 <?= $defaultRecordType === 'birth' ? '' : 'hidden' ?>">
+                    <div id="birthFieldsPanel" class="entry-detail-panel space-y-5 <?= $entryUseCompletePrintForm ? 'hidden' : ($defaultRecordType === 'birth' ? '' : 'hidden') ?>">
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">First Name *</label>
@@ -1433,6 +1378,17 @@ function sortUrl(string $column): string
                             </div>
                         </div>
 
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Weight at Birth</label>
+                                <input type="text" name="birth_weight" value="<?= htmlspecialchars($modalRecord['birth_weight'] ?? '') ?>" placeholder="e.g. 3.2 kg" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Date of Registration</label>
+                                <input type="date" name="registration_date" value="<?= htmlspecialchars($modalRecord['registration_date'] ?? '') ?>" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            </div>
+                        </div>
+
                         <div id="singleBirthDetails" class="space-y-4">
                             <div class="rounded-xl border border-blue-100 bg-blue-50/40 p-4 space-y-4">
                                 <p class="text-[10px] font-black text-blue-700 uppercase tracking-wider flex items-center gap-2">
@@ -1454,6 +1410,30 @@ function sortUrl(string $column): string
                                     <div>
                                         <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Religion</label>
                                         <input type="text" name="mother_religion" value="<?= htmlspecialchars($modalRecord['mother_religion'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Occupation</label>
+                                        <input type="text" name="mother_occupation" value="<?= htmlspecialchars($modalRecord['mother_occupation'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Residence</label>
+                                        <input type="text" name="mother_residence" value="<?= htmlspecialchars($modalRecord['mother_residence'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Children Born Alive</label>
+                                        <input type="text" name="mother_children_born_alive" value="<?= htmlspecialchars($modalRecord['mother_children_born_alive'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Still Living</label>
+                                        <input type="text" name="mother_children_still_living" value="<?= htmlspecialchars($modalRecord['mother_children_still_living'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Born Alive but Now Dead</label>
+                                        <input type="text" name="mother_children_born_alive_now_dead" value="<?= htmlspecialchars($modalRecord['mother_children_born_alive_now_dead'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                                     </div>
                                 </div>
                             </div>
@@ -1480,6 +1460,16 @@ function sortUrl(string $column): string
                                         <input type="text" name="father_religion" value="<?= htmlspecialchars($modalRecord['father_religion'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                                     </div>
                                 </div>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Occupation</label>
+                                        <input type="text" name="father_occupation" value="<?= htmlspecialchars($modalRecord['father_occupation'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Residence</label>
+                                        <input type="text" name="father_residence" value="<?= htmlspecialchars($modalRecord['father_residence'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                    </div>
+                                </div>
                             </div>
 
                             <div class="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4 space-y-4">
@@ -1496,9 +1486,13 @@ function sortUrl(string $column): string
                                 </div>
                             </div>
                         </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Remarks / Notes</label>
+                            <textarea name="notes" rows="2" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm resize-y"><?= htmlspecialchars($modalRecord['notes'] ?? '') ?></textarea>
+                        </div>
                     </div>
 
-                    <div id="deathFieldsPanel" class="space-y-5 <?= $defaultRecordType === 'death' ? '' : 'hidden' ?>">
+                    <div id="deathFieldsPanel" class="entry-detail-panel space-y-5 <?= $entryUseCompletePrintForm ? 'hidden' : ($defaultRecordType === 'death' ? '' : 'hidden') ?>">
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">First Name *</label>
@@ -1556,6 +1550,14 @@ function sortUrl(string $column): string
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Civil Status</label>
                                 <input type="text" name="civil_status" value="<?= htmlspecialchars($modalRecord['civil_status'] ?? '') ?>" placeholder="e.g. Married, Single" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Religion</label>
+                                <input type="text" name="religion" value="<?= htmlspecialchars($modalRecord['religion'] ?? '') ?>" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Place of Death</label>
+                            <input type="text" name="place" value="<?= htmlspecialchars($modalRecord['place'] ?? '') ?>" placeholder="Hospital / Institution / Address" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                         </div>
 
                         <div class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 space-y-4">
@@ -1625,6 +1627,16 @@ function sortUrl(string $column): string
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Contributory Cause</label>
                                 <input type="text" name="contributory_cause" value="<?= htmlspecialchars($modalRecord['contributory_cause'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
+                            <?php foreach (['a', 'b', 'c', 'd', 'e'] as $letter): ?>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Infant Cause <?= strtoupper($letter) ?></label>
+                                <input type="text" name="infant_cause_<?= $letter ?>" value="<?= htmlspecialchars($modalRecord['infant_cause_' . $letter] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            </div>
+                            <?php endforeach; ?>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Postmortem Cause</label>
+                                <input type="text" name="postmortem_cause" value="<?= htmlspecialchars($modalRecord['postmortem_cause'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            </div>
                         </div>
 
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1645,9 +1657,54 @@ function sortUrl(string $column): string
                                 <input type="text" name="code_number" value="<?= htmlspecialchars($modalRecord['code_number'] ?? $modalRecord['registry_number'] ?? '') ?>" readonly class="w-full bg-gray-100 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-500">
                             </div>
                         </div>
+
+                        <div class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 space-y-4">
+                            <p class="text-[10px] font-black text-slate-700 uppercase tracking-wider">Parents of Deceased</p>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Father's Name</label>
+                                    <input type="text" name="father_name" value="<?= htmlspecialchars($modalRecord['father_name'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Mother's Name</label>
+                                    <input type="text" name="mother_name" value="<?= htmlspecialchars($modalRecord['mother_name'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="rounded-xl border border-violet-100 bg-violet-50/40 p-4 space-y-4">
+                            <p class="text-[10px] font-black text-violet-800 uppercase tracking-wider">Infant Details (0–7 Days)</p>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Age of Mother</label>
+                                    <input type="text" name="child_age_mother" value="<?= htmlspecialchars($modalRecord['child_age_mother'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Method of Delivery</label>
+                                    <input type="text" name="child_delivery_method" value="<?= htmlspecialchars($modalRecord['child_delivery_method'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Length of Pregnancy</label>
+                                    <input type="text" name="child_pregnancy_length" value="<?= htmlspecialchars($modalRecord['child_pregnancy_length'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Type of Birth</label>
+                                    <input type="text" name="child_birth_type" value="<?= htmlspecialchars($modalRecord['child_birth_type'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                </div>
+                                <div class="sm:col-span-2">
+                                    <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Birth Order (Infant)</label>
+                                    <input type="text" name="child_birth_order_infant" value="<?= htmlspecialchars($modalRecord['child_birth_order_infant'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Remarks / Notes</label>
+                            <textarea name="notes" rows="2" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm resize-y"><?= htmlspecialchars($modalRecord['notes'] ?? '') ?></textarea>
+                        </div>
                     </div>
 
-                    <div id="marriageFieldsPanel" class="space-y-5 <?= $defaultRecordType === 'marriage' ? '' : 'hidden' ?>">
+                    <div id="marriageFieldsPanel" class="entry-detail-panel space-y-5 <?= $entryUseCompletePrintForm ? 'hidden' : ($defaultRecordType === 'marriage' ? '' : 'hidden') ?>">
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Registry Number</label>
@@ -1714,6 +1771,26 @@ function sortUrl(string $column): string
                                     <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Mother's Maiden Name</label>
                                     <input type="text" name="<?= $prefix ?>_mother_maiden_name" value="<?= htmlspecialchars($modalRecord[$prefix . '_mother_maiden_name'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                                 </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Father Citizenship</label>
+                                    <input type="text" name="<?= $prefix ?>_father_citizenship" value="<?= htmlspecialchars($modalRecord[$prefix . '_father_citizenship'] ?? 'Filipino') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Mother Citizenship</label>
+                                    <input type="text" name="<?= $prefix ?>_mother_citizenship" value="<?= htmlspecialchars($modalRecord[$prefix . '_mother_citizenship'] ?? 'Filipino') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                </div>
+                                <div class="sm:col-span-2">
+                                    <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Consent Person Name</label>
+                                    <input type="text" name="<?= $prefix ?>_consent_person_name" value="<?= htmlspecialchars($modalRecord[$prefix . '_consent_person_name'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Consent Relationship</label>
+                                    <input type="text" name="<?= $prefix ?>_consent_relationship" value="<?= htmlspecialchars($modalRecord[$prefix . '_consent_relationship'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Consent Residence</label>
+                                    <input type="text" name="<?= $prefix ?>_consent_residence" value="<?= htmlspecialchars($modalRecord[$prefix . '_consent_residence'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                </div>
                             </div>
                         </div>
                         <?php endforeach; ?>
@@ -1746,7 +1823,15 @@ function sortUrl(string $column): string
                             <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Witnesses</label>
                             <textarea name="witnesses" rows="3" placeholder="List of witnesses (Name, Residence)" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm resize-y"><?= htmlspecialchars($modalRecord['witnesses'] ?? '') ?></textarea>
                         </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Remarks / Notes</label>
+                            <textarea name="notes" rows="2" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm resize-y"><?= htmlspecialchars($modalRecord['notes'] ?? '') ?></textarea>
+                        </div>
                     </div>
+
+                    <?php foreach ($validTypes as $fillType): ?>
+                        <?php renderRecordEntryPrintFillSection($fillType, $modalRecord, $defaultRecordType === $fillType, $entryUseCompletePrintForm); ?>
+                    <?php endforeach; ?>
                 </div>
 
                 <div class="px-4 sm:px-6 py-4 border-t border-gray-100 flex flex-col-reverse sm:flex-row gap-3 shrink-0 bg-white">
@@ -1759,16 +1844,26 @@ function sortUrl(string $column): string
         </div>
     </div>
 
-    <div class="fixed inset-0 bg-black/40 z-50 hidden items-center justify-center p-4" id="viewModal">
-        <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-lg font-black text-slate-900">Record Details</h2>
-                <button type="button" class="text-gray-400 hover:text-gray-600 close-modal"><i data-lucide="x" class="w-5 h-5"></i></button>
+    <div id="viewModal" class="records-view-modal hidden" aria-hidden="true">
+        <div class="records-view-modal__backdrop close-modal" aria-hidden="true"></div>
+        <div class="records-view-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="viewModalTitle">
+            <div class="records-view-modal__header">
+                <div class="records-view-modal__heading">
+                    <div class="records-view-modal__title-row">
+                        <h2 id="viewModalTitle" class="records-detail-title">Record Details</h2>
+                        <span id="viewModalBadge" class="records-type-badge"></span>
+                    </div>
+                    <p id="viewModalSubtitle" class="records-detail-meta"></p>
+                </div>
+                <button type="button" class="records-view-modal__close close-modal" aria-label="Close record details">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
             </div>
-            <div id="viewContent" class="space-y-3 text-sm"></div>
-            <div class="flex gap-3 pt-6">
-                <a href="#" id="viewEditLink" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 text-sm font-bold text-center">Edit Record</a>
-                <button type="button" class="flex-1 border border-gray-200 rounded-xl py-3 text-sm font-bold text-gray-600 hover:bg-gray-50 close-modal">Close</button>
+            <div id="viewContent" class="records-view-modal__body"></div>
+            <div class="records-view-modal__actions">
+                <a href="#" id="viewEditLink" class="records-view-action records-view-action--primary">Edit Record</a>
+                <a href="#" id="viewPrintLink" class="records-view-action records-view-action--print">Print Certificate</a>
+                <button type="button" class="records-view-action close-modal">Close</button>
             </div>
         </div>
     </div>
@@ -1807,7 +1902,20 @@ function sortUrl(string $column): string
             'marriage' => civilRecordCsvColumns('marriage'),
         ],
         'recordsAuthUrl' => buildAuthUrl('records.php'),
+        'printCertificateUrl' => buildAuthUrl('print_certificate.php'),
+        'recordViewSections' => [
+            'birth' => civilRecordViewSections('birth'),
+            'death' => civilRecordViewSections('death'),
+            'marriage' => civilRecordViewSections('marriage'),
+        ],
+        'printFillFieldLabels' => [
+            'birth' => civilRecordPrintFillFieldLabels('birth'),
+            'death' => civilRecordPrintFillFieldLabels('death'),
+            'marriage' => civilRecordPrintFillFieldLabels('marriage'),
+        ],
         'openEntryModal' => (bool) ($showModal || $editRecord),
+        'defaultEntryType' => $defaultRecordType,
+        'entryUseCompletePrintForm' => $entryUseCompletePrintForm,
     ], 'records-config') ?>
     <?= scriptTag('core/page-config.js') ?>
     <?= scriptTag('admin/records.js') ?>

@@ -14,10 +14,18 @@ rateLimitOrAbort(rateLimitKey('civil_record_check'), 20, 900, 'Too many verifica
 
 $citizenName = citizenNameFromPost($_POST);
 $dateOfBirth = trim($_POST['date_of_birth'] ?? '');
+$documentType = trim($_POST['document_type'] ?? '');
+$dateOfMarriage = trim($_POST['date_of_marriage'] ?? '');
 
 try {
     $pdo = getDB();
-    apiJsonResponse(verifyCitizenCivilRecord($pdo, $citizenName, $dateOfBirth));
+    apiJsonResponse(verifyCitizenCivilRecord(
+        $pdo,
+        $citizenName,
+        $dateOfBirth,
+        $documentType,
+        $dateOfMarriage !== '' ? $dateOfMarriage : null
+    ));
 } catch (PDOException $e) {
     apiError(dbConnectionHelpMessage(), 503);
 }

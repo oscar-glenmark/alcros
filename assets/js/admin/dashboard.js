@@ -89,6 +89,20 @@
         gridEl.innerHTML = html;
     }
 
+    function resolveScheduleHref(href) {
+        if (!href) return '#';
+        if (!(window.AlcrosPoll && AlcrosPoll.buildUrl)) return href;
+        var parts = String(href).split('?');
+        var base = parts[0];
+        var params = {};
+        if (parts[1]) {
+            new URLSearchParams(parts[1]).forEach(function (value, key) {
+                params[key] = value;
+            });
+        }
+        return AlcrosPoll.buildUrl(base, params);
+    }
+
     function renderAppointments(rows) {
         rows = rows || [];
         if (countEl) countEl.textContent = String(rows.length);
@@ -117,12 +131,16 @@
             var h = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
             var ampm = d.toLocaleTimeString([], { hour: 'numeric', hour12: true }).split(' ')[1] || '';
             var status = a.status ? '<span class="text-[9px] font-bold uppercase text-gray-400 shrink-0">' + escapeHtml(a.status) + '</span>' : '';
-            return '<div class="px-5 py-3 flex items-center gap-3">' +
-                '<div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex flex-col items-center justify-center shrink-0 leading-none">' +
+            var timeTone = a.schedule_kind === 'certificate'
+                ? 'bg-amber-50 text-amber-700'
+                : 'bg-blue-50 text-blue-600';
+            var rowHref = resolveScheduleHref(a.href || '');
+            return '<a href="' + escapeHtml(rowHref) + '" class="dash-schedule-row px-5 py-3 flex items-center gap-3">' +
+                '<div class="w-10 h-10 rounded-lg ' + timeTone + ' flex flex-col items-center justify-center shrink-0 leading-none">' +
                 '<span class="text-[9px] font-bold">' + escapeHtml(h.replace(/ [AP]M/i, '')) + '</span>' +
                 '<span class="text-[8px] uppercase">' + escapeHtml(ampm) + '</span></div>' +
                 '<div class="min-w-0 flex-1"><p class="text-sm font-semibold text-slate-800 truncate">' + escapeHtml(a.citizen_name) + '</p>' +
-                '<p class="text-[10px] text-gray-400 truncate">' + escapeHtml(a.service_type) + '</p></div>' + status + '</div>';
+                '<p class="text-[10px] text-gray-400 truncate">' + escapeHtml(a.service_type) + '</p></div>' + status + '</a>';
         }).join('');
     }
 

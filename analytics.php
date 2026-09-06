@@ -97,6 +97,9 @@ $chartPayload = [
         'colors' => array_slice($apptChartColors, 0, count($apptChartLabels)),
     ],
 ];
+
+$pageTitle = 'Analytics';
+$pageSubtitle = 'Track request volume, appointments, queue activity, and registry totals at a glance.';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -105,11 +108,11 @@ $chartPayload = [
     <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Analytics - ALCROS</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <?= vendorScriptTag('tailwindcss.js') ?>
+    <?= vendorStylesheetTag('inter/inter.css') ?>
     <?= adminLayoutHeadStyles('analytics') ?>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <?= vendorScriptTag('lucide.min.js') ?>
+    <?= vendorScriptTag('chart.umd.min.js') ?>
 </head>
 <body class="flex min-h-screen">
     <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
@@ -117,11 +120,6 @@ $chartPayload = [
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
 
         <div class="admin-content p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto admin-page-wrap space-y-6">
-
-            <div class="admin-page-head">
-                <h1>Analytics</h1>
-                <p><?= date('F j, Y') ?> · For detailed exports, use Operational Reports</p>
-            </div>
 
             <?php if ($pendingCount > 0 || $readyCount > 0 || $queueWaiting > 0): ?>
             <div class="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 flex flex-wrap items-center gap-2 text-sm">

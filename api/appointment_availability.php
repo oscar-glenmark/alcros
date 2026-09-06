@@ -4,6 +4,7 @@ require_once __DIR__ . '/../includes/api_helpers.php';
 
 $date = trim($_GET['date'] ?? '');
 $time = trim($_GET['time'] ?? '');
+$bookingType = normalizeAppointmentBookingType(trim($_GET['type'] ?? 'standalone'));
 
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
     apiError('A valid date is required (YYYY-MM-DD).');
@@ -11,26 +12,11 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
 
 try {
     $pdo = getDB();
-    ensureCitizenNotifyColumns($pdo);
-
-    $bookedTimes = getBookedAppointmentTimes($pdo, $date);
-    $count = countActiveAppointmentsOnDate($pdo, $date);
-    $maxDaily = maxDailyAppointmentsLimit();
-    $dateFull = $count >= $maxDaily;
-
-    $payload = [
-        'date'           => $date,
-        'booked_times'   => $bookedTimes,
-        'count'          => $count,
-        'max_daily'      => $maxDaily,
-        'date_full'      => $dateFull,
-        'office_weekday' => isOfficeAppointmentDate($date),
-    ];
+    $payload = buildAppointmentAvailability($pdo, $date, $bookingType);
 
     if ($time !== '') {
-        $payload['available'] = isOfficeAppointmentDate($date)
-            && isWithinOfficeHours($time)
-            && !$dateFull
+        $payload['available'] = (bool) ($payload['bookable'] ?? false)
+            && isValidAppointmentSlot($time, $bookingType)
             && !isAppointmentSlotTaken($pdo, $date, $time);
     }
 

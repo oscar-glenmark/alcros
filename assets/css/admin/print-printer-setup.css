@@ -1,0 +1,246 @@
+.print-built-in-setup {
+    border: 1px solid #bfdbfe;
+    border-radius: 0.75rem;
+    background: linear-gradient(180deg, #eff6ff 0%, #f8fafc 100%);
+    padding: 0.875rem 1rem;
+    color: #0f172a;
+}
+
+.print-built-in-setup__head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.625rem;
+}
+
+.print-built-in-setup__badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+    background: #2563eb;
+    color: #fff;
+    font-size: 0.5625rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.print-built-in-setup__title {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #1e3a8a;
+}
+
+.print-built-in-setup__paper {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.35rem 0.5rem;
+    margin-bottom: 0.625rem;
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    color: #334155;
+}
+
+.print-built-in-setup__paper strong {
+    color: #0f172a;
+    font-weight: 800;
+}
+
+.print-built-in-setup__paper-or {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+}
+
+.print-built-in-setup__rules {
+    margin: 0;
+    padding-left: 1.125rem;
+    font-size: 0.6875rem;
+    line-height: 1.45;
+    color: #475569;
+}
+
+.print-built-in-setup__rules li + li {
+    margin-top: 0.2rem;
+}
+
+.print-built-in-setup__rules strong {
+    color: #b45309;
+    font-weight: 800;
+}
+
+.print-built-in-setup__back {
+    margin: 0.625rem 0 0;
+    padding-top: 0.625rem;
+    border-top: 1px solid #dbeafe;
+    font-size: 0.6875rem;
+    line-height: 1.4;
+    color: #64748b;
+}
+
+.print-built-in-setup__back strong {
+    color: #0f172a;
+    font-weight: 700;
+}
+
+/* Compact row (print certificate footer) */
+.print-built-in-setup--compact {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.875rem;
+    padding: 0.5rem 0.75rem;
+}
+
+.print-built-in-setup--compact .print-built-in-setup__head {
+    margin-bottom: 0;
+}
+
+.print-built-in-setup--compact .print-built-in-setup__paper {
+    margin-bottom: 0;
+    flex: 1;
+    min-width: 14rem;
+}
+
+.print-built-in-setup--compact .print-built-in-setup__rules {
+    display: none;
+}
+
+.print-built-in-setup--compact .print-built-in-setup__back {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    width: 100%;
+}
+
+/* Dialog (print_render autoprint) */
+.print-built-in-setup--dialog {
+    border: 0;
+    background: transparent;
+    padding: 0;
+}
+
+.print-built-in-setup--dialog .print-built-in-setup__head {
+    margin-bottom: 0.75rem;
+}
+
+.print-built-in-setup--dialog .print-built-in-setup__title {
+    font-size: 1rem;
+    text-transform: none;
+    letter-spacing: -0.01em;
+    color: #0f172a;
+}
+
+.print-built-in-setup--dialog .print-built-in-setup__paper {
+    font-size: 0.875rem;
+    margin-bottom: 0.75rem;
+}
+
+.print-built-in-setup__picker {
+    margin: 0 0 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid #dbeafe;
+    border-radius: 0.625rem;
+    background: rgba(255, 255, 255, 0.72);
+}
+
+.print-built-in-setup__picker-legend {
+    padding: 0 0.25rem;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #1e3a8a;
+}
+
+.print-built-in-setup__picker-label {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: #64748b;
+}
+
+.print-built-in-setup__picker-select {
+    width: 100%;
+    margin-bottom: 0.625rem;
+    padding: 0.5rem 0.625rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.5rem;
+    background: #fff;
+    font-size: 0.8125rem;
+    color: #0f172a;
+}
+
+.print-built-in-setup__picker-dims {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0.375rem 0.5rem;
+    align-items: end;
+    margin-bottom: 0.5rem;
+}
+
+.print-built-in-setup__picker-dims .print-built-in-setup__picker-label:nth-of-type(1) {
+    grid-column: 1;
+}
+
+.print-built-in-setup__picker-dims .print-built-in-setup__picker-input[data-print-paper-width] {
+    grid-column: 1;
+}
+
+.print-built-in-setup__picker-times {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: center;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #94a3b8;
+    padding-bottom: 0.35rem;
+}
+
+.print-built-in-setup__picker-dims .print-built-in-setup__picker-label:nth-of-type(2) {
+    grid-column: 3;
+}
+
+.print-built-in-setup__picker-dims .print-built-in-setup__picker-input[data-print-paper-height] {
+    grid-column: 3;
+}
+
+.print-built-in-setup__picker-input {
+    width: 100%;
+    padding: 0.5rem 0.625rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.5rem;
+    background: #fff;
+    font-size: 0.8125rem;
+    color: #0f172a;
+}
+
+.print-built-in-setup__picker-input:disabled {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+.print-built-in-setup__picker-hint {
+    margin: 0;
+    font-size: 0.6875rem;
+    line-height: 1.45;
+    color: #64748b;
+}
+
+.print-built-in-setup__picker-hint strong {
+    color: #0f172a;
+    font-weight: 800;
+}
+
+.print-built-in-setup + .print-cal-global-form,
+.print-built-in-setup + form {
+    margin-top: 1rem;
+}

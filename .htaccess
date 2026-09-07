@@ -1,0 +1,21 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    # Legacy bookmark: track.php?track=... or track.php?code=... → home page tracker
+    RewriteRule ^track\.php$ index.php [R=302,L,QSA]
+</IfModule>
+
+# Raise limits for large CSV imports and print calibration saves (XAMPP mod_php).
+<IfModule mod_php.c>
+    php_value upload_max_filesize 128M
+    php_value post_max_size 128M
+    php_value max_input_vars 10000
+    php_value max_execution_time 300
+    php_value memory_limit 256M
+</IfModule>
+<IfModule mod_php8.c>
+    php_value upload_max_filesize 128M
+    php_value post_max_size 128M
+    php_value max_input_vars 10000
+    php_value max_execution_time 300
+    php_value memory_limit 256M
+</IfModule>

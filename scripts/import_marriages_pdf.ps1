@@ -1,4 +1,4 @@
-# Import marriage certificate forms from assets/print/forms/official/marriages.pdf
+# Import marriage certificate forms from assets/print/forms/official/Certificate-of-Marriage.pdf
 Add-Type -AssemblyName System.Drawing
 
 $ErrorActionPreference = 'Stop'
@@ -6,7 +6,7 @@ $repoRoot = Join-Path $PSScriptRoot '..' | Resolve-Path
 $officialDir = Join-Path $repoRoot 'assets\print\forms\official'
 $formsDir = Join-Path $repoRoot 'assets\print\forms'
 $pdftoppm = 'C:\msys64\ucrt64\bin\pdftoppm.exe'
-$pdfPath = Join-Path $officialDir 'marriages.pdf'
+$pdfPath = Join-Path $officialDir 'Certificate-of-Marriage.pdf'
 $bondWidth = 1700
 $bondHeight = [int][Math]::Round($bondWidth * (1024.0 / 616.0))
 
@@ -67,7 +67,7 @@ if (-not (Test-Path $pdftoppm)) {
     throw "pdftoppm not found at $pdftoppm"
 }
 if (-not (Test-Path $pdfPath)) {
-    throw "Missing marriages.pdf at $pdfPath"
+    throw "Missing Certificate-of-Marriage.pdf at $pdfPath"
 }
 
 $tmpPrefix = Join-Path $officialDir 'marriages-page'
@@ -87,7 +87,7 @@ foreach ($side in @('front', 'back')) {
 
     Convert-PageToBond -SourcePng $rendered -DestPng $dest
     Remove-Item $rendered -Force
-    Write-Output "Updated $dest from marriages.pdf page $page (${bondWidth}px)"
+    Write-Output "Updated $dest from Certificate-of-Marriage.pdf page $page (${bondWidth}px)"
 }
 
 Write-Output "Bond canvas: ${bondWidth}x${bondHeight}px"

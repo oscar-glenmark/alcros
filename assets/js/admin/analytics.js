@@ -131,4 +131,69 @@
             }
         });
     }
+
+    if (document.getElementById('chartRecordsType') && data.records && data.records.types) {
+        new Chart(document.getElementById('chartRecordsType'), {
+            type: 'doughnut',
+            data: {
+                labels: data.records.types.labels,
+                datasets: [{
+                    data: data.records.types.counts,
+                    backgroundColor: data.records.types.colors,
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '68%',
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            padding: 14,
+                            font: { size: 10 },
+                            color: '#64748b'
+                        }
+                    },
+                    tooltip: sharedPlugins.tooltip
+                }
+            }
+        });
+    }
+
+    if (document.getElementById('chartRecordsMonths') && data.records && data.records.months) {
+        new Chart(document.getElementById('chartRecordsMonths'), {
+            type: 'bar',
+            data: {
+                labels: data.records.months.labels,
+                datasets: [{
+                    data: data.records.months.counts,
+                    backgroundColor: 'rgba(236, 72, 153, 0.85)',
+                    borderRadius: 6,
+                    barThickness: 22,
+                    maxBarThickness: 28
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: sharedPlugins,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: axisStyle.grid,
+                        ticks: { padding: 6, color: '#94a3b8', font: { size: 10 }, precision: 0, maxTicksLimit: 5 }
+                    },
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#94a3b8', font: { size: 10 } }
+                    }
+                }
+            }
+        });
+    }
 })();

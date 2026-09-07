@@ -140,10 +140,13 @@ body.flex.min-h-screen {
     .admin-sidebar-brand {
         padding: 0.75rem !important;
         justify-content: center;
+        overflow: visible;
     }
 
     .admin-sidebar-brand a {
         justify-content: center;
+        align-items: center;
+        overflow: visible;
     }
 
     .admin-sidebar-brand .gov-brand-title,
@@ -154,6 +157,11 @@ body.flex.min-h-screen {
     .admin-sidebar-brand .gov-brand-logo {
         width: 2.25rem;
         height: 2.25rem;
+        max-width: 100%;
+        object-fit: contain;
+        object-position: center;
+        padding: 0.125rem;
+        box-sizing: border-box;
     }
 
     .admin-sidebar-nav {
@@ -225,6 +233,113 @@ body.flex.min-h-screen {
     }
 }
 
+/* ── User-minimized sidebar (desktop icon rail) ── */
+@media (min-width: 1024px) {
+    body.admin-sidebar-minimized {
+        --admin-sidebar-width: 4.25rem;
+    }
+
+    body.admin-sidebar-minimized .admin-sidebar-brand {
+        padding: 0.75rem !important;
+        justify-content: center;
+        overflow: visible;
+    }
+
+    body.admin-sidebar-minimized .admin-sidebar-brand a {
+        justify-content: center;
+        align-items: center;
+        overflow: visible;
+    }
+
+    body.admin-sidebar-minimized .admin-sidebar-brand .gov-brand-title,
+    body.admin-sidebar-minimized .admin-sidebar-brand .gov-brand-subtitle {
+        display: none;
+    }
+
+    body.admin-sidebar-minimized .admin-sidebar-brand .gov-brand-logo {
+        width: 2.25rem;
+        height: 2.25rem;
+        max-width: 100%;
+        object-fit: contain;
+        object-position: center;
+        padding: 0.125rem;
+        box-sizing: border-box;
+    }
+
+    body.admin-sidebar-minimized .admin-sidebar-nav {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+    }
+
+    body.admin-sidebar-minimized .sidebar-section-label,
+    body.admin-sidebar-minimized .sidebar-link-label,
+    body.admin-sidebar-minimized .sidebar-logout-label {
+        display: none !important;
+        visibility: hidden;
+        width: 0;
+        height: 0;
+        overflow: hidden;
+        pointer-events: none;
+    }
+
+    body.admin-sidebar-minimized .admin-sidebar a.flex.items-center {
+        justify-content: center !important;
+        padding: 0.625rem !important;
+    }
+
+    body.admin-sidebar-minimized .admin-sidebar a.flex.items-center > div.flex {
+        justify-content: center;
+        flex: 0 0 auto;
+    }
+
+    body.admin-sidebar-minimized .admin-sidebar a [data-lucide] {
+        margin-right: 0 !important;
+    }
+
+    body.admin-sidebar-minimized .admin-sidebar a {
+        position: relative;
+    }
+
+    body.admin-sidebar-minimized .admin-sidebar a span.bg-white.text-blue-600 {
+        position: absolute;
+        top: 0.35rem;
+        right: 0.35rem;
+        width: 0.4rem;
+        height: 0.4rem;
+        min-width: 0;
+        padding: 0;
+        font-size: 0;
+        border-radius: 9999px;
+        background-color: #2563eb !important;
+        color: transparent !important;
+    }
+
+    body.admin-sidebar-minimized .admin-sidebar a [id$="-badge"],
+    body.admin-sidebar-minimized .admin-sidebar a .ml-auto {
+        position: absolute;
+        top: 0.2rem;
+        right: 0.2rem;
+        margin-left: 0 !important;
+        min-width: 0.875rem;
+        height: 0.875rem;
+        padding: 0 0.15rem;
+        font-size: 0.5rem;
+    }
+
+    body.admin-sidebar-minimized .admin-sidebar-footer {
+        padding: 0.5rem !important;
+    }
+
+    body.admin-sidebar-minimized .admin-sidebar-footer button {
+        justify-content: center;
+        padding: 0.625rem !important;
+    }
+
+    body.admin-sidebar-minimized .admin-sidebar-footer button [data-lucide] {
+        margin-right: 0 !important;
+    }
+}
+
 /* ── Medium sidebar (narrow labels) ── */
 @media (min-width: 1024px) and (max-width: 1279px) {
     .admin-sidebar-brand .gov-brand-title {
@@ -264,11 +379,24 @@ body.flex.min-h-screen {
     transition: background-color 0.15s ease, color 0.15s ease;
 }
 
+body.admin-sidebar-minimized .admin-sidebar a,
+body.admin-sidebar-minimized .admin-sidebar button {
+    transition: none;
+}
+
 .sidebar-item:hover {
     background-color: #f1f5f9;
 }
 
 .active-nav {
+    background-color: #2563eb !important;
+    color: #ffffff !important;
+}
+
+.active-nav:hover,
+.active-nav:active,
+.active-nav:focus,
+.active-nav:focus-visible {
     background-color: #2563eb !important;
     color: #ffffff !important;
 }

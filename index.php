@@ -10,8 +10,9 @@ $site = getSiteSettings();
 $maintenanceMode = isMaintenanceMode();
 $publicRequestsAllowed = arePublicRequestsAllowed();
 
-$isStaffLoggedIn = isset($_SESSION['staff_id']);
-$staffPortalUrl  = 'login.php';
+// Public landing page always links to staff login — never auto-route to the staff dashboard.
+$staffPortalUrl   = 'login.php';
+$staffPortalLabel = 'Staff Login';
 $currentPage = basename($_SERVER['PHP_SELF']);
 $documentTypes = getDocumentTypes();
 $year = date('Y');
@@ -82,7 +83,7 @@ $faqs = [
 
                 <div class="flex items-center gap-2 shrink-0">
                     <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="btn-login hidden sm:inline-block">
-                        <?= $isStaffLoggedIn ? 'Dashboard' : 'Login' ?>
+                        <?= htmlspecialchars($staffPortalLabel) ?>
                     </a>
                     <button type="button" id="mobileNavToggle" class="lg:hidden p-2 text-white" aria-label="Open menu">
                         <i data-lucide="menu" class="w-6 h-6"></i>
@@ -98,7 +99,7 @@ $faqs = [
                     <a href="#about" class="nav-link">About</a>
                     <a href="#faqs" class="nav-link">FAQs</a>
                     <a href="#contact" class="nav-link">Contact Us</a>
-                    <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="btn-login inline-block text-center mt-2 w-fit">Login</a>
+                    <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="btn-login inline-block text-center mt-2 w-fit"><?= htmlspecialchars($staffPortalLabel) ?></a>
                 </div>
             </div>
         </div>
@@ -298,7 +299,7 @@ $faqs = [
                         <li><a href="#services" class="hover:text-gold transition">Services</a></li>
                         <li><button type="button" data-open-track class="hover:text-gold transition bg-transparent border-0 p-0 cursor-pointer text-left text-white/75">Track Request</button></li>
                         <li><a href="services.php" class="hover:text-gold transition">All Services</a></li>
-                        <li><a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="hover:text-gold transition">Staff Login</a></li>
+                        <li><a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="hover:text-gold transition"><?= htmlspecialchars($staffPortalLabel) ?></a></li>
                     </ul>
                 </div>
                 <div>

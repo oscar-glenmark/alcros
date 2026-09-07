@@ -7,6 +7,7 @@
 require_once __DIR__ . '/civil_record_schema.php';
 require_once __DIR__ . '/print_field_definitions.php';
 require_once __DIR__ . '/print_form_svgs.php';
+require_once __DIR__ . '/print_printer_setup.php';
 
 function ensurePrintTables(PDO $pdo): void
 {
@@ -16,8 +17,9 @@ function ensurePrintTables(PDO $pdo): void
     }
     $done = true;
 
-    $pdo->exec(
-        "CREATE TABLE IF NOT EXISTS print_templates (
+    try {
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS print_templates (
             id INT AUTO_INCREMENT PRIMARY KEY,
             certificate_type ENUM('birth','death','marriage') NOT NULL,
             page_side ENUM('front','back') NOT NULL,
@@ -32,10 +34,10 @@ function ensurePrintTables(PDO $pdo): void
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             UNIQUE KEY uniq_cert_page (certificate_type, page_side)
         ) ENGINE=InnoDB"
-    );
+        );
 
-    $pdo->exec(
-        "CREATE TABLE IF NOT EXISTS print_fields (
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS print_fields (
             id INT AUTO_INCREMENT PRIMARY KEY,
             template_id INT NOT NULL,
             field_name VARCHAR(80) NOT NULL,
@@ -57,10 +59,10 @@ function ensurePrintTables(PDO $pdo): void
             CONSTRAINT fk_print_fields_template
                 FOREIGN KEY (template_id) REFERENCES print_templates(id) ON DELETE CASCADE
         ) ENGINE=InnoDB"
-    );
+        );
 
-    $pdo->exec(
-        "CREATE TABLE IF NOT EXISTS print_calibrations (
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS print_calibrations (
             id INT AUTO_INCREMENT PRIMARY KEY,
             template_id INT NOT NULL,
             x_offset_mm DECIMAL(8,2) NOT NULL DEFAULT 0.00,
@@ -73,10 +75,10 @@ function ensurePrintTables(PDO $pdo): void
             CONSTRAINT fk_print_calibrations_template
                 FOREIGN KEY (template_id) REFERENCES print_templates(id) ON DELETE CASCADE
         ) ENGINE=InnoDB"
-    );
+        );
 
-    $pdo->exec(
-        "CREATE TABLE IF NOT EXISTS print_jobs (
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS print_jobs (
             id INT AUTO_INCREMENT PRIMARY KEY,
             request_id INT DEFAULT NULL,
             civil_record_id INT DEFAULT NULL,
@@ -97,18 +99,28 @@ function ensurePrintTables(PDO $pdo): void
             CONSTRAINT fk_print_jobs_template
                 FOREIGN KEY (template_id) REFERENCES print_templates(id) ON DELETE RESTRICT
         ) ENGINE=InnoDB"
-    );
+        );
+    } catch (Throwable $e) {
+        // Tables may already exist; continue with best-effort seed/sync below.
+    }
 
-    ensurePrintRequestColumns($pdo);
-    ensurePrintRequestStatuses($pdo);
-    seedPrintTemplates($pdo);
-    syncPrintPaperDimensions($pdo);
-    ensurePrintFormReferenceFiles($pdo);
-    ensurePrintFieldLeftAlignment($pdo);
-    syncPrintFieldsFromCatalog($pdo);
-    restorePrintFieldUserPositionsAfterBulkSync($pdo);
-    syncPrintFieldFontSizes($pdo);
-    ensureCivilRecordPrintSchema($pdo);
+    foreach ([
+        static fn (PDO $db) => ensurePrintRequestColumns($db),
+        static fn (PDO $db) => ensurePrintRequestStatuses($db),
+        static fn (PDO $db) => seedPrintTemplates($db),
+        static fn (PDO $db) => syncPrintPaperDimensions($db),
+        static fn (PDO $db) => ensurePrintFormReferenceFiles($db),
+        static fn (PDO $db) => ensurePrintFieldLeftAlignment($db),
+        static fn (PDO $db) => syncPrintFieldsFromCatalog($db),
+        static fn (PDO $db) => restorePrintFieldUserPositionsAfterBulkSync($db),
+        static fn (PDO $db) => syncPrintFieldFontSizes($db),
+    ] as $step) {
+        try {
+            $step($pdo);
+        } catch (Throwable $e) {
+            // Non-fatal — keep print pages usable if one migration step fails.
+        }
+    }
 }
 
 function ensureCivilRecordPrintSchema(PDO $pdo): void
@@ -212,6 +224,14 @@ function syncPrintPaperDimensions(PDO $pdo): void
             // ignore if migration cannot run
         }
         setSetting('print_paper_size_version', 'official_municipal_v1');
+    }
+
+    $check = $pdo->prepare(
+        'SELECT COUNT(*) FROM print_templates WHERE paper_width_mm <> ? OR paper_height_mm <> ?'
+    );
+    $check->execute([$width, $height]);
+    if ((int) $check->fetchColumn() === 0) {
+        return;
     }
 
     $pdo->prepare(
@@ -578,11 +598,6 @@ function bumpPrintCalibrationRevision(): void
 function printCalibrationRevision(): int
 {
     return (int) getSetting('print_calibration_rev', '0');
-}
-
-function canPrintCertificates(): bool
-{
-    return staffId() !== null;
 }
 
 function printCertificateTypes(): array
@@ -1116,6 +1131,29 @@ function printRebuildRecordFillData(array $record, string $certificateType, arra
     return $json !== false ? $json : null;
 }
 
+/** Faster CSV import when rows already include print-form columns (export / full template). */
+function printFillDataForCsvImport(array $record, string $certificateType, array $submittedFill): ?string
+{
+    if ($submittedFill === []) {
+        return printRebuildRecordFillData($record, $certificateType, []);
+    }
+
+    $expectedMin = max(8, (int) (count(printFillFieldNames($certificateType)) * 0.2));
+    if (count($submittedFill) >= $expectedMin) {
+        $merged = array_filter(
+            $submittedFill,
+            static fn ($value) => trim((string) $value) !== ''
+        );
+        if ($merged !== []) {
+            $json = json_encode($merged, JSON_UNESCAPED_UNICODE);
+
+            return $json !== false ? $json : null;
+        }
+    }
+
+    return printRebuildRecordFillData($record, $certificateType, $submittedFill);
+}
+
 function printBuildFieldValues(array $record, string $certificateType, array $options = []): array
 {
     $values = printOfficeLocationFields();
@@ -1441,13 +1479,14 @@ function printFillFieldGroup(string $fieldName): string
 }
 
 /** @return list<array{field_name: string, label: string, page_side: string, value: string}> */
-function printFillEditorFields(string $certificateType, array $record, array $options = []): array
+function printFillEditorFields(string $certificateType, array $record, array $options = [], ?PDO $pdo = null): array
 {
     $values = printBuildFieldValues($record, $certificateType, array_merge([
         'keep_empty' => true,
     ], $options));
     $catalog = printFieldCatalog()[$certificateType] ?? [];
     $fields = [];
+    $seen = [];
 
     foreach (['front', 'back'] as $side) {
         foreach ($catalog[$side] ?? [] as $name => $label) {
@@ -1457,6 +1496,29 @@ function printFillEditorFields(string $certificateType, array $record, array $op
                 'page_side'  => $side,
                 'value'      => $values[$name] ?? '',
             ];
+            $seen[$name] = true;
+        }
+    }
+
+    if ($pdo !== null) {
+        foreach (['front', 'back'] as $side) {
+            $template = getPrintTemplate($pdo, $certificateType, $side);
+            if (!$template) {
+                continue;
+            }
+            foreach (getPrintFields($pdo, (int) $template['id'], true) as $dbField) {
+                $name = (string) $dbField['field_name'];
+                if (!printIsCustomField($name) || isset($seen[$name])) {
+                    continue;
+                }
+                $fields[] = [
+                    'field_name' => $name,
+                    'label'      => (string) ($dbField['label'] ?: $name),
+                    'page_side'  => $side,
+                    'value'      => $values[$name] ?? '',
+                ];
+                $seen[$name] = true;
+            }
         }
     }
 
@@ -1765,6 +1827,144 @@ function printCertificateTitle(string $certificateType): string
 function printCertificateFormNumber(string $certificateType): string
 {
     return printCertificateMeta()[$certificateType]['form_number'] ?? '';
+}
+
+function printIsCustomField(string $fieldName): bool
+{
+    return str_starts_with($fieldName, 'custom_textbox_');
+}
+
+function getPrintTemplateById(PDO $pdo, int $templateId): ?array
+{
+    $stmt = $pdo->prepare('SELECT * FROM print_templates WHERE id = ? LIMIT 1');
+    $stmt->execute([$templateId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $row ?: null;
+}
+
+function nextCustomTextboxFieldName(PDO $pdo, int $templateId): string
+{
+    $stmt = $pdo->prepare(
+        'SELECT field_name FROM print_fields WHERE template_id = ? AND field_name LIKE ?'
+    );
+    $stmt->execute([$templateId, 'custom_textbox_%']);
+    $max = 0;
+    foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) ?: [] as $name) {
+        if (preg_match('/^custom_textbox_(\d+)$/', (string) $name, $matches)) {
+            $max = max($max, (int) $matches[1]);
+        }
+    }
+
+    return 'custom_textbox_' . ($max + 1);
+}
+
+/** @return array<string, mixed>|null */
+function createPrintField(PDO $pdo, int $templateId, array $overrides = []): ?array
+{
+    $template = getPrintTemplateById($pdo, $templateId);
+    if (!$template) {
+        return null;
+    }
+
+    $fieldName = nextCustomTextboxFieldName($pdo, $templateId);
+    preg_match('/(\d+)$/', $fieldName, $matches);
+    $num = (int) ($matches[1] ?? 1);
+
+    $width = 50.0;
+    $height = 5.0;
+    $paperW = (float) $template['paper_width_mm'];
+    $paperH = (float) $template['paper_height_mm'];
+
+    $defaults = [
+        'field_name'  => $fieldName,
+        'label'       => 'Custom textbox ' . $num,
+        'x_mm'        => max(0, ($paperW - $width) / 2),
+        'y_mm'        => max(0, ($paperH - $height) / 2),
+        'width_mm'    => $width,
+        'height_mm'   => $height,
+        'font_family' => 'Arial',
+        'font_size'   => 10.0,
+        'font_weight' => 'normal',
+        'alignment'   => 'left',
+        'max_length'  => 120,
+        'line_height' => 1.2,
+        'enabled'     => 1,
+    ];
+
+    $data = array_merge($defaults, $overrides);
+
+    $insert = $pdo->prepare(
+        'INSERT INTO print_fields
+         (template_id, field_name, label, x_mm, y_mm, width_mm, height_mm,
+          font_family, font_size, font_weight, alignment, max_length, line_height, enabled)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    $insert->execute([
+        $templateId,
+        $data['field_name'],
+        $data['label'],
+        (float) $data['x_mm'],
+        (float) $data['y_mm'],
+        (float) $data['width_mm'],
+        (float) $data['height_mm'],
+        $data['font_family'],
+        (float) $data['font_size'],
+        $data['font_weight'],
+        $data['alignment'],
+        (int) $data['max_length'],
+        (float) $data['line_height'],
+        (int) $data['enabled'],
+    ]);
+
+    $fieldId = (int) $pdo->lastInsertId();
+    if ($fieldId <= 0) {
+        return null;
+    }
+
+    $stmt = $pdo->prepare('SELECT * FROM print_fields WHERE id = ? LIMIT 1');
+    $stmt->execute([$fieldId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $row ?: null;
+}
+
+function printFieldConfigForClient(array $field): array
+{
+    return [
+        'id'          => (int) $field['id'],
+        'field_name'  => (string) $field['field_name'],
+        'label'       => (string) ($field['label'] ?? ''),
+        'x_mm'        => (float) $field['x_mm'],
+        'y_mm'        => (float) $field['y_mm'],
+        'width_mm'    => (float) $field['width_mm'],
+        'height_mm'   => (float) $field['height_mm'],
+        'font_size'   => (float) $field['font_size'],
+        'font_family' => (string) ($field['font_family'] ?? 'Arial'),
+        'alignment'   => (string) ($field['alignment'] ?? 'left'),
+        'enabled'     => (int) ($field['enabled'] ?? 1),
+    ];
+}
+
+function getPrintFieldById(PDO $pdo, int $fieldId): ?array
+{
+    $stmt = $pdo->prepare('SELECT * FROM print_fields WHERE id = ? LIMIT 1');
+    $stmt->execute([$fieldId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $row ?: null;
+}
+
+function deletePrintField(PDO $pdo, int $fieldId): bool
+{
+    $field = getPrintFieldById($pdo, $fieldId);
+    if (!$field || !printIsCustomField((string) $field['field_name'])) {
+        return false;
+    }
+
+    $stmt = $pdo->prepare('DELETE FROM print_fields WHERE id = ? LIMIT 1');
+
+    return $stmt->execute([$fieldId]);
 }
 
 function updatePrintField(PDO $pdo, int $fieldId, array $data): bool

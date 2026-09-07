@@ -7,8 +7,12 @@
     var dragState = null;
     var zoomLevel = 1;
     var showSampleText = false;
-    var showAllBoxes = false;
+    var showAllBoxes = true;
     var placedFieldIds = new Set();
+    var dirtyFieldIds = new Set();
+    var saveInFlight = false;
+    var labelSaveTimer = null;
+    var labelSaveInFlight = false;
 
     function placedStorageKey() {
         return 'alcros-print-cal-placed-' + (cfg.templateId || '0');
@@ -71,6 +75,11 @@
         if (window.AlcrosPage && typeof AlcrosPage.readConfig === 'function') {
             cfg = AlcrosPage.readConfig('page-config') || {};
         }
+        cfg.fields = Array.isArray(cfg.fields) ? cfg.fields : [];
+        cfg.sampleValues = cfg.sampleValues || {};
+        cfg.fieldHints = cfg.fieldHints || {};
+        cfg.templateCalibration = cfg.templateCalibration || { x_offset_mm: 0, y_offset_mm: 0, scale_x: 1, scale_y: 1 };
+        cfg.globalCalibration = cfg.globalCalibration || { x_offset_mm: 0, y_offset_mm: 0, scale_x: 1, scale_y: 1 };
         if (cfg.csrfToken) {
             csrfToken = cfg.csrfToken;
         }
@@ -78,6 +87,27 @@
             var csrfEl = document.querySelector('main input[name="csrf_token"]') || document.querySelector('input[name="csrf_token"]');
             csrfToken = csrfEl ? csrfEl.value : '';
         }
+    }
+
+    function formFieldValue(form, name, fallback) {
+        if (!form) return fallback;
+        var el = form.querySelector('[name="' + name + '"]');
+        if (!el) return fallback;
+        if (el.type === 'checkbox') {
+            return el.checked;
+        }
+        return el.value;
+    }
+
+    function setFormFieldValue(form, name, value) {
+        if (!form) return;
+        var el = form.querySelector('[name="' + name + '"]');
+        if (!el) return;
+        if (el.type === 'checkbox') {
+            el.checked = !!value;
+            return;
+        }
+        el.value = value;
     }
 
     function canvasEl() {
@@ -234,26 +264,36 @@
     function readFieldFormValues() {
         var form = fieldForm();
         if (!form) return null;
-        return {
-            x_mm: parseFloat(form.querySelector('[name="x_mm"]').value) || 0,
-            y_mm: parseFloat(form.querySelector('[name="y_mm"]').value) || 0,
-            width_mm: parseFloat(form.querySelector('[name="width_mm"]').value) || 0,
-            height_mm: parseFloat(form.querySelector('[name="height_mm"]').value) || 0,
-            font_size: parseFloat(form.querySelector('[name="font_size"]').value) || 10,
-            font_family: form.querySelector('[name="font_family"]').value || 'Arial',
-            alignment: form.querySelector('[name="alignment"]').value || 'left',
-            enabled: form.querySelector('[name="enabled"]').checked ? 1 : 0
+
+        var enabledEl = form.querySelector('[name="enabled"]');
+        var values = {
+            x_mm: parseFloat(formFieldValue(form, 'x_mm', '0')) || 0,
+            y_mm: parseFloat(formFieldValue(form, 'y_mm', '0')) || 0,
+            width_mm: parseFloat(formFieldValue(form, 'width_mm', '0')) || 0,
+            height_mm: parseFloat(formFieldValue(form, 'height_mm', '0')) || 0,
+            font_size: parseFloat(formFieldValue(form, 'font_size', '10')) || 10,
+            font_family: formFieldValue(form, 'font_family', 'Arial') || 'Arial',
+            alignment: formFieldValue(form, 'alignment', 'left') || 'left',
+            enabled: enabledEl && enabledEl.checked ? 1 : 0
         };
+
+        var field = activeFieldId ? findFieldConfig(activeFieldId) : null;
+        if (field) {
+            var labelInput = document.getElementById('calFieldLabel');
+            values.label = labelInput ? String(labelInput.value || '').trim() : (field.label || '');
+        }
+
+        return values;
     }
 
     function readTemplateFormValues() {
         var form = document.getElementById('calTemplateForm');
         if (!form) return null;
         return {
-            x_offset_mm: parseFloat(form.querySelector('[name="x_offset_mm"]').value) || 0,
-            y_offset_mm: parseFloat(form.querySelector('[name="y_offset_mm"]').value) || 0,
-            scale_x: parseFloat(form.querySelector('[name="scale_x"]').value) || 1,
-            scale_y: parseFloat(form.querySelector('[name="scale_y"]').value) || 1
+            x_offset_mm: parseFloat(formFieldValue(form, 'x_offset_mm', '0')) || 0,
+            y_offset_mm: parseFloat(formFieldValue(form, 'y_offset_mm', '0')) || 0,
+            scale_x: parseFloat(formFieldValue(form, 'scale_x', '1')) || 1,
+            scale_y: parseFloat(formFieldValue(form, 'scale_y', '1')) || 1
         };
     }
 
@@ -263,31 +303,11 @@
         if (hint && String(hint).trim() !== '') {
             return String(hint);
         }
-        var label = field.label || field.field_name || '';
-        label = String(label).replace(/^\d+[a-z]?\s+/i, '');
-        label = label.replace(/\s*—\s*.+$/, '');
-        var words = label.trim().split(/\s+/).slice(0, 3);
-        return words.join(' ');
-    }
-
-    function isCheckboxField(field) {
-        var types = cfg.fieldInputTypes || {};
-        if (types[field.field_name] === 'checkbox') {
-            return true;
-        }
-        var marker = markerEl(field.id);
-        return marker ? marker.getAttribute('data-input-type') === 'checkbox' : false;
-    }
-
-    function checkboxMark(value) {
-        return value && String(value).trim() !== '' ? '☑' : '☐';
+        return field.label || field.field_name;
     }
 
     function markerLabel(field) {
-        if (showSampleText) {
-            return sampleTextForField(field);
-        }
-        return '';
+        return showSampleText ? sampleTextForField(field) : fieldHint(field);
     }
 
     function syncPreviewTextDisplay(field) {
@@ -319,39 +339,9 @@
         marker.style.fontFamily = field.font_family;
         marker.classList.toggle('is-disabled', !field.enabled);
         marker.classList.toggle('is-sample-mode', showSampleText);
-        marker.classList.toggle('is-checkbox', isCheckboxField(field));
 
-        var hintEl = marker.querySelector('.print-cal-marker-hint');
-        var hintText = fieldHint(field);
-        if (hintText) {
-            if (!hintEl) {
-                hintEl = document.createElement('span');
-                hintEl.className = 'print-cal-marker-hint';
-                marker.insertBefore(hintEl, marker.firstChild);
-            }
-            hintEl.textContent = hintText;
-        } else if (hintEl) {
-            hintEl.remove();
-        }
-
-        var checkEl = marker.querySelector('.print-cal-marker-check');
         var textEl = marker.querySelector('.print-cal-marker-text');
-        if (isCheckboxField(field)) {
-            if (!checkEl) {
-                checkEl = document.createElement('span');
-                checkEl.className = 'print-cal-marker-check';
-                if (textEl) {
-                    marker.insertBefore(checkEl, textEl);
-                } else {
-                    marker.appendChild(checkEl);
-                }
-            }
-            checkEl.textContent = showSampleText ? checkboxMark(markerLabel(field)) : '☐';
-            if (textEl) textEl.textContent = '';
-        } else {
-            if (checkEl) checkEl.remove();
-            if (textEl) textEl.textContent = markerLabel(field);
-        }
+        if (textEl) textEl.textContent = markerLabel(field);
     }
 
     function repositionAllMarkers() {
@@ -377,13 +367,264 @@
         }
     }
 
+    function isCustomField(field) {
+        if (!field || !field.field_name) return false;
+        return String(field.field_name).indexOf('custom_textbox_') === 0;
+    }
+
+    function initSavedFieldLabels() {
+        (cfg.fields || []).forEach(function (field) {
+            field._savedLabel = String(field.label || field.field_name || '').trim();
+        });
+    }
+
+    function setLabelSaveStatus(state, detail) {
+        var statusEl = document.getElementById('calLabelSaveStatus');
+        if (!statusEl) return;
+
+        statusEl.className = 'print-cal-label-save-status';
+        if (state === 'saving') {
+            statusEl.classList.add('is-saving');
+            statusEl.textContent = 'Saving name…';
+        } else if (state === 'saved') {
+            statusEl.classList.add('is-saved');
+            statusEl.textContent = 'Name saved';
+        } else if (state === 'error') {
+            statusEl.classList.add('is-error');
+            statusEl.textContent = detail || 'Could not save name';
+        } else {
+            statusEl.textContent = '';
+        }
+    }
+
+    function applyFieldLabel(fieldId, label, options) {
+        options = options || {};
+        var field = findFieldConfig(fieldId);
+        if (!field) return false;
+
+        var trimmed = String(label || '').trim();
+        if (!trimmed) return false;
+
+        field.label = trimmed;
+        updateListItemLabel(fieldId, trimmed);
+
+        if (activeFieldId === fieldId) {
+            var title = document.getElementById('calFieldTitle');
+            if (title) title.textContent = trimmed;
+            syncPreviewTextDisplay(field);
+        }
+
+        syncMarkerFromField(fieldId);
+
+        if (options.autoSave !== false) {
+            scheduleLabelSave(fieldId, trimmed);
+        }
+
+        return true;
+    }
+
+    function scheduleLabelSave(fieldId, label) {
+        clearTimeout(labelSaveTimer);
+        labelSaveTimer = setTimeout(function () {
+            saveFieldLabelNow(fieldId, label);
+        }, 600);
+    }
+
+    function saveFieldLabelNow(fieldId, label) {
+        if (labelSaveInFlight) return Promise.resolve();
+
+        var field = findFieldConfig(fieldId);
+        if (!field) return Promise.resolve();
+
+        var trimmed = String(label || '').trim();
+        if (!trimmed) {
+            setLabelSaveStatus('error', 'Enter a display name.');
+            return Promise.resolve();
+        }
+
+        if (trimmed === String(field._savedLabel || '').trim()) {
+            setLabelSaveStatus('');
+            return Promise.resolve();
+        }
+
+        if (!csrfToken) {
+            setLabelSaveStatus('error', 'Session expired. Refresh the page.');
+            return Promise.resolve();
+        }
+
+        labelSaveInFlight = true;
+        setLabelSaveStatus('saving');
+
+        return postForm('save_field', {
+            field_id: String(fieldId),
+            label: trimmed
+        }).then(function (res) {
+            labelSaveInFlight = false;
+
+            if (!res || res.ok === false) {
+                var err = (res && res.error) || 'Could not save field name.';
+                setLabelSaveStatus('error', err);
+                showToast('error', err);
+                return;
+            }
+
+            if (res.field) {
+                if (res.field.label !== undefined) {
+                    field.label = res.field.label;
+                    field._savedLabel = res.field.label;
+                    updateListItemLabel(fieldId, res.field.label);
+                    if (activeFieldId === fieldId) {
+                        var title = document.getElementById('calFieldTitle');
+                        if (title) title.textContent = res.field.label;
+                        var labelInput = document.getElementById('calFieldLabel');
+                        if (labelInput) labelInput.value = res.field.label;
+                        syncPreviewTextDisplay(field);
+                    }
+                    syncMarkerFromField(fieldId);
+                }
+            }
+
+            setLabelSaveStatus('saved');
+            window.setTimeout(function () {
+                if (activeFieldId === fieldId) {
+                    setLabelSaveStatus('');
+                }
+            }, 1800);
+        }).catch(function () {
+            labelSaveInFlight = false;
+            setLabelSaveStatus('error', 'Could not save name. Check your connection.');
+        });
+    }
+
+    function updateCustomFieldActions(field) {
+        var isCustom = isCustomField(field);
+        var deleteBtn = document.getElementById('calDeleteFieldBtn');
+        var resetForm = document.getElementById('calResetFieldForm');
+        var labelWrap = document.getElementById('calFieldLabelWrap');
+        var labelInput = document.getElementById('calFieldLabel');
+        if (deleteBtn) deleteBtn.hidden = !isCustom;
+        if (resetForm) resetForm.hidden = isCustom;
+        if (labelWrap) labelWrap.hidden = false;
+        if (labelInput) {
+            labelInput.disabled = false;
+            labelInput.value = field.label || field.field_name || '';
+            setLabelSaveStatus('');
+        }
+    }
+
+    function updateListItemLabel(fieldId, label) {
+        var btn = listBtnEl(fieldId);
+        if (!btn) return;
+        btn.setAttribute('data-field-label', label);
+        var span = btn.querySelector('.print-cal-field-label');
+        if (span) span.textContent = label;
+    }
+
+    function removeFieldFromUi(fieldId) {
+        fieldId = Number(fieldId);
+        var field = findFieldConfig(fieldId);
+        if (field && cfg.sampleValues) {
+            delete cfg.sampleValues[field.field_name];
+        }
+
+        cfg.fields = (cfg.fields || []).filter(function (f) { return Number(f.id) !== fieldId; });
+
+        placedFieldIds.delete(fieldId);
+        dirtyFieldIds.delete(fieldId);
+        persistPlacedFields();
+        updateDirtyUi();
+
+        var btn = listBtnEl(fieldId);
+        if (btn && btn.closest('li')) {
+            btn.closest('li').remove();
+        }
+
+        var marker = markerEl(fieldId);
+        if (marker) marker.remove();
+    }
+
+    function deleteCustomField() {
+        if (!activeFieldId) {
+            showToast('error', 'Select a custom textbox to delete.');
+            return Promise.resolve();
+        }
+
+        var field = findFieldConfig(activeFieldId);
+        if (!field || !isCustomField(field)) {
+            showToast('error', 'Only custom textboxes can be deleted.');
+            return Promise.resolve();
+        }
+
+        if (!csrfToken) {
+            showToast('error', 'Security token missing. Refresh the page and try again.');
+            return Promise.resolve();
+        }
+
+        var fieldLabel = field.label || field.field_name || 'this textbox';
+        var msg = 'Delete “' + fieldLabel + '”? This cannot be undone.';
+
+        function performDelete() {
+            var deleteBtn = document.getElementById('calDeleteFieldBtn');
+            if (deleteBtn) deleteBtn.disabled = true;
+
+            return postForm('delete_field', { field_id: String(field.id) }).then(function (res) {
+                if (deleteBtn) deleteBtn.disabled = false;
+                if (!res || res.ok === false) {
+                    showToast('error', (res && res.error) || 'Could not delete textbox.');
+                    return;
+                }
+
+                var deletedId = activeFieldId;
+                removeFieldFromUi(deletedId);
+                markCalibrationRefreshPending();
+
+                var ids = visibleFieldIds();
+                activeFieldId = null;
+                if (ids.length) {
+                    selectField(ids[0], false);
+                } else {
+                    setEditorVisible(false);
+                    updateAllMarkerVisibility();
+                }
+
+                showToast('success', 'Custom textbox deleted.');
+            }).catch(function () {
+                if (deleteBtn) deleteBtn.disabled = false;
+                showToast('error', 'Could not delete textbox. Check your connection.');
+            });
+        }
+
+        if (window.AlcrosConfirm && typeof window.AlcrosConfirm.ask === 'function') {
+            return window.AlcrosConfirm.ask(msg).then(function (ok) {
+                if (ok) return performDelete();
+            });
+        }
+
+        if (window.confirm(msg)) {
+            return performDelete();
+        }
+        return Promise.resolve();
+    }
+
     function setAlignmentButtons(alignment) {
         document.querySelectorAll('.print-cal-align-btn').forEach(function (btn) {
             btn.classList.toggle('is-active', btn.getAttribute('data-align') === alignment);
         });
     }
 
+    function flushPendingLabelSave() {
+        if (!activeFieldId) return;
+        clearTimeout(labelSaveTimer);
+        var labelInput = document.getElementById('calFieldLabel');
+        if (!labelInput) return;
+        saveFieldLabelNow(activeFieldId, labelInput.value);
+    }
+
     function selectField(fieldId, scrollList) {
+        if (activeFieldId && activeFieldId !== Number(fieldId)) {
+            flushPendingLabelSave();
+        }
+
         var field = findFieldConfig(fieldId);
         if (!field) {
             return;
@@ -405,17 +646,23 @@
         var form = fieldForm();
         if (!form) return;
 
-        form.querySelector('[name="field_id"]').value = field.id;
-        form.querySelector('[name="x_mm"]').value = field.x_mm.toFixed(2);
-        form.querySelector('[name="y_mm"]').value = field.y_mm.toFixed(2);
-        form.querySelector('[name="width_mm"]').value = field.width_mm;
-        form.querySelector('[name="height_mm"]').value = field.height_mm;
-        form.querySelector('[name="font_size"]').value = field.font_size;
-        form.querySelector('[name="font_family"]').value = field.font_family;
-        form.querySelector('[name="alignment"]').value = field.alignment || 'left';
-        form.querySelector('[name="enabled"]').checked = !!field.enabled;
+        setFormFieldValue(form, 'field_id', field.id);
+        setFormFieldValue(form, 'x_mm', field.x_mm.toFixed(2));
+        setFormFieldValue(form, 'y_mm', field.y_mm.toFixed(2));
+        setFormFieldValue(form, 'width_mm', field.width_mm);
+        setFormFieldValue(form, 'height_mm', field.height_mm);
+        setFormFieldValue(form, 'font_size', field.font_size);
+        setFormFieldValue(form, 'font_family', field.font_family);
+        setFormFieldValue(form, 'alignment', field.alignment || 'left');
+        setFormFieldValue(form, 'enabled', field.enabled);
         setAlignmentButtons(field.alignment || 'left');
         syncPreviewTextDisplay(field);
+
+        var labelInput = document.getElementById('calFieldLabel');
+        if (labelInput) {
+            labelInput.value = field.label || field.field_name || '';
+            setLabelSaveStatus('');
+        }
 
         var resetForm = document.getElementById('calResetFieldForm');
         if (resetForm) {
@@ -425,6 +672,7 @@
 
         syncMarkerFromField(fieldId);
         updateAllMarkerVisibility();
+        updateCustomFieldActions(field);
 
         if (scrollList) {
             var btn = listBtnEl(fieldId);
@@ -432,7 +680,80 @@
         }
     }
 
-    function applyFieldValues(fieldId, values, updateForm) {
+    function markFieldDirty(fieldId) {
+        fieldId = Number(fieldId);
+        if (!fieldId) return;
+        dirtyFieldIds.add(fieldId);
+        updateDirtyUi();
+        updateSaveAllButton();
+        setSaveStatus('pending');
+    }
+
+    function updateSaveAllButton() {
+        var btn = document.getElementById('calSaveAllBtn');
+        if (!btn) return;
+
+        var count = dirtyFieldIds.size;
+        if (!btn.dataset.defaultLabel) {
+            btn.dataset.defaultLabel = 'Save all changes';
+        }
+
+        btn.textContent = count > 0
+            ? ('Save all changes (' + count + ')')
+            : btn.dataset.defaultLabel;
+        btn.disabled = count === 0 || saveInFlight;
+        btn.classList.toggle('is-dirty', count > 0);
+    }
+
+    function setSaveStatus(state, detail) {
+        var statusEl = document.getElementById('calSaveStatus');
+        var retryBtn = document.getElementById('calRetrySaveBtn');
+        if (!statusEl) return;
+
+        statusEl.className = 'print-cal-save-status is-' + state;
+        var count = dirtyFieldIds.size;
+
+        if (state === 'pending') {
+            statusEl.textContent = count + ' unsaved change' + (count === 1 ? '' : 's') + '…';
+        } else if (state === 'saving') {
+            var savingCount = detail || count;
+            statusEl.textContent = 'Saving ' + savingCount + ' field' + (savingCount === 1 ? '' : 's') + '…';
+        } else if (state === 'saved') {
+            statusEl.textContent = 'All changes saved';
+        } else if (state === 'error') {
+            statusEl.textContent = detail || 'Could not save changes.';
+        }
+
+        if (retryBtn) {
+            retryBtn.hidden = state !== 'error';
+        }
+
+        updateSaveAllButton();
+    }
+
+    function saveAllChangesNow() {
+        return saveAllChangedFields({ manual: true, toast: true });
+    }
+
+    function clearFieldsDirty(fieldIds) {
+        fieldIds.forEach(function (fieldId) {
+            dirtyFieldIds.delete(Number(fieldId));
+        });
+        updateDirtyUi();
+        updateSaveAllButton();
+        if (dirtyFieldIds.size === 0) {
+            setSaveStatus('saved');
+        }
+    }
+
+    function updateDirtyUi() {
+        document.querySelectorAll('.print-cal-field-btn').forEach(function (btn) {
+            var fieldId = parseInt(btn.getAttribute('data-field-id'), 10);
+            btn.classList.toggle('is-dirty', dirtyFieldIds.has(fieldId));
+        });
+    }
+
+    function applyFieldValues(fieldId, values, updateForm, skipDirty) {
         var field = findFieldConfig(fieldId);
         if (!field || !values) return;
 
@@ -445,6 +766,22 @@
         field.alignment = values.alignment;
         field.enabled = values.enabled;
 
+        if (values.label !== undefined) {
+            field.label = values.label;
+            field._savedLabel = values.label;
+            updateListItemLabel(fieldId, values.label);
+            if (activeFieldId === fieldId) {
+                var title = document.getElementById('calFieldTitle');
+                if (title) title.textContent = values.label;
+                var labelInput = document.getElementById('calFieldLabel');
+                if (labelInput) labelInput.value = values.label;
+            }
+            if (isCustomField(field)) {
+                cfg.sampleValues = cfg.sampleValues || {};
+                cfg.sampleValues[field.field_name] = values.label;
+            }
+        }
+
         syncMarkerFromField(fieldId);
         updateListItemState(fieldId, !!values.enabled);
         updateAllMarkerVisibility();
@@ -452,15 +789,19 @@
         if (updateForm && activeFieldId === fieldId) {
             var form = fieldForm();
             if (!form) return;
-            form.querySelector('[name="x_mm"]').value = field.x_mm.toFixed(2);
-            form.querySelector('[name="y_mm"]').value = field.y_mm.toFixed(2);
-            form.querySelector('[name="width_mm"]').value = field.width_mm.toFixed(2);
-            form.querySelector('[name="height_mm"]').value = field.height_mm.toFixed(2);
-            form.querySelector('[name="font_size"]').value = field.font_size;
-            form.querySelector('[name="font_family"]').value = field.font_family;
-            form.querySelector('[name="alignment"]').value = field.alignment;
-            form.querySelector('[name="enabled"]').checked = !!field.enabled;
+            setFormFieldValue(form, 'x_mm', field.x_mm.toFixed(2));
+            setFormFieldValue(form, 'y_mm', field.y_mm.toFixed(2));
+            setFormFieldValue(form, 'width_mm', field.width_mm.toFixed(2));
+            setFormFieldValue(form, 'height_mm', field.height_mm.toFixed(2));
+            setFormFieldValue(form, 'font_size', field.font_size);
+            setFormFieldValue(form, 'font_family', field.font_family);
+            setFormFieldValue(form, 'alignment', field.alignment);
+            setFormFieldValue(form, 'enabled', field.enabled);
             setAlignmentButtons(field.alignment);
+        }
+
+        if (!skipDirty) {
+            markFieldDirty(fieldId);
         }
     }
 
@@ -524,7 +865,6 @@
         if (!values) return;
         cfg.templateCalibration = values;
         repositionAllMarkers();
-        if (activeFieldId) selectField(activeFieldId, false);
     }
 
     function nudgeTemplate(dx, dy) {
@@ -547,14 +887,62 @@
         applyTemplatePreview(readTemplateFormValues());
     }
 
+    function apiPrintRequestUrl() {
+        var url = cfg.apiPrintUrl || 'api/print.php';
+        if (url.indexOf('alcros_auth=') !== -1) {
+            return url;
+        }
+        try {
+            var token = sessionStorage.getItem('alcros_auth');
+            if (token) {
+                var sep = url.indexOf('?') !== -1 ? '&' : '?';
+                return url + sep + 'alcros_auth=' + encodeURIComponent(token);
+            }
+        } catch (err) {
+            /* ignore storage errors */
+        }
+        return url;
+    }
+
+    function syncActiveFieldFormFromConfig() {
+        if (!activeFieldId) return;
+        var field = findFieldConfig(activeFieldId);
+        if (!field) return;
+
+        var form = fieldForm();
+        if (!form) return;
+
+        setFormFieldValue(form, 'field_id', String(field.id));
+        setFormFieldValue(form, 'x_mm', Number(field.x_mm).toFixed(2));
+        setFormFieldValue(form, 'y_mm', Number(field.y_mm).toFixed(2));
+        setFormFieldValue(form, 'width_mm', Number(field.width_mm).toFixed(2));
+        setFormFieldValue(form, 'height_mm', Number(field.height_mm).toFixed(2));
+        setFormFieldValue(form, 'font_size', String(field.font_size));
+        setFormFieldValue(form, 'font_family', field.font_family || 'Arial');
+        setFormFieldValue(form, 'alignment', field.alignment || 'left');
+        setFormFieldValue(form, 'enabled', field.enabled);
+        setAlignmentButtons(field.alignment || 'left');
+
+        var labelInput = document.getElementById('calFieldLabel');
+        if (labelInput) labelInput.value = field.label || field.field_name || '';
+    }
+
     function postForm(action, data) {
         var body = new FormData();
         body.append('action', action);
         body.append('csrf_token', csrfToken);
+        try {
+            var authToken = sessionStorage.getItem('alcros_auth');
+            if (authToken) {
+                body.append('alcros_auth', authToken);
+            }
+        } catch (err) {
+            /* ignore storage errors */
+        }
         Object.keys(data).forEach(function (key) {
             body.append(key, data[key]);
         });
-        return fetch(cfg.apiPrintUrl || 'api/print.php', {
+        return fetch(apiPrintRequestUrl(), {
             method: 'POST',
             body: body,
             credentials: 'same-origin'
@@ -565,88 +953,153 @@
         });
     }
 
-    function fieldSavePayload() {
-        var form = fieldForm();
-        if (!form || !activeFieldId) return null;
+    function fieldPayloadForId(fieldId) {
+        var field = findFieldConfig(fieldId);
+        if (!field) return null;
 
-        var data = {};
-        new FormData(form).forEach(function (value, key) {
-            data[key] = value;
-        });
-        data.field_id = String(activeFieldId);
-        data.enabled = form.querySelector('[name="enabled"]').checked ? '1' : '0';
+        var data = {
+            field_id: String(fieldId),
+            x_mm: Number(field.x_mm).toFixed(2),
+            y_mm: Number(field.y_mm).toFixed(2),
+            width_mm: Number(field.width_mm).toFixed(2),
+            height_mm: Number(field.height_mm).toFixed(2),
+            font_size: String(field.font_size),
+            font_family: field.font_family || 'Arial',
+            alignment: field.alignment || 'left',
+            enabled: field.enabled ? '1' : '0'
+        };
+
+        var label = String(field.label || '').trim();
+        if (!label) {
+            return {
+                error: 'Enter a display name for “' + (field.field_name || ('field #' + fieldId)) + '”.'
+            };
+        }
+        data.label = label;
+
         return data;
     }
 
-    function markSaveButtonSaved() {
-        var saveBtn = document.getElementById('calSaveFieldBtn');
-        if (!saveBtn || saveBtn.dataset.savedTimer) return;
+    function collectDirtyFieldPayloads() {
+        if (activeFieldId) {
+            syncActiveFieldFormFromConfig();
+            var activeField = findFieldConfig(activeFieldId);
+            if (activeField) {
+                var labelInput = document.getElementById('calFieldLabel');
+                if (labelInput) {
+                    activeField.label = String(labelInput.value || '').trim();
+                }
+            }
+        }
 
-        var original = saveBtn.textContent;
-        saveBtn.textContent = 'Saved';
-        saveBtn.dataset.savedTimer = '1';
-        window.setTimeout(function () {
-            saveBtn.textContent = original;
-            delete saveBtn.dataset.savedTimer;
-        }, 1500);
+        var payloads = [];
+        var errors = [];
+        dirtyFieldIds.forEach(function (fieldId) {
+            var payload = fieldPayloadForId(fieldId);
+            if (!payload) return;
+            if (payload.error) {
+                errors.push(payload.error);
+                return;
+            }
+            payloads.push(payload);
+        });
+
+        return { payloads: payloads, errors: errors };
     }
 
-    function saveActiveField(options) {
+    function applySavedFieldsResponse(fields) {
+        (fields || []).forEach(function (field) {
+            if (!field || !field.id) return;
+            applyFieldValues(field.id, field, activeFieldId === field.id, true);
+            markFieldPlaced(field.id);
+        });
+        updateAllMarkerVisibility();
+    }
+
+    function saveAllChangedFields(options) {
         options = options || {};
-        if (!activeFieldId) {
-            showToast('error', 'Select a field from the list first.');
+
+        if (saveInFlight) {
             return Promise.resolve();
         }
 
-        var data = fieldSavePayload();
-        if (!data || !data.field_id) {
-            showToast('error', 'Could not read field values. Select a field and try again.');
+        var collected = collectDirtyFieldPayloads();
+        if (collected.errors.length) {
+            setSaveStatus('error', collected.errors[0]);
+            showToast('error', collected.errors[0]);
+            return Promise.resolve();
+        }
+        if (!collected.payloads.length) {
+            setSaveStatus('saved');
+            if (options.manual) {
+                showToast('error', 'No changes to save.');
+            }
             return Promise.resolve();
         }
 
         if (!csrfToken) {
+            setSaveStatus('error', 'Session expired. Refresh the page.');
             showToast('error', 'Security token missing. Refresh the page and try again.');
             return Promise.resolve();
         }
 
-        var saveBtn = document.getElementById('calSaveFieldBtn');
-        if (window.AlcrosLoading && saveBtn) {
-            return window.AlcrosLoading.wrap(saveBtn, postForm('save_field', data).then(function (res) {
-                if (!res || res.ok === false) {
-                    showToast('error', (res && res.error) || 'Could not save field.');
-                    return;
-                }
-                applyFieldValues(activeFieldId, readFieldFormValues(), false);
-                markFieldPlaced(activeFieldId);
-                updateAllMarkerVisibility();
-                markCalibrationRefreshPending();
-                if (options.toast !== false) {
-                    showToast('success', options.message || 'Field saved.');
-                } else if (options.markSaved !== false) {
-                    markSaveButtonSaved();
-                }
-            }).catch(function () {
-                showToast('error', 'Could not save field. Check your connection.');
-            }), 'Saving…');
-        }
+        var count = collected.payloads.length;
+        saveInFlight = true;
+        updateSaveAllButton();
+        setSaveStatus('saving', count);
 
-        return postForm('save_field', data).then(function (res) {
+        var saveBtn = document.getElementById('calSaveAllBtn');
+
+        function finishSave(res) {
+            saveInFlight = false;
+            updateSaveAllButton();
+
             if (!res || res.ok === false) {
-                showToast('error', (res && res.error) || 'Could not save field.');
+                var err = (res && res.error) || 'Could not save fields.';
+                setSaveStatus('error', err);
+                showToast('error', err);
                 return;
             }
-            applyFieldValues(activeFieldId, readFieldFormValues(), false);
-            markFieldPlaced(activeFieldId);
-            updateAllMarkerVisibility();
+
+            var savedFields = res.fields || (res.field ? [res.field] : []);
+            var savedIds = savedFields.map(function (field) { return field.id; });
+            applySavedFieldsResponse(savedFields);
+            clearFieldsDirty(savedIds);
             markCalibrationRefreshPending();
+            setSaveStatus('saved');
+
             if (options.toast !== false) {
-                showToast('success', options.message || 'Field saved.');
-            } else if (options.markSaved !== false) {
-                markSaveButtonSaved();
+                var message = options.message;
+                if (!message) {
+                    message = savedFields.length > 1
+                        ? ('Saved ' + savedFields.length + ' fields.')
+                        : 'Field saved.';
+                }
+                if (res.warning) {
+                    message += ' Some fields could not be saved.';
+                }
+                showToast('success', message);
             }
-        }).catch(function () {
-            showToast('error', 'Could not save field. Check your connection.');
+        }
+
+        var request = postForm('save_fields', {
+            fields_json: JSON.stringify(collected.payloads)
+        }).then(finishSave).catch(function () {
+            saveInFlight = false;
+            updateSaveAllButton();
+            setSaveStatus('error', 'Could not save. Check your connection.');
+            showToast('error', 'Could not save fields. Check your connection.');
         });
+
+        if (window.AlcrosLoading && saveBtn) {
+            return window.AlcrosLoading.wrap(
+                saveBtn,
+                request,
+                count > 1 ? ('Saving ' + count + ' fields…') : 'Saving…'
+            );
+        }
+
+        return request;
     }
 
     function bindTabs() {
@@ -754,6 +1207,12 @@
             });
         }
 
+        var labelInput = document.getElementById('calFieldLabel');
+        if (labelInput) {
+            labelInput.addEventListener('input', onFieldLabelInput);
+            labelInput.addEventListener('blur', onFieldLabelBlur);
+        }
+
         var templateForm = document.getElementById('calTemplateForm');
         if (templateForm) {
             templateForm.querySelectorAll('input').forEach(function (el) {
@@ -762,6 +1221,21 @@
                 });
             });
         }
+    }
+
+    function onFieldLabelInput() {
+        if (!activeFieldId) return;
+        var labelInput = document.getElementById('calFieldLabel');
+        if (!labelInput) return;
+        applyFieldLabel(activeFieldId, labelInput.value, { autoSave: true });
+    }
+
+    function onFieldLabelBlur() {
+        if (!activeFieldId) return;
+        clearTimeout(labelSaveTimer);
+        var labelInput = document.getElementById('calFieldLabel');
+        if (!labelInput) return;
+        saveFieldLabelNow(activeFieldId, labelInput.value);
     }
 
     function onFieldPreviewInput() {
@@ -787,11 +1261,13 @@
         var boxesToggle = document.getElementById('calShowBoxes');
         var sampleToggle = document.getElementById('calShowSample');
 
-        function applyBoxesVisibility() {
+        function syncBoxesVisibility() {
+            showAllBoxes = !!boxesToggle.checked;
             updateAllMarkerVisibility();
         }
 
-        function applySampleText() {
+        function syncSampleTextVisibility() {
+            showSampleText = !!sampleToggle.checked;
             repositionAllMarkers();
             if (activeFieldId) {
                 var field = findFieldConfig(activeFieldId);
@@ -799,37 +1275,32 @@
             }
         }
 
+        function bindToggleInput(input, syncFn) {
+            if (!input) return;
+
+            input.addEventListener('change', syncFn);
+
+            var label = input.closest('label');
+            if (!label) return;
+
+            label.addEventListener('click', function (e) {
+                if (e.target === input) return;
+                e.preventDefault();
+                input.checked = !input.checked;
+                syncFn();
+            });
+        }
+
         if (boxesToggle) {
             showAllBoxes = !!boxesToggle.checked;
-            boxesToggle.addEventListener('change', function () {
-                showAllBoxes = !!boxesToggle.checked;
-                applyBoxesVisibility();
-            });
+            bindToggleInput(boxesToggle, syncBoxesVisibility);
+            updateAllMarkerVisibility();
         }
 
         if (sampleToggle) {
             showSampleText = !!sampleToggle.checked;
-            sampleToggle.addEventListener('change', function () {
-                showSampleText = !!sampleToggle.checked;
-                applySampleText();
-            });
+            bindToggleInput(sampleToggle, syncSampleTextVisibility);
         }
-
-        document.querySelectorAll('.print-cal-canvas-toolbar .print-cal-toggle').forEach(function (label) {
-            label.addEventListener('click', function (e) {
-                var input = label.querySelector('input[type="checkbox"]');
-                if (!input || e.target === input) return;
-                window.setTimeout(function () {
-                    if (input.id === 'calShowBoxes') {
-                        showAllBoxes = !!input.checked;
-                        applyBoxesVisibility();
-                    } else if (input.id === 'calShowSample') {
-                        showSampleText = !!input.checked;
-                        applySampleText();
-                    }
-                }, 0);
-            });
-        });
     }
 
     function bindFieldNav() {
@@ -839,81 +1310,219 @@
         if (next) next.addEventListener('click', function () { navigateField(1); });
     }
 
+    function appendFieldListItem(field) {
+        var list = document.getElementById('calFieldList');
+        if (!list) return;
+
+        var li = document.createElement('li');
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'print-cal-field-btn';
+        btn.setAttribute('data-field-id', String(field.id));
+        btn.setAttribute('data-field-name', field.field_name);
+        btn.setAttribute('data-field-label', field.label || field.field_name);
+
+        var labelSpan = document.createElement('span');
+        labelSpan.className = 'print-cal-field-label';
+        labelSpan.textContent = field.label || field.field_name;
+        btn.appendChild(labelSpan);
+
+        btn.addEventListener('click', function () {
+            selectField(field.id, false);
+        });
+
+        li.appendChild(btn);
+        list.appendChild(li);
+    }
+
+    function createMarkerElement(field) {
+        var pos = effectivePosition(field);
+        var alignment = field.alignment || 'left';
+        var marker = document.createElement('div');
+        marker.className = 'print-cal-marker';
+        marker.setAttribute('data-field-id', String(field.id));
+        marker.setAttribute('data-field-name', field.field_name);
+        marker.setAttribute('data-base-x', String(field.x_mm));
+        marker.setAttribute('data-base-y', String(field.y_mm));
+        marker.setAttribute('data-base-w', String(field.width_mm));
+        marker.setAttribute('data-base-h', String(field.height_mm));
+        marker.style.left = pos.x.toFixed(2) + 'mm';
+        marker.style.top = pos.y.toFixed(2) + 'mm';
+        marker.style.width = pos.width.toFixed(2) + 'mm';
+        marker.style.height = pos.height.toFixed(2) + 'mm';
+        marker.style.fontSize = field.font_size + 'pt';
+        marker.style.textAlign = alignment;
+        marker.style.justifyContent = markerJustifyContent(alignment);
+        marker.style.fontFamily = field.font_family || 'Arial';
+
+        var textEl = document.createElement('span');
+        textEl.className = 'print-cal-marker-text';
+        marker.appendChild(textEl);
+
+        var handle = document.createElement('span');
+        handle.className = 'print-cal-resize-handle';
+        handle.setAttribute('aria-hidden', 'true');
+        marker.appendChild(handle);
+
+        return marker;
+    }
+
+    function appendFieldMarker(field) {
+        var canvas = canvasEl();
+        if (!canvas) return null;
+
+        var marker = createMarkerElement(field);
+        canvas.appendChild(marker);
+        bindSingleMarkerDrag(marker);
+        syncMarkerFromField(field.id);
+        return marker;
+    }
+
+    function registerField(field) {
+        cfg.fields = cfg.fields || [];
+        cfg.fields.push(field);
+        cfg.sampleValues = cfg.sampleValues || {};
+        cfg.sampleValues[field.field_name] = field.label || 'Sample';
+        appendFieldListItem(field);
+        appendFieldMarker(field);
+        markFieldPlaced(field.id);
+        selectField(field.id, true);
+        fitCalibrationCanvas();
+    }
+
+    function addTextboxField() {
+        var canvas = canvasEl();
+        var templateId = cfg.templateId || (canvas ? parseInt(canvas.getAttribute('data-template-id') || '0', 10) : 0);
+        if (!templateId) {
+            showToast('error', 'Template not found. Refresh the page and try again.');
+            return Promise.resolve();
+        }
+
+        if (!csrfToken) {
+            showToast('error', 'Security token missing. Refresh the page and try again.');
+            return Promise.resolve();
+        }
+
+        var addBtn = document.getElementById('calAddTextbox');
+        var payload = { template_id: String(templateId) };
+
+        function finish() {
+            if (addBtn) addBtn.disabled = false;
+        }
+
+        if (addBtn) addBtn.disabled = true;
+
+        return postForm('add_field', payload).then(function (res) {
+            finish();
+            if (!res || res.ok === false || !res.field) {
+                showToast('error', (res && res.error) || 'Could not add textbox.');
+                return;
+            }
+            registerField(res.field);
+            markCalibrationRefreshPending();
+            showToast('success', 'Textbox added. Drag it into place, then click Save all changes.');
+        }).catch(function () {
+            finish();
+            showToast('error', 'Could not add textbox. Check your connection.');
+        });
+    }
+
+    function bindAddTextbox() {
+        var addBtn = document.getElementById('calAddTextbox');
+        if (!addBtn) return;
+        addBtn.addEventListener('click', function () {
+            addTextboxField();
+        });
+    }
+
+    function bindSingleMarkerDrag(marker) {
+        var canvas = canvasEl();
+        if (!canvas || !marker) return;
+
+        marker.addEventListener('pointerdown', function (e) {
+            if (e.target && e.target.classList.contains('print-cal-resize-handle')) return;
+            e.preventDefault();
+            var fieldId = parseInt(marker.getAttribute('data-field-id'), 10);
+            var field = findFieldConfig(fieldId);
+            if (!field) return;
+
+            selectField(fieldId, true);
+            var clickPos = mmFromEvent(canvas, e.clientX, e.clientY);
+            var pos = effectivePosition(field);
+            dragState = {
+                mode: 'move',
+                fieldId: fieldId,
+                grabOffsetX: clickPos.x - pos.x,
+                grabOffsetY: clickPos.y - pos.y
+            };
+            marker.setPointerCapture(e.pointerId);
+        });
+
+        marker.addEventListener('pointermove', function (e) {
+            if (!dragState || dragState.fieldId !== parseInt(marker.getAttribute('data-field-id'), 10)) return;
+            var pos = mmFromEvent(canvas, e.clientX, e.clientY);
+            if (dragState.mode === 'move') {
+                moveActiveFieldEffective(pos.x - dragState.grabOffsetX, pos.y - dragState.grabOffsetY);
+            } else if (dragState.mode === 'resize') {
+                var field = findFieldConfig(dragState.fieldId);
+                if (!field) return;
+                var start = dragState.startEffective;
+                var newW = Math.max(3, pos.x - start.x);
+                var newH = Math.max(2, pos.y - start.y);
+                var base = baseFromEffective(start.x, start.y, newW, newH);
+                applyFieldValues(dragState.fieldId, {
+                    x_mm: field.x_mm,
+                    y_mm: field.y_mm,
+                    width_mm: base.width_mm,
+                    height_mm: base.height_mm,
+                    font_size: field.font_size,
+                    font_family: field.font_family,
+                    alignment: field.alignment,
+                    enabled: field.enabled
+                }, true);
+            }
+        });
+
+        marker.addEventListener('pointerup', function () {
+            if (dragState && dragState.fieldId === parseInt(marker.getAttribute('data-field-id'), 10)) {
+                syncActiveFieldFormFromConfig();
+            }
+            dragState = null;
+        });
+
+        var handle = marker.querySelector('.print-cal-resize-handle');
+        if (handle) {
+            handle.addEventListener('pointerdown', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var fieldId = parseInt(marker.getAttribute('data-field-id'), 10);
+                var field = findFieldConfig(fieldId);
+                if (!field) return;
+                selectField(fieldId, true);
+                var pos = effectivePosition(field);
+                dragState = {
+                    mode: 'resize',
+                    fieldId: fieldId,
+                    startEffective: { x: pos.x, y: pos.y }
+                };
+                handle.setPointerCapture(e.pointerId);
+            });
+
+            handle.addEventListener('pointerup', function () {
+                if (dragState && dragState.fieldId === parseInt(marker.getAttribute('data-field-id'), 10)) {
+                    syncActiveFieldFormFromConfig();
+                }
+                dragState = null;
+            });
+        }
+    }
+
     function bindDrag() {
         var canvas = canvasEl();
         if (!canvas) return;
 
         canvas.querySelectorAll('.print-cal-marker').forEach(function (marker) {
-            marker.addEventListener('pointerdown', function (e) {
-                if (e.target && e.target.classList.contains('print-cal-resize-handle')) return;
-                e.preventDefault();
-                var fieldId = parseInt(marker.getAttribute('data-field-id'), 10);
-                var field = findFieldConfig(fieldId);
-                if (!field) return;
-
-                selectField(fieldId, true);
-                var clickPos = mmFromEvent(canvas, e.clientX, e.clientY);
-                var pos = effectivePosition(field);
-                dragState = {
-                    mode: 'move',
-                    fieldId: fieldId,
-                    grabOffsetX: clickPos.x - pos.x,
-                    grabOffsetY: clickPos.y - pos.y
-                };
-                marker.setPointerCapture(e.pointerId);
-            });
-
-            marker.addEventListener('pointermove', function (e) {
-                if (!dragState || dragState.fieldId !== parseInt(marker.getAttribute('data-field-id'), 10)) return;
-                var pos = mmFromEvent(canvas, e.clientX, e.clientY);
-                if (dragState.mode === 'move') {
-                    moveActiveFieldEffective(pos.x - dragState.grabOffsetX, pos.y - dragState.grabOffsetY);
-                } else if (dragState.mode === 'resize') {
-                    var field = findFieldConfig(dragState.fieldId);
-                    if (!field) return;
-                    var start = dragState.startEffective;
-                    var newW = Math.max(3, pos.x - start.x);
-                    var newH = Math.max(2, pos.y - start.y);
-                    var base = baseFromEffective(start.x, start.y, newW, newH);
-                    applyFieldValues(dragState.fieldId, {
-                        x_mm: field.x_mm,
-                        y_mm: field.y_mm,
-                        width_mm: base.width_mm,
-                        height_mm: base.height_mm,
-                        font_size: field.font_size,
-                        font_family: field.font_family,
-                        alignment: field.alignment,
-                        enabled: field.enabled
-                    }, true);
-                }
-            });
-
-            marker.addEventListener('pointerup', function () {
-                dragState = null;
-            });
-
-            var handle = marker.querySelector('.print-cal-resize-handle');
-            if (handle) {
-                handle.addEventListener('pointerdown', function (e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    var fieldId = parseInt(marker.getAttribute('data-field-id'), 10);
-                    var field = findFieldConfig(fieldId);
-                    if (!field) return;
-                    selectField(fieldId, true);
-                    var pos = effectivePosition(field);
-                    dragState = {
-                        mode: 'resize',
-                        fieldId: fieldId,
-                        startEffective: { x: pos.x, y: pos.y }
-                    };
-                    handle.setPointerCapture(e.pointerId);
-                });
-
-                handle.addEventListener('pointerup', function () {
-                    dragState = null;
-                });
-            }
+            bindSingleMarkerDrag(marker);
         });
     }
 
@@ -964,20 +1573,26 @@
     }
 
     function bindForms() {
-        var saveBtn = document.getElementById('calSaveFieldBtn');
-        if (saveBtn) {
-            saveBtn.addEventListener('click', function () {
-                saveActiveField({ message: 'Field changes saved.' });
+        var saveAllBtn = document.getElementById('calSaveAllBtn');
+        if (saveAllBtn) {
+            saveAllBtn.addEventListener('click', function () {
+                saveAllChangesNow();
             });
         }
 
-        var fieldFormEl = fieldForm();
-        if (fieldFormEl) {
-            fieldFormEl.addEventListener('submit', function (e) {
-                e.preventDefault();
-                saveActiveField({ message: 'Field changes saved.' });
+        var retryBtn = document.getElementById('calRetrySaveBtn');
+        if (retryBtn) {
+            retryBtn.addEventListener('click', function () {
+                saveAllChangesNow();
             });
         }
+
+        window.addEventListener('beforeunload', function (e) {
+            if (dirtyFieldIds.size > 0) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
 
         var templateForm = document.getElementById('calTemplateForm');
         if (templateForm) {
@@ -1071,37 +1686,87 @@
                 submitReset(window.confirm(msg));
             });
         }
+
+        var deleteFieldBtn = document.getElementById('calDeleteFieldBtn');
+        if (deleteFieldBtn) {
+            deleteFieldBtn.addEventListener('click', function () {
+                deleteCustomField();
+            });
+        }
     }
 
-    readConfig();
-    loadPlacedFields();
-    bindTabs();
-    bindFieldList();
-    bindFieldSearch();
-    bindAlignment();
-    bindNudge();
-    bindLivePreview();
-    bindKeyboardNudge();
-    bindCanvasToggles();
-    bindFieldNav();
-    bindDrag();
-    bindForms();
-    bindZoom();
-    fitCalibrationCanvas();
-    repositionAllMarkers();
-
-    if (cfg.selectedFieldId) {
-        selectField(cfg.selectedFieldId, false);
-    } else {
-        activeFieldId = null;
-        setEditorVisible(false);
+    function safeRun(step, fn) {
+        try {
+            fn();
+        } catch (err) {
+            console.error('[print-calibration]', step, err);
+        }
     }
 
-    updateAllMarkerVisibility();
+    function bootPrintCalibration() {
+        safeRun('readConfig', function () {
+            readConfig();
+            initSavedFieldLabels();
+            loadPlacedFields();
+        });
 
-    window.addEventListener('resize', fitCalibrationCanvas);
-    var bg = document.querySelector('.print-cal-bg');
-    if (bg) bg.addEventListener('load', fitCalibrationCanvas);
-    var formBgImg = document.querySelector('.print-cal-form-bg img');
-    if (formBgImg) formBgImg.addEventListener('load', fitCalibrationCanvas);
+        safeRun('bindUi', function () {
+            bindTabs();
+            bindFieldList();
+            bindFieldSearch();
+            bindAlignment();
+            bindNudge();
+            bindLivePreview();
+            bindKeyboardNudge();
+            bindCanvasToggles();
+            bindFieldNav();
+            bindDrag();
+            bindAddTextbox();
+            bindForms();
+            bindZoom();
+        });
+
+        safeRun('layout', function () {
+            fitCalibrationCanvas();
+            repositionAllMarkers();
+        });
+
+        safeRun('initialSelection', function () {
+            if (cfg.selectedFieldId) {
+                selectField(cfg.selectedFieldId, false);
+            } else {
+                activeFieldId = null;
+                setEditorVisible(false);
+            }
+            updateAllMarkerVisibility();
+            updateSaveAllButton();
+            setSaveStatus('saved');
+        });
+
+        window.addEventListener('resize', function () {
+            safeRun('resize', fitCalibrationCanvas);
+        });
+
+        var bg = document.querySelector('.print-cal-bg');
+        if (bg) {
+            bg.addEventListener('load', function () {
+                safeRun('bgLoad', fitCalibrationCanvas);
+            });
+        }
+        var formBgImg = document.querySelector('.print-cal-form-bg img');
+        if (formBgImg) {
+            formBgImg.addEventListener('load', function () {
+                safeRun('formBgLoad', fitCalibrationCanvas);
+            });
+        }
+
+        window.addEventListener('error', function (event) {
+            if (!event || !String(event.filename || '').includes('print-calibration')) {
+                return;
+            }
+            showToast('error', 'Print calibration hit an error. Refresh if controls stop responding.');
+        });
+    }
+
+    bootPrintCalibration();
 })();

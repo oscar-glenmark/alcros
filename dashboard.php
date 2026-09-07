@@ -21,9 +21,10 @@ $pageSubtitle = $isAdminUser
     ? 'Overview of requests, queue activity, and appointments for your office.'
     : 'Your daily queue, requests, and appointment summary.';
 
+$todayDate = alcrosTodayDate();
 $pendingCount  = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status IN ('pending','verified')")->fetchColumn();
 $queueCount    = (int) $pdo->query("SELECT COUNT(*) FROM queue_tickets WHERE status = 'waiting' AND DATE(created_at) = CURDATE()")->fetchColumn();
-$todayAppts    = (int) $pdo->query("SELECT COUNT(*) FROM appointments WHERE appointment_date = CURDATE()")->fetchColumn();
+$todayAppts    = countTodaySpecialAppointments($pdo);
 $readyCount    = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'ready'")->fetchColumn();
 
 $recentRequests = enrichCitizenNameRows($pdo->query(
@@ -44,7 +45,7 @@ if ($isAdminUser) {
 }
 
 $scheduleMonth = date('Y-m');
-$scheduleDate = date('Y-m-d');
+$scheduleDate = $todayDate;
 $scheduleCalendar = fetchDashboardSchedule($pdo, $scheduleDate, $scheduleMonth);
 $incomingDate = incomingAppointmentsDate();
 $incomingAppointments = fetchIncomingAppointments($pdo, 8);
@@ -52,7 +53,7 @@ $incomingAppointments = fetchIncomingAppointments($pdo, 8);
 $quickActions = [
     ['href' => 'manage_request.php', 'label' => 'Manage Requests', 'desc' => 'Review & update statuses', 'icon' => 'file-text', 'color' => 'bg-blue-50 text-blue-600'],
     ['href' => 'live-queue.php',     'label' => 'Live Queue',     'desc' => 'Serve waiting citizens',  'icon' => 'users',      'color' => 'bg-purple-50 text-purple-600'],
-    ['href' => 'appointment.php',   'label' => 'Appointments',   'desc' => "Today's schedule",        'icon' => 'calendar',   'color' => 'bg-teal-50 text-teal-600'],
+    ['href' => 'appointment.php',   'label' => 'Appointments',   'desc' => "Today's schedule",        'icon' => 'calendar',   'color' => 'bg-teal-50 text-teal-600', 'query' => ['date' => $todayDate]],
     ['href' => 'records.php',        'label' => 'Civil Records',  'desc' => 'Search registry files',   'icon' => 'book-open',  'color' => 'bg-orange-50 text-orange-600'],
 ];
 
@@ -64,7 +65,7 @@ if ($isAdminUser) {
 $statCards = [
     ['id' => 'stat-pending',  'label' => 'Needs Review',      'hint' => 'Pending & verified',     'value' => $pendingCount,  'icon' => 'clipboard-list', 'accent' => 'border-amber-400', 'iconColor' => 'text-amber-500', 'page' => 'manage_request.php', 'query' => ['status' => 'pending']],
     ['id' => 'stat-queue',    'label' => 'Queue Waiting',     'hint' => 'Citizens in line today', 'value' => $queueCount,    'icon' => 'users',          'accent' => 'border-violet-400', 'iconColor' => 'text-violet-500', 'page' => 'live-queue.php', 'query' => []],
-    ['id' => 'stat-appts',    'label' => "Today's Appointments", 'hint' => 'Scheduled for today', 'value' => $todayAppts,    'icon' => 'calendar',       'accent' => 'border-blue-400',  'iconColor' => 'text-blue-500',   'page' => 'appointment.php', 'query' => []],
+    ['id' => 'stat-appts',    'label' => "Today's Appointments", 'hint' => 'Special services today', 'value' => $todayAppts,    'icon' => 'calendar',       'accent' => 'border-blue-400',  'iconColor' => 'text-blue-500',   'page' => 'appointment.php', 'query' => ['date' => $todayDate, 'status' => 'all_appointments']],
     ['id' => 'stat-ready',    'label' => 'Ready for Pickup',  'hint' => 'Awaiting release',     'value' => $readyCount,    'icon' => 'package',        'accent' => 'border-emerald-400', 'iconColor' => 'text-emerald-500', 'page' => 'manage_request.php', 'query' => ['status' => 'ready']],
 ];
 
@@ -143,7 +144,7 @@ function activityIcon(string $action): string
                 <h2 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Quick Actions</h2>
                 <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
                     <?php foreach ($quickActions as $action): ?>
-                    <a href="<?= htmlspecialchars(buildAuthUrl($action['href'])) ?>" class="dash-card bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 flex items-start gap-3">
+                    <a href="<?= htmlspecialchars(buildAuthUrl($action['href'], $action['query'] ?? [])) ?>" class="dash-card bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 flex items-start gap-3">
                         <div class="p-2 rounded-lg shrink-0 <?= $action['color'] ?>">
                             <i data-lucide="<?= $action['icon'] ?>" class="w-4 h-4"></i>
                         </div>
@@ -279,8 +280,12 @@ function activityIcon(string $action): string
                     </div>
                     <div id="incoming-appts-list" class="divide-y divide-gray-50 max-h-[220px] overflow-y-auto">
                         <?php foreach ($incomingAppointments as $ap): ?>
-                        <div class="px-5 py-3 flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-lg bg-violet-50 text-violet-600 flex flex-col items-center justify-center shrink-0 leading-none">
+                        <?php
+                        $isCertificate = ($ap['schedule_kind'] ?? '') === 'certificate';
+                        [$visitPath, $visitQuery] = scheduleVisitLinkParams($ap, $incomingDate);
+                        ?>
+                        <a href="<?= htmlspecialchars(buildAuthUrl($visitPath, $visitQuery)) ?>" class="dash-schedule-row px-5 py-3 flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-lg <?= $isCertificate ? 'bg-amber-50 text-amber-700' : 'bg-violet-50 text-violet-600' ?> flex flex-col items-center justify-center shrink-0 leading-none">
                                 <span class="text-[9px] font-bold"><?= date('g:i', strtotime($ap['appointment_time'])) ?></span>
                                 <span class="text-[8px] uppercase"><?= date('A', strtotime($ap['appointment_time'])) ?></span>
                             </div>
@@ -289,7 +294,7 @@ function activityIcon(string $action): string
                                 <p class="text-[10px] text-gray-400 truncate"><?= htmlspecialchars($ap['service_type']) ?></p>
                             </div>
                             <span class="text-[9px] font-bold uppercase text-gray-400 shrink-0"><?= htmlspecialchars($ap['status']) ?></span>
-                        </div>
+                        </a>
                         <?php endforeach; ?>
                     </div>
                     <?php endif; ?>
@@ -338,6 +343,7 @@ function activityIcon(string $action): string
     <?= pageConfigJson([
         'scheduleMonth'     => $scheduleMonth,
         'scheduleDate'      => $scheduleDate,
+        'todayDate'         => $todayDate,
         'appointmentDates'  => $scheduleCalendar['dates'],
         'appointmentPage'   => buildAuthUrl('appointment.php'),
     ], 'dashboard-schedule-config') ?>

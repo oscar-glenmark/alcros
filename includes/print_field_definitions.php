@@ -351,25 +351,6 @@ function printFillFieldNames(string $type): array
     return printFillCsvColumns($type);
 }
 
-/**
- * Recommended font sizes (pt) for overlay printing on pre-printed civil registry forms.
- *
- * @return array{heading: float, label: float, data: float, name: float, date: float, date_part: float, place: float, small: float}
- */
-function printFontSizePresets(): array
-{
-    return [
-        'heading'   => 11.0, // 10–12 pt: province / city-municipality headers
-        'label'     => 8.5,  // 8–9 pt: reserved for label-only overlays
-        'data'      => 9.5,  // 9–10 pt: general entered / coded information
-        'name'      => 9.5,  // 9–10 pt: person names
-        'date'      => 9.5,  // 9–10 pt: full date values
-        'date_part' => 9.0,  // 9–10 pt: day / month / year cells
-        'place'     => 8.5,  // 8–9 pt: addresses and places
-        'small'     => 7.5,  // 7–8 pt: registry numbers, codes, remarks
-    ];
-}
-
 function printRecommendedFontSize(string $fieldName): float
 {
     return 10.0;
@@ -398,34 +379,101 @@ function printOfficialPaperHeightMm(): float
     return 358.9;
 }
 
+/** Built-in Legal paper preset for municipal forms 102 / 97 / 103. */
+function printBuiltInPaperSpec(): array
+{
+    return [
+        'width_mm'    => printOfficialPaperWidthMm(),
+        'height_mm'   => printOfficialPaperHeightMm(),
+        'width_in'    => 8.5,
+        'height_in'   => 14,
+        'name'        => 'Legal',
+        'label'       => 'Legal (8.5 × 14 in) or 215.9 × 358.9 mm',
+        'label_short' => 'Legal · 215.9 × 358.9 mm',
+    ];
+}
+
+/** Named paper sizes for the print dialog picker. */
+function printPaperPresets(): array
+{
+    return [
+        'legal' => [
+            'label'      => 'Legal (8.5 × 14 in)',
+            'width_mm'   => 215.9,
+            'height_mm'  => 358.9,
+            'printer_hint' => 'Legal',
+        ],
+        'folio' => [
+            'label'      => 'Folio / Long bond (8.5 × 13 in)',
+            'width_mm'   => 215.9,
+            'height_mm'  => 330.2,
+            'printer_hint' => 'Folio or Custom',
+        ],
+        'letter' => [
+            'label'      => 'Letter (8.5 × 11 in)',
+            'width_mm'   => 215.9,
+            'height_mm'  => 279.4,
+            'printer_hint' => 'Letter',
+        ],
+        'a4' => [
+            'label'      => 'A4 (210 × 297 mm)',
+            'width_mm'   => 210.0,
+            'height_mm'  => 297.0,
+            'printer_hint' => 'A4',
+        ],
+        'custom' => [
+            'label'      => 'Custom size…',
+            'width_mm'   => null,
+            'height_mm'  => null,
+            'printer_hint' => 'Custom or User defined',
+        ],
+    ];
+}
+
+/** CSS @page size from millimeters — inches map better in browser print dialogs. */
+function printPaperCssSizeFromMm(float $widthMm, float $heightMm): string
+{
+    $widthIn = round($widthMm / 25.4, 3);
+    $heightIn = round($heightMm / 25.4, 3);
+
+    return $widthIn . 'in ' . $heightIn . 'in';
+}
+
+/** Closest preset key for the given dimensions (within 0.5 mm). */
+function printPaperPresetKeyForSize(float $widthMm, float $heightMm): string
+{
+    foreach (printPaperPresets() as $key => $preset) {
+        if ($key === 'custom' || $preset['width_mm'] === null || $preset['height_mm'] === null) {
+            continue;
+        }
+        if (abs($widthMm - (float) $preset['width_mm']) < 0.5
+            && abs($heightMm - (float) $preset['height_mm']) < 0.5) {
+            return $key;
+        }
+    }
+
+    return 'custom';
+}
+
 function printPaperSizeLabel(?float $widthMm = null, ?float $heightMm = null, bool $compact = false): string
 {
     $widthMm = $widthMm ?? printOfficialPaperWidthMm();
     $heightMm = $heightMm ?? printOfficialPaperHeightMm();
 
     if ($compact) {
-        return sprintf('%.1f × %.1f mm · Legal bond', $widthMm, $heightMm);
+        return printBuiltInPaperSpec()['label_short'];
     }
 
-    return sprintf(
-        '%.1f mm × %.1f mm (8.5″ × 14.1″ municipal long bond — Forms 102 / 97 / 103)',
-        $widthMm,
-        $heightMm
-    );
+    return printBuiltInPaperSpec()['label'] . ' — Municipal Forms 102 / 97 / 103';
 }
 
 /** CSS @page size — inches so browsers map to Legal / long bond instead of ignoring custom mm. */
-function printPageCssSize(): string
+function printPageCssSize(?float $widthMm = null, ?float $heightMm = null): string
 {
-    $heightIn = round(printOfficialPaperHeightMm() / 25.4, 3);
+    $widthMm = $widthMm ?? printOfficialPaperWidthMm();
+    $heightMm = $heightMm ?? printOfficialPaperHeightMm();
 
-    return '8.5in ' . $heightIn . 'in';
-}
-
-/** Printer dialog hint — closest named size most drivers expose. */
-function printPaperSizePrinterHint(): string
-{
-    return 'Legal (8.5 × 14 in) or Custom 215.9 × 358.9 mm — never Postcard or A4';
+    return printPaperCssSizeFromMm($widthMm, $heightMm);
 }
 
 function printSeedFieldLayout(string $certificateType, string $pageSide): array
@@ -498,75 +546,6 @@ function printFieldHint(string $fieldName): string
     ];
 
     return $hints[$fieldName] ?? '';
-}
-
-function printTrimHintWords(string $text, int $maxWords = 3): string
-{
-    $text = trim(preg_replace('/\s+/u', ' ', $text) ?? '');
-    if ($text === '') {
-        return '';
-    }
-
-    $words = preg_split('/\s+/u', $text) ?: [];
-
-    return implode(' ', array_slice($words, 0, $maxWords));
-}
-
-function printFieldShortHint(string $fieldName, string $label = ''): string
-{
-    $legacy = printFieldHint($fieldName);
-    if ($legacy !== '') {
-        return printTrimHintWords(trim($legacy, '()'), 3);
-    }
-
-    if ($label === '') {
-        foreach (printFieldCatalog() as $sides) {
-            if (isset($sides['front'][$fieldName])) {
-                $label = (string) $sides['front'][$fieldName];
-                break;
-            }
-            if (isset($sides['back'][$fieldName])) {
-                $label = (string) $sides['back'][$fieldName];
-                break;
-            }
-        }
-    }
-
-    if ($label === '') {
-        $label = ucwords(str_replace('_', ' ', $fieldName));
-    }
-
-    $label = preg_replace('/^\d+[a-z]?\s+/i', '', $label) ?? $label;
-    $label = preg_replace('/^LCRO (Footer )?(Box )?(\d+[a-z]?)?\s*/i', 'LCRO ', $label) ?? $label;
-    $label = preg_replace('/\s*—\s*.+$/u', '', $label) ?? $label;
-    $label = preg_replace('/\s*\/\s*.+$/u', '', $label) ?? $label;
-
-    return printTrimHintWords($label, 3);
-}
-
-function printFieldIsCheckbox(string $fieldName): bool
-{
-    static $exact = [
-        'attendant_type',
-        'attendant_nurse',
-        'attendant_midwife',
-        'attendant_hilot',
-        'attendant_others',
-        'autopsy_performed',
-        'death_cert_attest_cb1',
-        'death_cert_attest_cb2',
-        'maternal_condition_a',
-        'maternal_condition_b',
-        'maternal_condition_c',
-        'maternal_condition_d',
-        'maternal_condition_e',
-    ];
-
-    if (in_array($fieldName, $exact, true)) {
-        return true;
-    }
-
-    return (bool) preg_match('/^lcro_box_/', $fieldName);
 }
 
 /** @return array<string, array<string, array<string, array<string, float|int|string>>>> */
@@ -895,15 +874,4 @@ function printFormReferenceImage(string $certificateType, string $pageSide): str
     }
 
     return 'assets/print/forms/' . $certificateType . '-' . $pageSide . '.jpg';
-}
-
-/** @return array<string, string> Legacy alias — columns now live in type-specific detail tables. */
-function printCivilRecordExtraColumns(): array
-{
-    $columns = [];
-    foreach (civilRecordTypeColumnMap() as $typeColumns) {
-        $columns = array_merge($columns, $typeColumns);
-    }
-
-    return $columns;
 }

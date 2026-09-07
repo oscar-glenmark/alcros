@@ -6,9 +6,16 @@ require_once __DIR__ . '/includes/scripts.php';
 require_once __DIR__ . '/includes/printing.php';
 requireAdmin();
 
+@set_time_limit(120);
+
 $activePage = 'print_calibration.php';
 $pdo = getDB();
-ensurePrintTables($pdo);
+
+try {
+    ensurePrintTables($pdo);
+} catch (Throwable $e) {
+    // Continue — template data may still load if tables already exist.
+}
 
 $certificateType = $_GET['type'] ?? 'birth';
 if (!in_array($certificateType, printCertificateTypes(), true)) {
@@ -33,14 +40,22 @@ $pngFull = __DIR__ . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR,
 $displayPng = is_file($pngFull);
 $displayPngSrc = $displayPng ? ($pngRelative . '?v=' . filemtime($pngFull)) : '';
 $calNavItems = printCalibrationNavItems($certificateType, $pageSide);
-$sampleValues = printCalibrationSampleValues($certificateType);
+try {
+    $sampleValues = printCalibrationSampleValues($certificateType);
+} catch (Throwable $e) {
+    $sampleValues = [];
+}
 $showSampleDefault = $pageSide !== 'back';
 $fieldHints = [];
-$fieldInputTypes = [];
 foreach ($fields as $field) {
     $name = (string) $field['field_name'];
-    $fieldHints[$name] = printFieldShortHint($name, (string) ($field['label'] ?? ''));
-    $fieldInputTypes[$name] = printFieldIsCheckbox($name) ? 'checkbox' : 'text';
+    $hint = printFieldHint($name);
+    if ($hint !== '') {
+        $fieldHints[$name] = $hint;
+    }
+    if (printIsCustomField($name)) {
+        $sampleValues[$name] = (string) ($field['label'] ?: 'Sample');
+    }
 }
 $previewPrintUrl = buildAuthUrl('print_render.php', [
     'calibration_preview' => '1',
@@ -105,6 +120,7 @@ if (!$formDefaults && !empty($fields[0])) {
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= vendorStylesheetTag('inter/inter.css') ?>
     <?= adminLayoutHeadStyles('print-calibration') ?>
+    <?= printPrinterSetupStylesheet() ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>
 <body class="flex min-h-screen">
@@ -155,7 +171,7 @@ if (!$formDefaults && !empty($fields[0])) {
                 <div class="print-cal-help">
                     <p class="print-cal-help-title">Quick guide</p>
                     <ol class="print-cal-help-steps">
-                        <li>Click a field, place it, then click <strong>Save changes</strong>.</li>
+                        <li>Move as many fields as you need, then click <strong>Save all changes</strong> once.</li>
                         <li><strong>Shift form</strong> — move every box together if your printer is slightly off.</li>
                         <li><strong>Printer</strong> — set your LGU name and print mode once.</li>
                     </ol>
@@ -192,7 +208,7 @@ if (!$formDefaults && !empty($fields[0])) {
                     <?php if ($formDefaults): ?>
                     <div class="print-cal-editor-empty" id="calFieldEmpty"<?= $selectedFieldId ? ' hidden' : '' ?>>
                         <p class="print-cal-editor-empty-title">No field selected</p>
-                        <p class="print-cal-hint">Click a field in the list above, adjust it, then click <strong>Save changes</strong>.</p>
+                        <p class="print-cal-hint">Click a field in the list to fine-tune it. When finished, click <strong>Save all changes</strong> above the form to save every field you moved.</p>
                     </div>
                     <div id="calFieldControls"<?= $selectedFieldId ? '' : ' hidden' ?>>
                     <div class="print-cal-field-nav">
@@ -207,6 +223,15 @@ if (!$formDefaults && !empty($fields[0])) {
 
                     <form id="calFieldForm" data-no-confirm>
                         <input type="hidden" name="field_id" value="<?= (int) $formDefaults['id'] ?>">
+
+                        <fieldset class="print-cal-fieldset print-cal-field-label-wrap" id="calFieldLabelWrap">
+                            <legend>Field name</legend>
+                            <p class="print-cal-hint">Rename how this textbox appears in the field list and print fill-in forms. The internal key above stays the same so saved positions and data mapping are not affected.</p>
+                            <label>Display name
+                                <input type="text" id="calFieldLabel" maxlength="120" placeholder="Field display name" autocomplete="off">
+                            </label>
+                            <p class="print-cal-label-save-status" id="calLabelSaveStatus" aria-live="polite"></p>
+                        </fieldset>
 
                         <fieldset class="print-cal-fieldset">
                             <legend>Position on paper</legend>
@@ -295,10 +320,6 @@ if (!$formDefaults && !empty($fields[0])) {
                             <span class="print-cal-toggle-ui" aria-hidden="true"></span>
                             <span class="print-cal-toggle-text">Show this field when printing</span>
                         </label>
-
-                        <div class="print-cal-editor-actions">
-                            <button type="button" class="print-cal-save" id="calSaveFieldBtn">Save changes</button>
-                        </div>
                     </form>
                     <form method="post" class="print-cal-reset-form" id="calResetFieldForm" data-no-confirm>
                         <?= csrfField() ?>
@@ -306,6 +327,7 @@ if (!$formDefaults && !empty($fields[0])) {
                         <input type="hidden" name="field_id" value="<?= (int) $formDefaults['id'] ?>">
                         <button type="button" class="print-cal-reset" id="calResetFieldBtn">Reset this field to default</button>
                     </form>
+                    <button type="button" class="print-cal-delete" id="calDeleteFieldBtn" hidden>Delete custom textbox</button>
                     </div>
                     <?php endif; ?>
                 </div>
@@ -356,9 +378,13 @@ if (!$formDefaults && !empty($fields[0])) {
                 </div>
 
                 <div class="print-cal-panel" data-panel="printer" role="tabpanel" hidden>
-                    <h2>Printer setup</h2>
-                    <p class="print-cal-hint">These settings apply to every certificate. Set them once, then calibrate each form page.</p>
-                    <form id="calGlobalForm" data-no-confirm>
+                    <p class="print-cal-hint">These settings apply to every certificate. Paper size is fixed to the built-in Legal preset below.</p>
+                    <?php renderPrintBuiltInPrinterSetup([
+                        'variant' => 'panel',
+                        'show_back_hint' => true,
+                        'back_orientation_hint' => $globalCalibration['back_orientation_hint'] ?? '',
+                    ]); ?>
+                    <form id="calGlobalForm" data-no-confirm class="print-cal-global-form">
                         <label>Print mode
                             <select name="print_mode">
                                 <option value="preprinted" <?= printMode() === 'preprinted' ? 'selected' : '' ?>>Pre-printed forms — print data only on blank forms</option>
@@ -390,9 +416,6 @@ if (!$formDefaults && !empty($fields[0])) {
                                 </label>
                             </div>
                         </details>
-                        <label>Paper size (official municipal form)
-                            <input type="text" value="<?= htmlspecialchars(printPaperSizeLabel($paperW, $paperH)) ?>" readonly>
-                        </label>
                         <button type="submit" class="print-cal-save">Save printer setup</button>
                     </form>
                 </div>
@@ -400,6 +423,10 @@ if (!$formDefaults && !empty($fields[0])) {
 
             <div class="print-cal-main">
             <div class="print-cal-canvas-toolbar no-print">
+                <button type="button" class="print-cal-tool-btn print-cal-save-all" id="calSaveAllBtn" disabled>Save all changes</button>
+                <span class="print-cal-save-status is-saved" id="calSaveStatus" role="status" aria-live="polite">All changes saved</span>
+                <button type="button" class="print-cal-tool-btn print-cal-retry-save" id="calRetrySaveBtn" hidden>Retry save</button>
+                <button type="button" class="print-cal-tool-btn print-cal-add-btn" id="calAddTextbox">+ Add textbox</button>
                 <label class="print-cal-toggle print-cal-toggle--compact">
                     <input type="checkbox" id="calShowBoxes" checked>
                     <span class="print-cal-toggle-ui" aria-hidden="true"></span>
@@ -437,30 +464,22 @@ if (!$formDefaults && !empty($fields[0])) {
                     <?php foreach ($fields as $field):
                         $pos = printEffectivePosition($field, $calibration, $globalCalibration);
                         $isSelected = $selectedFieldId > 0 && (int) $field['id'] === $selectedFieldId;
-                        $fieldName = (string) $field['field_name'];
-                        $shortHint = printFieldShortHint($fieldName, (string) ($field['label'] ?? ''));
-                        $isCheckbox = printFieldIsCheckbox($fieldName);
-                        $markerSampleText = $showSampleDefault ? ($sampleValues[$fieldName] ?? '') : '';
-                        $checkboxMark = $isCheckbox ? (trim($markerSampleText) !== '' ? '☑' : '☐') : '';
+                        $fieldHint = printFieldHint((string) $field['field_name']);
+                        $markerSampleText = $showSampleDefault
+                            ? ($sampleValues[$field['field_name']] ?? ($fieldHint !== '' ? $fieldHint : ($field['label'] ?: $field['field_name'])))
+                            : ($fieldHint !== '' ? $fieldHint : ($field['label'] ?: $field['field_name']));
                         $fieldAlign = printNormalizeAlignment($field['alignment'] ?? null);
                         $fieldJustify = printAlignmentJustifyContent($fieldAlign);
                     ?>
-                    <div class="print-cal-marker<?= $isSelected ? ' is-selected' : '' ?><?= empty($field['enabled']) ? ' is-disabled' : '' ?><?= $showSampleDefault ? ' is-sample-mode' : '' ?><?= $isCheckbox ? ' is-checkbox' : '' ?>"
+                    <div class="print-cal-marker<?= $isSelected ? ' is-selected' : '' ?><?= empty($field['enabled']) ? ' is-disabled' : '' ?><?= $showSampleDefault ? ' is-sample-mode' : '' ?>"
                          data-field-id="<?= (int) $field['id'] ?>"
-                         data-field-name="<?= htmlspecialchars($fieldName) ?>"
-                         data-input-type="<?= $isCheckbox ? 'checkbox' : 'text' ?>"
+                         data-field-name="<?= htmlspecialchars($field['field_name']) ?>"
                          data-base-x="<?= (float) $field['x_mm'] ?>"
                          data-base-y="<?= (float) $field['y_mm'] ?>"
                          data-base-w="<?= (float) $field['width_mm'] ?>"
                          data-base-h="<?= (float) $field['height_mm'] ?>"
                          style="left:<?= $pos['x'] ?>mm;top:<?= $pos['y'] ?>mm;width:<?= $pos['width'] ?>mm;height:<?= $pos['height'] ?>mm;font-size:<?= (float) $field['font_size'] ?>pt;text-align:<?= htmlspecialchars($fieldAlign) ?>;justify-content:<?= htmlspecialchars($fieldJustify) ?>;">
-                        <?php if ($shortHint !== ''): ?>
-                        <span class="print-cal-marker-hint"><?= htmlspecialchars($shortHint) ?></span>
-                        <?php endif; ?>
-                        <?php if ($isCheckbox): ?>
-                        <span class="print-cal-marker-check"><?= htmlspecialchars($checkboxMark) ?></span>
-                        <?php endif; ?>
-                        <span class="print-cal-marker-text"><?= htmlspecialchars($isCheckbox ? '' : $markerSampleText) ?></span>
+                        <span class="print-cal-marker-text"><?= htmlspecialchars($markerSampleText) ?></span>
                         <span class="print-cal-resize-handle" aria-hidden="true"></span>
                     </div>
                     <?php endforeach; ?>
@@ -509,12 +528,11 @@ if (!$formDefaults && !empty($fields[0])) {
     ],
     'sampleValues' => $sampleValues,
     'fieldHints' => $fieldHints,
-    'fieldInputTypes' => $fieldInputTypes,
     'previewPrintUrl' => $previewPrintUrl,
 ]) ?>
 <?= scriptTag('core/page-config.js') ?>
 <?= scriptTag('admin/print-calibration.js') ?>
 <?= lucideInitScript() ?>
-<?= adminCoreScripts(['sidebar']) ?>
+<?= adminCoreScripts() ?>
 </body>
 </html>

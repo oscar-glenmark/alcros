@@ -1,7 +1,12 @@
 (function () {
     'use strict';
 
-    var sidebarToggle = document.getElementById('adminSidebarToggle');
+    var STORAGE_KEY = 'admin_sidebar_minimized';
+    var sidebarToggle = null;
+
+    function isCompactViewport() {
+        return window.matchMedia('(max-width: 1023px)').matches;
+    }
 
     function setSidebarDrawerOpen(open) {
         document.body.classList.toggle('admin-sidebar-drawer-open', open);
@@ -10,10 +15,53 @@
         }
     }
 
-    if (sidebarToggle) {
-        sidebarToggle.addEventListener('click', function () {
-            setSidebarDrawerOpen(!document.body.classList.contains('admin-sidebar-drawer-open'));
+    function setSidebarMinimized(minimized, persist) {
+        document.body.classList.toggle('admin-sidebar-minimized', minimized);
+        if (persist !== false) {
+            try {
+                sessionStorage.setItem(STORAGE_KEY, minimized ? '1' : '0');
+            } catch (e) { /* ignore */ }
+        }
+        if (sidebarToggle && !isCompactViewport()) {
+            sidebarToggle.setAttribute('aria-expanded', minimized ? 'false' : 'true');
+        }
+    }
+
+    function restoreSidebarState() {
+        try {
+            if (sessionStorage.getItem(STORAGE_KEY) === '1') {
+                if (!document.body.classList.contains('admin-sidebar-minimized')) {
+                    setSidebarMinimized(true, false);
+                }
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    function bindSidebarToggle() {
+        sidebarToggle = document.getElementById('adminSidebarToggle');
+        if (!sidebarToggle || sidebarToggle.dataset.bound === '1') {
+            return;
+        }
+        sidebarToggle.dataset.bound = '1';
+
+        sidebarToggle.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (isCompactViewport()) {
+                setSidebarDrawerOpen(!document.body.classList.contains('admin-sidebar-drawer-open'));
+                return;
+            }
+            var willMinimize = !document.body.classList.contains('admin-sidebar-minimized');
+            setSidebarMinimized(willMinimize);
+            if (!willMinimize) {
+                setSidebarDrawerOpen(false);
+            }
         });
+    }
+
+    function initSidebar() {
+        restoreSidebarState();
+        bindSidebarToggle();
 
         document.addEventListener('click', function (e) {
             if (!document.body.classList.contains('admin-sidebar-drawer-open')) {
@@ -30,41 +78,64 @@
                 setSidebarDrawerOpen(false);
             }
         });
+
+        window.addEventListener('resize', function () {
+            if (!isCompactViewport()) {
+                setSidebarDrawerOpen(false);
+            }
+        });
+
+        var navScroll = document.getElementById('sidebarNavScroll');
+        if (navScroll && navScroll.dataset.scrollBound !== '1') {
+            navScroll.dataset.scrollBound = '1';
+            var savedScroll = sessionStorage.getItem('sidebar_scroll_pos');
+            if (savedScroll !== null) {
+                navScroll.scrollTop = parseInt(savedScroll, 10);
+            }
+            navScroll.addEventListener('scroll', function () {
+                sessionStorage.setItem('sidebar_scroll_pos', navScroll.scrollTop);
+            });
+        }
     }
 
-    var navScroll = document.getElementById('sidebarNavScroll');
-    if (navScroll) {
-        var savedScroll = sessionStorage.getItem('sidebar_scroll_pos');
-        if (savedScroll !== null) {
-            navScroll.scrollTop = parseInt(savedScroll, 10);
+    function initLogoutModal() {
+        var modal = document.getElementById('logoutConfirmModal');
+        var openBtn = document.getElementById('logoutOpenBtn');
+        var cancelBtn = document.getElementById('logoutCancelBtn');
+        if (!modal || !openBtn || !cancelBtn || modal.dataset.bound === '1') {
+            return;
         }
-        navScroll.addEventListener('scroll', function () {
-            sessionStorage.setItem('sidebar_scroll_pos', navScroll.scrollTop);
+        modal.dataset.bound = '1';
+
+        function openModal() {
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        function closeModal() {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        openBtn.addEventListener('click', openModal);
+        cancelBtn.addEventListener('click', closeModal);
+        modal.addEventListener('click', function (e) {
+            if (e.target === modal) closeModal();
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && modal.classList.contains('flex')) closeModal();
         });
     }
 
-    var modal = document.getElementById('logoutConfirmModal');
-    var openBtn = document.getElementById('logoutOpenBtn');
-    var cancelBtn = document.getElementById('logoutCancelBtn');
-    if (!modal || !openBtn || !cancelBtn) return;
-
-    function openModal() {
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+    function init() {
+        initSidebar();
+        initLogoutModal();
     }
 
-    function closeModal() {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
     }
-
-    openBtn.addEventListener('click', openModal);
-    cancelBtn.addEventListener('click', closeModal);
-    modal.addEventListener('click', function (e) {
-        if (e.target === modal) closeModal();
-    });
-    document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape' && modal.classList.contains('flex')) closeModal();
-    });
 })();

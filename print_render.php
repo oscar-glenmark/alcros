@@ -5,11 +5,20 @@ require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/printing.php';
 requireStaffLogin();
 
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
 header('Cache-Control: no-store, no-cache, must-revalidate');
 header('Pragma: no-cache');
 
 $pdo = getDB();
-ensurePrintTables($pdo);
+@set_time_limit(120);
+try {
+    ensurePrintTables($pdo);
+} catch (Throwable $e) {
+    // Continue if tables already exist.
+}
 
 $pageSide = ($_GET['page'] ?? 'front') === 'back' ? 'back' : 'front';
 $testMode = !empty($_GET['test']);
@@ -90,7 +99,7 @@ $template = $printData['template'];
 $paperW = (float) $template['paper_width_mm'];
 $paperH = (float) $template['paper_height_mm'];
 $pageCssSize = printPageCssSize();
-$paperHint = printPaperSizePrinterHint();
+$printerSetupCss = printPrinterSetupStylesheet();
 $isPreview = !empty($_GET['preview']);
 $autoPrint = !empty($_GET['autoprint']);
 $overlayHtml = renderPrintOverlayHtml($printData, [
@@ -105,6 +114,7 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
 <head>
     <meta charset="UTF-8">
     <title>Print <?= htmlspecialchars(ucfirst($certificateType)) ?> · <?= htmlspecialchars(ucfirst($pageSide)) ?></title>
+    <?= $printerSetupCss ?>
     <style>
         /* Legal / 8.5×14.1 in — browsers recognize this better than raw mm (avoids Postcard default). */
         @page {
@@ -145,28 +155,13 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
             background: rgba(15, 23, 42, 0.72);
         }
         .print-setup-notice__card {
-            max-width: 28rem;
+            max-width: 30rem;
             background: #fff;
             border-radius: 1rem;
-            padding: 1.25rem 1.5rem;
+            padding: 1.25rem 1.5rem 1.5rem;
             box-shadow: 0 20px 48px rgba(15, 23, 42, 0.28);
             font: 14px/1.5 system-ui, sans-serif;
             color: #0f172a;
-        }
-        .print-setup-notice__card h2 {
-            margin: 0 0 0.75rem;
-            font-size: 1rem;
-            font-weight: 800;
-        }
-        .print-setup-notice__card ul {
-            margin: 0 0 1rem;
-            padding-left: 1.25rem;
-        }
-        .print-setup-notice__card li {
-            margin-bottom: 0.35rem;
-        }
-        .print-setup-notice__card strong {
-            color: #b45309;
         }
         .print-setup-notice__card button {
             width: 100%;
@@ -178,6 +173,7 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
             font-size: 0.875rem;
             font-weight: 700;
             cursor: pointer;
+            margin-top: 1rem;
         }
         @media print {
             .print-setup-notice {
@@ -253,14 +249,12 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
     <?php if ($autoPrint): ?>
     <div class="print-setup-notice" id="printSetupNotice" role="dialog" aria-labelledby="printSetupTitle">
         <div class="print-setup-notice__card">
-            <h2 id="printSetupTitle">Set paper size before printing</h2>
-            <ul>
-                <li><strong>Paper size:</strong> <?= htmlspecialchars($paperHint) ?></li>
-                <li><strong>Scale:</strong> 100% — do not use “Fit to page”</li>
-                <li><strong>Margins:</strong> None</li>
-                <li><strong>Pages:</strong> Should show <strong>1 sheet</strong> only (not 2+)</li>
-            </ul>
-            <p style="margin:0 0 1rem;color:#64748b;font-size:12px;">If you see “Postcard” or “2 sheets”, change the paper size in the print dialog.</p>
+            <?php renderPrintBuiltInPrinterSetup([
+                'variant'           => 'dialog',
+                'default_width_mm'  => $paperW,
+                'default_height_mm' => $paperH,
+            ]); ?>
+            <p style="margin:0;color:#64748b;font-size:12px;">If the print dialog shows “Postcard” or “2 sheets”, set the paper size above and match it in your printer dialog before continuing.</p>
             <button type="button" id="printSetupContinue">Continue to Print</button>
         </div>
     </div>
@@ -273,16 +267,145 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
         (function () {
             var notice = document.getElementById('printSetupNotice');
             var btn = document.getElementById('printSetupContinue');
+            var presetEl = document.querySelector('[data-print-paper-preset]');
+            var widthEl = document.querySelector('[data-print-paper-width]');
+            var heightEl = document.querySelector('[data-print-paper-height]');
+            var hintEl = document.querySelector('[data-print-printer-hint]');
+            var presetsJson = document.querySelector('[data-print-paper-presets]');
+            var presets = {};
+            var dynamicStyle = document.getElementById('printDynamicPaperStyle');
+
+            if (presetsJson) {
+                try {
+                    presets = JSON.parse(presetsJson.textContent || '{}');
+                } catch (err) {
+                    presets = {};
+                }
+            }
+
+            function readMm(input) {
+                var value = parseFloat(input && input.value ? input.value : '');
+                return value > 0 ? value : 0;
+            }
+
+            function mmToIn(mm) {
+                return Math.round((mm / 25.4) * 1000) / 1000;
+            }
+
+            function applyPreset(key) {
+                var preset = presets[key];
+                if (!preset || key === 'custom') {
+                    if (widthEl) widthEl.disabled = false;
+                    if (heightEl) heightEl.disabled = false;
+                    if (hintEl) hintEl.textContent = preset && preset.printer_hint ? preset.printer_hint : 'Custom or User defined';
+                    return;
+                }
+                if (widthEl) {
+                    widthEl.value = String(preset.width_mm);
+                    widthEl.disabled = true;
+                }
+                if (heightEl) {
+                    heightEl.value = String(preset.height_mm);
+                    heightEl.disabled = true;
+                }
+                if (hintEl && preset.printer_hint) {
+                    hintEl.textContent = preset.printer_hint;
+                }
+            }
+
+            function applyPaperSize() {
+                var widthMm = readMm(widthEl);
+                var heightMm = readMm(heightEl);
+                if (!(widthMm > 0 && heightMm > 0)) {
+                    return false;
+                }
+
+                var widthIn = mmToIn(widthMm);
+                var heightIn = mmToIn(heightMm);
+                var css = '@page { size: ' + widthIn + 'in ' + heightIn + 'in portrait; margin: 0; }' +
+                    'html, body { width: ' + widthMm + 'mm !important; height: ' + heightMm + 'mm !important; }' +
+                    '.print-render-wrap { width: ' + widthMm + 'mm !important; height: ' + heightMm + 'mm !important; }' +
+                    '.print-sheet { width: ' + widthMm + 'mm !important; height: ' + heightMm + 'mm !important; max-height: ' + heightMm + 'mm !important; }';
+
+                if (!dynamicStyle) {
+                    dynamicStyle = document.createElement('style');
+                    dynamicStyle.id = 'printDynamicPaperStyle';
+                    document.head.appendChild(dynamicStyle);
+                }
+                dynamicStyle.textContent = css;
+
+                try {
+                    localStorage.setItem('alcros-print-paper', JSON.stringify({
+                        preset: presetEl ? presetEl.value : 'custom',
+                        width_mm: widthMm,
+                        height_mm: heightMm
+                    }));
+                } catch (err) {
+                    /* ignore */
+                }
+
+                return true;
+            }
+
+            function restoreSavedPaper() {
+                var saved = null;
+                try {
+                    saved = JSON.parse(localStorage.getItem('alcros-print-paper') || 'null');
+                } catch (err) {
+                    saved = null;
+                }
+                if (!saved || !presetEl) return;
+
+                if (saved.preset && presets[saved.preset]) {
+                    presetEl.value = saved.preset;
+                    applyPreset(saved.preset);
+                }
+                if (saved.preset === 'custom' || !presets[saved.preset]) {
+                    if (widthEl && saved.width_mm) widthEl.value = String(saved.width_mm);
+                    if (heightEl && saved.height_mm) heightEl.value = String(saved.height_mm);
+                }
+            }
+
+            if (presetEl) {
+                presetEl.addEventListener('change', function () {
+                    applyPreset(presetEl.value);
+                });
+                restoreSavedPaper();
+                applyPreset(presetEl.value);
+            }
+
             function startPrint() {
+                if (!applyPaperSize()) {
+                    window.alert('Enter a valid paper width and height in millimeters.');
+                    return;
+                }
                 if (notice) notice.style.display = 'none';
+                if (window.AlcrosPrintFitText) {
+                    AlcrosPrintFitText.fitAll(document, function () {
+                        window.print();
+                    });
+                    return;
+                }
                 window.print();
             }
+
             if (btn) {
                 btn.addEventListener('click', startPrint);
             } else {
                 window.addEventListener('load', function () { window.setTimeout(startPrint, 600); });
             }
         })();
+    </script>
+    <?php endif; ?>
+    <?php if ($autoPrint): ?>
+    <?php require_once __DIR__ . '/includes/scripts.php'; ?>
+    <?= scriptTag('admin/print-fit-text.js') ?>
+    <script>
+        window.addEventListener('load', function () {
+            if (window.AlcrosPrintFitText) {
+                AlcrosPrintFitText.fitAll(document);
+            }
+        });
     </script>
     <?php endif; ?>
 </body>

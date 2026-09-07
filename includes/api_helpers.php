@@ -100,58 +100,6 @@ function buildQueueGroupedFromRows(array $rows): array
     return $grouped;
 }
 
-function fetchQueueStats(PDO $pdo): array
-{
-    $rows = fetchTodayQueueActiveRows($pdo);
-    $stats = [
-        'waiting'   => 0,
-        'serving'   => 0,
-        'completed' => 0,
-    ];
-    foreach ($rows as $row) {
-        if (($row['status'] ?? '') === 'waiting') {
-            $stats['waiting']++;
-        } elseif (($row['status'] ?? '') === 'serving') {
-            $stats['serving']++;
-        }
-    }
-    foreach (array_keys(queuePurposeConfig()) as $purpose) {
-        $stats['waiting_' . $purpose] = 0;
-    }
-    foreach ($rows as $row) {
-        if (($row['status'] ?? '') === 'waiting') {
-            $purpose = (string) ($row['purpose'] ?? '');
-            if (isset($stats['waiting_' . $purpose])) {
-                $stats['waiting_' . $purpose]++;
-            }
-        }
-    }
-
-    try {
-        $stats['completed'] = (int) $pdo->query(
-            "SELECT COUNT(*) FROM queue_tickets
-             WHERE created_at >= CURDATE() AND created_at < CURDATE() + INTERVAL 1 DAY AND status = 'completed'"
-        )->fetchColumn();
-    } catch (Throwable $e) {
-        $stats['completed'] = 0;
-    }
-
-    return $stats;
-}
-
-function fetchActiveQueueTickets(PDO $pdo, string $filter = 'all'): array
-{
-    $rows = fetchTodayQueueActiveRows($pdo);
-    if (!in_array($filter, ['walk_in', 'appointment', 'document_claim'], true)) {
-        return $rows;
-    }
-
-    return array_values(array_filter(
-        $rows,
-        static fn (array $row): bool => ($row['purpose'] ?? '') === $filter
-    ));
-}
-
 function fetchQueueTicketsGrouped(PDO $pdo): array
 {
     return buildQueueGroupedFromRows(fetchTodayQueueActiveRows($pdo));
@@ -226,10 +174,11 @@ function fetchQueueSnapshot(PDO $pdo, string $mode = 'full'): array
 
 function fetchDashboardStats(PDO $pdo, bool $isAdmin, string $staffId): array
 {
+    $todayDate = alcrosTodayDate();
     $stats = [
         'pending_count'   => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status IN ('pending','verified')")->fetchColumn(),
         'queue_count'     => (int) $pdo->query("SELECT COUNT(*) FROM queue_tickets WHERE status = 'waiting' AND DATE(created_at) = CURDATE()")->fetchColumn(),
-        'today_appts'     => (int) $pdo->query("SELECT COUNT(*) FROM appointments WHERE appointment_date = CURDATE()")->fetchColumn(),
+        'today_appts'     => countTodaySpecialAppointments($pdo),
         'pipeline_count'  => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'verified'")->fetchColumn(),
         'ready_count'     => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'ready'")->fetchColumn(),
         'completed_today' => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'completed' AND DATE(updated_at) = CURDATE()")->fetchColumn(),
@@ -265,6 +214,7 @@ function fetchDashboardStats(PDO $pdo, bool $isAdmin, string $staffId): array
         'today_appts'     => $todayAppts,
         'incoming_appts'  => fetchIncomingAppointments($pdo, 8),
         'incoming_date'   => incomingAppointmentsDate(),
+        'today_date'      => $todayDate,
     ];
 }
 
@@ -282,7 +232,7 @@ function fetchScheduleDatesInMonth(PDO $pdo, string $yearMonth): array
         "SELECT a.appointment_date, COUNT(*) AS cnt
          FROM appointments a
          WHERE a.appointment_date BETWEEN ? AND ?
-           AND a.status NOT IN ('cancelled', 'no_show')
+           AND " . scheduleVisitAppointmentSql('a') . "
            AND a.deleted_at IS NULL
          GROUP BY a.appointment_date"
     );
@@ -383,7 +333,7 @@ function fetchScheduleVisits(PDO $pdo, string $date, int $limit = 8): array
                 a.appointment_time, a.service_type, a.status, a.source, a.tracking_code
          FROM appointments a
          WHERE a.appointment_date = ?
-           AND a.status NOT IN ('cancelled', 'no_show')
+           AND " . scheduleVisitAppointmentSql('a') . "
            AND a.deleted_at IS NULL
          ORDER BY a.appointment_time ASC"
     );
@@ -464,21 +414,12 @@ function fetchAppointments(PDO $pdo, string $date): array
 
 function fetchIncomingAppointments(PDO $pdo, int $limit = 8): array
 {
-    $tomorrow = date('Y-m-d', strtotime('+1 day'));
-    $rows = array_slice(fetchAppointments($pdo, $tomorrow), 0, max(0, $limit));
-
-    foreach ($rows as &$row) {
-        $row['service_type'] = appointmentServiceLabel((string) ($row['service_type'] ?? ''));
-        $row['status'] = appointmentStatusLabel((string) ($row['status'] ?? 'scheduled'));
-    }
-    unset($row);
-
-    return $rows;
+    return fetchScheduleVisits($pdo, incomingAppointmentsDate(), $limit);
 }
 
 function incomingAppointmentsDate(): string
 {
-    return date('Y-m-d', strtotime('+1 day'));
+    return date('Y-m-d', strtotime(alcrosTodayDate() . ' +1 day'));
 }
 
 function documentTypeLabelsMap(): array

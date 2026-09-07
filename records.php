@@ -172,16 +172,6 @@ function civilRecordExtendedFieldNames(): array
     return civilRecordAllTypeFieldNames();
 }
 
-function civilRecordExtendedDefaults(): array
-{
-    return [];
-}
-
-function civilRecordOptionalInt($value): ?int
-{
-    return ($value ?? '') !== '' ? (int) $value : null;
-}
-
 function civilRecordCsvDateFields(): array
 {
     return [
@@ -479,19 +469,22 @@ function civilRecordCsvSkipColumns(): array
 
 function prepareCsvImportFile(string $filePath): array
 {
-    $contents = file_get_contents($filePath);
-    if ($contents === false) {
+    $head = @file_get_contents($filePath, false, null, 0, 2);
+    if ($head === false) {
         throw new InvalidArgumentException('Could not read the uploaded CSV file.');
     }
 
     $tempPath = null;
-    if (str_starts_with($contents, "\xFF\xFE")) {
-        $contents = mb_convert_encoding(substr($contents, 2), 'UTF-8', 'UTF-16LE');
-        $tempPath = tempnam(sys_get_temp_dir(), 'alcros_csv_');
-        file_put_contents($tempPath, $contents);
-        $filePath = $tempPath;
-    } elseif (str_starts_with($contents, "\xFE\xFF")) {
-        $contents = mb_convert_encoding(substr($contents, 2), 'UTF-8', 'UTF-16BE');
+    if (str_starts_with($head, "\xFF\xFE") || str_starts_with($head, "\xFE\xFF")) {
+        $contents = file_get_contents($filePath);
+        if ($contents === false) {
+            throw new InvalidArgumentException('Could not read the uploaded CSV file.');
+        }
+        if (str_starts_with($contents, "\xFF\xFE")) {
+            $contents = mb_convert_encoding(substr($contents, 2), 'UTF-8', 'UTF-16LE');
+        } else {
+            $contents = mb_convert_encoding(substr($contents, 2), 'UTF-8', 'UTF-16BE');
+        }
         $tempPath = tempnam(sys_get_temp_dir(), 'alcros_csv_');
         file_put_contents($tempPath, $contents);
         $filePath = $tempPath;
@@ -503,17 +496,42 @@ function prepareCsvImportFile(string $filePath): array
 function csvUploadErrorMessage(int $code): string
 {
     return match ($code) {
-        UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'CSV file is too large. Use a smaller file or increase upload_max_filesize in php.ini.',
+        UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'CSV file is too large. Use a smaller file or increase upload_max_filesize and post_max_size in PHP (currently ' . (ini_get('upload_max_filesize') ?: '?') . ' / ' . (ini_get('post_max_size') ?: '?') . ').',
         UPLOAD_ERR_PARTIAL => 'Upload was interrupted. Please try again.',
         UPLOAD_ERR_NO_FILE => 'Please choose a CSV file to import.',
         default => 'File upload failed (error code ' . $code . '). Please try again.',
     };
 }
 
+function csvImportSampleRowValues(string $importType): array
+{
+    static $cache = [];
+    if (!isset($cache[$importType])) {
+        $cache[$importType] = array_map(
+            static fn ($value) => trim((string) ($value ?? '')),
+            civilRecordCsvSampleRow($importType)
+        );
+    }
+
+    return $cache[$importType];
+}
+
 function csvRowMatchesSampleRow(array $headers, array $row, string $importType): bool
 {
+    if (!csvRowLooksLikeHeader($headers)) {
+        $sample = csvImportSampleRowValues($importType);
+        foreach ($sample as $i => $expected) {
+            $actual = trim((string) ($row[$i] ?? ''));
+            if ($actual !== $expected) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     $columns = civilRecordCsvColumns($importType);
-    $sample = civilRecordCsvSampleRow($importType);
+    $sample = csvImportSampleRowValues($importType);
     $input = buildCsvInputFromRow($headers, $row, $importType);
 
     foreach ($columns as $i => $column) {
@@ -592,7 +610,7 @@ function parseCsvRecordRow(array $headers, array $row, string $importType, ?stri
     }
 
     try {
-        return normalizeRecordInput($input);
+        return normalizeRecordInput($input, true);
     } catch (InvalidArgumentException $e) {
         $error = $e->getMessage();
         return null;
@@ -604,6 +622,8 @@ function importCsvRecords(PDO $pdo, string $filePath, string $importType): array
     if (!in_array($importType, ['birth', 'death', 'marriage'], true)) {
         throw new InvalidArgumentException('Invalid import type.');
     }
+
+    @set_time_limit(600);
 
     [$csvPath, $tempPath] = prepareCsvImportFile($filePath);
     $delimiter = detectCsvDelimiter($csvPath);
@@ -621,8 +641,14 @@ function importCsvRecords(PDO $pdo, string $filePath, string $importType): array
     $errors = [];
     $headers = [];
     $lineNum = 0;
+    $maxErrors = 50;
+    $importOptions = ['insert_details_only' => true];
+    $inTransaction = false;
 
     try {
+        $pdo->beginTransaction();
+        $inTransaction = true;
+
         $firstRow = readCsvRow($handle, $delimiter);
         $lineNum++;
         if ($firstRow !== false && !isCsvRowEmpty($firstRow)) {
@@ -636,14 +662,18 @@ function importCsvRecords(PDO $pdo, string $filePath, string $importType): array
                     $parsed = parseCsvRecordRow([], $firstRow, $importType, $rowError);
                     if ($parsed === null) {
                         $skipped++;
-                        $errors[] = 'Row 1: ' . ($rowError ?: 'invalid data.');
+                        if (count($errors) < $maxErrors) {
+                            $errors[] = 'Row 1: ' . ($rowError ?: 'invalid data.');
+                        }
                     } else {
                         try {
-                            insertCivilRecord($pdo, $parsed);
+                            insertCivilRecord($pdo, $parsed, $importOptions);
                             $imported++;
                         } catch (PDOException) {
                             $skipped++;
-                            $errors[] = 'Row 1: could not save record.';
+                            if (count($errors) < $maxErrors) {
+                                $errors[] = 'Row 1: could not save record.';
+                            }
                         }
                     }
                 }
@@ -665,18 +695,30 @@ function importCsvRecords(PDO $pdo, string $filePath, string $importType): array
             $parsed = parseCsvRecordRow($headers, $row, $importType, $rowError);
             if ($parsed === null) {
                 $skipped++;
-                $errors[] = "Row $lineNum: " . ($rowError ?: 'invalid data.');
+                if (count($errors) < $maxErrors) {
+                    $errors[] = "Row $lineNum: " . ($rowError ?: 'invalid data.');
+                }
                 continue;
             }
 
             try {
-                insertCivilRecord($pdo, $parsed);
+                insertCivilRecord($pdo, $parsed, $importOptions);
                 $imported++;
             } catch (PDOException) {
                 $skipped++;
-                $errors[] = 'Row ' . $lineNum . ': could not save "' . civilRecordDisplayName($parsed) . '".';
+                if (count($errors) < $maxErrors) {
+                    $errors[] = 'Row ' . $lineNum . ': could not save "' . civilRecordDisplayName($parsed) . '".';
+                }
             }
         }
+
+        $pdo->commit();
+        $inTransaction = false;
+    } catch (Throwable $e) {
+        if ($inTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
     } finally {
         fclose($handle);
         if ($tempPath !== null) {
@@ -687,9 +729,9 @@ function importCsvRecords(PDO $pdo, string $filePath, string $importType): array
     return compact('imported', 'skipped', 'errors') + ['sample_skipped' => $sampleSkipped];
 }
 
-function insertCivilRecord(PDO $pdo, array $data): void
+function insertCivilRecord(PDO $pdo, array $data, array $options = []): void
 {
-    saveCivilRecord($pdo, $data);
+    saveCivilRecord($pdo, $data, null, $options);
 }
 
 function civilRecordExportRowValues(array $row, string $type): array
@@ -721,8 +763,7 @@ function exportCivilRecordsCsv(PDO $pdo, array $filters): void
 
     $stmt = $pdo->prepare("SELECT cr.* FROM civil_records cr WHERE $where ORDER BY cr.record_type ASC, cr.last_name ASC, cr.first_name ASC");
     $stmt->execute($params);
-    $rows = $stmt->fetchAll();
-    $rows = array_map(static fn (array $row) => hydrateCivilRecordRow($pdo, $row), $rows);
+    $rows = hydrateCivilRecordRows($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC));
 
     $grouped = array_fill_keys($validTypes, []);
     foreach ($rows as $row) {
@@ -776,12 +817,7 @@ function exportCivilRecordsCsv(PDO $pdo, array $filters): void
     fclose($out);
 }
 
-function civilRecordExportColumns(): array
-{
-    return civilRecordInsertColumns();
-}
-
-function normalizeRecordInput(array $input): array
+function normalizeRecordInput(array $input, bool $fromCsvImport = false): array
 {
     global $validTypes;
     $providedFields = array_keys($input);
@@ -856,20 +892,13 @@ function normalizeRecordInput(array $input): array
         }
     }
 
-    $data['print_fill_data'] = printRebuildRecordFillData($data, $type, $submittedFill);
+    $data['print_fill_data'] = $fromCsvImport
+        ? printFillDataForCsvImport($data, $type, $submittedFill)
+        : printRebuildRecordFillData($data, $type, $submittedFill);
 
     $data['_provided_fields'] = $providedFields;
 
     return $data;
-}
-
-function civilRecordInsertColumns(): array
-{
-    return array_merge(
-        ['record_type', 'registry_number', 'first_name', 'middle_name', 'last_name', 'birth_date'],
-        civilRecordExtendedFieldNames(),
-        ['event_date', 'place', 'father_name', 'mother_name', 'notes']
-    );
 }
 
 // JSON record details for view modal
@@ -915,6 +944,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'template') {
 
 // Export filtered records
 if (isset($_GET['action']) && $_GET['action'] === 'export') {
+    @set_time_limit(300);
     $filters = currentRecordsFilters();
     exportCivilRecordsCsv($pdo, $filters);
     logActivity(staffId(), 'CSV Export', 'Exported civil records (' . ($filters['type'] ?? 'all') . ')');
@@ -937,6 +967,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             logActivity(staffId(), 'Record Updated', "Updated record #$id: " . civilRecordDisplayName($data));
             recordsFlashSet('success', 'Record updated successfully.');
         } elseif ($action === 'import_csv') {
+            @set_time_limit(600);
             if (empty($_FILES['csv_file']['tmp_name']) || !is_uploaded_file($_FILES['csv_file']['tmp_name'])) {
                 throw new InvalidArgumentException('Please choose a CSV file to import.');
             }

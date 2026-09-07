@@ -16,6 +16,15 @@ $pageHeaderMeta = $pageHeaderMeta ?? '';
 <header class="admin-header w-full border-b border-gray-100 flex items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4 lg:px-6 xl:px-8 min-w-0 shrink-0">
 
     <div class="admin-header__lead flex items-center gap-2 min-w-0 flex-1">
+        <button
+            type="button"
+            id="adminSidebarToggle"
+            class="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors shrink-0"
+            aria-label="Toggle sidebar"
+            aria-expanded="false"
+        >
+            <i data-lucide="panel-left" class="w-4 h-4 pointer-events-none"></i>
+        </button>
         <?php if ($pageTitle !== ''): ?>
         <div class="admin-header__titles min-w-0">
             <h1 class="admin-header__title"><?= htmlspecialchars($pageTitle) ?></h1>

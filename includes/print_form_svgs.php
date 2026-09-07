@@ -172,30 +172,6 @@ function printSvgDateCells(string $num, string $label, float $y, float $x, float
     return $html;
 }
 
-function printSvgCheckbox(float $x, float $y, string $label): string
-{
-    $html = printSvgRect($x, $y, 2.2, 2.2);
-    $html .= sprintf('<text class="hint" x="%.1f" y="%.1f">%s</text>', $x + 3, $y + 1.8, htmlspecialchars($label, ENT_QUOTES, 'UTF-8'));
-
-    return $html;
-}
-
-function printSvgCertBlock(string $num, string $title, float $x, float $y, float $w, float $h, array $lines): string
-{
-    $html = printSvgRect($x, $y, $w, $h);
-    $html .= sprintf('<text class="num" x="%.1f" y="%.1f">%s.</text>', $x + 1, $y + 2.2, htmlspecialchars($num, ENT_QUOTES, 'UTF-8'));
-    $html .= sprintf('<text class="label" x="%.1f" y="%.1f">%s</text>', $x + 6, $y + 2.2, htmlspecialchars($title, ENT_QUOTES, 'UTF-8'));
-    $lineY = $y + 5;
-    foreach ($lines as $line) {
-        $html .= sprintf('<text class="sublabel" x="%.1f" y="%.1f">%s</text>', $x + 1.5, $lineY, htmlspecialchars($line, ENT_QUOTES, 'UTF-8'));
-        $lineY += 2.8;
-        $html .= printSvgLine($x + 1.5, $lineY, $x + $w - 1.5, $lineY);
-        $lineY += 2.2;
-    }
-
-    return $html;
-}
-
 function printSvgRuledSection(string $title, float $y, int $lines, float $lineGap = 6.0, ?string $subtitle = null): string
 {
     $html = sprintf('<text class="label" x="8" y="%.1f">%s</text>', $y, htmlspecialchars($title, ENT_QUOTES, 'UTF-8'));
@@ -314,14 +290,6 @@ function printFormSvgCatalog(): array
         'death-front'     => 'printFormSvgDeathFront',
         'death-back'      => 'printFormSvgDeathBack',
     ];
-}
-
-function printFormReferenceSvgMarkup(string $certificateType, string $pageSide): string
-{
-    $key = $certificateType . '-' . $pageSide;
-    $catalog = printFormSvgCatalog();
-
-    return isset($catalog[$key]) ? $catalog[$key]() : '';
 }
 
 function regeneratePrintFormReferenceFiles(?string $targetDir = null): array

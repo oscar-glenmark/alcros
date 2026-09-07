@@ -182,6 +182,12 @@
         var doc = iframe.contentDocument;
         if (!doc) return;
 
+        iframe.classList.remove('is-loading');
+
+        if (window.AlcrosPrintFitText) {
+            AlcrosPrintFitText.fitAll(doc);
+        }
+
         doc.querySelectorAll('.print-field--editable').forEach(function (el) {
             if (el.dataset.fillBound === '1') return;
             el.dataset.fillBound = '1';
@@ -190,6 +196,9 @@
                 var name = el.getAttribute('data-field');
                 if (!name) return;
                 syncFillInput(name, formatPrintFieldText((el.textContent || '').trim()));
+                if (window.AlcrosPrintFitText) {
+                    AlcrosPrintFitText.fitOne(el);
+                }
             });
 
             el.addEventListener('keydown', function (e) {
@@ -228,20 +237,61 @@
         var front = document.getElementById('previewFront');
         var back = document.getElementById('previewBack');
 
-        function onLoad(iframe) {
-            bindEditablePreview(iframe);
-            syncingPreview = false;
+        function markLoading(iframe) {
+            if (iframe) {
+                iframe.classList.add('is-loading');
+            }
+        }
+
+        function loadBack() {
+            if (!back) {
+                syncingPreview = false;
+                return;
+            }
+
+            markLoading(back);
+            var backTimer = window.setTimeout(function () {
+                if (back.classList.contains('is-loading')) {
+                    back.classList.remove('is-loading');
+                    syncingPreview = false;
+                }
+            }, 60000);
+            back.onload = function () {
+                window.clearTimeout(backTimer);
+                bindEditablePreview(back);
+                syncingPreview = false;
+            };
+            back.onerror = function () {
+                window.clearTimeout(backTimer);
+                back.classList.remove('is-loading');
+                syncingPreview = false;
+            };
+            back.src = renderUrl('back', false);
         }
 
         if (front) {
-            front.onload = function () { onLoad(front); };
+            markLoading(front);
+            var frontTimer = window.setTimeout(function () {
+                if (front.classList.contains('is-loading')) {
+                    front.classList.remove('is-loading');
+                }
+                loadBack();
+            }, 60000);
+            front.onload = function () {
+                window.clearTimeout(frontTimer);
+                bindEditablePreview(front);
+                loadBack();
+            };
+            front.onerror = function () {
+                window.clearTimeout(frontTimer);
+                front.classList.remove('is-loading');
+                loadBack();
+            };
             front.src = renderUrl('front', false);
+        } else {
+            loadBack();
         }
-        if (back) {
-            back.onload = function () { onLoad(back); };
-            back.src = renderUrl('back', false);
-        }
-        if (!front && !back) syncingPreview = false;
+
         syncAffidavitFillFields();
     }
 

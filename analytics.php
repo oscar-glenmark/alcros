@@ -62,6 +62,40 @@ $queueWaiting = (int) $pdo->query("SELECT COUNT(*) FROM queue_tickets WHERE stat
 $queueServing = (int) $pdo->query("SELECT COUNT(*) FROM queue_tickets WHERE status = 'serving' AND DATE(created_at) = CURDATE()")->fetchColumn();
 $queueServed  = (int) $pdo->query("SELECT COUNT(*) FROM queue_tickets WHERE status = 'completed' AND DATE(created_at) = CURDATE()")->fetchColumn();
 $recordsTotal = (int) $pdo->query('SELECT COUNT(*) FROM civil_records WHERE deleted_at IS NULL')->fetchColumn();
+$recordTypeMap = analyticsCountMap(
+    $pdo->query("SELECT record_type, COUNT(*) AS cnt FROM civil_records WHERE deleted_at IS NULL GROUP BY record_type")->fetchAll(),
+    'record_type'
+);
+$birthRecords    = (int) ($recordTypeMap['birth'] ?? 0);
+$deathRecords    = (int) ($recordTypeMap['death'] ?? 0);
+$marriageRecords = (int) ($recordTypeMap['marriage'] ?? 0);
+
+$recordMonthRows = $pdo->query(
+    "SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, COUNT(*) AS cnt
+     FROM civil_records
+     WHERE deleted_at IS NULL
+       AND created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 5 MONTH), '%Y-%m-01')
+     GROUP BY month ORDER BY month ASC"
+)->fetchAll();
+$recordMonthCounts = [];
+$recordMonthLabels = [];
+for ($i = 5; $i >= 0; $i--) {
+    $key = date('Y-m', strtotime(date('Y-m-01') . " -$i months"));
+    $recordMonthCounts[$key] = 0;
+    $recordMonthLabels[] = date('M', strtotime($key . '-01'));
+}
+foreach ($recordMonthRows as $row) {
+    if (isset($recordMonthCounts[$row['month']])) {
+        $recordMonthCounts[$row['month']] = (int) $row['cnt'];
+    }
+}
+$maxRecordMonth = max($recordMonthCounts ?: [0]);
+
+$recordTypeChart = [
+    'labels' => ['Birth', 'Death', 'Marriage'],
+    'counts' => [$birthRecords, $deathRecords, $marriageRecords],
+    'colors' => ['#3b82f6', '#64748b', '#ec4899'],
+];
 
 $pipelineStages = [
     ['key' => 'pending',   'label' => 'Pending',   'count' => $pendingCount,   'color' => '#f59e0b'],
@@ -95,6 +129,13 @@ $chartPayload = [
         'labels' => $apptChartLabels,
         'counts' => $apptChartCounts,
         'colors' => array_slice($apptChartColors, 0, count($apptChartLabels)),
+    ],
+    'records' => [
+        'types'  => $recordTypeChart,
+        'months' => [
+            'labels' => $recordMonthLabels,
+            'counts' => array_values($recordMonthCounts),
+        ],
     ],
 ];
 
@@ -155,7 +196,7 @@ $pageSubtitle = 'Track request volume, appointments, queue activity, and registr
                 <a href="<?= htmlspecialchars(buildAuthUrl('records.php')) ?>" class="stat-card bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 block">
                     <p class="text-[10px] font-bold uppercase text-gray-400">Civil records</p>
                     <p class="text-2xl font-black text-slate-900 mt-1"><?= $recordsTotal ?></p>
-                    <p class="text-[11px] text-gray-400 mt-0.5">On file</p>
+                    <p class="text-[11px] text-gray-400 mt-0.5"><?= $birthRecords ?> birth · <?= $deathRecords ?> death · <?= $marriageRecords ?> marriage</p>
                 </a>
             </div>
 
@@ -194,6 +235,32 @@ $pageSubtitle = 'Track request volume, appointments, queue activity, and registr
                         <div class="analytics-empty">No appointments yet.</div>
                         <?php else: ?>
                         <div class="chart-box chart-box--compact"><canvas id="chartAppointments"></canvas></div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <div class="analytics-chart-grid">
+                    <div class="analytics-chart-card">
+                        <div class="analytics-chart-head">
+                            <h2>Civil records by type</h2>
+                            <p>Birth, death, and marriage registry</p>
+                        </div>
+                        <?php if ($recordsTotal === 0): ?>
+                        <div class="analytics-empty">No civil records yet.</div>
+                        <?php else: ?>
+                        <div class="chart-box chart-box--compact"><canvas id="chartRecordsType"></canvas></div>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="analytics-chart-card">
+                        <div class="analytics-chart-head">
+                            <h2>Monthly registry entries</h2>
+                            <p>New civil records · last 6 months</p>
+                        </div>
+                        <?php if ($maxRecordMonth === 0): ?>
+                        <div class="analytics-empty">No registry entries yet.</div>
+                        <?php else: ?>
+                        <div class="chart-box chart-box--compact"><canvas id="chartRecordsMonths"></canvas></div>
                         <?php endif; ?>
                     </div>
                 </div>

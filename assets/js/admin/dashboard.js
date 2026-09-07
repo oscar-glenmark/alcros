@@ -5,8 +5,32 @@
 
     var month = cfg.scheduleMonth;
     var selectedDate = cfg.scheduleDate;
+    var todayDate = cfg.todayDate || cfg.scheduleDate;
     var appointmentDates = cfg.appointmentDates || {};
     var appointmentPage = cfg.appointmentPage || 'appointment.php';
+
+    function pad(n) {
+        return n < 10 ? '0' + n : String(n);
+    }
+
+    function todayIso() {
+        var today = new Date();
+        return today.getFullYear() + '-' + pad(today.getMonth() + 1) + '-' + pad(today.getDate());
+    }
+
+    function effectiveToday() {
+        var browserToday = todayIso();
+        var serverToday = cfg.todayDate || browserToday;
+        return browserToday > serverToday ? browserToday : serverToday;
+    }
+
+    var initialSelectedDate = cfg.scheduleDate;
+    var lastKnownToday = effectiveToday();
+    if (!selectedDate || selectedDate < lastKnownToday) {
+        selectedDate = lastKnownToday;
+        month = lastKnownToday.slice(0, 7);
+        todayDate = lastKnownToday;
+    }
 
     var gridEl = document.getElementById('dashCalGrid');
     var monthLabelEl = document.getElementById('dashCalMonthLabel');
@@ -22,10 +46,6 @@
 
     function escapeHtml(str) {
         return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    }
-
-    function pad(n) {
-        return n < 10 ? '0' + n : String(n);
     }
 
     function formatDateDisplay(iso) {
@@ -44,6 +64,19 @@
         var p = monthParts(ym);
         var d = new Date(p.year, p.month + delta, 1);
         return d.getFullYear() + '-' + pad(d.getMonth() + 1);
+    }
+
+    function rollToTodayIfNeeded() {
+        var nowToday = effectiveToday();
+        if (nowToday === lastKnownToday && selectedDate >= lastKnownToday) {
+            return false;
+        }
+        lastKnownToday = nowToday;
+        todayDate = nowToday;
+        selectedDate = nowToday;
+        month = nowToday.slice(0, 7);
+        loadSchedule();
+        return true;
     }
 
     function renderCalendar() {
@@ -152,8 +185,14 @@
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (!data || !data.schedule) return;
+                if (data.today_date && data.today_date > lastKnownToday) {
+                    lastKnownToday = data.today_date;
+                }
+                if (selectedDate < lastKnownToday) {
+                    selectedDate = lastKnownToday;
+                    month = lastKnownToday.slice(0, 7);
+                }
                 appointmentDates = data.schedule.dates || {};
-                selectedDate = data.schedule.schedule_date || selectedDate;
                 month = data.schedule.month || month;
                 renderCalendar();
                 renderAppointments(data.schedule.appointments || []);
@@ -183,18 +222,38 @@
     }
 
     window.AlcrosDashboardSchedule = {
-        applyPoll: function (schedule) {
+        applyPoll: function (schedule, todayDateFromServer) {
             if (!schedule) return;
+            if (todayDateFromServer && todayDateFromServer > lastKnownToday) {
+                lastKnownToday = todayDateFromServer;
+            }
+            if (selectedDate < lastKnownToday) {
+                selectedDate = lastKnownToday;
+                month = lastKnownToday.slice(0, 7);
+            }
             appointmentDates = schedule.dates || appointmentDates;
-            selectedDate = schedule.schedule_date || selectedDate;
             month = schedule.month || month;
             renderCalendar();
             renderAppointments(schedule.appointments || []);
         },
+        rollToTodayIfNeeded: rollToTodayIfNeeded,
         getState: function () {
             return { month: month, date: selectedDate };
         }
     };
 
-    renderCalendar();
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) {
+            rollToTodayIfNeeded();
+        }
+    });
+    window.addEventListener('pageshow', function () {
+        rollToTodayIfNeeded();
+    });
+
+    if (selectedDate !== initialSelectedDate) {
+        loadSchedule();
+    } else {
+        renderCalendar();
+    }
 })();

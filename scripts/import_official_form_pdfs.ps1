@@ -13,7 +13,7 @@ $bondHeight = [int][Math]::Round($bondWidth * (1024.0 / 616.0))
 
 $sources = @{
     'birth'    = 'births.pdf'
-    'marriage' = 'marriages.pdf'
+    'marriage' = 'Certificate-of-Marriage.pdf'
     'death'    = 'deaths.pdf'
 }
 

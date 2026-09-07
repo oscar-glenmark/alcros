@@ -8,16 +8,6 @@ define('DB_USER', 'root');
 define('DB_PASS', '');
 define('DB_CHARSET', 'utf8mb4');
 
-function isConnectionLost(PDOException $e): bool
-{
-    $msg = (string) $e->getMessage();
-    return str_contains($msg, '2006')
-        || str_contains($msg, 'gone away')
-        || str_contains($msg, '2002')
-        || str_contains($msg, 'actively refused')
-        || str_contains($msg, '2013');
-}
-
 function dbUnavailablePage(string $title, string $help, string $msg): never
 {
     http_response_code(503);
@@ -84,11 +74,16 @@ function createDBConnection(): PDO
 
     $dsn = 'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=' . DB_CHARSET;
     try {
-        return new PDO($dsn, DB_USER, DB_PASS, [
+        $options = [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES   => false,
-        ]);
+        ];
+        if (defined('PDO::MYSQL_ATTR_CONNECT_TIMEOUT')) {
+            $options[PDO::MYSQL_ATTR_CONNECT_TIMEOUT] = 5;
+        }
+
+        return new PDO($dsn, DB_USER, DB_PASS, $options);
     } catch (PDOException $e) {
         $msg = $e->getMessage();
         if (str_contains($msg, 'Unknown database')) {
@@ -112,21 +107,4 @@ function getDB(bool $forceReconnect = false): PDO
         $pdo = createDBConnection();
     }
     return $pdo;
-}
-
-function withDBRetry(callable $callback)
-{
-    try {
-        return $callback(getDB());
-    } catch (PDOException $e) {
-        if (!isConnectionLost($e)) {
-            throw $e;
-        }
-        return $callback(getDB(true));
-    }
-}
-
-function dbAvailable(): bool
-{
-    return databaseIsInstalled();
 }

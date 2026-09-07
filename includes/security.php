@@ -135,8 +135,55 @@ function validateCsrf(?string $token): bool
     return hash_equals((string) $_SESSION['csrf_token'], $token);
 }
 
+function iniParseSize(string $value): int
+{
+    $value = trim($value);
+    if ($value === '') {
+        return 0;
+    }
+
+    $unit = strtolower(substr($value, -1));
+    $num = (float) $value;
+
+    return (int) match ($unit) {
+        'g' => $num * 1024 * 1024 * 1024,
+        'm' => $num * 1024 * 1024,
+        'k' => $num * 1024,
+        default => $num,
+    };
+}
+
+/** POST body exceeded post_max_size — PHP empties $_POST so CSRF appears to fail. */
+function requestBodyExceededPostLimit(): bool
+{
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+        return false;
+    }
+
+    $length = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
+    if ($length <= 0) {
+        return false;
+    }
+
+    $limit = iniParseSize((string) ini_get('post_max_size'));
+
+    return $limit > 0 && $length > $limit;
+}
+
+function postLimitExceededMessage(): string
+{
+    $max = ini_get('post_max_size') ?: 'unknown';
+
+    return 'Request is too large (max ' . $max . '). Use a smaller CSV or file, or increase post_max_size and upload_max_filesize in PHP.';
+}
+
 function requireCsrf(): void
 {
+    if (requestBodyExceededPostLimit()) {
+        http_response_code(413);
+        exit(postLimitExceededMessage());
+    }
+
     $token = $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
     if (!validateCsrf(is_string($token) ? $token : '')) {
         http_response_code(419);

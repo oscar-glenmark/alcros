@@ -6,7 +6,7 @@ require_once __DIR__ . '/scripts.php';
 
 $activePage = $activePage ?? basename($_SERVER['PHP_SELF']);
 
-function sidebarLink(string $page, string $label, string $icon, string $active, bool $liveBadge = false, ?string $countBadgeId = null): string
+function sidebarLink(string $page, string $label, string $icon, string $active, bool $liveBadge = false, ?string $countBadgeId = null, array $query = []): string
 {
     $isActive = ($page === $active);
     $class = $isActive ? 'active-nav' : 'sidebar-item text-slate-600';
@@ -18,7 +18,7 @@ function sidebarLink(string $page, string $label, string $icon, string $active, 
         : '';
     $hasTrailing = $liveBadge || $countBadgeId;
     $justify = $hasTrailing ? ' justify-between' : '';
-    $href = buildAuthUrl($page);
+    $href = buildAuthUrl($page, $query);
 
     // Pre-sizing icon wrapper prevents reflow layout flickering when JS icons initialize
     $iconHtml = '<i data-lucide="' . $icon . '" class="w-4 h-4 mr-3 shrink-0 inline-block align-middle"></i>';
@@ -44,6 +44,7 @@ function sidebarSectionLabel(string $label): string
 ?>
 
 
+<script>(function(){try{if(sessionStorage.getItem('admin_sidebar_minimized')==='1'){document.body.classList.add('admin-sidebar-minimized');}}catch(e){}})();</script>
 <aside class="admin-sidebar" aria-label="Admin navigation">
     <div class="admin-sidebar-brand p-4 sm:p-5 flex items-start justify-between gap-3">
         <a href="<?= htmlspecialchars(buildAuthUrl('dashboard.php')) ?>" class="flex items-center gap-3 min-w-0 flex-1 transition hover:opacity-90">
@@ -59,7 +60,7 @@ function sidebarSectionLabel(string $label): string
         <?= sidebarLink('dashboard.php', 'Dashboard', 'layout-dashboard', $activePage) ?>
         <?= sidebarLink('notifications.php', 'Notifications', 'bell', $activePage, false, 'sidebar-notif-badge') ?>
         <?= sidebarLink('manage_request.php', 'Manage Requests', 'file-text', $activePage) ?>
-        <?= sidebarLink('appointment.php', 'Manage Appointments', 'calendar', $activePage) ?>
+        <?= sidebarLink('appointment.php', 'Manage Appointments', 'calendar', $activePage, false, null, ['date' => alcrosTodayDate()]) ?>
         <?= sidebarLink('records.php', 'Civil records', 'book-open', $activePage) ?>
         <?= sidebarLink('report.php', 'Operational Reports', 'file-bar-chart-2', $activePage) ?>
         <?= sidebarLink('live-queue.php', 'Manage live queue', 'users', $activePage, true) ?>

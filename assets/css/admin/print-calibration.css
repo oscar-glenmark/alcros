@@ -205,6 +205,94 @@
     color: #1d4ed8;
 }
 
+.print-cal-add-btn {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+}
+
+.print-cal-add-btn:hover {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+    color: #fff;
+}
+
+.print-cal-add-btn:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+
+.print-cal-save-all {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+    font-weight: 700;
+}
+
+.print-cal-save-all:hover:not(:disabled) {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+    color: #fff;
+}
+
+.print-cal-save-all:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.print-cal-save-all.is-dirty {
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+}
+
+.print-cal-save-status {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+    padding: 0.35rem 0.625rem;
+    border-radius: 999px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+}
+
+.print-cal-save-status.is-pending {
+    color: #b45309;
+    background: #fffbeb;
+    border-color: #fde68a;
+}
+
+.print-cal-save-status.is-saving {
+    color: #1d4ed8;
+    background: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.print-cal-save-status.is-saved {
+    color: #047857;
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+}
+
+.print-cal-save-status.is-error {
+    color: #b91c1c;
+    background: #fef2f2;
+    border-color: #fecaca;
+}
+
+.print-cal-retry-save {
+    font-weight: 700;
+}
+
+.print-cal-field-btn.is-dirty .print-cal-field-label::after {
+    content: ' •';
+    color: #2563eb;
+    font-weight: 700;
+}
+
+.print-cal-save:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
 .print-cal-size-nudge {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -616,6 +704,26 @@
     gap: 0.375rem;
 }
 
+.print-cal-label-save-status {
+    margin: 0.35rem 0 0;
+    min-height: 1rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: #64748b;
+}
+
+.print-cal-label-save-status.is-saving {
+    color: #2563eb;
+}
+
+.print-cal-label-save-status.is-saved {
+    color: #15803d;
+}
+
+.print-cal-label-save-status.is-error {
+    color: #b45309;
+}
+
 .print-cal-editor label,
 .print-cal-advanced-body label {
     display: flex;
@@ -674,6 +782,29 @@
     border-color: #e2e8f0;
     background: #fff;
     color: #475569;
+}
+
+.print-cal-delete {
+    width: 100%;
+    margin-top: 0.375rem;
+    min-height: 2.35rem;
+    border-radius: 0.625rem;
+    border: 1px solid #fecaca;
+    background: #fff;
+    color: #dc2626;
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.print-cal-delete:hover {
+    background: #fef2f2;
+    border-color: #f87171;
+}
+
+.print-cal-delete:disabled {
+    opacity: 0.65;
+    cursor: wait;
 }
 
 .print-cal-reset-form {
@@ -848,48 +979,10 @@
     text-align: inherit;
 }
 
-.print-cal-marker-hint {
-    position: absolute;
-    right: calc(100% + 0.8mm);
-    top: 50%;
-    transform: translateY(-50%);
-    white-space: nowrap;
-    font-size: 5.5pt;
-    line-height: 1;
-    color: #334155;
-    font-weight: 700;
-    font-style: normal;
-    pointer-events: none;
-    max-width: 34mm;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    z-index: 1;
-}
-
-.print-cal-marker.is-checkbox {
-    justify-content: center;
-    padding: 0;
-}
-
-.print-cal-marker-check {
-    font-size: 10pt;
-    line-height: 1;
-    font-weight: 400;
-    flex: 0 0 auto;
-}
-
-.print-cal-marker.is-checkbox .print-cal-marker-text {
-    display: none;
-}
-
 .print-cal-marker:not(.is-sample-mode) .print-cal-marker-text {
     font-style: italic;
     color: #64748b;
     font-weight: 600;
-}
-
-.print-cal-marker.is-checkbox:not(.is-sample-mode) .print-cal-marker-check {
-    color: #64748b;
 }
 
 .print-cal-resize-handle {

@@ -26,6 +26,8 @@ if (!preg_match('/^[a-zA-Z0-9_\-\.]+\.php(\?.*)?$/', $redirectTarget)) {
 
 }
 
+$loggedInStaff = getAuthenticatedStaff();
+
 
 
 $error = '';
@@ -187,6 +189,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <span class="auth-portal-badge">Staff Portal Login</span>
 
                 </div>
+
+
+
+                <?php if ($loggedInStaff): ?>
+
+                <div class="mb-6 px-4 py-3 rounded-xl bg-blue-50 border border-blue-100 text-blue-800 text-[11px] font-semibold text-left">
+
+                    <p class="mb-2">You are already signed in as <strong><?= htmlspecialchars($loggedInStaff['name']) ?></strong>.</p>
+
+                    <a href="<?= htmlspecialchars(buildAuthUrl('dashboard.php')) ?>" class="inline-flex items-center gap-1.5 text-blue-700 font-bold hover:underline">
+
+                        <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i> Open Staff Portal
+
+                    </a>
+
+                </div>
+
+                <?php endif; ?>
 
 
 

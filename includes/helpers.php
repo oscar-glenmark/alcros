@@ -3,6 +3,15 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/security.php';
 bootstrapSecurity();
 
+if (!ini_get('date.timezone')) {
+    date_default_timezone_set('Asia/Manila');
+}
+
+function alcrosTodayDate(): string
+{
+    return date('Y-m-d');
+}
+
 function generateCode(string $prefix, int $length = 6): string
 {
     return $prefix . '-' . strtoupper(substr(bin2hex(random_bytes(4)), 0, $length));
@@ -169,11 +178,6 @@ function deleteTestDocumentRequests(PDO $pdo, string $staffId): int
 function generateAppointmentCode(): string
 {
     return generateCode('APT', 6);
-}
-
-function generateTicketNumber(PDO $pdo, string $purpose = 'walk_in'): string
-{
-    return createQueueTicket($pdo, $purpose)['number'];
 }
 
 function createQueueTicket(PDO $pdo, string $purpose = 'walk_in'): array
@@ -469,17 +473,33 @@ function upsertStaffNotification(array $item): void
     }
 }
 
+/** @return array<string, string> */
+function &settingsCacheStore(): array
+{
+    static $cache = [];
+
+    return $cache;
+}
+
 function getSetting(string $key, string $default = ''): string
 {
+    $cache = &settingsCacheStore();
+
+    if (array_key_exists($key, $cache)) {
+        return $cache[$key];
+    }
+
     try {
         $pdo = getDB();
         $stmt = $pdo->prepare('SELECT setting_value FROM system_settings WHERE setting_key = ?');
         $stmt->execute([$key]);
         $row = $stmt->fetch();
-        return $row ? (string) $row['setting_value'] : $default;
+        $cache[$key] = $row ? (string) $row['setting_value'] : $default;
     } catch (PDOException $e) {
-        return $default;
+        $cache[$key] = $default;
     }
+
+    return $cache[$key];
 }
 
 function setSetting(string $key, string $value): void
@@ -490,6 +510,8 @@ function setSetting(string $key, string $value): void
          ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
     );
     $stmt->execute([$key, $value]);
+
+    settingsCacheStore()[$key] = $value;
 }
 
 function getSiteSettings(): array
@@ -1110,6 +1132,44 @@ function appointmentStandaloneSql(string $alias = 'a'): string
     return "NOT (
         ({$alias}.source = 'document_request' OR ({$alias}.tracking_code IS NOT NULL AND {$alias}.tracking_code != ''))
     )";
+}
+
+/** Appointments that still belong on the dashboard schedule (excludes finished visits). */
+function scheduleVisitAppointmentSql(string $alias = 'a'): string
+{
+    return "{$alias}.status NOT IN ('cancelled', 'no_show', 'completed')
+        AND NOT EXISTS (
+            SELECT 1 FROM document_requests dr
+            WHERE dr.tracking_code = {$alias}.tracking_code
+              AND dr.deleted_at IS NULL
+              AND dr.status = 'completed'
+              AND dr.tracking_code IS NOT NULL
+              AND dr.tracking_code != ''
+        )";
+}
+
+/** Active special-service appointments on a date (matches appointment.php list). */
+function countSpecialAppointmentsOnDate(PDO $pdo, string $date): int
+{
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        $date = date('Y-m-d');
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM appointments a
+         WHERE a.appointment_date = ?
+           AND ' . scheduleVisitAppointmentSql('a') . '
+           AND ' . appointmentStandaloneSql('a') . '
+           AND a.deleted_at IS NULL'
+    );
+    $stmt->execute([$date]);
+
+    return (int) $stmt->fetchColumn();
+}
+
+function countTodaySpecialAppointments(PDO $pdo): int
+{
+    return countSpecialAppointmentsOnDate($pdo, date('Y-m-d'));
 }
 
 function appointmentDisplayStatusLabel(array $row): string

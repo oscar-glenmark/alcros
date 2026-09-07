@@ -9,6 +9,20 @@
         return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
+    function resolveScheduleHref(href) {
+        if (!href) return '#';
+        if (!AlcrosPoll.buildUrl) return href;
+        var parts = String(href).split('?');
+        var base = parts[0];
+        var params = {};
+        if (parts[1]) {
+            new URLSearchParams(parts[1]).forEach(function (value, key) {
+                params[key] = value;
+            });
+        }
+        return AlcrosPoll.buildUrl(base, params);
+    }
+
     function authInputHtml() {
         var token = AlcrosPoll.authToken();
         var html = token ? '<input type="hidden" name="alcros_auth" value="' + token.replace(/"/g, '&quot;') + '">' : '';
@@ -240,6 +254,9 @@
 
         function pollDashboard() {
             AlcrosPoll.pollJson('api/dashboard_stats.php', function () {
+                if (window.AlcrosDashboardSchedule && window.AlcrosDashboardSchedule.rollToTodayIfNeeded) {
+                    window.AlcrosDashboardSchedule.rollToTodayIfNeeded();
+                }
                 var state = window.AlcrosDashboardSchedule && window.AlcrosDashboardSchedule.getState
                     ? window.AlcrosDashboardSchedule.getState()
                     : {};
@@ -277,7 +294,7 @@
             }
 
             if (data.schedule && window.AlcrosDashboardSchedule && window.AlcrosDashboardSchedule.applyPoll) {
-                window.AlcrosDashboardSchedule.applyPoll(data.schedule);
+                window.AlcrosDashboardSchedule.applyPoll(data.schedule, data.today_date || '');
             } else {
                 var apptEl = document.getElementById('today-appts-list');
                 if (apptEl && data.today_appts) {
@@ -323,12 +340,16 @@
                             var h = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
                             var ampm = d.toLocaleTimeString([], { hour: 'numeric', hour12: true }).split(' ')[1] || '';
                             var status = a.status ? '<span class="text-[9px] font-bold uppercase text-gray-400 shrink-0">' + escapeHtml(a.status) + '</span>' : '';
-                            return '<div class="px-5 py-3 flex items-center gap-3">' +
-                                '<div class="w-10 h-10 rounded-lg bg-violet-50 text-violet-600 flex flex-col items-center justify-center shrink-0 leading-none">' +
+                            var timeTone = a.schedule_kind === 'certificate'
+                                ? 'bg-amber-50 text-amber-700'
+                                : 'bg-violet-50 text-violet-600';
+                            var rowHref = resolveScheduleHref(a.href || '');
+                            return '<a href="' + escapeHtml(rowHref) + '" class="dash-schedule-row px-5 py-3 flex items-center gap-3">' +
+                                '<div class="w-10 h-10 rounded-lg ' + timeTone + ' flex flex-col items-center justify-center shrink-0 leading-none">' +
                                 '<span class="text-[9px] font-bold">' + escapeHtml(h.replace(/ [AP]M/i, '')) + '</span>' +
                                 '<span class="text-[8px] uppercase">' + escapeHtml(ampm) + '</span></div>' +
                                 '<div class="min-w-0 flex-1"><p class="text-sm font-semibold text-slate-800 truncate">' + escapeHtml(a.citizen_name) + '</p>' +
-                                '<p class="text-[10px] text-gray-400 truncate">' + escapeHtml(a.service_type) + '</p></div>' + status + '</div>';
+                                '<p class="text-[10px] text-gray-400 truncate">' + escapeHtml(a.service_type) + '</p></div>' + status + '</a>';
                         }).join('');
                     }
                 }

@@ -857,7 +857,7 @@ function civilRecordTypeDefaults(string $type): array
     return $defaults;
 }
 
-function saveCivilRecordTypeDetails(PDO $pdo, int $recordId, string $type, array $data): void
+function saveCivilRecordTypeDetails(PDO $pdo, int $recordId, string $type, array $data, bool $insertOnly = false): void
 {
     $table = civilRecordDetailTableName($type);
     if ($table === '' || $recordId <= 0) {
@@ -882,13 +882,16 @@ function saveCivilRecordTypeDetails(PDO $pdo, int $recordId, string $type, array
         return;
     }
 
-    $exists = $pdo->prepare("SELECT 1 FROM `$table` WHERE civil_record_id = ? LIMIT 1");
-    $exists->execute([$recordId]);
-    if ($exists->fetchColumn()) {
-        $sets = implode(', ', array_map(static fn ($field) => "`$field` = ?", array_keys($payload)));
-        $stmt = $pdo->prepare("UPDATE `$table` SET $sets WHERE civil_record_id = ?");
-        $stmt->execute([...array_values($payload), $recordId]);
-        return;
+    if (!$insertOnly) {
+        $exists = $pdo->prepare("SELECT 1 FROM `$table` WHERE civil_record_id = ? LIMIT 1");
+        $exists->execute([$recordId]);
+        if ($exists->fetchColumn()) {
+            $sets = implode(', ', array_map(static fn ($field) => "`$field` = ?", array_keys($payload)));
+            $stmt = $pdo->prepare("UPDATE `$table` SET $sets WHERE civil_record_id = ?");
+            $stmt->execute([...array_values($payload), $recordId]);
+
+            return;
+        }
     }
 
     $columns = ['civil_record_id', ...array_keys($payload)];
@@ -928,7 +931,58 @@ function hydrateCivilRecordRow(PDO $pdo, array $base): array
     return mergeCivilRecordRows($base, $detail, $type);
 }
 
-function saveCivilRecord(PDO $pdo, array $data, ?int $recordId = null): int
+/** @param list<array<string, mixed>> $bases */
+function hydrateCivilRecordRows(PDO $pdo, array $bases): array
+{
+    if ($bases === []) {
+        return [];
+    }
+
+    $indexByType = [
+        'birth'    => [],
+        'death'    => [],
+        'marriage' => [],
+    ];
+
+    foreach ($bases as $index => $base) {
+        $recordId = (int) ($base['id'] ?? 0);
+        $type = (string) ($base['record_type'] ?? '');
+        if ($recordId > 0 && isset($indexByType[$type])) {
+            $indexByType[$type][$recordId] = $index;
+        }
+    }
+
+    $detailsById = [];
+    foreach ($indexByType as $type => $idMap) {
+        if ($idMap === []) {
+            continue;
+        }
+
+        $table = civilRecordDetailTableName($type);
+        $ids = array_keys($idMap);
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $pdo->prepare("SELECT * FROM `$table` WHERE civil_record_id IN ($placeholders)");
+        $stmt->execute($ids);
+
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $detail) {
+            $detailsById[(int) $detail['civil_record_id']] = $detail;
+        }
+    }
+
+    $hydrated = $bases;
+    foreach ($bases as $index => $base) {
+        $recordId = (int) ($base['id'] ?? 0);
+        $type = (string) ($base['record_type'] ?? '');
+        $detail = $detailsById[$recordId] ?? null;
+        if ($detail !== null && in_array($type, ['birth', 'death', 'marriage'], true)) {
+            $hydrated[$index] = mergeCivilRecordRows($base, $detail, $type);
+        }
+    }
+
+    return $hydrated;
+}
+
+function saveCivilRecord(PDO $pdo, array $data, ?int $recordId = null, array $options = []): int
 {
     $type = (string) ($data['record_type'] ?? '');
     if (!in_array($type, ['birth', 'death', 'marriage'], true)) {
@@ -956,7 +1010,13 @@ function saveCivilRecord(PDO $pdo, array $data, ?int $recordId = null): int
         $stmt->execute([...array_values($basePayload), $recordId]);
     }
 
-    saveCivilRecordTypeDetails($pdo, $recordId, $type, $data);
+    saveCivilRecordTypeDetails(
+        $pdo,
+        $recordId,
+        $type,
+        $data,
+        !empty($options['insert_details_only'])
+    );
 
     return $recordId;
 }

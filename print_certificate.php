@@ -7,9 +7,18 @@ require_once __DIR__ . '/includes/printing.php';
 requireStaffLogin();
 requirePageAccess('print_certificate.php');
 
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
 $activePage = 'print_certificate.php';
 $pdo = getDB();
-ensurePrintTables($pdo);
+@set_time_limit(120);
+try {
+    ensurePrintTables($pdo);
+} catch (Throwable $e) {
+    // Continue if tables already exist.
+}
 
 $requestId = (int) ($_GET['request_id'] ?? 0);
 $recordId = (int) ($_GET['record_id'] ?? 0);
@@ -27,7 +36,7 @@ if (!$context['ok']) {
     $pageSubtitle = printCertificateTitle($certificateType) . ' · Municipal Form No. ' . printCertificateFormNumber($certificateType);
     $printError = null;
     $recordSource = $context['record_source'] ?? 'civil_record';
-    $fillEditorFields = printFillEditorFields($certificateType, $record);
+    $fillEditorFields = printFillEditorFields($certificateType, $record, [], $pdo);
     $frontTemplate = getPrintTemplate($pdo, $certificateType, 'front');
     $paperW = (float) ($frontTemplate['paper_width_mm'] ?? printOfficialPaperWidthMm());
     $paperH = (float) ($frontTemplate['paper_height_mm'] ?? printOfficialPaperHeightMm());
@@ -48,6 +57,7 @@ $printModeSetting = printMode();
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= vendorStylesheetTag('inter/inter.css') ?>
     <?= adminLayoutHeadStyles('print-certificate') ?>
+    <?= printPrinterSetupStylesheet() ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>
 <body class="flex min-h-screen">
@@ -187,13 +197,12 @@ $printModeSetting = printMode();
                 <a href="<?= htmlspecialchars(buildAuthUrl($request ? 'manage_request.php' : 'records.php')) ?>" class="print-cert-btn print-cert-btn--ghost">Cancel</a>
             </section>
 
-            <section class="print-cert-duplex-hint no-print">
-                <span class="print-cert-duplex-hint__label">Printer setup</span>
-                <p class="print-cert-duplex-hint__text">
-                    <strong>Legal (8.5 × 14 in)</strong> or <strong>215.9 × 358.9 mm</strong> · Scale <strong>100%</strong>, margins <strong>None</strong> · Not A4/Letter/Postcard ·
-                    Back reinsert: <strong><?= htmlspecialchars(str_replace('_', ' ', $globalCalibration['back_orientation_hint'])) ?></strong>
-                </p>
-            </section>
+            <?php renderPrintBuiltInPrinterSetup([
+                'variant' => 'compact',
+                'show_back_hint' => true,
+                'back_orientation_hint' => $globalCalibration['back_orientation_hint'] ?? '',
+                'extra_class' => 'no-print',
+            ]); ?>
         <?php endif; ?>
     </div>
 </main>
@@ -212,10 +221,11 @@ $printModeSetting = printMode();
     'calibrationRev' => printCalibrationRevision(),
     'initialFillValues' => array_column($fillEditorFields, 'value', 'field_name'),
 ]) ?>
+<?= scriptTag('admin/print-fit-text.js') ?>
 <?= scriptTag('core/page-config.js') ?>
 <?= scriptTag('admin/print-certificate.js') ?>
 <?php endif; ?>
 <?= lucideInitScript() ?>
-<?= adminCoreScripts(['sidebar']) ?>
+<?= adminCoreScripts() ?>
 </body>
 </html>

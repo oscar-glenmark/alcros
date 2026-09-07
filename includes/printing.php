@@ -569,6 +569,16 @@ function canCalibratePrintTemplates(): bool
     return isAdmin();
 }
 
+function bumpPrintCalibrationRevision(): void
+{
+    setSetting('print_calibration_rev', (string) time());
+}
+
+function printCalibrationRevision(): int
+{
+    return (int) getSetting('print_calibration_rev', '0');
+}
+
 function canPrintCertificates(): bool
 {
     return staffId() !== null;
@@ -1034,6 +1044,77 @@ function printAgeAtDeathText(array $record): string
     return $text;
 }
 
+/** Field names derived from civil record columns — not stored as manual print_fill overrides. */
+function printRecordSyncedFieldNames(string $certificateType): array
+{
+    static $cache = [];
+
+    if (!isset($cache[$certificateType])) {
+        $cache[$certificateType] = array_keys(
+            printBuildFieldValues(
+                printCalibrationSampleRecord($certificateType),
+                $certificateType,
+                ['keep_empty' => true, 'skip_fill_overrides' => true]
+            )
+        );
+    }
+
+    return $cache[$certificateType];
+}
+
+/** Manual-only extras saved in print_fill_data (attendant, LCRO, etc.). */
+function printManualFillOverrides(array $record, string $certificateType): array
+{
+    $stored = printParseFillData($record['print_fill_data'] ?? null);
+    if ($stored === []) {
+        return [];
+    }
+
+    $synced = array_flip(printRecordSyncedFieldNames($certificateType));
+
+    return array_filter(
+        $stored,
+        static fn ($value, $key) => !isset($synced[$key]) && trim((string) $value) !== '',
+        ARRAY_FILTER_USE_BOTH
+    );
+}
+
+/** Rebuild print_fill_data from record columns plus manual-only form extras. */
+function printRebuildRecordFillData(array $record, string $certificateType, array $submittedFill = []): ?string
+{
+    $computed = printBuildFieldValues(
+        $record,
+        $certificateType,
+        ['keep_empty' => true, 'skip_fill_overrides' => true]
+    );
+    $synced = array_flip(printRecordSyncedFieldNames($certificateType));
+    $manual = [];
+
+    foreach ($submittedFill as $key => $value) {
+        if (!is_string($key) || isset($synced[$key])) {
+            continue;
+        }
+        $trimmed = trim((string) $value);
+        if ($trimmed !== '') {
+            $manual[$key] = $trimmed;
+        }
+    }
+
+    $merged = array_merge($computed, $manual);
+    $merged = array_filter(
+        $merged,
+        static fn ($value) => trim((string) $value) !== ''
+    );
+
+    if ($merged === []) {
+        return null;
+    }
+
+    $json = json_encode($merged, JSON_UNESCAPED_UNICODE);
+
+    return $json !== false ? $json : null;
+}
+
 function printBuildFieldValues(array $record, string $certificateType, array $options = []): array
 {
     $values = printOfficeLocationFields();
@@ -1249,7 +1330,9 @@ function printBuildFieldValues(array $record, string $certificateType, array $op
         $values['delayed_death_attendant'] = $values['attending_physician'];
     }
 
-    $values = printApplyFillOverrides($values, printParseFillData($record['print_fill_data'] ?? null));
+    if (empty($options['skip_fill_overrides'])) {
+        $values = printApplyFillOverrides($values, printManualFillOverrides($record, $certificateType));
+    }
 
     if (empty($options['keep_empty'])) {
         $values = array_filter(
@@ -1285,19 +1368,21 @@ function printDecodeFillOverrides(?string $encoded): array
 
 function savePrintFillData(PDO $pdo, array $context, mixed $fillData): void
 {
-    $parsed = is_array($fillData)
+    $record = $context['record'] ?? [];
+    $certificateType = (string) ($context['certificate_type'] ?? ($record['record_type'] ?? ''));
+    if (!in_array($certificateType, printCertificateTypes(), true)) {
+        return;
+    }
+
+    $submitted = is_array($fillData)
         ? array_map(static fn ($v) => trim((string) $v), $fillData)
         : printParseFillData($fillData);
-    if ($parsed === []) {
+    $json = printRebuildRecordFillData($record, $certificateType, $submitted);
+    if ($json === null) {
         return;
     }
 
-    $json = json_encode($parsed, JSON_UNESCAPED_UNICODE);
-    if ($json === false) {
-        return;
-    }
-
-    $recordId = (int) ($context['record']['id'] ?? 0);
+    $recordId = (int) ($record['id'] ?? 0);
     if ($recordId > 0) {
         $pdo->prepare('UPDATE civil_records SET print_fill_data = ? WHERE id = ?')
             ->execute([$json, $recordId]);
@@ -1490,15 +1575,19 @@ function renderPrintOverlayHtml(array $printData, array $options = []): string
         $referencePath = (string) ($template['reference_image'] ?? '');
         $certType = (string) ($template['certificate_type'] ?? '');
         $pageSide = (string) ($template['page_side'] ?? 'front');
+        $preferScan = !empty($options['prefer_scan_background']);
+        $scan = printFormScanAsset($certType, $pageSide);
+
         if ($referencePath !== '') {
             $referenceFull = dirname(__DIR__) . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $referencePath);
-            if (is_file($referenceFull) && str_ends_with(strtolower($referencePath), '.svg')) {
+            if ($preferScan && $scan) {
+                $escaped = htmlspecialchars($scan, ENT_QUOTES, 'UTF-8');
+                $html .= '<img src="' . $escaped . '" alt="" class="print-sheet__background" style="position:absolute;inset:0;width:100%;height:100%;object-fit:fill;">';
+            } elseif (is_file($referenceFull) && str_ends_with(strtolower($referencePath), '.svg')) {
                 $svg = file_get_contents($referenceFull);
                 $html .= '<div class="print-sheet__background print-sheet__background--svg" style="position:absolute;inset:0;pointer-events:none;overflow:hidden;">'
                     . $svg . '</div>';
-            } elseif ($scan = printFormScanAsset($certType, $pageSide)) {
-                $paperW = (float) $template['paper_width_mm'];
-                $paperH = (float) $template['paper_height_mm'];
+            } elseif ($scan) {
                 $escaped = htmlspecialchars($scan, ENT_QUOTES, 'UTF-8');
                 $html .= '<img src="' . $escaped . '" alt="" class="print-sheet__background" style="position:absolute;inset:0;width:100%;height:100%;object-fit:fill;">';
             } elseif (is_file($referenceFull)) {
@@ -1539,7 +1628,7 @@ function renderPrintOverlayHtml(array $printData, array $options = []): string
         $textAlign = printNormalizeAlignment($field['alignment'] ?? null);
         $justify = printAlignmentJustifyContent($textAlign);
         $weight = '700';
-        $fontSize = $testMode ? (float) $field['font_size'] : 10.0;
+        $fontSize = max(1, (float) $field['font_size']);
         $color = $testMode ? '#666' : '#000';
         $editableClass = $editable ? ' print-field--editable' : '';
         $editableAttr = $editable ? ' contenteditable="true" spellcheck="false" tabindex="0"' : '';

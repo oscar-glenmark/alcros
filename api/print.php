@@ -102,6 +102,7 @@ function handleSaveField(PDO $pdo): void
     }
 
     logActivity(staffId(), 'Print Field Updated', 'Updated print field #' . $fieldId);
+    bumpPrintCalibrationRevision();
     apiJsonResponse(['field_id' => $fieldId]);
 }
 
@@ -124,6 +125,7 @@ function handleSaveCalibration(PDO $pdo): void
     ], staffId());
 
     logActivity(staffId(), 'Print Calibration Saved', 'Template #' . $templateId);
+    bumpPrintCalibrationRevision();
     apiJsonResponse(['template_id' => $templateId]);
 }
 
@@ -143,6 +145,7 @@ function handleSaveGlobalCalibration(PDO $pdo): void
     setSetting('print_city_municipality', trim((string) ($_POST['print_city_municipality'] ?? 'Aloran')));
 
     logActivity(staffId(), 'Print Global Settings Saved', 'Updated global print calibration/settings');
+    bumpPrintCalibrationRevision();
     apiJsonResponse(['saved' => true]);
 }
 

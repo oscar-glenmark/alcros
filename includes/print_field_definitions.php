@@ -366,10 +366,14 @@ function printOfficialPaperHeightMm(): float
     return 358.9;
 }
 
-function printPaperSizeLabel(?float $widthMm = null, ?float $heightMm = null): string
+function printPaperSizeLabel(?float $widthMm = null, ?float $heightMm = null, bool $compact = false): string
 {
     $widthMm = $widthMm ?? printOfficialPaperWidthMm();
     $heightMm = $heightMm ?? printOfficialPaperHeightMm();
+
+    if ($compact) {
+        return sprintf('%.1f × %.1f mm · Legal bond', $widthMm, $heightMm);
+    }
 
     return sprintf(
         '%.1f mm × %.1f mm (8.5″ × 14.1″ municipal long bond — Forms 102 / 97 / 103)',

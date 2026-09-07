@@ -821,25 +821,13 @@ function normalizeRecordInput(array $input): array
     ], civilRecordTypeDefaults($type));
 
     if (isset($input['print_fill']) && is_array($input['print_fill'])) {
-        $fill = [];
-        foreach ($input['print_fill'] as $key => $value) {
-            if (!is_string($key)) {
-                continue;
-            }
-            $trimmed = trim((string) $value);
-            if ($trimmed !== '') {
-                $fill[$key] = $trimmed;
-            }
-        }
-        $encoded = $fill !== [] ? json_encode($fill, JSON_UNESCAPED_UNICODE) : false;
-        $data['print_fill_data'] = $encoded !== false ? $encoded : null;
+        $submittedFill = $input['print_fill'];
     } elseif (isset($input['print_fill_data'])) {
-        if (is_array($input['print_fill_data']) && $input['print_fill_data'] !== []) {
-            $encoded = json_encode($input['print_fill_data'], JSON_UNESCAPED_UNICODE);
-            $data['print_fill_data'] = $encoded !== false ? $encoded : null;
-        } elseif (is_string($input['print_fill_data']) && trim($input['print_fill_data']) !== '') {
-            $data['print_fill_data'] = trim($input['print_fill_data']);
-        }
+        $submittedFill = is_array($input['print_fill_data'])
+            ? $input['print_fill_data']
+            : printParseFillData($input['print_fill_data']);
+    } else {
+        $submittedFill = [];
     }
 
     if ($type === 'birth') {
@@ -867,6 +855,8 @@ function normalizeRecordInput(array $input): array
             $data['registry_number'] = $fallbackRegistry;
         }
     }
+
+    $data['print_fill_data'] = printRebuildRecordFillData($data, $type, $submittedFill);
 
     $data['_provided_fields'] = $providedFields;
 

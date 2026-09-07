@@ -31,7 +31,8 @@ if (!$context['ok']) {
     $frontTemplate = getPrintTemplate($pdo, $certificateType, 'front');
     $paperW = (float) ($frontTemplate['paper_width_mm'] ?? printOfficialPaperWidthMm());
     $paperH = (float) ($frontTemplate['paper_height_mm'] ?? printOfficialPaperHeightMm());
-    $paperSizeLabel = printPaperSizeLabel($paperW, $paperH);
+    $paperSizeLabel = printPaperSizeLabel($paperW, $paperH, true);
+    $paperSizeTitle = printPaperSizeLabel($paperW, $paperH);
 }
 
 $globalCalibration = printGlobalCalibration();
@@ -76,53 +77,53 @@ $printModeSetting = printMode();
             <?php endif; ?>
             <section class="print-cert-summary">
                 <div class="print-cert-summary__grid">
-                    <div>
+                    <div class="print-cert-summary__item">
                         <span class="print-cert-label">Certificate</span>
                         <strong><?= htmlspecialchars(printCertificateTitle($certificateType)) ?></strong>
                     </div>
                     <?php if ($request): ?>
-                    <div>
+                    <div class="print-cert-summary__item">
                         <span class="print-cert-label">Request</span>
                         <strong><?= htmlspecialchars($request['tracking_code']) ?></strong>
                     </div>
-                    <div>
+                    <div class="print-cert-summary__item">
                         <span class="print-cert-label">Applicant</span>
                         <strong><?= htmlspecialchars(personNameFromRow($request)) ?></strong>
                     </div>
                     <?php endif; ?>
-                    <div>
+                    <div class="print-cert-summary__item">
                         <span class="print-cert-label">Registry No.</span>
                         <strong><?= htmlspecialchars($record['registry_number'] ?: '—') ?></strong>
                     </div>
-                    <div>
+                    <div class="print-cert-summary__item">
                         <span class="print-cert-label">Print Mode</span>
-                        <strong><?= $printModeSetting === 'digital' ? 'Digital Form' : 'Pre-printed Form Overlay' ?></strong>
+                        <strong><?= $printModeSetting === 'digital' ? 'Digital Form' : 'Pre-printed Overlay' ?></strong>
                     </div>
-                    <div>
+                    <div class="print-cert-summary__item print-cert-summary__item--paper">
                         <span class="print-cert-label">Paper Size</span>
-                        <strong><?= htmlspecialchars($paperSizeLabel) ?></strong>
+                        <strong title="<?= htmlspecialchars($paperSizeTitle) ?>"><?= htmlspecialchars($paperSizeLabel) ?></strong>
                     </div>
                 </div>
             </section>
 
             <section class="print-cert-options no-print">
-                <h2 class="print-cert-section-title">Back Page Options</h2>
-                <p class="print-cert-hint">Affidavit sections are only filled when you explicitly enable them. Signatures are never auto-generated.</p>
-                <div class="print-cert-checks">
-                    <?php if ($certificateType === 'birth'): ?>
-                        <label><input type="checkbox" id="optPaternity"> Affidavit of Acknowledgment/Admission of Paternity</label>
-                        <label><input type="checkbox" id="optDelayedBirth"> Affidavit for Delayed Registration of Birth</label>
-                    <?php elseif ($certificateType === 'marriage'): ?>
-                        <label><input type="checkbox" id="optDelayedMarriage"> Affidavit for Delayed Registration of Marriage</label>
-                    <?php elseif ($certificateType === 'death'): ?>
-                        <label><input type="checkbox" id="optInfantSection"> For Children Aged 0 to 7 Days</label>
-                        <label><input type="checkbox" id="optPostmortem"> Postmortem Certificate (autopsy performed)</label>
-                        <label><input type="checkbox" id="optDelayedDeath"> Affidavit for Delayed Registration of Death</label>
-                    <?php endif; ?>
+                <div class="print-cert-options__inner">
+                    <h2 class="print-cert-section-title">Back Page Options</h2>
+                    <div class="print-cert-checks">
+                        <?php if ($certificateType === 'birth'): ?>
+                            <label><input type="checkbox" id="optPaternity"> Paternity affidavit</label>
+                            <label><input type="checkbox" id="optDelayedBirth"> Delayed birth affidavit</label>
+                        <?php elseif ($certificateType === 'marriage'): ?>
+                            <label><input type="checkbox" id="optDelayedMarriage"> Delayed marriage affidavit</label>
+                        <?php elseif ($certificateType === 'death'): ?>
+                            <label><input type="checkbox" id="optInfantSection"> Infant 0–7 days</label>
+                            <label><input type="checkbox" id="optPostmortem"> Postmortem (autopsy)</label>
+                            <label><input type="checkbox" id="optDelayedDeath"> Delayed death affidavit</label>
+                        <?php endif; ?>
+                        <label><input type="checkbox" id="optShowBackground" checked> Show form background</label>
+                    </div>
                 </div>
-                <div class="print-cert-checks">
-                    <label><input type="checkbox" id="optShowBackground" checked> Show form reference background in preview</label>
-                </div>
+                <p class="print-cert-hint print-cert-hint--compact">Affidavit sections fill only when checked. Signatures are never auto-generated.</p>
             </section>
 
             <section class="print-cert-fill no-print">
@@ -187,11 +188,11 @@ $printModeSetting = printMode();
             </section>
 
             <section class="print-cert-duplex-hint no-print">
-                <h3>Printer setup</h3>
-                <p>Use pre-printed municipal forms or blank <strong>8.5″ × 14.1″ long bond</strong> (215.9 × 358.9 mm) — the official size for PSA Municipal Forms 102 (birth), 103 (death), and 97 (marriage).</p>
-                <p>In your browser print dialog, set paper size to <strong>Legal (8.5 × 14 in)</strong> or custom <strong>215.9 × 358.9 mm</strong>. <strong>Do not use Postcard, A4, or Letter.</strong> Scale must be <strong>100%</strong> (not “Fit to page”), margins <strong>None</strong>. The preview should show <strong>1 sheet</strong> — if it shows 2+ sheets, the paper size is wrong.</p>
-                <p>After printing the front, reinsert the physical form according to your printer orientation.</p>
-                <p><strong>Configured hint:</strong> <?= htmlspecialchars(str_replace('_', ' ', $globalCalibration['back_orientation_hint'])) ?></p>
+                <span class="print-cert-duplex-hint__label">Printer setup</span>
+                <p class="print-cert-duplex-hint__text">
+                    <strong>Legal (8.5 × 14 in)</strong> or <strong>215.9 × 358.9 mm</strong> · Scale <strong>100%</strong>, margins <strong>None</strong> · Not A4/Letter/Postcard ·
+                    Back reinsert: <strong><?= htmlspecialchars(str_replace('_', ' ', $globalCalibration['back_orientation_hint'])) ?></strong>
+                </p>
             </section>
         <?php endif; ?>
     </div>
@@ -208,6 +209,7 @@ $printModeSetting = printMode();
     'apiPrintUrl' => buildAuthUrl('api/print.php'),
     'paperWidthMm' => $paperW,
     'paperHeightMm' => $paperH,
+    'calibrationRev' => printCalibrationRevision(),
     'initialFillValues' => array_column($fillEditorFields, 'value', 'field_name'),
 ]) ?>
 <?= scriptTag('core/page-config.js') ?>

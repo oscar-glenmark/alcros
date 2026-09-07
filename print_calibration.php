@@ -58,6 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     if ($action === 'reset_all_fields') {
         syncPrintFieldCoordinatesFromPresets($pdo, $certificateType, $pageSide);
+        bumpPrintCalibrationRevision();
         logActivity(staffId(), 'Print Fields Reset', 'Reset all print field coordinates to SVG defaults');
     } elseif ($action === 'reset_field' && !empty($_POST['field_id'])) {
         $fieldId = (int) $_POST['field_id'];
@@ -73,6 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ($seed as $s) {
                 if ($s['field_name'] === $fieldRow['field_name']) {
                     updatePrintField($pdo, $fieldId, $s);
+                    bumpPrintCalibrationRevision();
                     break;
                 }
             }

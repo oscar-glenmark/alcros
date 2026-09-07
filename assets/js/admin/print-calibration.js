@@ -186,6 +186,14 @@
         window.alert(message);
     }
 
+    function markCalibrationRefreshPending() {
+        try {
+            sessionStorage.setItem('alcros-print-cal-updated', String(Date.now()));
+        } catch (err) {
+            /* ignore */
+        }
+    }
+
     function parseApiResponse(res, text) {
         var data = null;
         try {
@@ -561,6 +569,7 @@
                 applyFieldValues(activeFieldId, readFieldFormValues(), false);
                 markFieldPlaced(activeFieldId);
                 updateAllMarkerVisibility();
+                markCalibrationRefreshPending();
                 if (options.toast !== false) {
                     showToast('success', options.message || 'Field saved.');
                 } else if (options.markSaved !== false) {
@@ -579,6 +588,7 @@
             applyFieldValues(activeFieldId, readFieldFormValues(), false);
             markFieldPlaced(activeFieldId);
             updateAllMarkerVisibility();
+            markCalibrationRefreshPending();
             if (options.toast !== false) {
                 showToast('success', options.message || 'Field saved.');
             } else if (options.markSaved !== false) {
@@ -931,6 +941,7 @@
                         return;
                     }
                     cfg.templateCalibration = readTemplateFormValues();
+                    markCalibrationRefreshPending();
                     showToast('success', 'Form shift saved.');
                 }).catch(function () {
                     showToast('error', 'Could not save form shift.');
@@ -950,6 +961,7 @@
                         return;
                     }
                     showToast('success', 'Printer setup saved. Reloading…');
+                    markCalibrationRefreshPending();
                     window.setTimeout(function () { window.location.reload(); }, 600);
                 }).catch(function () {
                     showToast('error', 'Could not save printer setup.');

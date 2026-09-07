@@ -5,6 +5,9 @@ require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/printing.php';
 requireStaffLogin();
 
+header('Cache-Control: no-store, no-cache, must-revalidate');
+header('Pragma: no-cache');
+
 $pdo = getDB();
 ensurePrintTables($pdo);
 
@@ -91,10 +94,11 @@ $paperHint = printPaperSizePrinterHint();
 $isPreview = !empty($_GET['preview']);
 $autoPrint = !empty($_GET['autoprint']);
 $overlayHtml = renderPrintOverlayHtml($printData, [
-    'mode'            => $mode,
-    'test_mode'       => $testMode,
-    'show_background' => $showBackground,
-    'editable'        => $isPreview && !$autoPrint && !$testMode && !$calibrationPreview,
+    'mode'                    => $mode,
+    'test_mode'               => $testMode,
+    'show_background'         => $showBackground,
+    'editable'                => $isPreview && !$autoPrint && !$testMode && !$calibrationPreview,
+    'prefer_scan_background'  => $isPreview && !$calibrationPreview,
 ]);
 ?><!DOCTYPE html>
 <html lang="en">
@@ -222,7 +226,6 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
         }
         .print-field {
             font-weight: 700 !important;
-            font-size: 10pt !important;
             text-transform: uppercase !important;
         }
         .print-field--editable:empty::before {

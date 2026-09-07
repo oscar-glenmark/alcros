@@ -7,6 +7,32 @@
     var initialFillValues = {};
     var refreshTimer = null;
     var syncingPreview = false;
+    var lastCalibrationStamp = '';
+
+    var CALIBRATION_STAMP_KEY = 'alcros-print-cal-updated';
+
+    function markCalibrationRefreshPending() {
+        try {
+            sessionStorage.setItem(CALIBRATION_STAMP_KEY, String(Date.now()));
+        } catch (err) {
+            /* ignore */
+        }
+    }
+
+    function refreshIfCalibrationChanged() {
+        var stamp = '';
+        try {
+            stamp = sessionStorage.getItem(CALIBRATION_STAMP_KEY) || '';
+        } catch (err) {
+            stamp = '';
+        }
+        if (!stamp || stamp === lastCalibrationStamp) {
+            return false;
+        }
+        lastCalibrationStamp = stamp;
+        refreshPreviews();
+        return true;
+    }
 
     function readConfig() {
         if (window.AlcrosPage && typeof AlcrosPage.readConfig === 'function') {
@@ -135,6 +161,10 @@
         } else {
             parsed.searchParams.delete('test');
         }
+        if (cfg.calibrationRev) {
+            parsed.searchParams.set('cal', String(cfg.calibrationRev));
+        }
+        parsed.searchParams.set('_ts', String(Date.now()));
         return parsed.pathname + parsed.search;
     }
 
@@ -342,9 +372,25 @@
     }
 
     readConfig();
+    lastCalibrationStamp = '';
+    try {
+        lastCalibrationStamp = sessionStorage.getItem(CALIBRATION_STAMP_KEY) || '';
+    } catch (err) {
+        lastCalibrationStamp = '';
+    }
     bindFillEditor();
     bindActions();
     syncPreviewFrameSize();
     window.addEventListener('resize', syncPreviewFrameSize);
+    window.addEventListener('pageshow', function (e) {
+        if (e.persisted) {
+            refreshIfCalibrationChanged();
+        }
+    });
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) {
+            refreshIfCalibrationChanged();
+        }
+    });
     refreshPreviews();
 })();

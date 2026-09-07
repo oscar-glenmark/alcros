@@ -848,10 +848,48 @@
     text-align: inherit;
 }
 
+.print-cal-marker-hint {
+    position: absolute;
+    right: calc(100% + 0.8mm);
+    top: 50%;
+    transform: translateY(-50%);
+    white-space: nowrap;
+    font-size: 5.5pt;
+    line-height: 1;
+    color: #334155;
+    font-weight: 700;
+    font-style: normal;
+    pointer-events: none;
+    max-width: 34mm;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    z-index: 1;
+}
+
+.print-cal-marker.is-checkbox {
+    justify-content: center;
+    padding: 0;
+}
+
+.print-cal-marker-check {
+    font-size: 10pt;
+    line-height: 1;
+    font-weight: 400;
+    flex: 0 0 auto;
+}
+
+.print-cal-marker.is-checkbox .print-cal-marker-text {
+    display: none;
+}
+
 .print-cal-marker:not(.is-sample-mode) .print-cal-marker-text {
     font-style: italic;
     color: #64748b;
     font-weight: 600;
+}
+
+.print-cal-marker.is-checkbox:not(.is-sample-mode) .print-cal-marker-check {
+    color: #64748b;
 }
 
 .print-cal-resize-handle {

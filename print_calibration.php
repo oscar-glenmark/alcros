@@ -36,11 +36,11 @@ $calNavItems = printCalibrationNavItems($certificateType, $pageSide);
 $sampleValues = printCalibrationSampleValues($certificateType);
 $showSampleDefault = $pageSide !== 'back';
 $fieldHints = [];
+$fieldInputTypes = [];
 foreach ($fields as $field) {
-    $hint = printFieldHint((string) $field['field_name']);
-    if ($hint !== '') {
-        $fieldHints[(string) $field['field_name']] = $hint;
-    }
+    $name = (string) $field['field_name'];
+    $fieldHints[$name] = printFieldShortHint($name, (string) ($field['label'] ?? ''));
+    $fieldInputTypes[$name] = printFieldIsCheckbox($name) ? 'checkbox' : 'text';
 }
 $previewPrintUrl = buildAuthUrl('print_render.php', [
     'calibration_preview' => '1',
@@ -437,22 +437,30 @@ if (!$formDefaults && !empty($fields[0])) {
                     <?php foreach ($fields as $field):
                         $pos = printEffectivePosition($field, $calibration, $globalCalibration);
                         $isSelected = $selectedFieldId > 0 && (int) $field['id'] === $selectedFieldId;
-                        $fieldHint = printFieldHint((string) $field['field_name']);
-                        $markerSampleText = $showSampleDefault
-                            ? ($sampleValues[$field['field_name']] ?? ($fieldHint !== '' ? $fieldHint : ($field['label'] ?: $field['field_name'])))
-                            : ($fieldHint !== '' ? $fieldHint : ($field['label'] ?: $field['field_name']));
+                        $fieldName = (string) $field['field_name'];
+                        $shortHint = printFieldShortHint($fieldName, (string) ($field['label'] ?? ''));
+                        $isCheckbox = printFieldIsCheckbox($fieldName);
+                        $markerSampleText = $showSampleDefault ? ($sampleValues[$fieldName] ?? '') : '';
+                        $checkboxMark = $isCheckbox ? (trim($markerSampleText) !== '' ? '☑' : '☐') : '';
                         $fieldAlign = printNormalizeAlignment($field['alignment'] ?? null);
                         $fieldJustify = printAlignmentJustifyContent($fieldAlign);
                     ?>
-                    <div class="print-cal-marker<?= $isSelected ? ' is-selected' : '' ?><?= empty($field['enabled']) ? ' is-disabled' : '' ?><?= $showSampleDefault ? ' is-sample-mode' : '' ?>"
+                    <div class="print-cal-marker<?= $isSelected ? ' is-selected' : '' ?><?= empty($field['enabled']) ? ' is-disabled' : '' ?><?= $showSampleDefault ? ' is-sample-mode' : '' ?><?= $isCheckbox ? ' is-checkbox' : '' ?>"
                          data-field-id="<?= (int) $field['id'] ?>"
-                         data-field-name="<?= htmlspecialchars($field['field_name']) ?>"
+                         data-field-name="<?= htmlspecialchars($fieldName) ?>"
+                         data-input-type="<?= $isCheckbox ? 'checkbox' : 'text' ?>"
                          data-base-x="<?= (float) $field['x_mm'] ?>"
                          data-base-y="<?= (float) $field['y_mm'] ?>"
                          data-base-w="<?= (float) $field['width_mm'] ?>"
                          data-base-h="<?= (float) $field['height_mm'] ?>"
                          style="left:<?= $pos['x'] ?>mm;top:<?= $pos['y'] ?>mm;width:<?= $pos['width'] ?>mm;height:<?= $pos['height'] ?>mm;font-size:<?= (float) $field['font_size'] ?>pt;text-align:<?= htmlspecialchars($fieldAlign) ?>;justify-content:<?= htmlspecialchars($fieldJustify) ?>;">
-                        <span class="print-cal-marker-text"><?= htmlspecialchars($markerSampleText) ?></span>
+                        <?php if ($shortHint !== ''): ?>
+                        <span class="print-cal-marker-hint"><?= htmlspecialchars($shortHint) ?></span>
+                        <?php endif; ?>
+                        <?php if ($isCheckbox): ?>
+                        <span class="print-cal-marker-check"><?= htmlspecialchars($checkboxMark) ?></span>
+                        <?php endif; ?>
+                        <span class="print-cal-marker-text"><?= htmlspecialchars($isCheckbox ? '' : $markerSampleText) ?></span>
                         <span class="print-cal-resize-handle" aria-hidden="true"></span>
                     </div>
                     <?php endforeach; ?>
@@ -501,6 +509,7 @@ if (!$formDefaults && !empty($fields[0])) {
     ],
     'sampleValues' => $sampleValues,
     'fieldHints' => $fieldHints,
+    'fieldInputTypes' => $fieldInputTypes,
     'previewPrintUrl' => $previewPrintUrl,
 ]) ?>
 <?= scriptTag('core/page-config.js') ?>

@@ -254,7 +254,8 @@ function ensurePrintRequestStatuses(PDO $pdo): void
 
 function syncPrintFieldsFromCatalog(PDO $pdo): void
 {
-    if (getSetting('print_field_catalog_version', '') === '2') {
+    $targetVersion = '3';
+    if (getSetting('print_field_catalog_version', '') === $targetVersion) {
         return;
     }
 
@@ -312,7 +313,7 @@ function syncPrintFieldsFromCatalog(PDO $pdo): void
         // ignore if migration cannot run
     }
 
-    setSetting('print_field_catalog_version', '2');
+    setSetting('print_field_catalog_version', $targetVersion);
 }
 
 /**

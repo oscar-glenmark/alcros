@@ -68,22 +68,32 @@ function printFieldCatalog(): array
                 'parents_marriage_month' => 'Parents Marriage Month',
                 'parents_marriage_year' => 'Parents Marriage Year',
                 'parents_marriage_place' => 'Parents Marriage Place',
-                'attendant_type' => '21a Attendant Type',
+                'attendant_type' => '21a Attendant Physician',
+                'attendant_nurse' => '21a Attendant Nurse',
+                'attendant_midwife' => '21a Attendant Midwife',
+                'attendant_hilot' => '21a Attendant Hilot',
+                'attendant_others' => '21a Attendant Others',
+                'attendant_others_specify' => '21a Attendant Others Specify',
                 'birth_time' => '21b Time of Birth',
+                'attendant_cert_signature' => '21b Attendant Signature',
                 'attendant_cert_name' => '21b Attendant Name in Print',
                 'attendant_cert_title' => '21b Attendant Title or Position',
                 'attendant_cert_address' => '21b Attendant Address',
                 'attendant_cert_date' => '21b Attendant Certification Date',
+                'informant_signature' => '22 Informant Signature',
                 'informant_name' => '22 Informant Name in Print',
                 'informant_relationship' => '22 Informant Relationship',
                 'informant_address' => '22 Informant Address',
                 'informant_date' => '22 Informant Date',
+                'prepared_by_signature' => '23 Prepared By Signature',
                 'prepared_by_name' => '23 Prepared By Name in Print',
                 'prepared_by_title' => '23 Prepared By Title or Position',
                 'prepared_by_date' => '23 Prepared By Date',
+                'received_by_signature' => '24 Received By Signature',
                 'received_by_name' => '24 Received By Name in Print',
                 'received_by_title' => '24 Received By Title or Position',
                 'received_by_date' => '24 Received By Date',
+                'registrar_signature' => '25 Civil Registrar Signature',
                 'registrar_name' => '25 Civil Registrar Name in Print',
                 'registrar_title' => '25 Civil Registrar Title or Position',
                 'registrar_date' => '25 Registration Date',
@@ -167,9 +177,11 @@ function printFieldCatalog(): array
                 'marriage_time' => 'Time of Marriage',
                 'solemnizing_officer' => 'Solemnizing Officer',
                 'witnesses' => 'Witnesses',
+                'received_by_signature' => '21 Received By Signature',
                 'received_by_name' => '21 Received By Name in Print',
                 'received_by_title' => '21 Received By Title or Position',
                 'received_by_date' => '21 Received By Date',
+                'registrar_signature' => '22 Civil Registrar Signature',
                 'registrar_name' => '22 Civil Registrar Name in Print',
                 'registrar_title' => '22 Civil Registrar Title or Position',
                 'registrar_date' => '22 Registration Date',
@@ -229,8 +241,18 @@ function printFieldCatalog(): array
                 'mother_middle_name' => 'Mother Middle Name',
                 'mother_last_name' => 'Mother Last Name',
                 'immediate_cause' => 'Immediate Cause',
+                'immediate_cause_interval' => 'Immediate Cause Interval',
                 'contributory_cause' => 'Contributory Cause',
-                'autopsy_performed' => 'Autopsy',
+                'contributory_cause_interval' => 'Contributory Cause Interval',
+                'underlying_cause' => 'Underlying Cause',
+                'underlying_cause_interval' => 'Underlying Cause Interval',
+                'other_significant_conditions' => 'Other Significant Conditions',
+                'maternal_condition_a' => '19c Maternal Condition A',
+                'maternal_condition_b' => '19c Maternal Condition B',
+                'maternal_condition_c' => '19c Maternal Condition C',
+                'maternal_condition_d' => '19c Maternal Condition D',
+                'maternal_condition_e' => '19c Maternal Condition E',
+                'autopsy_performed' => 'Autopsy Yes/No',
                 'attending_physician' => 'Attending Physician',
                 'surviving_spouse_name' => 'Surviving Spouse',
                 'surviving_spouse_address' => 'Spouse Address',
@@ -238,10 +260,16 @@ function printFieldCatalog(): array
                 'death_time' => 'Time of Death',
                 'registration_date' => 'Date of Registration',
                 'attendant_type' => '21a Attendant Type',
+                'attendant_duration_from' => '21b Attendance From',
+                'attendant_duration_to' => '21b Attendance To',
+                'death_cert_attest_cb1' => '22 Certifier Attestation 1',
+                'death_cert_attest_cb2' => '22 Certifier Attestation 2',
+                'death_cert_signature' => '22 Certifier Signature',
                 'death_cert_name' => '22 Certifier Name in Print',
                 'death_cert_title' => '22 Certifier Title or Position',
                 'death_cert_address' => '22 Certifier Address',
                 'death_cert_date' => '22 Certification Date',
+                'reviewed_by_signature' => 'Reviewed By Signature',
                 'reviewed_by_name' => 'Reviewed By Name in Print',
                 'reviewed_by_date' => 'Reviewed By Date',
                 'corpse_disposal' => '23 Corpse Disposal',
@@ -250,16 +278,20 @@ function printFieldCatalog(): array
                 'transfer_permit_number' => '24b Transfer Permit No.',
                 'transfer_permit_date' => '24b Transfer Permit Date',
                 'cemetery_crematory' => '25 Cemetery/Crematory Name and Address',
+                'informant_signature' => '26 Informant Signature',
                 'informant_name' => '26 Informant Name in Print',
                 'informant_relationship' => '26 Informant Relationship',
                 'informant_address' => '26 Informant Address',
                 'informant_date' => '26 Informant Date',
+                'prepared_by_signature' => '27 Prepared By Signature',
                 'prepared_by_name' => '27 Prepared By Name in Print',
                 'prepared_by_title' => '27 Prepared By Title or Position',
                 'prepared_by_date' => '27 Prepared By Date',
+                'received_by_signature' => '28 Received By Signature',
                 'received_by_name' => '28 Received By Name in Print',
                 'received_by_title' => '28 Received By Title or Position',
                 'received_by_date' => '28 Received By Date',
+                'registrar_signature' => '29 Civil Registrar Signature',
                 'registrar_name' => '29 Civil Registrar Name in Print',
                 'registrar_title' => '29 Civil Registrar Title or Position',
                 'registrar_date' => '29 Registration Date',
@@ -468,6 +500,75 @@ function printFieldHint(string $fieldName): string
     return $hints[$fieldName] ?? '';
 }
 
+function printTrimHintWords(string $text, int $maxWords = 3): string
+{
+    $text = trim(preg_replace('/\s+/u', ' ', $text) ?? '');
+    if ($text === '') {
+        return '';
+    }
+
+    $words = preg_split('/\s+/u', $text) ?: [];
+
+    return implode(' ', array_slice($words, 0, $maxWords));
+}
+
+function printFieldShortHint(string $fieldName, string $label = ''): string
+{
+    $legacy = printFieldHint($fieldName);
+    if ($legacy !== '') {
+        return printTrimHintWords(trim($legacy, '()'), 3);
+    }
+
+    if ($label === '') {
+        foreach (printFieldCatalog() as $sides) {
+            if (isset($sides['front'][$fieldName])) {
+                $label = (string) $sides['front'][$fieldName];
+                break;
+            }
+            if (isset($sides['back'][$fieldName])) {
+                $label = (string) $sides['back'][$fieldName];
+                break;
+            }
+        }
+    }
+
+    if ($label === '') {
+        $label = ucwords(str_replace('_', ' ', $fieldName));
+    }
+
+    $label = preg_replace('/^\d+[a-z]?\s+/i', '', $label) ?? $label;
+    $label = preg_replace('/^LCRO (Footer )?(Box )?(\d+[a-z]?)?\s*/i', 'LCRO ', $label) ?? $label;
+    $label = preg_replace('/\s*—\s*.+$/u', '', $label) ?? $label;
+    $label = preg_replace('/\s*\/\s*.+$/u', '', $label) ?? $label;
+
+    return printTrimHintWords($label, 3);
+}
+
+function printFieldIsCheckbox(string $fieldName): bool
+{
+    static $exact = [
+        'attendant_type',
+        'attendant_nurse',
+        'attendant_midwife',
+        'attendant_hilot',
+        'attendant_others',
+        'autopsy_performed',
+        'death_cert_attest_cb1',
+        'death_cert_attest_cb2',
+        'maternal_condition_a',
+        'maternal_condition_b',
+        'maternal_condition_c',
+        'maternal_condition_d',
+        'maternal_condition_e',
+    ];
+
+    if (in_array($fieldName, $exact, true)) {
+        return true;
+    }
+
+    return (bool) preg_match('/^lcro_box_/', $fieldName);
+}
+
 /** @return array<string, array<string, array<string, array<string, float|int|string>>>> */
 function printFieldCoordinatePresets(): array
 {
@@ -517,21 +618,31 @@ function printFieldCoordinatePresets(): array
                 'parents_marriage_year'  => $line(74, 178.45, 17),
                 'parents_marriage_place' => $line(106.59, 178.03, 99.45),
                 'attendant_type'        => $line(21.33, 191.68, 8, 4),
+                'attendant_nurse'       => $line(34, 191.68, 8, 4),
+                'attendant_midwife'     => $line(47, 191.68, 8, 4),
+                'attendant_hilot'       => $line(60, 191.68, 8, 4),
+                'attendant_others'      => $line(73, 191.68, 8, 4),
+                'attendant_others_specify' => $line(88, 191.68, 35, 4),
                 'birth_time'            => $line(129.18, 199.96, 18.30, 4.5),
+                'attendant_cert_signature' => $line(41.98, 208, 67, 4.5),
                 'attendant_cert_name'   => $line(41.98, 214.61, 67, 4.5),
                 'attendant_cert_title'  => $line(43, 221, 67, 4),
                 'attendant_cert_address'=> $line(129.77, 208.77, 72.51, 4.5),
                 'attendant_cert_date'   => $line(122.83, 219.46, 59, 4),
+                'informant_signature'   => $line(41, 239, 69, 4),
                 'informant_name'        => $line(41, 245, 69, 4),
                 'informant_relationship'=> $line(53, 251, 50, 4),
                 'informant_address'     => $line(34, 257, 78, 4),
                 'informant_date'        => $line(37, 263, 40, 4),
+                'prepared_by_signature' => $line(137, 239, 61, 4),
                 'prepared_by_name'      => $line(137, 246, 61, 4),
                 'prepared_by_title'     => $line(139, 252, 58, 4),
                 'prepared_by_date'      => $line(132, 257, 40, 4),
+                'received_by_signature' => $line(43, 273, 60, 4),
                 'received_by_name'      => $line(43, 279, 60, 4),
                 'received_by_title'     => $line(44, 285, 62, 4),
                 'received_by_date'      => $line(37.91, 291.77, 40, 4),
+                'registrar_signature'   => $line(138, 272, 65, 4),
                 'registrar_name'        => $line(138, 279, 65, 4),
                 'registrar_title'       => $line(140, 285, 64, 4),
                 'registrar_date'        => $line(134, 291, 40, 4),
@@ -615,9 +726,11 @@ function printFieldCoordinatePresets(): array
                 'marriage_time'     => $line(16, 152.5, 188),
                 'solemnizing_officer'=> $line(16, 170.5, 188),
                 'witnesses'         => $line(16, 180.5, 188),
+                'received_by_signature' => $line(58, 244, 50, 4),
                 'received_by_name'  => $line(58, 248, 50),
                 'received_by_title' => $line(58, 253, 50),
                 'received_by_date'  => $line(16, 258, 40),
+                'registrar_signature' => $line(154, 244, 50, 4),
                 'registrar_name'    => $line(154, 248, 50),
                 'registrar_title'   => $line(154, 253, 50),
                 'registrar_date'    => $line(112, 258, 40),
@@ -676,8 +789,18 @@ function printFieldCoordinatePresets(): array
                 'mother_first_name' => $line(16, 102.5, 54),
                 'mother_middle_name'=> $line(78, 102.5, 54),
                 'mother_last_name'  => $line(140, 102.5, 64),
-                'immediate_cause'   => $line(16, 117.5, 188),
-                'contributory_cause'=> $line(16, 122.5, 188),
+                'immediate_cause'   => $line(16, 117.5, 150),
+                'immediate_cause_interval' => $line(170, 117.5, 34, 4.5),
+                'contributory_cause'=> $line(16, 122.5, 150),
+                'contributory_cause_interval' => $line(170, 122.5, 34, 4.5),
+                'underlying_cause'  => $line(16, 127.5, 150),
+                'underlying_cause_interval' => $line(170, 127.5, 34, 4.5),
+                'other_significant_conditions' => $line(16, 132.5, 188, 4),
+                'maternal_condition_a' => $line(16, 128, 8, 4),
+                'maternal_condition_b' => $line(26, 128, 8, 4),
+                'maternal_condition_c' => $line(36, 128, 8, 4),
+                'maternal_condition_d' => $line(46, 128, 8, 4),
+                'maternal_condition_e' => $line(56, 128, 8, 4),
                 'autopsy_performed' => $line(16, 134.5, 188),
                 'attending_physician'=> $line(16, 139.5, 188),
                 'surviving_spouse_name' => $line(16, 147.5, 188),
@@ -686,10 +809,16 @@ function printFieldCoordinatePresets(): array
                 'death_time'        => $line(16, 167.5, 48),
                 'registration_date' => $line(100, 167.5, 88),
                 'attendant_type'    => $line(158, 175, 46, 4),
+                'attendant_duration_from' => $line(16, 179, 40, 4),
+                'attendant_duration_to' => $line(62, 179, 40, 4),
+                'death_cert_attest_cb1' => $line(16, 184, 8, 4),
+                'death_cert_attest_cb2' => $line(26, 184, 8, 4),
+                'death_cert_signature' => $line(62, 184, 48, 4),
                 'death_cert_name'   => $line(62, 190, 48, 4),
                 'death_cert_title'  => $line(118, 190, 86, 4),
                 'death_cert_address'=> $line(16, 195, 188, 4),
                 'death_cert_date'   => $line(16, 200, 44, 4),
+                'reviewed_by_signature' => $line(58, 206, 50, 4),
                 'reviewed_by_name'  => $line(58, 212, 50, 4),
                 'reviewed_by_date'  => $line(16, 217, 40, 4),
                 'corpse_disposal'   => $line(16, 224, 188, 4),
@@ -698,16 +827,20 @@ function printFieldCoordinatePresets(): array
                 'transfer_permit_number' => $line(118, 229, 50, 4),
                 'transfer_permit_date'=> $line(174, 229, 30, 4),
                 'cemetery_crematory' => $line(16, 234, 188, 4),
+                'informant_signature' => $line(58, 240, 50, 4),
                 'informant_name'    => $line(58, 246, 50, 4),
                 'informant_relationship'=> $line(58, 251, 50, 4),
                 'informant_address' => $line(16, 256, 96, 4),
                 'informant_date'    => $line(16, 261, 40, 4),
+                'prepared_by_signature' => $line(154, 240, 50, 4),
                 'prepared_by_name'  => $line(154, 246, 50, 4),
                 'prepared_by_title' => $line(154, 251, 50, 4),
                 'prepared_by_date'  => $line(112, 256, 40, 4),
+                'received_by_signature' => $line(58, 268, 50, 4),
                 'received_by_name'  => $line(58, 274, 50, 4),
                 'received_by_title' => $line(58, 279, 50, 4),
                 'received_by_date'  => $line(16, 284, 40, 4),
+                'registrar_signature' => $line(154, 268, 50, 4),
                 'registrar_name'    => $line(154, 274, 50, 4),
                 'registrar_title'   => $line(154, 279, 50, 4),
                 'registrar_date'    => $line(112, 284, 40, 4),

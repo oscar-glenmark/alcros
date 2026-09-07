@@ -62,7 +62,7 @@ function sidebarSectionLabel(string $label): string
         <?= sidebarLink('appointment.php', 'Manage Appointments', 'calendar', $activePage) ?>
         <?= sidebarLink('records.php', 'Civil records', 'book-open', $activePage) ?>
         <?= sidebarLink('report.php', 'Operational Reports', 'file-bar-chart-2', $activePage) ?>
-        <?= sidebarLink('live-queue.php', 'Live queue', 'users', $activePage, true) ?>
+        <?= sidebarLink('live-queue.php', 'Manage live queue', 'users', $activePage, true) ?>
         <?php if (isAdmin()): ?>
         <?= sidebarSectionLabel('Administration') ?>
         <?= sidebarLink('analytics.php', 'Analytics', 'bar-chart-2', $activePage) ?>

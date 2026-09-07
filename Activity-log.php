@@ -5,6 +5,9 @@ require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 requireAdmin();
 
+$pageTitle = 'Activity Log';
+$pageSubtitle = 'Search and review staff actions recorded in the system.';
+
 $activePage = 'activity-log.php';
 $pdo = getDB();
 
@@ -136,10 +139,7 @@ $showingTo = min($offset + $perPage, $totalCount);
         <div class="p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto admin-page-wrap">
             <div class="admin-page-head mb-6">
                 <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                    <div>
-                        <h1>Activity Log</h1>
-                        <p>Search and review staff actions recorded in the system.</p>
-                    </div>
+    
                     <a href="<?= htmlspecialchars(activityLogPageUrl(['action' => 'export', 'page' => null])) ?>"
                        class="inline-flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold shrink-0">
                         <i data-lucide="download" class="w-4 h-4"></i> Export CSV

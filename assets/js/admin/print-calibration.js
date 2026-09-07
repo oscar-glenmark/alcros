@@ -263,11 +263,31 @@
         if (hint && String(hint).trim() !== '') {
             return String(hint);
         }
-        return field.label || field.field_name;
+        var label = field.label || field.field_name || '';
+        label = String(label).replace(/^\d+[a-z]?\s+/i, '');
+        label = label.replace(/\s*—\s*.+$/, '');
+        var words = label.trim().split(/\s+/).slice(0, 3);
+        return words.join(' ');
+    }
+
+    function isCheckboxField(field) {
+        var types = cfg.fieldInputTypes || {};
+        if (types[field.field_name] === 'checkbox') {
+            return true;
+        }
+        var marker = markerEl(field.id);
+        return marker ? marker.getAttribute('data-input-type') === 'checkbox' : false;
+    }
+
+    function checkboxMark(value) {
+        return value && String(value).trim() !== '' ? '☑' : '☐';
     }
 
     function markerLabel(field) {
-        return showSampleText ? sampleTextForField(field) : fieldHint(field);
+        if (showSampleText) {
+            return sampleTextForField(field);
+        }
+        return '';
     }
 
     function syncPreviewTextDisplay(field) {
@@ -299,9 +319,39 @@
         marker.style.fontFamily = field.font_family;
         marker.classList.toggle('is-disabled', !field.enabled);
         marker.classList.toggle('is-sample-mode', showSampleText);
+        marker.classList.toggle('is-checkbox', isCheckboxField(field));
 
+        var hintEl = marker.querySelector('.print-cal-marker-hint');
+        var hintText = fieldHint(field);
+        if (hintText) {
+            if (!hintEl) {
+                hintEl = document.createElement('span');
+                hintEl.className = 'print-cal-marker-hint';
+                marker.insertBefore(hintEl, marker.firstChild);
+            }
+            hintEl.textContent = hintText;
+        } else if (hintEl) {
+            hintEl.remove();
+        }
+
+        var checkEl = marker.querySelector('.print-cal-marker-check');
         var textEl = marker.querySelector('.print-cal-marker-text');
-        if (textEl) textEl.textContent = markerLabel(field);
+        if (isCheckboxField(field)) {
+            if (!checkEl) {
+                checkEl = document.createElement('span');
+                checkEl.className = 'print-cal-marker-check';
+                if (textEl) {
+                    marker.insertBefore(checkEl, textEl);
+                } else {
+                    marker.appendChild(checkEl);
+                }
+            }
+            checkEl.textContent = showSampleText ? checkboxMark(markerLabel(field)) : '☐';
+            if (textEl) textEl.textContent = '';
+        } else {
+            if (checkEl) checkEl.remove();
+            if (textEl) textEl.textContent = markerLabel(field);
+        }
     }
 
     function repositionAllMarkers() {

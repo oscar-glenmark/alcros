@@ -4,6 +4,7 @@ require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 require_once __DIR__ . '/includes/printing.php';
+require_once __DIR__ . '/includes/record_locks.php';
 requireStaffLogin();
 requirePageAccess('records.php');
 
@@ -915,10 +916,12 @@ if (isset($_GET['action']) && $_GET['action'] === 'view_record') {
     $printValues = in_array($certificateType, $validTypes, true)
         ? printBuildFieldValues($record, $certificateType, ['keep_empty' => false])
         : [];
+    $lock = fetchCivilRecordEditLock($pdo, $recordId);
     echo json_encode([
         'ok'           => true,
         'record'       => $record,
         'print_values' => $printValues,
+        'edit_lock'    => $lock ? formatCivilRecordEditLock($lock, staffId()) : null,
     ], JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -963,7 +966,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'update' && !empty($_POST['record_id'])) {
             $data = normalizeRecordInput(prepareCivilRecordFormInput($_POST));
             $id = (int) $_POST['record_id'];
+            requireCivilRecordEditLock($pdo, $id, staffId());
             saveCivilRecord($pdo, $data, $id);
+            releaseCivilRecordEditLock($pdo, $id, staffId());
             logActivity(staffId(), 'Record Updated', "Updated record #$id: " . civilRecordDisplayName($data));
             recordsFlashSet('success', 'Record updated successfully.');
         } elseif ($action === 'import_csv') {
@@ -1060,8 +1065,19 @@ $records = $stmt->fetchAll();
 $records = array_map(static fn (array $row) => hydrateCivilRecordRow($pdo, $row), $records);
 
 $editRecord = null;
+$editLockBlocked = null;
+$editLockHeld = false;
 if (isset($_GET['edit'])) {
-    $editRecord = fetchFullCivilRecord($pdo, (int) $_GET['edit']);
+    $editId = (int) $_GET['edit'];
+    $editRecord = fetchFullCivilRecord($pdo, $editId);
+    if ($editRecord) {
+        $lockResult = acquireCivilRecordEditLock($pdo, $editId, staffId(), staffName());
+        if ($lockResult['ok']) {
+            $editLockHeld = true;
+        } else {
+            $editLockBlocked = $lockResult;
+        }
+    }
 }
 
 $typeBadgeClass = [
@@ -1310,6 +1326,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
     <?php
     $modalRecord = $editRecord ?: [];
     $modalMode = $editRecord ? 'edit' : 'create';
+    $entryFormReadOnly = $editRecord && $editLockBlocked;
     $entryUseCompletePrintForm = $modalMode === 'create';
     $modalTitle = $editRecord
         ? 'Edit Civil Record'
@@ -1329,6 +1346,14 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                 <?php if ($editRecord): ?><input type="hidden" name="record_id" value="<?= (int) $editRecord['id'] ?>"><?php endif; ?>
                 <input type="hidden" name="record_type" id="recordTypeInput" value="<?= htmlspecialchars($defaultRecordType) ?>">
 
+                <?php if ($entryFormReadOnly): ?>
+                <div class="records-edit-lock-banner" role="alert">
+                    <strong>Record locked.</strong>
+                    <?= htmlspecialchars($editLockBlocked['locked_by'] ?? 'Another staff member') ?> is editing this record right now. Close this form and try again in a few minutes.
+                </div>
+                <?php endif; ?>
+
+                <fieldset class="records-entry-fieldset min-h-0 flex flex-col flex-1 border-0 p-0 m-0" <?= $entryFormReadOnly ? 'disabled' : '' ?>>
                 <div class="px-4 sm:px-6 py-4 overflow-y-auto flex-1 space-y-5">
                     <div>
                         <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Record Type</label>
@@ -1854,12 +1879,15 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                         <?php renderRecordEntryPrintFillSection($fillType, $modalRecord, $defaultRecordType === $fillType, $entryUseCompletePrintForm); ?>
                     <?php endforeach; ?>
                 </div>
+                </fieldset>
 
                 <div class="px-4 sm:px-6 py-4 border-t border-gray-100 flex flex-col-reverse sm:flex-row gap-3 shrink-0 bg-white">
-                    <button type="button" class="border border-gray-200 rounded-xl py-3 px-4 text-sm font-bold text-gray-600 hover:bg-gray-50 close-modal sm:flex-1">Cancel</button>
+                    <button type="button" class="border border-gray-200 rounded-xl py-3 px-4 text-sm font-bold text-gray-600 hover:bg-gray-50 close-modal sm:flex-1"><?= $entryFormReadOnly ? 'Close' : 'Cancel' ?></button>
+                    <?php if (!$entryFormReadOnly): ?>
                     <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 text-sm font-bold inline-flex items-center justify-center gap-2">
                         <i data-lucide="save" class="w-4 h-4"></i> <?= $editRecord ? 'Update Record' : 'Add Record' ?>
                     </button>
+                    <?php endif; ?>
                 </div>
             </form>
         </div>
@@ -1937,6 +1965,10 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
         'openEntryModal' => (bool) ($showModal || $editRecord),
         'defaultEntryType' => $defaultRecordType,
         'entryUseCompletePrintForm' => $entryUseCompletePrintForm,
+        'editRecordId' => $editRecord ? (int) $editRecord['id'] : null,
+        'editLockHeld' => $editLockHeld,
+        'editLockBlocked' => $editLockBlocked,
+        'recordsLockApiUrl' => buildAuthUrl('api/records.php'),
     ], 'records-config') ?>
     <?= scriptTag('core/page-config.js') ?>
     <?= scriptTag('admin/records.js') ?>

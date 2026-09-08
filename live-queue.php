@@ -15,65 +15,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action  = (string) ($_POST['action'] ?? '');
     $purpose = (string) ($_POST['purpose'] ?? '');
 
-    if ($action === 'next' && isset($tables[$purpose])) {
-        $tableNum = queueTableForPurpose($purpose);
-        $calledTicket = null;
-
-        $serving = $pdo->prepare(
-            "SELECT id, ticket_number FROM queue_tickets WHERE purpose = ? AND status = 'serving' AND DATE(created_at) = CURDATE() LIMIT 1"
-        );
-        $serving->execute([$purpose]);
-        if ($row = $serving->fetch()) {
-            $pdo->prepare("UPDATE queue_tickets SET status = 'completed' WHERE id = ?")->execute([$row['id']]);
-        }
-
-        $next = $pdo->prepare(
-            "SELECT id, ticket_number FROM queue_tickets
-             WHERE purpose = ? AND status = 'waiting' AND DATE(created_at) = CURDATE()
-             ORDER BY created_at ASC LIMIT 1"
-        );
-        $next->execute([$purpose]);
-        if ($row = $next->fetch()) {
-            $pdo->prepare(
-                "UPDATE queue_tickets SET status = 'serving', called_at = NOW(), window_number = ? WHERE id = ?"
-            )->execute([$tableNum, $row['id']]);
-            $calledTicket = $row['ticket_number'];
-            logActivity(staffId(), 'Queue', "Table $tableNum: called {$row['ticket_number']}");
-        }
-
-        if ($calledTicket) {
-            queueFlashSet('success', "Now calling $calledTicket at Table $tableNum.");
+    try {
+        if ($action === 'next' && isset($tables[$purpose])) {
+            $tableNum = queueTableForPurpose($purpose);
+            $result = queueAdvanceNext($pdo, $purpose, $tableNum, staffId());
+            if ($result['called_ticket']) {
+                queueFlashSet('success', 'Now calling ' . $result['called_ticket'] . " at Table $tableNum.");
+            } else {
+                queueFlashSet('success', $result['had_serving']
+                    ? 'Current ticket finished. No one else is waiting in this line.'
+                    : 'No one is waiting in this line.');
+            }
+        } elseif ($action === 'call_again' && isset($tables[$purpose])) {
+            $tableNum = queueTableForPurpose($purpose);
+            $ticket = queueCallAgain($pdo, $purpose, $tableNum, staffId());
+            if ($ticket) {
+                queueFlashSet('success', "Calling $ticket again at Table $tableNum.");
+            } else {
+                queueFlashSet('error', 'No ticket is currently being served at this table.');
+            }
+        } elseif ($action === 'skip' && isset($tables[$purpose])) {
+            $ticket = queueSkipServing($pdo, $purpose, staffId());
+            if ($ticket) {
+                queueFlashSet('success', "Skipped $ticket. Tap Call next for the next citizen.");
+            } else {
+                queueFlashSet('error', 'No ticket is currently being served at this table.');
+            }
         } else {
-            queueFlashSet('success', 'Current ticket finished. No one else is waiting in this line.');
+            queueFlashSet('error', 'Could not update the queue. Please try again.');
         }
-    } elseif ($action === 'call_again' && isset($tables[$purpose])) {
-        $tableNum = queueTableForPurpose($purpose);
-        $serving = $pdo->prepare(
-            "SELECT id, ticket_number FROM queue_tickets WHERE purpose = ? AND status = 'serving' AND DATE(created_at) = CURDATE() LIMIT 1"
-        );
-        $serving->execute([$purpose]);
-        if ($row = $serving->fetch()) {
-            $pdo->prepare(
-                "UPDATE queue_tickets SET called_at = NOW(), window_number = ? WHERE id = ?"
-            )->execute([$tableNum, $row['id']]);
-            logActivity(staffId(), 'Queue', "Table $tableNum: called again {$row['ticket_number']}");
-            queueFlashSet('success', "Calling {$row['ticket_number']} again at Table $tableNum.");
-        } else {
-            queueFlashSet('error', 'No ticket is currently being served at this table.');
-        }
-    } elseif ($action === 'skip' && isset($tables[$purpose])) {
-        $serving = $pdo->prepare(
-            "SELECT id, ticket_number FROM queue_tickets WHERE purpose = ? AND status = 'serving' AND DATE(created_at) = CURDATE() LIMIT 1"
-        );
-        $serving->execute([$purpose]);
-        if ($row = $serving->fetch()) {
-            $pdo->prepare("UPDATE queue_tickets SET status = 'skipped' WHERE id = ?")->execute([$row['id']]);
-            logActivity(staffId(), 'Queue', "Skipped {$row['ticket_number']}");
-            queueFlashSet('success', "Skipped {$row['ticket_number']}. Tap Call next for the next citizen.");
-        } else {
-            queueFlashSet('error', 'No ticket is currently being served at this table.');
-        }
-    } else {
+    } catch (Throwable $e) {
         queueFlashSet('error', 'Could not update the queue. Please try again.');
     }
 

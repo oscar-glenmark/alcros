@@ -172,6 +172,7 @@ function adminCoreScripts(): string
         'core/poll.js',
         'core/realtime.js',
         'admin/notifications.js',
+        'admin/global-search.js',
         'core/reminders.js',
     ]);
 }

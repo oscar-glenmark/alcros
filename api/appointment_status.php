@@ -12,12 +12,18 @@ rateLimitOrAbort(rateLimitKey('track_appointment', $code), 30, 300, 'Too many tr
 
 try {
     $pdo = getDB();
+    ensureSoftDeleteColumns($pdo);
+    ensureAppointmentUpdatedColumn($pdo);
+
     $stmt = $pdo->prepare(
-        'SELECT appointment_code, first_name, middle_name, last_name, service_type, status, appointment_date, appointment_time, email, phone, created_at
-         FROM appointments WHERE appointment_code = ?'
+        'SELECT appointment_code, first_name, middle_name, last_name, service_type, status,
+                appointment_date, appointment_time, email, phone, created_at, updated_at
+         FROM appointments
+         WHERE appointment_code = ? AND deleted_at IS NULL
+         LIMIT 1'
     );
     $stmt->execute([$code]);
-    $appointment = $stmt->fetch();
+    $appointment = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$appointment) {
         apiJsonResponse(['found' => false]);
@@ -29,6 +35,8 @@ try {
         $currentIdx = false;
     }
 
+    $updatedAt = $appointment['updated_at'] ?? $appointment['created_at'];
+
     apiJsonResponse([
         'found'          => true,
         'appointment'    => publicTrackingAppointment($appointment),
@@ -39,7 +47,14 @@ try {
         'current_idx'    => $currentIdx === false ? -1 : (int) $currentIdx,
         'status_steps'   => $statusSteps,
         'step_labels'    => array_map('appointmentStatusLabel', $statusSteps),
-        'updated_at'     => $appointment['created_at'],
+        'updated_at'     => $updatedAt,
+        'revision'       => sha1(
+            (string) ($appointment['appointment_code'] ?? '')
+            . '|' . (string) ($appointment['status'] ?? '')
+            . '|' . (string) ($appointment['appointment_date'] ?? '')
+            . '|' . (string) ($appointment['appointment_time'] ?? '')
+            . '|' . (string) $updatedAt
+        ),
     ]);
 } catch (Throwable $e) {
     apiError('Unable to load appointment status.', 500);

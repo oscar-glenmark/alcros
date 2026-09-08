@@ -108,3 +108,42 @@ function getDB(bool $forceReconnect = false): PDO
     }
     return $pdo;
 }
+
+function isRecoverableDbError(Throwable $e): bool
+{
+    if (!$e instanceof PDOException) {
+        return false;
+    }
+
+    $code = (string) $e->getCode();
+    $message = strtolower($e->getMessage());
+
+    if (in_array($code, ['2006', '2013', '2002'], true)) {
+        return true;
+    }
+
+    return str_contains($message, 'server has gone away')
+        || str_contains($message, 'lost connection')
+        || str_contains($message, 'error while sending')
+        || str_contains($message, 'connection refused');
+}
+
+/** @template T */
+function withDBRetry(callable $callback, int $attempts = 2): mixed
+{
+    $attempts = max(1, $attempts);
+    $last = null;
+
+    for ($i = 0; $i < $attempts; $i++) {
+        try {
+            return $callback(getDB($i > 0));
+        } catch (Throwable $e) {
+            $last = $e;
+            if ($i >= $attempts - 1 || !isRecoverableDbError($e)) {
+                throw $e;
+            }
+        }
+    }
+
+    throw $last ?? new RuntimeException('Database operation failed.');
+}

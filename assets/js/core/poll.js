@@ -93,7 +93,18 @@
                 cache: 'no-store',
                 signal: controller ? controller.signal : undefined
             })
-                .then(function (r) { return r.json(); })
+                .then(function (r) {
+                    if (r.status === 401 || r.status === 419) {
+                        if (typeof global.alcrosHandleAuthFailure === 'function') {
+                            global.alcrosHandleAuthFailure(r.status);
+                        }
+                        throw new Error('auth_' + r.status);
+                    }
+                    if (!r.ok) {
+                        throw new Error('http_' + r.status);
+                    }
+                    return r.json();
+                })
                 .then(function (data) {
                     inflight = null;
                     if (!data || data.ok === false) {

@@ -585,6 +585,53 @@ function printGlobalCalibration(): array
     ];
 }
 
+/** Shared paper size for all workstations (stored in settings, not browser localStorage). */
+function printPaperPreferences(): array
+{
+    $presets = printPaperPresets();
+    $preset = getSetting('print_paper_preset', 'legal');
+    if (!isset($presets[$preset])) {
+        $preset = 'legal';
+    }
+
+    $widthMm = (float) getSetting('print_paper_width_mm', '0');
+    $heightMm = (float) getSetting('print_paper_height_mm', '0');
+    if ($widthMm <= 0 || $heightMm <= 0) {
+        $fallback = $presets[$preset];
+        if ($preset !== 'custom' && !empty($fallback['width_mm']) && !empty($fallback['height_mm'])) {
+            $widthMm = (float) $fallback['width_mm'];
+            $heightMm = (float) $fallback['height_mm'];
+        } else {
+            $builtIn = printBuiltInPaperSpec();
+            $widthMm = (float) $builtIn['width_mm'];
+            $heightMm = (float) $builtIn['height_mm'];
+            $preset = printPaperPresetKeyForSize($widthMm, $heightMm);
+        }
+    }
+
+    return [
+        'preset'    => $preset,
+        'width_mm'  => $widthMm,
+        'height_mm' => $heightMm,
+    ];
+}
+
+function savePrintPaperPreferences(string $preset, float $widthMm, float $heightMm): void
+{
+    if ($widthMm <= 0 || $heightMm <= 0) {
+        throw new InvalidArgumentException('Paper width and height must be greater than zero.');
+    }
+
+    $presets = printPaperPresets();
+    if (!isset($presets[$preset])) {
+        $preset = printPaperPresetKeyForSize($widthMm, $heightMm);
+    }
+
+    setSetting('print_paper_preset', $preset);
+    setSetting('print_paper_width_mm', (string) round($widthMm, 2));
+    setSetting('print_paper_height_mm', (string) round($heightMm, 2));
+}
+
 function canCalibratePrintTemplates(): bool
 {
     return isAdmin();

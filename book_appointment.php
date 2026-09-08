@@ -61,62 +61,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($error === null) {
+            $slotLocked = false;
             try {
                 $pdo = getDB();
                 ensureCitizenNotifyColumns($pdo);
                 $pdo->beginTransaction();
 
-                $bookingError = validateAppointmentBooking($pdo, $date, $time, $email, true, 'standalone');
-                if ($bookingError !== null) {
+                if (!acquireAppointmentSlotLock($pdo, $date, $time)) {
                     $pdo->rollBack();
                     deleteIdUploadFiles($frontPath, $backPath);
-                    $error = $bookingError;
+                    $error = 'This time slot is being booked by someone else. Please choose another time.';
                 } else {
-                    $appointmentCode = generateAppointmentCode();
-                    $stmt = $pdo->prepare(
-                        'INSERT INTO appointments (appointment_code, first_name, middle_name, last_name, email, phone, notify_email, notify_sms, service_type, appointment_date, appointment_time, status, source, id_front_path, id_back_path)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-                    );
-                    $stmt->execute([
-                        $appointmentCode,
-                        $firstName,
-                        $middleName,
-                        $lastName,
-                        $email,
-                        $phone,
-                        $notifyEmail ? 1 : 0,
-                        $notifySms ? 1 : 0,
-                        $serviceType,
-                        $date,
-                        normalizeAppointmentTime($time),
-                        'scheduled',
-                        'standalone',
-                        $frontPath,
-                        $backPath,
-                    ]);
-                    $pdo->commit();
-
-                    if ($notifyEmail) {
-                        notifyAppointmentBooked([
-                            'appointment_code'  => $appointmentCode,
-                            'first_name'        => $firstName,
-                            'middle_name'       => $middleName,
-                            'last_name'         => $lastName,
-                            'email'             => $email,
-                            'service_label'     => $serviceType,
-                            'appointment_date'  => $date,
-                            'appointment_time'  => $time,
-                            'notify_email'      => 1,
+                    $slotLocked = true;
+                    $bookingError = validateAppointmentBooking($pdo, $date, $time, $email, true, 'standalone');
+                    if ($bookingError !== null) {
+                        $pdo->rollBack();
+                        deleteIdUploadFiles($frontPath, $backPath);
+                        $error = $bookingError;
+                    } else {
+                        $appointmentCode = generateAppointmentCode();
+                        $stmt = $pdo->prepare(
+                            'INSERT INTO appointments (appointment_code, first_name, middle_name, last_name, email, phone, notify_email, notify_sms, service_type, appointment_date, appointment_time, status, source, id_front_path, id_back_path)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                        );
+                        $stmt->execute([
+                            $appointmentCode,
+                            $firstName,
+                            $middleName,
+                            $lastName,
+                            $email,
+                            $phone,
+                            $notifyEmail ? 1 : 0,
+                            $notifySms ? 1 : 0,
+                            $serviceType,
+                            $date,
+                            normalizeAppointmentTime($time),
+                            'scheduled',
+                            'standalone',
+                            $frontPath,
+                            $backPath,
                         ]);
+                        $pdo->commit();
+
+                        if ($notifyEmail) {
+                            notifyAppointmentBooked([
+                                'appointment_code'  => $appointmentCode,
+                                'first_name'        => $firstName,
+                                'middle_name'       => $middleName,
+                                'last_name'         => $lastName,
+                                'email'             => $email,
+                                'service_label'     => $serviceType,
+                                'appointment_date'  => $date,
+                                'appointment_time'  => $time,
+                                'notify_email'      => 1,
+                            ]);
+                        }
+                        $success = true;
                     }
-                    $success = true;
                 }
-            } catch (PDOException $e) {
+            } catch (Throwable $e) {
                 if (isset($pdo) && $pdo->inTransaction()) {
                     $pdo->rollBack();
                 }
                 deleteIdUploadFiles($frontPath, $backPath);
                 $error = 'Could not book appointment. ' . dbConnectionHelpMessage();
+            } finally {
+                if ($slotLocked) {
+                    releaseAppointmentSlotLock($pdo, $date, $time);
+                }
             }
         }
     }

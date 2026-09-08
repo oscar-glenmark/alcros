@@ -148,86 +148,97 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
             $draft['appointment_date'] = $appointmentDate;
             $draft['appointment_time'] = $appointmentTime;
 
+            $slotLocked = false;
             try {
                 $pdo = getDB();
                 ensureCitizenNotifyColumns($pdo);
                 $pdo->beginTransaction();
 
-                $bookingError = validateAppointmentBooking(
-                    $pdo,
-                    $appointmentDate,
-                    $appointmentTime,
-                    $draft['email'] ?? null,
-                    true,
-                    'certificate'
-                );
-                if ($bookingError !== null) {
+                if (!acquireAppointmentSlotLock($pdo, $appointmentDate, $appointmentTime)) {
                     $pdo->rollBack();
-                    $error = $bookingError;
+                    $error = 'This time slot is being booked by someone else. Please choose another time.';
                 } else {
-                    $trackingCode = generateTrackingCode();
-                    $stmt = $pdo->prepare(
-                        'INSERT INTO document_requests
-                         (tracking_code, first_name, middle_name, last_name, date_of_birth, date_of_marriage, sex, email, email_verified, phone,
-                          document_type, purpose, id_front_path, id_back_path, privacy_agreed, notify_email, notify_sms,
-                          appointment_date, appointment_time, status)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                    $slotLocked = true;
+                    $bookingError = validateAppointmentBooking(
+                        $pdo,
+                        $appointmentDate,
+                        $appointmentTime,
+                        $draft['email'] ?? null,
+                        true,
+                        'certificate'
                     );
-                    $stmt->execute([
-                        $trackingCode,
-                        $draft['first_name'],
-                        $draft['middle_name'] ?? null,
-                        $draft['last_name'],
-                        $draft['date_of_birth'],
-                        !empty($draft['date_of_marriage']) ? $draft['date_of_marriage'] : null,
-                        $draft['sex'],
-                        $draft['email'],
-                        (int) ($draft['email_verified'] ?? 0),
-                        $draft['phone'],
-                        $draft['document_type'],
-                        $purposeOptions[$draft['purpose']] ?? $draft['purpose'],
-                        $draft['id_front_path'] ?? null,
-                        $draft['id_back_path'] ?? null,
-                        (int) ($draft['privacy_agreed'] ?? 0),
-                        (int) ($draft['notify_email'] ?? 0),
-                        (int) ($draft['notify_sms'] ?? 0),
-                        $draft['appointment_date'],
-                        normalizeAppointmentTime($draft['appointment_time']),
-                        'pending',
-                    ]);
+                    if ($bookingError !== null) {
+                        $pdo->rollBack();
+                        $error = $bookingError;
+                    } else {
+                        $trackingCode = generateTrackingCode();
+                        $stmt = $pdo->prepare(
+                            'INSERT INTO document_requests
+                             (tracking_code, first_name, middle_name, last_name, date_of_birth, date_of_marriage, sex, email, email_verified, phone,
+                              document_type, purpose, id_front_path, id_back_path, privacy_agreed, notify_email, notify_sms,
+                              appointment_date, appointment_time, status)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                        );
+                        $stmt->execute([
+                            $trackingCode,
+                            $draft['first_name'],
+                            $draft['middle_name'] ?? null,
+                            $draft['last_name'],
+                            $draft['date_of_birth'],
+                            !empty($draft['date_of_marriage']) ? $draft['date_of_marriage'] : null,
+                            $draft['sex'],
+                            $draft['email'],
+                            (int) ($draft['email_verified'] ?? 0),
+                            $draft['phone'],
+                            $draft['document_type'],
+                            $purposeOptions[$draft['purpose']] ?? $draft['purpose'],
+                            $draft['id_front_path'] ?? null,
+                            $draft['id_back_path'] ?? null,
+                            (int) ($draft['privacy_agreed'] ?? 0),
+                            (int) ($draft['notify_email'] ?? 0),
+                            (int) ($draft['notify_sms'] ?? 0),
+                            $draft['appointment_date'],
+                            normalizeAppointmentTime($draft['appointment_time']),
+                            'pending',
+                        ]);
 
-                    $pdo->commit();
+                        $pdo->commit();
 
-                    $emailSent = notifyRequestSubmitted(array_merge($draft, [
-                        'tracking_code'    => $trackingCode,
-                        'document_label'   => documentTypeLabel($draft['document_type']),
-                        'appointment_date' => $draft['appointment_date'],
-                        'appointment_time' => $draft['appointment_time'],
-                        'notify_email'     => (int) ($draft['notify_email'] ?? 0),
-                    ]));
+                        $emailSent = notifyRequestSubmitted(array_merge($draft, [
+                            'tracking_code'    => $trackingCode,
+                            'document_label'   => documentTypeLabel($draft['document_type']),
+                            'appointment_date' => $draft['appointment_date'],
+                            'appointment_time' => $draft['appointment_time'],
+                            'notify_email'     => (int) ($draft['notify_email'] ?? 0),
+                        ]));
 
-                    $_SESSION['request_success'] = [
-                        'tracking_code'    => $trackingCode,
-                        'citizen_name'     => personNameFromRow($draft),
-                        'first_name'       => $draft['first_name'],
-                        'middle_name'      => $draft['middle_name'] ?? '',
-                        'last_name'        => $draft['last_name'],
-                        'email'            => $draft['email'],
-                        'document_label'   => documentTypeLabel($draft['document_type']),
-                        'appointment_date' => $draft['appointment_date'],
-                        'appointment_time' => $draft['appointment_time'],
-                        'email_sent'       => $emailSent,
-                        'notify_email'     => (int) ($draft['notify_email'] ?? 0),
-                    ];
-                    unset($_SESSION['request_draft']);
-                    header('Location: request.php?step=4&success=1');
-                    exit;
+                        $_SESSION['request_success'] = [
+                            'tracking_code'    => $trackingCode,
+                            'citizen_name'     => personNameFromRow($draft),
+                            'first_name'       => $draft['first_name'],
+                            'middle_name'      => $draft['middle_name'] ?? '',
+                            'last_name'        => $draft['last_name'],
+                            'email'            => $draft['email'],
+                            'document_label'   => documentTypeLabel($draft['document_type']),
+                            'appointment_date' => $draft['appointment_date'],
+                            'appointment_time' => $draft['appointment_time'],
+                            'email_sent'       => $emailSent,
+                            'notify_email'     => (int) ($draft['notify_email'] ?? 0),
+                        ];
+                        unset($_SESSION['request_draft']);
+                        header('Location: request.php?step=4&success=1');
+                        exit;
+                    }
                 }
-            } catch (PDOException $e) {
+            } catch (Throwable $e) {
                 if (isset($pdo) && $pdo->inTransaction()) {
                     $pdo->rollBack();
                 }
                 $error = 'Could not submit request. ' . dbConnectionHelpMessage();
+            } finally {
+                if ($slotLocked) {
+                    releaseAppointmentSlotLock($pdo, $appointmentDate, $appointmentTime);
+                }
             }
         }
     }

@@ -158,6 +158,17 @@
         updateSubmitState();
     }
 
+    function showSlotLoadError() {
+        availability = null;
+        renderTimeOptions(null);
+        if (statusEl) {
+            statusEl.classList.remove('hidden');
+            statusEl.textContent = 'Could not load time slots. Check your connection and try again.';
+            statusEl.className = 'text-xs mt-2 font-semibold text-amber-700';
+        }
+        updateSubmitState();
+    }
+
     function loadAvailability() {
         var date = dateInput.value;
         if (!date) {
@@ -167,21 +178,36 @@
             return;
         }
 
+        availability = null;
+        if (statusEl) {
+            statusEl.classList.remove('hidden');
+            statusEl.textContent = 'Loading available time slots…';
+            statusEl.className = 'text-xs mt-2 text-gray-500';
+        }
+        renderTimeOptions(null);
+        updateSubmitState();
+
         fetch('api/appointment_availability.php?date=' + encodeURIComponent(date) + '&type=' + encodeURIComponent(bookingType), {
             credentials: 'same-origin',
             cache: 'no-store'
         })
-            .then(function (response) { return response.json(); })
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error('http_' + response.status);
+                }
+                return response.json();
+            })
             .then(function (data) {
-                if (!data.ok) return;
+                if (!data || !data.ok) {
+                    showSlotLoadError();
+                    return;
+                }
                 availability = data;
                 renderTimeOptions(data);
                 updateStatus();
             })
             .catch(function () {
-                availability = null;
-                renderTimeOptions(null);
-                updateStatus();
+                showSlotLoadError();
             });
     }
 

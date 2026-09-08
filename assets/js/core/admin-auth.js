@@ -102,4 +102,18 @@
     window.alcrosClearAuth = function () {
         sessionStorage.removeItem(STORAGE_KEY);
     };
+
+    window.alcrosHandleAuthFailure = function (status) {
+        window.alcrosClearAuth();
+        var page = window.location.pathname.split('/').pop() || 'dashboard.php';
+        var message = status === 419
+            ? 'Your security session expired. Please sign in again.'
+            : 'Your staff session expired. Please sign in again.';
+        if (window.AlcrosActionResult && typeof AlcrosActionResult.show === 'function') {
+            AlcrosActionResult.show('error', message);
+        }
+        window.setTimeout(function () {
+            window.location.href = 'login.php?redirect=' + encodeURIComponent(page);
+        }, status === 419 ? 1200 : 600);
+    };
 })();

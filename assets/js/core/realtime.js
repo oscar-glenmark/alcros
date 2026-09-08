@@ -366,6 +366,8 @@
         var code = document.body.dataset.trackingCode;
         if (!code) return;
 
+        var lastTrackRevision = '';
+
         function messageClass(status) {
             if (status === 'ready' || status === 'completed') return 'bg-green-50 text-green-800 border border-green-100';
             if (status === 'rejected' || status === 'cancelled' || status === 'no_show') return 'bg-red-50 text-red-800 border border-red-100';
@@ -374,6 +376,17 @@
 
         function applyTrackUpdate(data) {
             if (!data.found) return;
+
+            if (data.revision && data.revision === lastTrackRevision) {
+                var unchangedEl = document.getElementById('track-updated-at');
+                if (unchangedEl) {
+                    unchangedEl.textContent = 'Status updates automatically · Last checked ' +
+                        new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                }
+                AlcrosPoll.markLiveIndicator();
+                return;
+            }
+            lastTrackRevision = data.revision || '';
 
             var badgeEl = document.getElementById('track-status-badge');
             if (badgeEl) badgeEl.innerHTML = data.status_html;
@@ -384,6 +397,19 @@
                 var status = data.request ? data.request.status : (data.appointment ? data.appointment.status : '');
                 msgEl.className = 'rounded-xl p-4 mb-5 text-sm leading-relaxed ' + messageClass(status);
             }
+
+            var entity = data.request || data.appointment || {};
+            var detailMap = {
+                'track-detail-name': entity.name || entity.citizen_name,
+                'track-detail-code': entity.tracking_code || entity.appointment_code,
+                'track-detail-document': data.document || data.service,
+                'track-detail-appointment': entity.appointment_display || entity.appointment_date,
+                'track-detail-updated': data.updated_at ? String(data.updated_at) : ''
+            };
+            Object.keys(detailMap).forEach(function (id) {
+                var el = document.getElementById(id);
+                if (el && detailMap[id]) el.textContent = detailMap[id];
+            });
 
             var steps = document.querySelectorAll('[data-track-step]');
             steps.forEach(function (el, i) {

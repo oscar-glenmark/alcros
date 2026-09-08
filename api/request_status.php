@@ -13,13 +13,18 @@ rateLimitOrAbort(rateLimitKey('track_request', $code), 30, 300, 'Too many tracki
 try {
     $pdo = getDB();
     migrateLegacyProcessingStatus($pdo);
+    ensureSoftDeleteColumns($pdo);
+    ensureAppointmentUpdatedColumn($pdo);
+
     $stmt = $pdo->prepare(
         'SELECT tracking_code, first_name, middle_name, last_name, document_type, status, submitted_at, updated_at,
-                appointment_date, appointment_time, email
-         FROM document_requests WHERE tracking_code = ?'
+                appointment_date, appointment_time, email, deleted_at
+         FROM document_requests
+         WHERE tracking_code = ? AND deleted_at IS NULL
+         LIMIT 1'
     );
     $stmt->execute([$code]);
-    $request = $stmt->fetch();
+    $request = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$request) {
         apiJsonResponse(['found' => false]);
@@ -33,6 +38,10 @@ try {
     if ($appointment) {
         $tracking['appointment_status'] = $appointment['status'];
         $tracking['appointment_confirmed'] = $appointment['status'] === 'confirmed';
+        if (empty($tracking['appointment_date']) && !empty($appointment['appointment_date'])) {
+            $tracking['appointment_date'] = $appointment['appointment_date'];
+            $tracking['appointment_time'] = $appointment['appointment_time'] ?? null;
+        }
     }
 
     apiJsonResponse([
@@ -46,6 +55,7 @@ try {
         'status_steps'          => $statusSteps,
         'step_labels'           => array_map('requestStatusLabel', $statusSteps),
         'updated_at'            => $request['updated_at'],
+        'revision'              => publicTrackingRevision($request, $appointment),
         'appointment_status'    => $appointment['status'] ?? null,
         'appointment_confirmed' => ($appointment['status'] ?? '') === 'confirmed',
     ]);

@@ -205,7 +205,14 @@ function requireStaffLogin(): void
     }
 
     if (!authTokenFromRequest()) {
+        if (isJsonApiRequest()) {
+            jsonClientError(401, 'auth_expired', 'Session expired. Please sign in again.');
+        }
         outputAuthBootstrap();
+    }
+
+    if (isJsonApiRequest()) {
+        jsonClientError(401, 'auth_expired', 'Session expired. Please sign in again.');
     }
 
     header('Location: login.php?redirect=' . urlencode(basename($_SERVER['PHP_SELF'])));

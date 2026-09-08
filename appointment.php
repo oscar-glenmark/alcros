@@ -67,33 +67,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($isUpdate) {
         $status = (string) ($_POST['status'] ?? '');
-        if ($id > 0) {
-            $rowStmt = $pdo->prepare('SELECT status, appointment_code FROM appointments WHERE id = ?');
-            $rowStmt->execute([$id]);
-            $row = $rowStmt->fetch();
-            if ($row && isAllowedAppointmentStatusTransition((string) $row['status'], $status)) {
-                $pdo->prepare('UPDATE appointments SET status = ? WHERE id = ?')->execute([$status, $id]);
-                try {
-                    notifyAppointmentStatusChange($pdo, $id, $status);
-                } catch (Throwable $e) {
-                }
-                logActivity(staffId(), 'Appointment Updated', 'Changed ' . $row['appointment_code'] . ' to ' . appointmentStatusLabel($status));
-                $responseOk = true;
-                $responseMessage = match ($status) {
-                    'confirmed' => 'Appointment confirmed — citizen will be notified.',
-                    'completed' => 'Appointment marked completed.',
-                    'cancelled' => 'Appointment rejected — citizen will be notified.',
-                    'no_show'   => 'Appointment marked as no-show.',
-                    default     => 'Appointment status saved as ' . appointmentStatusLabel($status) . '.',
-                };
-                if (!$isAjax) {
-                    appointmentFlashSet('success', $responseMessage);
-                }
-            } else {
-                $responseMessage = 'Could not update appointment status. Please try again.';
-                if (!$isAjax) {
-                    appointmentFlashSet('error', $responseMessage);
-                }
+        if ($id > 0 && updateAppointmentStatus($pdo, $id, $status, $isAjax)) {
+            $responseOk = true;
+            $responseMessage = match ($status) {
+                'confirmed' => 'Appointment confirmed — citizen will be notified.',
+                'completed' => 'Appointment marked completed.',
+                'cancelled' => 'Appointment rejected — citizen will be notified.',
+                'no_show'   => 'Appointment marked as no-show.',
+                default     => 'Appointment status saved as ' . appointmentStatusLabel($status) . '.',
+            };
+            if (!$isAjax) {
+                appointmentFlashSet('success', $responseMessage);
+            }
+        } else {
+            $responseMessage = 'Could not update appointment status. Another staff member may have already updated this visit.';
+            if (!$isAjax) {
+                appointmentFlashSet('error', $responseMessage);
             }
         }
     } elseif ($isBulkDelete || $isBulkDeleteAll || $isBulkRestore || $isBulkPurge) {
@@ -160,16 +149,10 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $viewDate)) {
 $filterStatus = $_GET['status'] ?? 'all';
 $search = trim($_GET['q'] ?? '');
 $flash = appointmentFlashGet();
+$isSearchMode = $search !== '';
 
 if (!in_array($filterStatus, appointmentStatusFilters(), true)) {
     $filterStatus = 'all';
-}
-
-if ($search !== '' && empty($_GET['date'])) {
-    $searchDate = findAppointmentDateForSearch($pdo, $search);
-    if ($searchDate) {
-        $viewDate = $searchDate;
-    }
 }
 
 $prevDate = date('Y-m-d', strtotime($viewDate . ' -1 day'));
@@ -231,7 +214,13 @@ $sql = "SELECT a.*, dr.date_of_birth, dr.date_of_marriage, dr.sex, dr.document_t
         WHERE {$standaloneSql}";
 $params = [];
 
-if ($filterStatus === 'recently_deleted') {
+if ($isSearchMode) {
+    if ($filterStatus === 'recently_deleted') {
+        $sql .= ' AND a.deleted_at IS NOT NULL';
+    } else {
+        $sql .= ' AND a.deleted_at IS NULL';
+    }
+} elseif ($filterStatus === 'recently_deleted') {
     $sql .= ' AND a.appointment_date = ? AND a.deleted_at IS NOT NULL';
     $params[] = $viewDate;
 } else {
@@ -255,13 +244,15 @@ if ($search !== '') {
     $params[] = $filterStatus;
 }
 
-if ($search !== '') {
-    $sql .= ' AND (a.first_name LIKE ? OR a.middle_name LIKE ? OR a.last_name LIKE ? OR a.appointment_code LIKE ? OR a.phone LIKE ? OR a.email LIKE ?)';
-    $term = "%{$search}%";
-    array_push($params, $term, $term, $term, $term, $term, $term);
-}
+[$searchSql, $searchParams] = appointmentSearchClause($search, 'a');
+$sql .= $searchSql;
+$params = array_merge($params, $searchParams);
 
-$sql .= $filterStatus === 'recently_deleted' ? ' ORDER BY a.deleted_at DESC' : ' ORDER BY a.appointment_time ASC';
+if ($isSearchMode) {
+    $sql .= ' ORDER BY a.appointment_date DESC, a.appointment_time ASC LIMIT 100';
+} else {
+    $sql .= $filterStatus === 'recently_deleted' ? ' ORDER BY a.deleted_at DESC' : ' ORDER BY a.appointment_time ASC';
+}
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $appointments = $stmt->fetchAll();
@@ -348,7 +339,9 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                         </div>
                         <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('appointment.php')) ?>" class="manage-controls__search">
                             <?= authFormField() ?>
+                            <?php if ($search === ''): ?>
                             <input type="hidden" name="date" value="<?= htmlspecialchars($viewDate) ?>">
+                            <?php endif; ?>
                             <?php if ($filterStatus !== 'all' && $filterStatus !== 'all_appointments'): ?>
                             <input type="hidden" name="status" value="<?= htmlspecialchars($filterStatus) ?>">
                             <?php elseif ($filterStatus === 'all_appointments'): ?>
@@ -358,7 +351,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                             <?php endif; ?>
                             <div class="manage-requests-toolbar__search">
                                 <i data-lucide="search" class="w-3.5 h-3.5 text-gray-400"></i>
-                                <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search code, name, phone…" class="manage-requests-toolbar__input">
+                                <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search code, name, phone, request ID…" class="manage-requests-toolbar__input">
                             </div>
                             <button type="submit" class="manage-requests-toolbar__btn manage-requests-toolbar__btn--primary" data-loading-text="Searching…">
                                 Search
@@ -388,7 +381,11 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                         <h2 class="manage-table-head__title"><?= htmlspecialchars($currentFilterLabel) ?></h2>
                         <p class="manage-table-head__meta">
                             <?= number_format($resultCount) ?> appointment<?= $resultCount === 1 ? '' : 's' ?>
+                            <?php if ($isSearchMode): ?>
+                            · search across all dates
+                            <?php else: ?>
                             · <?= htmlspecialchars(formatDateDisplay($viewDate)) ?>
+                            <?php endif; ?>
                             <?= $search !== '' ? ' · matching “' . htmlspecialchars($search) . '”' : '' ?>
                             <?php if ($showBulkActions && !$isRecentlyDeletedView): ?>
                             · <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $viewDate, 'status' => 'recently_deleted'])) ?>" class="manage-bulk-meta-link">Recently deleted<?= $appointmentStats['recently_deleted'] > 0 ? ' (' . number_format($appointmentStats['recently_deleted']) . ')' : '' ?></a>
@@ -427,6 +424,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                             <th>Code</th>
                             <th>Citizen</th>
                             <th>Service</th>
+                            <?php if ($isSearchMode): ?><th>Date</th><?php endif; ?>
                             <th>Time</th>
                             <?php if ($isRecentlyDeletedView): ?><th>Deleted</th><?php endif; ?>
                             <th>Status</th>
@@ -455,6 +453,9 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                                 <p class="manage-citizen-meta"><?= htmlspecialchars($ap['phone'] ?: 'No phone on file') ?></p>
                             </td>
                             <td><span class="manage-doc-type"><?= htmlspecialchars(appointmentServiceLabel($ap['service_type'])) ?></span></td>
+                            <?php if ($isSearchMode): ?>
+                            <td><span class="manage-date"><?= htmlspecialchars(formatDateDisplay($ap['appointment_date'])) ?></span></td>
+                            <?php endif; ?>
                             <td><span class="manage-date"><?= date('g:i A', strtotime($ap['appointment_time'])) ?></span></td>
                             <?php if ($isRecentlyDeletedView): ?>
                             <td><span class="manage-date"><?= !empty($ap['deleted_at']) ? htmlspecialchars(formatReportDateTime($ap['deleted_at'])) : '—' ?></span></td>

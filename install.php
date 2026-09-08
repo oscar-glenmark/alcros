@@ -29,6 +29,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
             $pdo->exec(file_get_contents($sqlFile));
 
+            require_once __DIR__ . '/includes/record_locks.php';
+            require_once __DIR__ . '/includes/printing.php';
+            $dbPdo = getDB();
+            ensureCivilRecordEditLocksTable($dbPdo);
+            ensurePrintTables($dbPdo);
+
             $flagDir = __DIR__ . '/storage';
             if (!is_dir($flagDir)) {
                 mkdir($flagDir, 0755, true);

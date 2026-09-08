@@ -31,89 +31,6 @@ function manageRequestsRedirectFilters(): array
     ];
 }
 
-function updateDocumentRequestStatus(PDO $pdo, int $id, string $status, bool $deferNotifications = false): bool
-{
-    if ($id <= 0) {
-        return false;
-    }
-
-    $oldStmt = $pdo->prepare('SELECT status, tracking_code FROM document_requests WHERE id = ?');
-    $oldStmt->execute([$id]);
-    $row = $oldStmt->fetch();
-    if (!$row) {
-        return false;
-    }
-
-    $oldStatus = normalizeRequestStatus((string) $row['status']);
-    $staffAction = $status;
-
-    if (!isAllowedRequestStatusTransition($oldStatus, $staffAction)) {
-        return false;
-    }
-
-    $saveStatus = match ($staffAction) {
-        'verified' => 'ready',
-        default    => $staffAction,
-    };
-
-    if ($oldStatus === $saveStatus) {
-        return true;
-    }
-
-    $stmt = $pdo->prepare('UPDATE document_requests SET status = ?, updated_at = NOW() WHERE id = ?');
-    $stmt->execute([$saveStatus, $id]);
-
-    $checkStmt = $pdo->prepare('SELECT status FROM document_requests WHERE id = ?');
-    $checkStmt->execute([$id]);
-    $savedStatus = (string) $checkStmt->fetchColumn();
-    if ($savedStatus !== $saveStatus) {
-        return false;
-    }
-
-    try {
-        if ($staffAction === 'verified') {
-            syncDocumentRequestAppointment($pdo, $id, 'verified');
-        } else {
-            syncDocumentRequestAppointment($pdo, $id, $saveStatus);
-        }
-    } catch (Throwable $e) {
-        // Status is already saved; appointment sync failure should not block staff.
-    }
-
-    $runNotifications = static function () use ($pdo, $id, $saveStatus, $staffAction): void {
-        try {
-            notifyRequestStatusChange($pdo, $id, $saveStatus);
-        } catch (Throwable $e) {
-            // Status is already saved; email failure should not block staff.
-        }
-
-        try {
-            require_once __DIR__ . '/includes/sms.php';
-            $smsStatus = $saveStatus;
-            notifyRequestStatusSms($pdo, $id, $smsStatus);
-        } catch (Throwable $e) {
-            // Status is already saved; SMS failure should not block staff.
-        }
-    };
-
-    if ($deferNotifications) {
-        register_shutdown_function(static function () use ($runNotifications): void {
-            $runNotifications();
-        });
-    } else {
-        $runNotifications();
-    }
-
-    logRequestStatusChange($pdo, $id, (string) $row['tracking_code'], $oldStatus, $saveStatus, staffId());
-    $logLabel = requestStatusLabel($saveStatus);
-    if ($staffAction === 'verified') {
-        $logLabel = 'Ready for Pickup';
-    }
-    logActivity(staffId(), 'Request Updated', 'Changed ' . $row['tracking_code'] . ' to ' . $logLabel);
-
-    return true;
-}
-
 function isManageRequestAjax(): bool
 {
     return ($_POST['ajax'] ?? '') === '1';
@@ -161,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 manageRequestsFlashSet('success', $responseMessage);
             }
         } else {
-            $responseMessage = 'Could not update request status. Please try again.';
+            $responseMessage = 'Could not update request status. Another staff member may have already updated this request.';
             if (!$isAjax) {
                 manageRequestsFlashSet('error', $responseMessage);
             }
@@ -229,52 +146,18 @@ if (!in_array($filterStatus, manageRequestStatusFilters(), true)) {
     $filterStatus = 'all';
 }
 
-$sql = 'SELECT * FROM document_requests WHERE 1=1';
-$params = [];
-if ($filterStatus === 'recently_deleted') {
-    $sql .= ' AND deleted_at IS NOT NULL';
-} else {
-    $sql .= ' AND deleted_at IS NULL';
-}
-if ($search !== '') {
-    if ($filterStatus !== 'all' && $filterStatus !== '' && $filterStatus !== 'all_requests') {
-        $sql .= ' AND status = ?';
-        $params[] = $filterStatus;
-    }
-} elseif ($filterStatus === 'all_requests') {
-    // Show every active request regardless of status.
-} elseif ($filterStatus === 'recently_deleted') {
-    // Deleted items only — no status filter.
-} elseif ($filterStatus === 'all' || $filterStatus === '') {
-    $sql .= " AND status = 'pending'";
-} elseif ($filterStatus !== 'all' && $filterStatus !== '') {
-    $sql .= ' AND status = ?';
-    $params[] = $filterStatus;
-}
-if ($search !== '') {
-    $sql .= ' AND (first_name LIKE ? OR middle_name LIKE ? OR last_name LIKE ? OR tracking_code LIKE ?)';
-    $params[] = "%$search%";
-    $params[] = "%$search%";
-    $params[] = "%$search%";
-    $params[] = "%$search%";
-}
-$sql .= $filterStatus === 'recently_deleted' ? ' ORDER BY deleted_at DESC' : ' ORDER BY submitted_at DESC';
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$requests = $stmt->fetchAll();
+ensureSoftDeleteColumns($pdo);
+$filters = manageRequestsListFilters([
+    'status' => $filterStatus,
+    'q'      => $search,
+]);
+$filterStatus = $filters['status'];
+$search = $filters['q'];
+$requests = fetchManageRequestsList($pdo, $filters);
+$requestStats = fetchManageRequestStats($pdo);
 
 $pageTitle = 'Manage Requests';
 $pageSubtitle = 'Review and process certificate requests from citizens.';
-
-$activeSql = documentRequestActiveSql();
-$requestStats = [
-    'total'            => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$activeSql}")->fetchColumn(),
-    'pending'          => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$activeSql} AND status = 'pending'")->fetchColumn(),
-    'ready'            => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$activeSql} AND status = 'ready'")->fetchColumn(),
-    'completed'        => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$activeSql} AND status = 'completed'")->fetchColumn(),
-    'rejected'         => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$activeSql} AND status = 'rejected'")->fetchColumn(),
-    'recently_deleted' => (int) $pdo->query('SELECT COUNT(*) FROM document_requests WHERE deleted_at IS NOT NULL')->fetchColumn(),
-];
 
 $statCards = [
     ['label' => 'Total Requests', 'hint' => 'All time', 'value' => $requestStats['total'], 'icon' => 'files', 'tone' => 'blue', 'filter' => 'all_requests'],
@@ -336,7 +219,8 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                         || ($cardFilter === 'pending' && $filterStatus === 'all');
                 ?>
                 <a href="<?= htmlspecialchars($cardHref) ?>"
-                   class="manage-stat-card manage-stat-card--<?= htmlspecialchars($card['tone']) ?><?= $cardActive ? ' is-active' : '' ?>">
+                   class="manage-stat-card manage-stat-card--<?= htmlspecialchars($card['tone']) ?><?= $cardActive ? ' is-active' : '' ?>"
+                   data-stat-key="<?= htmlspecialchars($cardFilter) ?>">
                     <div class="manage-stat-card__icon">
                         <i data-lucide="<?= htmlspecialchars($card['icon']) ?>" class="w-4 h-4"></i>
                     </div>
@@ -371,7 +255,7 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                         <?php endif; ?>
                         <div class="manage-requests-toolbar__search">
                             <i data-lucide="search" class="w-3.5 h-3.5 text-gray-400"></i>
-                            <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search ID, name, or certificate…" class="manage-requests-toolbar__input">
+                            <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search ID, name, phone, email, certificate…" class="manage-requests-toolbar__input">
                         </div>
                         <button type="submit" class="manage-requests-toolbar__btn manage-requests-toolbar__btn--primary" data-loading-text="Searching…">
                             Search
@@ -406,6 +290,7 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                             <?php elseif ($isRecentlyDeletedView): ?>
                             · <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php', ['status' => 'all_requests'])) ?>" class="manage-bulk-meta-link">Back to all requests</a>
                             <?php endif; ?>
+                            · <span id="live-sync-indicator" class="live-sync-indicator" aria-live="polite">Live</span>
                         </p>
                     </div>
                     <p class="manage-table-head__tip"><?= $isRecentlyDeletedView ? 'Select items to restore or permanently delete them' : ($showSidePanel ? 'Click Verify to review details, then accept the request in the popup' : 'Click Complete to open the request popup and mark it claimed') ?></p>
@@ -471,7 +356,7 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                             <?php if ($isRecentlyDeletedView): ?>
                             <td><span class="manage-date"><?= !empty($req['deleted_at']) ? htmlspecialchars(formatReportDateTime($req['deleted_at'])) : '—' ?></span></td>
                             <?php endif; ?>
-                            <td><?= requestStatusBadge($req['status']) ?></td>
+                            <td class="manage-cell-status"><?= requestStatusBadge($req['status']) ?></td>
                             <td class="manage-cell-actions">
                                 <div class="manage-row-actions" onclick="event.stopPropagation()">
                                     <?php if (!$isRecentlyDeletedView): ?>
@@ -654,9 +539,11 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
         'redirectQ'      => $search,
         'useSidePanel'   => $showSidePanel,
         'bulkActions'    => $showBulkActions,
+        'pollUrl'        => buildAuthUrl('api/manage_requests.php'),
     ]) ?>
     <div id="requestActionAuthFields" class="hidden" aria-hidden="true"><?= authFormField() ?></div>
     <?= actionResultScript($flash) ?>
+    <?= scriptTag('core/poll.js') ?>
     <?= scriptTag('admin/id-preview.js') ?>
     <?= scriptTag('core/page-config.js') ?>
     <?= scriptTag('admin/manage-bulk.js') ?>

@@ -41,6 +41,9 @@ try {
         case 'save_global_calibration':
             handleSaveGlobalCalibration($pdo);
             break;
+        case 'save_paper_preferences':
+            handleSavePaperPreferences();
+            break;
         case 'preview_data':
             handlePreviewData($pdo);
             break;
@@ -290,6 +293,21 @@ function handleSaveCalibration(PDO $pdo): void
     logActivity(staffId(), 'Print Calibration Saved', 'Template #' . $templateId);
     bumpPrintCalibrationRevision();
     apiJsonResponse(['template_id' => $templateId]);
+}
+
+function handleSavePaperPreferences(): void
+{
+    $preset = trim((string) ($_POST['preset'] ?? 'legal'));
+    $widthMm = (float) ($_POST['width_mm'] ?? 0);
+    $heightMm = (float) ($_POST['height_mm'] ?? 0);
+
+    try {
+        savePrintPaperPreferences($preset, $widthMm, $heightMm);
+    } catch (InvalidArgumentException $e) {
+        apiError($e->getMessage(), 422);
+    }
+
+    apiJsonResponse(['saved' => true]);
 }
 
 function handleSaveGlobalCalibration(PDO $pdo): void

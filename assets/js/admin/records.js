@@ -4,6 +4,8 @@
     var cfg = {};
     var csvTemplateColumns = {};
     var recordsAuthUrl = 'records.php';
+    var recordLockTimer = null;
+    var activeEditRecordId = null;
 
     function readPageConfig() {
         if (window.AlcrosPage && typeof AlcrosPage.readConfig === 'function') {
@@ -11,6 +13,104 @@
         }
         csvTemplateColumns = cfg.csvTemplateColumns || {};
         recordsAuthUrl = cfg.recordsAuthUrl || 'records.php';
+        activeEditRecordId = cfg.editRecordId || null;
+    }
+
+    function csrfInputValue() {
+        var el = document.querySelector('#entryForm input[name="csrf_token"]')
+            || document.querySelector('input[name="csrf_token"]');
+        return el ? el.value : '';
+    }
+
+    function postRecordLock(action, recordId) {
+        var apiUrl = cfg.recordsLockApiUrl || 'api/records.php';
+        var form = new FormData();
+        form.append('action', action);
+        form.append('csrf_token', csrfInputValue());
+        form.append('record_id', String(recordId));
+        return fetch(apiUrl, { method: 'POST', body: form, credentials: 'same-origin' })
+            .then(function (res) {
+                return res.json().then(function (data) {
+                    return { ok: res.ok, status: res.status, data: data };
+                });
+            });
+    }
+
+    function releaseActiveRecordLock(useBeacon) {
+        if (!activeEditRecordId || !cfg.editLockHeld) {
+            return Promise.resolve();
+        }
+        var recordId = activeEditRecordId;
+        activeEditRecordId = null;
+        cfg.editLockHeld = false;
+        clearRecordLockTimer();
+
+        if (useBeacon && navigator.sendBeacon) {
+            var apiUrl = cfg.recordsLockApiUrl || 'api/records.php';
+            var body = new URLSearchParams();
+            body.append('action', 'release_lock');
+            body.append('csrf_token', csrfInputValue());
+            body.append('record_id', String(recordId));
+            navigator.sendBeacon(apiUrl, body);
+            return Promise.resolve();
+        }
+
+        return postRecordLock('release_lock', recordId).catch(function () {});
+    }
+
+    function clearRecordLockTimer() {
+        if (recordLockTimer) {
+            window.clearInterval(recordLockTimer);
+            recordLockTimer = null;
+        }
+    }
+
+    function handleRecordLockLost(message) {
+        var form = document.getElementById('entryForm');
+        var fieldset = form ? form.querySelector('.records-entry-fieldset') : null;
+        if (fieldset) {
+            fieldset.disabled = true;
+        }
+        var submitBtn = form ? form.querySelector('button[type="submit"]') : null;
+        if (submitBtn) {
+            submitBtn.disabled = true;
+        }
+        if (message) {
+            window.alert(message);
+        }
+    }
+
+    function startRecordLockHeartbeat() {
+        clearRecordLockTimer();
+        if (!activeEditRecordId || !cfg.editLockHeld) {
+            return;
+        }
+
+        recordLockTimer = window.setInterval(function () {
+            postRecordLock('refresh_lock', activeEditRecordId).then(function (result) {
+                if (result.status === 401 || result.status === 419) {
+                    if (typeof window.alcrosHandleAuthFailure === 'function') {
+                        window.alcrosHandleAuthFailure(result.status);
+                    }
+                    return;
+                }
+                if (!result.ok || !result.data || !result.data.ok) {
+                    handleRecordLockLost('Your edit lock expired or was taken by another staff member. Close this form and try again.');
+                }
+            }).catch(function () {
+                handleRecordLockLost('Could not refresh your edit lock. Close this form and try again.');
+            });
+        }, 60000);
+    }
+
+    function recordsListUrlWithoutEdit() {
+        try {
+            var url = new URL(recordsAuthUrl, window.location.href);
+            url.searchParams.delete('edit');
+            return url.pathname + url.search;
+        } catch (err) {
+            return recordsAuthUrl.split('?')[0];
+        }
     }
 
     function refreshIcons() {
@@ -33,6 +133,8 @@
     }
 
     function closeAllModals() {
+        var entryModal = document.getElementById('entryModal');
+        var entryWasOpen = entryModal && !entryModal.classList.contains('hidden');
         document.querySelectorAll('#entryModal, #importModal, #viewModal').forEach(function (el) {
             el.classList.add('hidden');
             el.classList.remove('flex');
@@ -41,6 +143,13 @@
             }
         });
         document.body.classList.remove('records-view-modal-open');
+        if (entryWasOpen && activeEditRecordId && cfg.editLockHeld) {
+            releaseActiveRecordLock(false).finally(function () {
+                if (window.location.search.indexOf('edit=') !== -1) {
+                    window.location.replace(recordsListUrlWithoutEdit());
+                }
+            });
+        }
     }
 
     function formatDate(val) {
@@ -515,7 +624,28 @@
             viewModalBadge.textContent = presentation.badgeLabel;
             viewModalBadge.className = presentation.badgeClass;
         }
+
+        var lock = r.edit_lock || null;
+        var lockActive = lock && lock.active && !lock.held_by_you;
+        var existingNote = viewContent ? viewContent.querySelector('.records-view-lock-note') : null;
+        if (existingNote) {
+            existingNote.remove();
+        }
+        if (lockActive && viewContent) {
+            var note = document.createElement('p');
+            note.className = 'records-view-lock-note';
+            note.textContent = (lock.staff_name || 'Another staff member') + ' is currently editing this record.';
+            viewContent.insertBefore(note, viewContent.firstChild);
+        }
+
         viewEditLink.href = recordsAuthUrl + (recordsAuthUrl.indexOf('?') !== -1 ? '&' : '?') + 'edit=' + r.id;
+        viewEditLink.classList.toggle('is-disabled', !!lockActive);
+        viewEditLink.setAttribute('aria-disabled', lockActive ? 'true' : 'false');
+        viewEditLink.onclick = lockActive
+            ? function (event) {
+                event.preventDefault();
+            }
+            : null;
         if (viewPrintLink) {
             var printBase = cfg.printCertificateUrl || 'print_certificate.php';
             viewPrintLink.href = printBase + (printBase.indexOf('?') !== -1 ? '&' : '?') + 'record_id=' + r.id;
@@ -551,6 +681,9 @@
                         if (!data || !data.ok || !data.record) {
                             throw new Error((data && data.error) || 'Could not load record.');
                         }
+                        if (data.edit_lock) {
+                            data.record.edit_lock = data.edit_lock;
+                        }
                         renderViewRecordPresentation(data.record, data.print_values || {});
                     })
                     .catch(function () {
@@ -562,29 +695,22 @@
 
     function bindRecordsSearch() {
         var input = document.getElementById('recordsSearchInput');
-        var tbody = document.getElementById('recordsTableBody');
-        var emptyRow = document.getElementById('recordsSearchEmpty');
-        if (!input || !tbody) return;
+        var form = input && input.closest('form');
+        if (!input || !form) return;
 
-        function filterRows() {
-            var query = input.value.trim().toLowerCase();
-            var rows = tbody.querySelectorAll('tr.records-table-row');
-            var visible = 0;
+        var debounceTimer = null;
+        var serverQuery = (input.value || '').trim();
 
-            rows.forEach(function (row) {
-                var haystack = (row.getAttribute('data-search') || '').toLowerCase();
-                var show = query === '' || haystack.indexOf(query) !== -1;
-                row.classList.toggle('hidden', !show);
-                if (show) visible++;
-            });
-
-            if (emptyRow) {
-                emptyRow.classList.toggle('hidden', visible > 0 || query === '');
-            }
-        }
-
-        input.addEventListener('input', filterRows);
-        filterRows();
+        input.addEventListener('input', function () {
+            if (debounceTimer) clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(function () {
+                var query = input.value.trim();
+                if (query === serverQuery) return;
+                var pageInput = form.querySelector('input[name="page"]');
+                if (pageInput) pageInput.remove();
+                form.submit();
+            }, 450);
+        });
     }
 
     function initRecordsPage() {
@@ -606,6 +732,14 @@
         if (cfg.openEntryModal) {
             openSingleEntryModal(cfg.defaultEntryType || 'birth');
         }
+
+        if (cfg.editRecordId && cfg.editLockHeld) {
+            startRecordLockHeartbeat();
+        }
+
+        window.addEventListener('beforeunload', function () {
+            releaseActiveRecordLock(true);
+        });
     }
 
     if (document.readyState === 'loading') {

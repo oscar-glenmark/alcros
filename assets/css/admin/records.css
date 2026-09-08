@@ -137,6 +137,43 @@
     border-color: #fbcfe8;
 }
 
+.records-edit-lock-banner {
+    margin: 0 1rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.75rem;
+    border: 1px solid #fde68a;
+    background: #fffbeb;
+    color: #92400e;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+}
+
+.records-edit-lock-banner strong {
+    display: block;
+    margin-bottom: 0.15rem;
+    color: #78350f;
+}
+
+.records-entry-fieldset:disabled {
+    opacity: 0.72;
+}
+
+.records-view-lock-note {
+    margin: 0 0 0.75rem;
+    padding: 0.625rem 0.875rem;
+    border-radius: 0.625rem;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    color: #92400e;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.records-view-action.is-disabled {
+    pointer-events: none;
+    opacity: 0.45;
+}
+
 .records-view-modal__close {
     display: inline-flex;
     align-items: center;

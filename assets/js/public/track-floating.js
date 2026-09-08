@@ -15,6 +15,8 @@
     var resultEl = document.getElementById('track-floating-result');
     var pollTimer = null;
     var activeCode = '';
+    var lastTrackRevision = '';
+    var trackPollFails = 0;
 
     function escapeHtml(str) {
         return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -143,6 +145,15 @@
 
     function applyPollUpdate(data, isAppointment) {
         if (!data.found) return;
+        if (data.revision && data.revision === lastTrackRevision) {
+            var updatedEl = document.getElementById('track-updated-at');
+            if (updatedEl) {
+                updatedEl.textContent = 'Status updates automatically · Last checked ' +
+                    new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            }
+            return;
+        }
+        lastTrackRevision = data.revision || '';
         renderResult(data, isAppointment);
     }
 
@@ -155,16 +166,33 @@
 
     function startPolling(code, isAppointment) {
         stopPolling();
+        trackPollFails = 0;
         var endpoint = isAppointment ? 'api/appointment_status.php' : 'api/request_status.php';
 
         pollTimer = setInterval(function () {
             if (root.classList.contains('hidden')) return;
             fetch(endpoint + '?code=' + encodeURIComponent(code), { credentials: 'same-origin', cache: 'no-store' })
-                .then(function (r) { return r.json(); })
-                .then(function (data) {
-                    if (data && data.found) applyPollUpdate(data, isAppointment);
+                .then(function (r) {
+                    if (!r.ok) {
+                        throw new Error('http_' + r.status);
+                    }
+                    return r.json();
                 })
-                .catch(function () {});
+                .then(function (data) {
+                    trackPollFails = 0;
+                    if (data && data.found) {
+                        applyPollUpdate(data, isAppointment);
+                    }
+                })
+                .catch(function () {
+                    trackPollFails++;
+                    var updatedEl = document.getElementById('track-updated-at');
+                    if (updatedEl) {
+                        updatedEl.textContent = trackPollFails >= 2
+                            ? 'Offline · showing last known status'
+                            : 'Reconnecting…';
+                    }
+                });
         }, 30000);
     }
 
@@ -177,6 +205,7 @@
         }
 
         activeCode = code;
+        lastTrackRevision = '';
         stopPolling();
         showLoading(true);
 
@@ -197,6 +226,7 @@
                         : 'No request found with that code. Use ALR- for document requests or APT- for appointments.');
                     return;
                 }
+                lastTrackRevision = data.revision || '';
                 renderResult(data, isAppointment);
                 startPolling(code, isAppointment);
 

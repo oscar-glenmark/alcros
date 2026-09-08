@@ -50,8 +50,10 @@ CREATE TABLE IF NOT EXISTS document_requests (
     notes TEXT DEFAULT NULL,
     submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP NULL DEFAULT NULL,
     INDEX idx_status (status),
-    INDEX idx_citizen_name (last_name, first_name)
+    INDEX idx_citizen_name (last_name, first_name),
+    INDEX idx_deleted_at (deleted_at)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS appointments (
@@ -79,9 +81,12 @@ CREATE TABLE IF NOT EXISTS appointments (
     id_back_path VARCHAR(255) DEFAULT NULL,
     notes TEXT DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP NULL DEFAULT NULL,
     INDEX idx_date (appointment_date),
     INDEX idx_status (status),
-    INDEX idx_citizen_name (last_name, first_name)
+    INDEX idx_citizen_name (last_name, first_name),
+    INDEX idx_deleted_at (deleted_at)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS queue_tickets (
@@ -120,6 +125,15 @@ CREATE TABLE IF NOT EXISTS civil_records (
     INDEX idx_type (record_type),
     INDEX idx_person_name (last_name, first_name),
     INDEX idx_deleted (deleted_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS civil_record_edit_locks (
+    civil_record_id INT NOT NULL PRIMARY KEY,
+    staff_id VARCHAR(32) NOT NULL,
+    staff_name VARCHAR(120) NOT NULL DEFAULT '',
+    locked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL,
+    INDEX idx_expires (expires_at)
 ) ENGINE=InnoDB;
 
 -- Birth certificate fields (Form 102).
@@ -346,7 +360,10 @@ INSERT INTO system_settings (setting_key, setting_value) VALUES
 ('print_global_scale_y', '1'),
 ('print_back_orientation_hint', 'flip_long_edge'),
 ('print_province', 'Misamis Occidental'),
-('print_city_municipality', 'Aloran')
+('print_city_municipality', 'Aloran'),
+('print_paper_preset', 'legal'),
+('print_paper_width_mm', '215.9'),
+('print_paper_height_mm', '358.9')
 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value);
 
 CREATE TABLE IF NOT EXISTS print_templates (

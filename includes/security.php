@@ -177,15 +177,50 @@ function postLimitExceededMessage(): string
     return 'Request is too large (max ' . $max . '). Use a smaller CSV or file, or increase post_max_size and upload_max_filesize in PHP.';
 }
 
+function isJsonApiRequest(): bool
+{
+    $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_FILENAME'] ?? ''));
+    if (str_contains($script, '/api/')) {
+        return true;
+    }
+
+    $accept = (string) ($_SERVER['HTTP_ACCEPT'] ?? '');
+    if (str_contains($accept, 'application/json')) {
+        return true;
+    }
+
+    return strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest';
+}
+
+function jsonClientError(int $status, string $code, string $message): never
+{
+    http_response_code($status);
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate');
+    echo json_encode([
+        'ok'      => false,
+        'code'    => $code,
+        'error'   => $message,
+        'message' => $message,
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 function requireCsrf(): void
 {
     if (requestBodyExceededPostLimit()) {
+        if (isJsonApiRequest()) {
+            jsonClientError(413, 'payload_too_large', postLimitExceededMessage());
+        }
         http_response_code(413);
         exit(postLimitExceededMessage());
     }
 
     $token = $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
     if (!validateCsrf(is_string($token) ? $token : '')) {
+        if (isJsonApiRequest()) {
+            jsonClientError(419, 'csrf_expired', 'Invalid or expired security token. Please refresh the page and try again.');
+        }
         http_response_code(419);
         exit('Invalid or expired security token. Please refresh the page and try again.');
     }
@@ -394,6 +429,7 @@ function publicTrackingAppointment(array $row): array
         'appointment_date' => $row['appointment_date'] ?? '',
         'appointment_time' => $row['appointment_time'] ?? '',
         'created_at'       => $row['created_at'] ?? '',
+        'updated_at'       => $row['updated_at'] ?? ($row['created_at'] ?? ''),
     ];
 }
 

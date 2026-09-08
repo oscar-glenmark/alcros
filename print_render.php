@@ -100,6 +100,8 @@ $paperW = (float) $template['paper_width_mm'];
 $paperH = (float) $template['paper_height_mm'];
 $pageCssSize = printPageCssSize();
 $printerSetupCss = printPrinterSetupStylesheet();
+$printPaperPrefs = printPaperPreferences();
+$printCsrfToken = csrfToken();
 $isPreview = !empty($_GET['preview']);
 $autoPrint = !empty($_GET['autoprint']);
 $overlayHtml = renderPrintOverlayHtml($printData, [
@@ -265,6 +267,8 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
     <?php if ($autoPrint): ?>
     <script>
         (function () {
+            var serverPaper = <?= json_encode($printPaperPrefs, JSON_UNESCAPED_UNICODE) ?>;
+            var csrfToken = <?= json_encode($printCsrfToken) ?>;
             var notice = document.getElementById('printSetupNotice');
             var btn = document.getElementById('printSetupContinue');
             var presetEl = document.querySelector('[data-print-paper-preset]');
@@ -334,26 +338,19 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
                 }
                 dynamicStyle.textContent = css;
 
-                try {
-                    localStorage.setItem('alcros-print-paper', JSON.stringify({
-                        preset: presetEl ? presetEl.value : 'custom',
-                        width_mm: widthMm,
-                        height_mm: heightMm
-                    }));
-                } catch (err) {
-                    /* ignore */
-                }
+                var form = new FormData();
+                form.append('action', 'save_paper_preferences');
+                form.append('csrf_token', csrfToken);
+                form.append('preset', presetEl ? presetEl.value : 'custom');
+                form.append('width_mm', String(widthMm));
+                form.append('height_mm', String(heightMm));
+                fetch('api/print.php', { method: 'POST', body: form, credentials: 'same-origin' }).catch(function () {});
 
                 return true;
             }
 
             function restoreSavedPaper() {
-                var saved = null;
-                try {
-                    saved = JSON.parse(localStorage.getItem('alcros-print-paper') || 'null');
-                } catch (err) {
-                    saved = null;
-                }
+                var saved = serverPaper && serverPaper.width_mm ? serverPaper : null;
                 if (!saved || !presetEl) return;
 
                 if (saved.preset && presets[saved.preset]) {

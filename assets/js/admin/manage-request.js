@@ -536,4 +536,142 @@
         var firstData = parseRequestData(firstRow);
         if (firstData) openDetail(firstData, firstRow);
     }
+
+    var statFieldMap = {
+        all_requests: 'total',
+        pending: 'pending',
+        ready: 'ready',
+        completed: 'completed',
+        rejected: 'rejected'
+    };
+
+    function listSignature(requests) {
+        return (requests || []).map(function (r) {
+            return String(r.id) + ':' + String(r.revision);
+        }).join('|');
+    }
+
+    function updateStatCards(stats) {
+        if (!stats) return;
+        document.querySelectorAll('[data-stat-key]').forEach(function (card) {
+            var key = card.getAttribute('data-stat-key') || '';
+            var field = statFieldMap[key];
+            if (!field || stats[field] === undefined) return;
+            var valueEl = card.querySelector('.manage-stat-card__value');
+            if (valueEl) valueEl.textContent = Number(stats[field]).toLocaleString();
+        });
+    }
+
+    function refreshOpenDetail(focus) {
+        if (!focus || !focus.id) return;
+
+        var selected = document.querySelector('.manage-requests-row.is-selected');
+        var selectedId = selected ? parseInt(selected.getAttribute('data-request-row'), 10) : 0;
+        if (!selectedId || selectedId !== focus.id) return;
+
+        var current = parseRequestData(selected);
+        if (current && current.revision === focus.revision) return;
+
+        if (useSidePanel && bodyWrap && bodyWrap.classList.contains('has-detail')) {
+            populateDetailView(panelView, focus);
+        }
+        if (modal && !modal.classList.contains('hidden')) {
+            populateDetailView(modalView, focus);
+        }
+
+        selected.setAttribute('data-request', JSON.stringify(focus));
+        var viewBtn = selected.querySelector('.view-request-btn');
+        if (viewBtn) viewBtn.setAttribute('data-request', JSON.stringify(focus));
+    }
+
+    function applyListUpdate(data) {
+        var requests = data.requests || [];
+        var signature = listSignature(requests);
+        if (signature !== lastListSignature) {
+            lastListSignature = signature;
+            updateStatCards(data.stats);
+
+            var apiById = {};
+            requests.forEach(function (item) {
+                apiById[item.id] = item;
+            });
+
+            document.querySelectorAll('.manage-requests-row').forEach(function (row) {
+                var rowId = parseInt(row.getAttribute('data-request-row'), 10);
+                var item = apiById[rowId];
+                if (!item) {
+                    if (row.classList.contains('is-selected')) {
+                        if (useSidePanel) closeDetail();
+                        closeModal();
+                    }
+                    row.remove();
+                    return;
+                }
+
+                var statusCell = row.querySelector('.manage-cell-status');
+                if (statusCell && item.status_badge_html) {
+                    statusCell.innerHTML = item.status_badge_html;
+                }
+
+                var existing = parseRequestData(row);
+                if (existing && item.revision && item.revision !== existing.revision) {
+                    existing.status_key = item.status_key;
+                    existing.status_badge_html = item.status_badge_html;
+                    existing.revision = item.revision;
+                    existing.updated_at = item.updated_at;
+                    row.setAttribute('data-request', JSON.stringify(existing));
+                    var btn = row.querySelector('.view-request-btn');
+                    if (btn) btn.setAttribute('data-request', JSON.stringify(existing));
+                }
+            });
+
+            var domCount = document.querySelectorAll('.manage-requests-row').length;
+            if (domCount !== requests.length) {
+                window.location.reload();
+            }
+        } else {
+            updateStatCards(data.stats);
+        }
+
+        if (data.focus) {
+            refreshOpenDetail(data.focus);
+        }
+    }
+
+    var lastListSignature = listSignature(
+        Array.prototype.map.call(
+            document.querySelectorAll('.manage-requests-row'),
+            function (row) {
+                var parsed = parseRequestData(row);
+                return {
+                    id: parseInt(row.getAttribute('data-request-row'), 10),
+                    revision: parsed && parsed.revision ? parsed.revision : ''
+                };
+            }
+        )
+    );
+
+    if (window.AlcrosPoll && pageConfig.pollUrl) {
+        AlcrosPoll.pollJson(
+            pageConfig.pollUrl,
+            function () {
+                var params = {
+                    status: pageConfig.redirectStatus || 'all',
+                    q: pageConfig.redirectQ || undefined
+                };
+                var selected = document.querySelector('.manage-requests-row.is-selected');
+                if (selected) {
+                    params.focus_id = selected.getAttribute('data-request-row');
+                }
+                return params;
+            },
+            30000,
+            applyListUpdate,
+            function () {
+                if (window.AlcrosPoll && typeof AlcrosPoll.markLiveIndicator === 'function') {
+                    // keep indicator visible; stale styling handled by poll.js when failCount rises
+                }
+            }
+        );
+    }
 })();

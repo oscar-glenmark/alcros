@@ -371,13 +371,24 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                                     $isReadyAction = $rowStatus === 'ready';
                                     ?>
                                     <?php if ($rowCanPrint): ?>
-                                    <a href="<?= htmlspecialchars(buildAuthUrl('print_certificate.php', ['request_id' => (int) $req['id']])) ?>"
-                                       class="manage-row-action manage-row-action--labeled manage-row-action--print"
-                                       title="Print certificate"
-                                       aria-label="Print certificate for <?= htmlspecialchars(personNameFromRow($req)) ?>">
-                                        <i data-lucide="printer" class="w-3.5 h-3.5"></i>
-                                        <span class="manage-row-action__label">PRINT</span>
-                                    </a>
+                                    <div class="manage-print-menu">
+                                        <button type="button"
+                                                class="manage-row-action manage-row-action--labeled manage-row-action--print manage-print-trigger"
+                                                title="Print options"
+                                                aria-label="Print options for <?= htmlspecialchars(personNameFromRow($req)) ?>"
+                                                aria-haspopup="true"
+                                                aria-expanded="false">
+                                            <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+                                            <span class="manage-row-action__label">PRINT</span>
+                                            <i data-lucide="chevron-down" class="w-3 h-3 manage-print-trigger__chevron"></i>
+                                        </button>
+                                        <div class="manage-print-dropdown hidden" role="menu">
+                                            <a href="<?= htmlspecialchars(buildAuthUrl('print_certificate.php', ['request_id' => (int) $req['id']])) ?>"
+                                               role="menuitem">Certificate</a>
+                                            <a href="<?= htmlspecialchars(buildAuthUrl('print_certificate.php', ['request_id' => (int) $req['id'], 'kind' => 'certification'])) ?>"
+                                               role="menuitem">Certification</a>
+                                        </div>
+                                    </div>
                                     <?php endif; ?>
                                     <button type="button"
                                             class="view-request-btn manage-row-action manage-row-action--labeled<?= $isReadyAction ? ' manage-row-action--complete' : '' ?>"

@@ -969,7 +969,7 @@
             enabled: field.enabled ? '1' : '0'
         };
 
-        var label = String(field.label || '').trim();
+        var label = String(field.label || field.field_name || '').trim();
         if (!label) {
             return {
                 error: 'Enter a display name for “' + (field.field_name || ('field #' + fieldId)) + '”.'
@@ -1045,10 +1045,12 @@
 
         var count = collected.payloads.length;
         saveInFlight = true;
-        updateSaveAllButton();
         setSaveStatus('saving', count);
 
         var saveBtn = document.getElementById('calSaveAllBtn');
+        if (!window.AlcrosLoading || !saveBtn) {
+            updateSaveAllButton();
+        }
 
         function finishSave(res) {
             saveInFlight = false;
@@ -1058,7 +1060,7 @@
                 var err = (res && res.error) || 'Could not save fields.';
                 setSaveStatus('error', err);
                 showToast('error', err);
-                return;
+                return res;
             }
 
             var savedFields = res.fields || (res.field ? [res.field] : []);
@@ -1067,6 +1069,11 @@
             clearFieldsDirty(savedIds);
             markCalibrationRefreshPending();
             setSaveStatus('saved');
+            try {
+                sessionStorage.removeItem('alcros-cal-live-' + (cfg.templateId || '0'));
+            } catch (storageErr) {
+                /* ignore */
+            }
 
             if (options.toast !== false) {
                 var message = options.message;
@@ -1080,26 +1087,30 @@
                 }
                 showToast('success', message);
             }
+
+            return res;
         }
 
-        var request = postForm('save_fields', {
-            fields_json: JSON.stringify(collected.payloads)
-        }).then(finishSave).catch(function () {
+        function handleSaveFailure() {
             saveInFlight = false;
             updateSaveAllButton();
             setSaveStatus('error', 'Could not save. Check your connection.');
             showToast('error', 'Could not save fields. Check your connection.');
+        }
+
+        var request = postForm('save_fields', {
+            fields_json: JSON.stringify(collected.payloads)
         });
 
         if (window.AlcrosLoading && saveBtn) {
-            return window.AlcrosLoading.wrap(
+            request = window.AlcrosLoading.wrap(
                 saveBtn,
                 request,
                 count > 1 ? ('Saving ' + count + ' fields…') : 'Saving…'
             );
         }
 
-        return request;
+        return request.then(finishSave).catch(handleSaveFailure);
     }
 
     function bindTabs() {
@@ -1572,11 +1583,90 @@
         if (zoomOut) zoomOut.addEventListener('click', function () { setZoomLevel(zoomLevel - 0.1); });
     }
 
+    function encodeCalibrationLivePayload(payload) {
+        return btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+    }
+
+    function buildCalibrationLivePayload() {
+        if (activeFieldId) {
+            syncActiveFieldFormFromConfig();
+        }
+
+        return {
+            apply_effective: true,
+            fields: (cfg.fields || []).map(function (field) {
+                var pos = effectivePosition(field);
+                return {
+                    id: Number(field.id),
+                    x_mm: Number(pos.x.toFixed(2)),
+                    y_mm: Number(pos.y.toFixed(2)),
+                    width_mm: Number(pos.width.toFixed(2)),
+                    height_mm: Number(pos.height.toFixed(2)),
+                    font_size: Number(field.font_size),
+                    alignment: field.alignment || 'left'
+                };
+            })
+        };
+    }
+
+    function buildLivePreviewUrl() {
+        var base = cfg.previewPrintUrl || '';
+        if (!base) return base;
+
+        try {
+            return new URL(base, window.location.href).toString();
+        } catch (err) {
+            return base;
+        }
+    }
+
+    function openLivePreviewWindow() {
+        var actionUrl = buildLivePreviewUrl();
+        if (!actionUrl) return;
+
+        var payload = buildCalibrationLivePayload();
+        try {
+            sessionStorage.setItem('alcros-cal-live-' + (cfg.templateId || '0'), JSON.stringify(payload));
+        } catch (err) {
+            /* ignore storage errors */
+        }
+
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = actionUrl;
+        form.target = '_blank';
+        form.style.display = 'none';
+
+        var csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrf_token';
+        csrfInput.value = csrfToken;
+        form.appendChild(csrfInput);
+
+        var liveInput = document.createElement('input');
+        liveInput.type = 'hidden';
+        liveInput.name = 'cal_live';
+        liveInput.value = JSON.stringify(payload);
+        form.appendChild(liveInput);
+
+        document.body.appendChild(form);
+        form.submit();
+        form.remove();
+    }
+
     function bindForms() {
         var saveAllBtn = document.getElementById('calSaveAllBtn');
         if (saveAllBtn) {
             saveAllBtn.addEventListener('click', function () {
                 saveAllChangesNow();
+            });
+        }
+
+        var previewLink = document.getElementById('calPreviewPrintLink');
+        if (previewLink) {
+            previewLink.addEventListener('click', function (e) {
+                e.preventDefault();
+                openLivePreviewWindow();
             });
         }
 

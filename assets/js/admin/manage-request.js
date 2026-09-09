@@ -304,6 +304,128 @@
         });
     }
 
+    function buildPrintMenu(data) {
+        var menu = document.createElement('div');
+        menu.className = 'manage-print-menu manage-print-menu--detail';
+
+        var trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'manage-print-trigger';
+        trigger.setAttribute('aria-haspopup', 'true');
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.innerHTML = '<i data-lucide="printer"></i><span>Print</span><i data-lucide="chevron-down" class="w-3.5 h-3.5"></i>';
+
+        var panel = document.createElement('div');
+        panel.className = 'manage-print-dropdown hidden';
+        panel.setAttribute('role', 'menu');
+
+        var certificateLink = document.createElement('a');
+        certificateLink.href = data.print_url;
+        certificateLink.setAttribute('role', 'menuitem');
+        certificateLink.textContent = 'Certificate';
+        panel.appendChild(certificateLink);
+
+        if (data.print_certification_url) {
+            var certificationLink = document.createElement('a');
+            certificationLink.href = data.print_certification_url;
+            certificationLink.setAttribute('role', 'menuitem');
+            certificationLink.textContent = 'Certification';
+            panel.appendChild(certificationLink);
+        }
+
+        menu.appendChild(trigger);
+        menu.appendChild(panel);
+        bindPrintMenu(menu);
+
+        return menu;
+    }
+
+    function resetPrintDropdownPosition(panel) {
+        if (!panel) return;
+        panel.classList.remove('manage-print-dropdown--floating');
+        panel.style.top = '';
+        panel.style.left = '';
+        panel.style.right = '';
+        panel.style.bottom = '';
+    }
+
+    function positionPrintDropdown(trigger, panel) {
+        if (!trigger || !panel) return;
+
+        var rect = trigger.getBoundingClientRect();
+        var gap = 6;
+        var margin = 8;
+        var panelWidth = panel.offsetWidth || 152;
+        var panelHeight = panel.offsetHeight || 88;
+        var left = rect.right - panelWidth;
+        var top = rect.bottom + gap;
+
+        if (left < margin) {
+            left = margin;
+        }
+        if (left + panelWidth > window.innerWidth - margin) {
+            left = Math.max(margin, window.innerWidth - panelWidth - margin);
+        }
+        if (top + panelHeight > window.innerHeight - margin) {
+            top = rect.top - panelHeight - gap;
+        }
+        if (top < margin) {
+            top = margin;
+        }
+
+        panel.style.left = Math.round(left) + 'px';
+        panel.style.top = Math.round(top) + 'px';
+    }
+
+    function bindPrintMenu(menu) {
+        if (!menu || menu.dataset.printMenuBound === '1') {
+            return;
+        }
+
+        var trigger = menu.querySelector('.manage-print-trigger');
+        var panel = menu.querySelector('.manage-print-dropdown');
+        if (!trigger || !panel) {
+            return;
+        }
+
+        menu.dataset.printMenuBound = '1';
+        trigger.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var open = !panel.classList.contains('hidden');
+            closePrintMenus();
+            if (!open) {
+                panel.classList.remove('hidden');
+                panel.classList.add('manage-print-dropdown--floating');
+                trigger.setAttribute('aria-expanded', 'true');
+                menu.classList.add('is-open');
+                window.requestAnimationFrame(function () {
+                    positionPrintDropdown(trigger, panel);
+                });
+            }
+        });
+
+        panel.addEventListener('click', function (e) {
+            e.stopPropagation();
+        });
+    }
+
+    function closePrintMenus() {
+        document.querySelectorAll('.manage-print-menu.is-open').forEach(function (menu) {
+            menu.classList.remove('is-open');
+        });
+        document.querySelectorAll('.manage-print-dropdown').forEach(function (el) {
+            el.classList.add('hidden');
+            resetPrintDropdownPosition(el);
+        });
+        document.querySelectorAll('.manage-print-trigger').forEach(function (btn) {
+            btn.setAttribute('aria-expanded', 'false');
+        });
+    }
+
+    function bindPrintMenus() {
+        document.querySelectorAll('.manage-print-menu').forEach(bindPrintMenu);
+    }
+
     function renderDetailActions(actionsWrap, data) {
         if (!actionsWrap) return;
 
@@ -321,7 +443,7 @@
         var hint = document.createElement('p');
         hint.className = 'manage-detail-actions__hint';
         if (canPrint) {
-            hint.textContent = 'Print the certificate, then mark completed when the citizen claims the document.';
+            hint.textContent = 'Print the certificate or certification, then mark completed when the citizen claims the document.';
         } else if (hasActions && data.status_key === 'pending') {
             hint.textContent = 'Review the citizen details and IDs above, then accept or reject.';
         } else if (hasActions) {
@@ -335,11 +457,7 @@
         group.className = 'manage-detail-actions__buttons';
 
         if (canPrint && data.print_url) {
-            var printLink = document.createElement('a');
-            printLink.href = data.print_url;
-            printLink.className = 'manage-detail-action manage-detail-action--primary';
-            printLink.innerHTML = '<i data-lucide="printer"></i> Print Certificate';
-            group.appendChild(printLink);
+            group.appendChild(buildPrintMenu(data));
         }
 
         if (hasActions) {
@@ -530,6 +648,11 @@
     bindViewButtons();
     bindModalClose();
     bindManageActionTriggers();
+    bindPrintMenus();
+
+    document.addEventListener('click', closePrintMenus);
+    window.addEventListener('resize', closePrintMenus);
+    window.addEventListener('scroll', closePrintMenus, true);
 
     var firstRow = document.querySelector('.manage-requests-row');
     if (useSidePanel && !pageConfig.bulkActions && firstRow && window.matchMedia('(min-width: 1280px)').matches) {

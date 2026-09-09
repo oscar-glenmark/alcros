@@ -4,6 +4,7 @@ require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 require_once __DIR__ . '/includes/printing.php';
+require_once __DIR__ . '/includes/certification_print.php';
 requireAdmin();
 
 @set_time_limit(120);
@@ -21,27 +22,52 @@ $certificateType = $_GET['type'] ?? 'birth';
 if (!in_array($certificateType, printCertificateTypes(), true)) {
     $certificateType = 'birth';
 }
+$documentKind = normalizePrintDocumentKind($_GET['kind'] ?? 'certificate');
+$isCertification = $documentKind === 'certification';
 $pageSide = ($_GET['page'] ?? 'front') === 'back' ? 'back' : 'front';
+if ($isCertification) {
+    $pageSide = 'front';
+    seedCertificationPrintTemplates($pdo);
+}
 
-$template = getPrintTemplate($pdo, $certificateType, $pageSide);
+$template = getPrintTemplate($pdo, $certificateType, $pageSide, $documentKind);
 if (!$template) {
-    redirectWithAuth('print_calibration.php');
+    redirectWithAuth('print_calibration.php', $isCertification ? ['kind' => 'certification'] : []);
 }
 
 $fields = getPrintFields($pdo, (int) $template['id'], false);
 $calibration = getPrintCalibration($pdo, (int) $template['id']);
 $globalCalibration = printGlobalCalibration();
-$meta = printCertificateMeta()[$certificateType];
+$meta = $isCertification
+    ? ['title' => certificationTitle($certificateType), 'form_number' => certificationFormNumber($certificateType)]
+    : printCertificateMeta()[$certificateType];
 $paperW = (float) $template['paper_width_mm'];
 $paperH = (float) $template['paper_height_mm'];
-$refAsset = printFormReferenceAsset($certificateType, $pageSide);
-$pngRelative = 'assets/print/forms/' . $certificateType . '-' . $pageSide . '.png';
-$pngFull = __DIR__ . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $pngRelative);
-$displayPng = is_file($pngFull);
-$displayPngSrc = $displayPng ? ($pngRelative . '?v=' . filemtime($pngFull)) : '';
-$calNavItems = printCalibrationNavItems($certificateType, $pageSide);
+$refAsset = $isCertification ? null : printFormReferenceAsset($certificateType, $pageSide);
+$displayPng = false;
+$displayPngSrc = '';
+if ($isCertification) {
+    $displayPngSrc = certificationFormScanAsset($certificateType) ?? '';
+    $displayPng = $displayPngSrc !== '';
+} else {
+    $pngRelative = 'assets/print/forms/' . $certificateType . '-' . $pageSide . '.png';
+    $pngFull = __DIR__ . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $pngRelative);
+    $displayPng = is_file($pngFull);
+    $displayPngSrc = $displayPng ? ($pngRelative . '?v=' . filemtime($pngFull)) : '';
+}
+$calNavItems = printCalibrationNavItems($certificateType, $pageSide, $documentKind);
+$calQueryParams = static function (array $extra = []) use ($certificateType, $pageSide, $isCertification): array {
+    $params = array_merge(['type' => $certificateType, 'page' => $pageSide], $extra);
+    if ($isCertification) {
+        $params['kind'] = 'certification';
+    }
+
+    return $params;
+};
 try {
-    $sampleValues = printCalibrationSampleValues($certificateType);
+    $sampleValues = $isCertification
+        ? certificationCalibrationSampleValues($certificateType)
+        : printCalibrationSampleValues($certificateType);
 } catch (Throwable $e) {
     $sampleValues = [];
 }
@@ -57,24 +83,32 @@ foreach ($fields as $field) {
         $sampleValues[$name] = (string) ($field['label'] ?: 'Sample');
     }
 }
-$previewPrintUrl = buildAuthUrl('print_render.php', [
+$previewPrintParams = [
     'calibration_preview' => '1',
     'type'                => $certificateType,
     'page'                => $pageSide,
     'background'          => '1',
     'preview'             => '1',
-]);
+];
+if ($isCertification) {
+    $previewPrintParams['kind'] = 'certification';
+}
+$previewPrintUrl = buildAuthUrl('print_render.php', $previewPrintParams);
 
 $pageTitle = 'Print Template Calibration';
-$pageSubtitle = $meta['title'] . ' · Form ' . $meta['form_number'] . ' · ' . ucfirst($pageSide) . ' page';
+$pageSubtitle = $meta['title'] . ' · Form ' . $meta['form_number'] . ($isCertification ? '' : (' · ' . ucfirst($pageSide) . ' page'));
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     requireStaffPostCsrf();
     $action = $_POST['action'] ?? '';
     if ($action === 'reset_all_fields') {
-        syncPrintFieldCoordinatesFromPresets($pdo, $certificateType, $pageSide);
+        if ($isCertification) {
+            syncCertificationFieldCoordinatesFromPresets($pdo, $certificateType);
+        } else {
+            syncPrintFieldCoordinatesFromPresets($pdo, $certificateType, $pageSide);
+        }
         bumpPrintCalibrationRevision();
-        logActivity(staffId(), 'Print Fields Reset', 'Reset all print field coordinates to SVG defaults');
+        logActivity(staffId(), 'Print Fields Reset', 'Reset all print field coordinates to defaults');
     } elseif ($action === 'reset_field' && !empty($_POST['field_id'])) {
         $fieldId = (int) $_POST['field_id'];
         $fieldRow = null;
@@ -85,7 +119,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         if ($fieldRow) {
-            $seed = printSeedFieldLayout($certificateType, $pageSide);
+            $seed = $isCertification
+                ? certificationSeedFieldLayout($certificateType)
+                : printSeedFieldLayout($certificateType, $pageSide);
             foreach ($seed as $s) {
                 if ($s['field_name'] === $fieldRow['field_name']) {
                     updatePrintField($pdo, $fieldId, $s);
@@ -95,7 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
-    redirectWithAuth('print_calibration.php', ['type' => $certificateType, 'page' => $pageSide]);
+    redirectWithAuth('print_calibration.php', $calQueryParams());
 }
 
 $selectedFieldId = (int) ($_GET['field'] ?? 0);
@@ -123,7 +159,7 @@ if (!$formDefaults && !empty($fields[0])) {
     <?= printPrinterSetupStylesheet() ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>
-<body class="flex min-h-screen">
+<body class="flex min-h-screen<?= $isCertification ? ' print-cal-body--certification' : '' ?>">
 <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
 <main class="admin-main">
     <?php require __DIR__ . '/includes/admin_header.php'; ?>
@@ -131,20 +167,28 @@ if (!$formDefaults && !empty($fields[0])) {
     <div class="admin-content print-cal-page">
         <div class="print-cal-toolbar no-print">
             <div class="print-cal-toolbar-top">
+                <div class="print-cal-cert-tabs" role="tablist" aria-label="Document kind">
+                    <a href="<?= htmlspecialchars(buildAuthUrl('print_calibration.php', ['type' => $certificateType, 'page' => $pageSide])) ?>"
+                       class="print-cal-cert-tab<?= !$isCertification ? ' is-active' : '' ?>">Certificate</a>
+                    <a href="<?= htmlspecialchars(buildAuthUrl('print_calibration.php', ['type' => $certificateType, 'page' => 'front', 'kind' => 'certification'])) ?>"
+                       class="print-cal-cert-tab<?= $isCertification ? ' is-active' : '' ?>">Certification</a>
+                </div>
                 <div class="print-cal-cert-tabs" role="tablist" aria-label="Certificate type">
                     <?php foreach (printCertificateTypes() as $type): ?>
-                        <a href="<?= htmlspecialchars(buildAuthUrl('print_calibration.php', ['type' => $type, 'page' => $pageSide])) ?>"
+                        <a href="<?= htmlspecialchars(buildAuthUrl('print_calibration.php', $calQueryParams(['type' => $type]))) ?>"
                            class="print-cal-cert-tab<?= $certificateType === $type ? ' is-active' : '' ?>">
                             <?= htmlspecialchars(ucfirst($type)) ?>
                         </a>
                     <?php endforeach; ?>
                 </div>
+                <?php if (!$isCertification): ?>
                 <div class="print-cal-page-tabs" role="tablist" aria-label="Page side">
-                    <a href="<?= htmlspecialchars(buildAuthUrl('print_calibration.php', ['type' => $certificateType, 'page' => 'front'])) ?>"
+                    <a href="<?= htmlspecialchars(buildAuthUrl('print_calibration.php', $calQueryParams(['page' => 'front']))) ?>"
                        class="print-cal-page-tab<?= $pageSide === 'front' ? ' is-active' : '' ?>">Front page</a>
-                    <a href="<?= htmlspecialchars(buildAuthUrl('print_calibration.php', ['type' => $certificateType, 'page' => 'back'])) ?>"
+                    <a href="<?= htmlspecialchars(buildAuthUrl('print_calibration.php', $calQueryParams(['page' => 'back']))) ?>"
                        class="print-cal-page-tab<?= $pageSide === 'back' ? ' is-active' : '' ?>">Back page</a>
                 </div>
+                <?php endif; ?>
             </div>
 
             <div class="print-cal-progress" aria-label="Calibration pages">
@@ -157,7 +201,7 @@ if (!$formDefaults && !empty($fields[0])) {
                 <?php endforeach; ?>
             </div>
 
-            <p class="print-cal-note"><?= htmlspecialchars($meta['title']) ?> · Form <?= htmlspecialchars($meta['form_number']) ?> · Official LGU bond-paper layout</p>
+            <p class="print-cal-note"><?= htmlspecialchars($meta['title']) ?> · Form <?= htmlspecialchars($meta['form_number']) ?> · <?= $isCertification ? 'LCRO certification form layout' : 'Official LGU bond-paper layout' ?></p>
 
             <form method="post" class="print-cal-reset-all" data-confirm="Reset all fields on this page to their default positions?">
                 <?= csrfField() ?>
@@ -443,7 +487,7 @@ if (!$formDefaults && !empty($fields[0])) {
                     <button type="button" class="print-cal-tool-btn" id="calZoomIn" aria-label="Zoom in">+</button>
                     <span id="calZoomLabel">100%</span>
                 </div>
-                <a href="<?= htmlspecialchars($previewPrintUrl) ?>" target="_blank" rel="noopener" class="print-cal-tool-link">Test print preview ↗</a>
+                <a href="<?= htmlspecialchars($previewPrintUrl) ?>" id="calPreviewPrintLink" target="_blank" rel="noopener" class="print-cal-tool-link">Test print preview ↗</a>
             </div>
             <div class="print-cal-canvas-wrap" id="calCanvasWrap">
                 <div class="print-cal-canvas-scaler" id="calCanvasScaler">
@@ -454,6 +498,8 @@ if (!$formDefaults && !empty($fields[0])) {
                      data-paper-h="<?= $paperH ?>">
                     <?php if ($displayPng): ?>
                     <img src="<?= htmlspecialchars($displayPngSrc) ?>" alt="" class="print-cal-bg">
+                    <?php elseif ($isCertification && !empty($template['reference_image'])): ?>
+                    <img src="<?= htmlspecialchars((string) $template['reference_image']) ?>" alt="" class="print-cal-bg">
                     <?php elseif (!empty($refAsset['is_svg']) && !empty($refAsset['inline_svg'])): ?>
                     <div class="print-cal-form-bg"><?= $refAsset['inline_svg'] ?></div>
                     <?php elseif ($refAsset['exists']): ?>
@@ -495,8 +541,6 @@ if (!$formDefaults && !empty($fields[0])) {
 <?= pageConfigJson([
     'apiPrintUrl' => buildAuthUrl('api/print.php'),
     'csrfToken' => csrfToken(),
-    'certificateType' => $certificateType,
-    'pageSide' => $pageSide,
     'fields' => array_map(static function ($f) {
         return [
             'id' => (int) $f['id'],

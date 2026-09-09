@@ -4,6 +4,7 @@ require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 require_once __DIR__ . '/includes/printing.php';
+require_once __DIR__ . '/includes/certification_print.php';
 requireStaffLogin();
 requirePageAccess('print_certificate.php');
 
@@ -22,26 +23,42 @@ try {
 
 $requestId = (int) ($_GET['request_id'] ?? 0);
 $recordId = (int) ($_GET['record_id'] ?? 0);
+$documentKind = normalizePrintDocumentKind($_GET['kind'] ?? 'certificate');
+$isCertification = $documentKind === 'certification';
 
-$context = printRequestContext($pdo, $requestId ?: null, $recordId ?: null);
+if ($isCertification) {
+    $context = printCertificationContext($pdo, $recordId, $requestId);
+} else {
+    $context = printRequestContext($pdo, $requestId ?: null, $recordId ?: null);
+}
+
 if (!$context['ok']) {
-    $pageTitle = 'Print Certificate';
+    $pageTitle = $isCertification ? 'Print Certification' : 'Print Certificate';
     $pageSubtitle = 'Unable to prepare print preview.';
     $printError = $context['error'];
 } else {
     $request = $context['request'];
     $record = $context['record'];
     $certificateType = $context['certificate_type'];
-    $pageTitle = 'Print Certificate';
-    $pageSubtitle = printCertificateTitle($certificateType) . ' · Municipal Form No. ' . printCertificateFormNumber($certificateType);
-    $printError = null;
     $recordSource = $context['record_source'] ?? 'civil_record';
-    $fillEditorFields = printFillEditorFields($certificateType, $record, [], $pdo);
-    $frontTemplate = getPrintTemplate($pdo, $certificateType, 'front');
-    $paperW = (float) ($frontTemplate['paper_width_mm'] ?? printOfficialPaperWidthMm());
-    $paperH = (float) ($frontTemplate['paper_height_mm'] ?? printOfficialPaperHeightMm());
-    $paperSizeLabel = printPaperSizeLabel($paperW, $paperH, true);
-    $paperSizeTitle = printPaperSizeLabel($paperW, $paperH);
+    $printError = null;
+
+    if ($isCertification && $recordSource !== 'civil_record') {
+        $printError = 'Certification requires an existing civil registry record. It does not create a new registration entry.';
+    } else {
+        $pageTitle = $isCertification ? 'Print Certification' : 'Print Certificate';
+        $pageSubtitle = $isCertification
+            ? certificationTitle($certificateType) . ' · Existing LCRO Record'
+            : printCertificateTitle($certificateType) . ' · Municipal Form No. ' . printCertificateFormNumber($certificateType);
+        $fillEditorFields = $isCertification
+            ? printCertificationFillEditorFields($certificateType, $record)
+            : printFillEditorFields($certificateType, $record, [], $pdo);
+        $frontTemplate = getPrintTemplate($pdo, $certificateType, 'front', $documentKind);
+        $paperW = (float) ($frontTemplate['paper_width_mm'] ?? ($isCertification ? certificationPaperSize()['paper_width_mm'] : printOfficialPaperWidthMm()));
+        $paperH = (float) ($frontTemplate['paper_height_mm'] ?? ($isCertification ? certificationPaperSize()['paper_height_mm'] : printOfficialPaperHeightMm()));
+        $paperSizeLabel = printPaperSizeLabel($paperW, $paperH, true);
+        $paperSizeTitle = printPaperSizeLabel($paperW, $paperH);
+    }
 }
 
 $globalCalibration = printGlobalCalibration();
@@ -60,7 +77,7 @@ $printModeSetting = printMode();
     <?= printPrinterSetupStylesheet() ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>
-<body class="flex min-h-screen">
+<body class="flex min-h-screen<?= !empty($isCertification) ? ' print-page--certification' : '' ?>">
 <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
 <main class="admin-main">
     <?php require __DIR__ . '/includes/admin_header.php'; ?>
@@ -72,11 +89,11 @@ $printModeSetting = printMode();
                 <div>
                     <strong>Cannot open print preview</strong>
                     <p><?= htmlspecialchars($printError) ?></p>
-                    <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="print-cert-link">Back to Manage Requests</a>
+                    <a href="<?= htmlspecialchars(buildAuthUrl(!empty($isCertification) ? 'records.php' : 'manage_request.php')) ?>" class="print-cert-link">Back</a>
                 </div>
             </div>
         <?php else: ?>
-            <?php if (($recordSource ?? '') === 'request'): ?>
+            <?php if (!$isCertification && ($recordSource ?? '') === 'request'): ?>
             <div class="print-cert-alert print-cert-alert--warn no-print">
                 <i data-lucide="info"></i>
                 <div>
@@ -88,8 +105,8 @@ $printModeSetting = printMode();
             <section class="print-cert-summary">
                 <div class="print-cert-summary__grid">
                     <div class="print-cert-summary__item">
-                        <span class="print-cert-label">Certificate</span>
-                        <strong><?= htmlspecialchars(printCertificateTitle($certificateType)) ?></strong>
+                        <span class="print-cert-label"><?= $isCertification ? 'Document' : 'Certificate' ?></span>
+                        <strong><?= htmlspecialchars($isCertification ? certificationTitle($certificateType) : printCertificateTitle($certificateType)) ?></strong>
                     </div>
                     <?php if ($request): ?>
                     <div class="print-cert-summary__item">
@@ -106,6 +123,10 @@ $printModeSetting = printMode();
                         <strong><?= htmlspecialchars($record['registry_number'] ?: '—') ?></strong>
                     </div>
                     <div class="print-cert-summary__item">
+                        <span class="print-cert-label">Book / Page</span>
+                        <strong><?= htmlspecialchars(certificationBookPageReference($record) ?: '—') ?></strong>
+                    </div>
+                    <div class="print-cert-summary__item">
                         <span class="print-cert-label">Print Mode</span>
                         <strong><?= $printModeSetting === 'digital' ? 'Digital Form' : 'Pre-printed Overlay' ?></strong>
                     </div>
@@ -116,6 +137,7 @@ $printModeSetting = printMode();
                 </div>
             </section>
 
+            <?php if (!$isCertification): ?>
             <section class="print-cert-options no-print">
                 <div class="print-cert-options__inner">
                     <h2 class="print-cert-section-title">Back Page Options</h2>
@@ -130,11 +152,22 @@ $printModeSetting = printMode();
                             <label><input type="checkbox" id="optPostmortem"> Postmortem (autopsy)</label>
                             <label><input type="checkbox" id="optDelayedDeath"> Delayed death affidavit</label>
                         <?php endif; ?>
-                        <label><input type="checkbox" id="optShowBackground" checked> Show form background</label>
                     </div>
                 </div>
                 <p class="print-cert-hint print-cert-hint--compact">Affidavit sections fill only when checked. Signatures are never auto-generated.</p>
             </section>
+            <?php else: ?>
+            <section class="print-cert-alert print-cert-alert--warn no-print">
+                <i data-lucide="info"></i>
+                <div>
+                    <strong>Certification from existing record</strong>
+                    <p>This prints an authenticated copy from the civil registry. It does not create a new registration entry. Review the auto-filled fields below, then print directly from the preview.</p>
+                </div>
+            </section>
+            <?php endif; ?>
+            <p class="print-cert-hint print-cert-hint--compact no-print">
+                The preview and print setup screen show the form for alignment. The printer receives <strong>data only</strong> — load pre-printed bond paper before printing.
+            </p>
 
             <section class="print-cert-fill no-print">
                 <div class="print-cert-fill-head">
@@ -144,11 +177,13 @@ $printModeSetting = printMode();
                     </div>
                     <button type="button" class="print-cert-btn print-cert-btn--ghost" id="resetFillData">Reset to record data</button>
                 </div>
+                <?php if (!$isCertification): ?>
                 <div class="print-cert-fill-tabs" role="tablist" aria-label="Fill-in page">
                     <button type="button" class="print-cert-fill-tab is-active" data-fill-tab="front" role="tab" aria-selected="true">Front page fields</button>
                     <button type="button" class="print-cert-fill-tab" data-fill-tab="back" role="tab" aria-selected="false">Back page fields</button>
                 </div>
-                <?php foreach (['front', 'back'] as $fillSide): ?>
+                <?php endif; ?>
+                <?php foreach ($isCertification ? ['front'] : ['front', 'back'] as $fillSide): ?>
                 <div class="print-cert-fill-grid" id="fillFields<?= ucfirst($fillSide) ?>" data-fill-panel="<?= $fillSide ?>" role="tabpanel"<?= $fillSide === 'back' ? ' hidden' : '' ?>>
                     <?php foreach ($fillEditorFields as $fillField):
                         if ($fillField['page_side'] !== $fillSide) {
@@ -179,6 +214,7 @@ $printModeSetting = printMode();
                     </div>
                     <iframe id="previewFront" class="print-cert-frame" title="Front preview"></iframe>
                 </div>
+                <?php if (!$isCertification): ?>
                 <div class="print-cert-preview-block">
                     <div class="print-cert-preview-head">
                         <h2>Back Preview</h2>
@@ -189,20 +225,30 @@ $printModeSetting = printMode();
                     </div>
                     <iframe id="previewBack" class="print-cert-frame" title="Back preview"></iframe>
                 </div>
+                <?php endif; ?>
             </section>
 
             <section class="print-cert-actions no-print">
+                <?php if (!$isCertification): ?>
                 <button type="button" class="print-cert-btn print-cert-btn--ghost" id="printTestBoth">Test Print Both Sides</button>
                 <button type="button" class="print-cert-btn print-cert-btn--primary" id="printFrontBack">Print Front + Back</button>
+                <?php else: ?>
+                <button type="button" class="print-cert-btn print-cert-btn--ghost" data-print-side="front" data-test="1">Test Print</button>
+                <button type="button" class="print-cert-btn print-cert-btn--primary" data-print-side="front">Print Certification</button>
+                <?php endif; ?>
                 <a href="<?= htmlspecialchars(buildAuthUrl($request ? 'manage_request.php' : 'records.php')) ?>" class="print-cert-btn print-cert-btn--ghost">Cancel</a>
             </section>
 
+            <?php if (!$isCertification): ?>
             <?php renderPrintBuiltInPrinterSetup([
-                'variant' => 'compact',
-                'show_back_hint' => true,
+                'variant'               => 'compact',
+                'show_back_hint'        => true,
                 'back_orientation_hint' => $globalCalibration['back_orientation_hint'] ?? '',
-                'extra_class' => 'no-print',
+                'extra_class'           => 'no-print',
+                'default_width_mm'      => $paperW,
+                'default_height_mm'     => $paperH,
             ]); ?>
+            <?php endif; ?>
         <?php endif; ?>
     </div>
 </main>
@@ -212,8 +258,7 @@ $printModeSetting = printMode();
 <?= pageConfigJson([
     'requestId' => (int) ($request['id'] ?? $requestId),
     'recordId' => (int) (($record['id'] ?? 0) ?: $recordId),
-    'certificateType' => $certificateType,
-    'printMode' => $printModeSetting,
+    'documentKind' => $documentKind,
     'printAuthUrl' => buildAuthUrl('print_render.php'),
     'apiPrintUrl' => buildAuthUrl('api/print.php'),
     'paperWidthMm' => $paperW,

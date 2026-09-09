@@ -33,6 +33,8 @@ function printFieldCatalog(): array
                 'province' => 'Province',
                 'city_municipality' => 'City/Municipality',
                 'registry_number' => 'Registry Number',
+                'book_number' => 'Book Number',
+                'page_number' => 'Page Number',
                 'child_first_name' => 'Child First Name',
                 'child_middle_name' => 'Child Middle Name',
                 'child_last_name' => 'Child Last Name',
@@ -130,6 +132,8 @@ function printFieldCatalog(): array
                 'province' => 'Province',
                 'city_municipality' => 'City/Municipality',
                 'registry_number' => 'Registry Number',
+                'book_number' => 'Book Number',
+                'page_number' => 'Page Number',
                 'husband_first_name' => 'Husband First Name',
                 'husband_middle_name' => 'Husband Middle Name',
                 'husband_last_name' => 'Husband Last Name',
@@ -217,6 +221,8 @@ function printFieldCatalog(): array
                 'province' => 'Province',
                 'city_municipality' => 'City/Municipality',
                 'registry_number' => 'Registry Number',
+                'book_number' => 'Book Number',
+                'page_number' => 'Page Number',
                 'deceased_first_name' => 'Deceased First Name',
                 'deceased_middle_name' => 'Deceased Middle Name',
                 'deceased_last_name' => 'Deceased Last Name',
@@ -457,14 +463,24 @@ function printPaperPresetKeyForSize(float $widthMm, float $heightMm): string
 
 function printPaperSizeLabel(?float $widthMm = null, ?float $heightMm = null, bool $compact = false): string
 {
-    $widthMm = $widthMm ?? printOfficialPaperWidthMm();
-    $heightMm = $heightMm ?? printOfficialPaperHeightMm();
+    $widthMm = round($widthMm ?? printOfficialPaperWidthMm(), 2);
+    $heightMm = round($heightMm ?? printOfficialPaperHeightMm(), 2);
+    $builtIn = printBuiltInPaperSpec();
+    $mmLabel = number_format($widthMm, 1, '.', '') . ' × ' . number_format($heightMm, 1, '.', '') . ' mm';
 
-    if ($compact) {
-        return printBuiltInPaperSpec()['label_short'];
+    if (abs($widthMm - (float) $builtIn['width_mm']) < 0.5
+        && abs($heightMm - (float) $builtIn['height_mm']) < 0.5) {
+        return $compact
+            ? $builtIn['label_short']
+            : $builtIn['label'] . ' — Municipal Forms 102 / 97 / 103';
     }
 
-    return printBuiltInPaperSpec()['label'] . ' — Municipal Forms 102 / 97 / 103';
+    $widthIn = round($widthMm / 25.4, 2);
+    $heightIn = round($heightMm / 25.4, 2);
+
+    return $compact
+        ? ('Custom · ' . $mmLabel)
+        : ('Custom (' . $widthIn . ' × ' . $heightIn . ' in) · ' . $mmLabel);
 }
 
 /** CSS @page size — inches so browsers map to Legal / long bond instead of ignoring custom mm. */

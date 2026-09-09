@@ -123,11 +123,15 @@
         var el = document.getElementById(id);
         if (!el) return;
         el.classList.remove('hidden');
-        if (id !== 'viewModal') {
-            el.classList.add('flex');
-        } else {
+        if (id === 'viewModal') {
             el.setAttribute('aria-hidden', 'false');
             document.body.classList.add('records-view-modal-open');
+        } else if (id === 'entryModal') {
+            el.classList.add('is-open');
+            document.body.classList.add('records-entry-modal-open');
+        } else {
+            el.classList.add('flex');
+            document.body.classList.add('records-entry-modal-open');
         }
         refreshIcons();
     }
@@ -137,12 +141,12 @@
         var entryWasOpen = entryModal && !entryModal.classList.contains('hidden');
         document.querySelectorAll('#entryModal, #importModal, #viewModal').forEach(function (el) {
             el.classList.add('hidden');
-            el.classList.remove('flex');
+            el.classList.remove('flex', 'is-open');
             if (el.id === 'viewModal') {
                 el.setAttribute('aria-hidden', 'true');
             }
         });
-        document.body.classList.remove('records-view-modal-open');
+        document.body.classList.remove('records-view-modal-open', 'records-entry-modal-open');
         if (entryWasOpen && activeEditRecordId && cfg.editLockHeld) {
             releaseActiveRecordLock(false).finally(function () {
                 if (window.location.search.indexOf('edit=') !== -1) {
@@ -229,7 +233,6 @@
             tab.className = 'record-type-tab rounded-xl border-2 px-3 py-3 text-center transition ' + (active ? (recordTypeStyles[type] || recordTypeIdle) : recordTypeIdle);
         });
 
-        var useCompletePrintForm = !!cfg.entryUseCompletePrintForm;
         var panels = {
             birth: document.getElementById('birthFieldsPanel'),
             death: document.getElementById('deathFieldsPanel'),
@@ -241,28 +244,15 @@
             marriage: document.getElementById('marriagePrintFillPanel')
         };
 
-        if (!useCompletePrintForm) {
-            Object.keys(panels).forEach(function (key) {
-                var panel = panels[key];
-                if (!panel) return;
-                var active = key === type;
-                panel.classList.toggle('hidden', !active);
-                panel.querySelectorAll('input, select, textarea').forEach(function (el) {
-                    el.disabled = !active;
-                });
+        Object.keys(panels).forEach(function (key) {
+            var panel = panels[key];
+            if (!panel) return;
+            var active = key === type;
+            panel.classList.toggle('hidden', !active);
+            panel.querySelectorAll('input, select, textarea').forEach(function (el) {
+                el.disabled = !active;
             });
-        } else {
-            document.querySelectorAll('.entry-detail-panel').forEach(function (panel) {
-                panel.classList.add('hidden');
-                panel.querySelectorAll('input, select, textarea').forEach(function (el) {
-                    el.disabled = true;
-                });
-            });
-            var entryTitle = document.getElementById('entryModalTitle');
-            if (entryTitle) {
-                entryTitle.textContent = 'Add ' + type.charAt(0).toUpperCase() + type.slice(1) + ' Record';
-            }
-        }
+        });
 
         Object.keys(printFillPanels).forEach(function (key) {
             var panel = printFillPanels[key];
@@ -274,21 +264,15 @@
             });
         });
 
-        if (!useCompletePrintForm) {
-            ['birthFirstName', 'birthMiddleName', 'birthLastName'].forEach(function (id) {
-                var el = document.getElementById(id);
-                if (el) el.required = type === 'birth';
-            });
-            ['deathFirstName', 'deathMiddleName', 'deathLastName'].forEach(function (id) {
-                var el = document.getElementById(id);
-                if (el) el.required = type === 'death';
-            });
-            if (type === 'birth') syncSingleBirthDetails();
-        } else {
-            document.querySelectorAll('.entry-detail-panel input, .entry-detail-panel select, .entry-detail-panel textarea').forEach(function (el) {
-                el.required = false;
-            });
-        }
+        ['birthFirstName', 'birthMiddleName', 'birthLastName'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.required = type === 'birth';
+        });
+        ['deathFirstName', 'deathMiddleName', 'deathLastName'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.required = type === 'death';
+        });
+        if (type === 'birth') syncSingleBirthDetails();
         refreshIcons();
     }
 
@@ -586,9 +570,14 @@
             ], ['Place']));
         }
 
+        sections.push(detailSection('LCRO Reference', [
+            ['Registry Number', registry],
+            ['Book Number', displayValue(r.book_number)],
+            ['Page Number', displayValue(r.page_number)],
+        ]));
+
         sections.push(detailSection('System', [
             ['Record Type', recordTypeLabel(type)],
-            ['Registry Number', registry],
             ['Created', created]
         ]));
 
@@ -604,7 +593,8 @@
     function renderViewRecordPresentation(r, printValues) {
         var viewContent = document.getElementById('viewContent');
         var viewEditLink = document.getElementById('viewEditLink');
-        var viewPrintLink = document.getElementById('viewPrintLink');
+        var viewPrintCertificateLink = document.getElementById('viewPrintCertificateLink');
+        var viewPrintCertificationLink = document.getElementById('viewPrintCertificationLink');
         var viewModalTitle = document.getElementById('viewModalTitle');
         var viewModalSubtitle = document.getElementById('viewModalSubtitle');
         var viewModalBadge = document.getElementById('viewModalBadge');
@@ -646,10 +636,103 @@
                 event.preventDefault();
             }
             : null;
-        if (viewPrintLink) {
+        if (viewPrintCertificateLink) {
             var printBase = cfg.printCertificateUrl || 'print_certificate.php';
-            viewPrintLink.href = printBase + (printBase.indexOf('?') !== -1 ? '&' : '?') + 'record_id=' + r.id;
+            viewPrintCertificateLink.href = printBase + (printBase.indexOf('?') !== -1 ? '&' : '?') + 'record_id=' + r.id;
         }
+        if (viewPrintCertificationLink) {
+            var certBase = cfg.printCertificationUrl || 'print_certificate.php?kind=certification';
+            viewPrintCertificationLink.href = certBase + (certBase.indexOf('?') !== -1 ? '&' : '?') + 'record_id=' + r.id;
+        }
+    }
+
+    function resetRecordsPrintDropdownPosition(panel) {
+        if (!panel) return;
+        panel.classList.remove('records-print-dropdown--floating');
+        panel.style.top = '';
+        panel.style.left = '';
+        panel.style.right = '';
+        panel.style.bottom = '';
+    }
+
+    function positionRecordsPrintDropdown(trigger, panel) {
+        if (!trigger || !panel) return;
+
+        var rect = trigger.getBoundingClientRect();
+        var gap = 6;
+        var margin = 8;
+        var panelWidth = panel.offsetWidth || 152;
+        var panelHeight = panel.offsetHeight || 88;
+        var left = rect.right - panelWidth;
+        var top = rect.bottom + gap;
+
+        if (left < margin) {
+            left = margin;
+        }
+        if (left + panelWidth > window.innerWidth - margin) {
+            left = Math.max(margin, window.innerWidth - panelWidth - margin);
+        }
+        if (top + panelHeight > window.innerHeight - margin) {
+            top = rect.top - panelHeight - gap;
+        }
+        if (top < margin) {
+            top = margin;
+        }
+
+        panel.style.left = Math.round(left) + 'px';
+        panel.style.top = Math.round(top) + 'px';
+    }
+
+    function closeRecordsPrintMenus() {
+        document.querySelectorAll('.records-print-menu.is-open').forEach(function (menu) {
+            menu.classList.remove('is-open');
+        });
+        document.querySelectorAll('.records-print-dropdown').forEach(function (el) {
+            el.classList.add('hidden');
+            resetRecordsPrintDropdownPosition(el);
+        });
+        document.querySelectorAll('.records-print-trigger').forEach(function (btn) {
+            btn.setAttribute('aria-expanded', 'false');
+        });
+    }
+
+    function bindRecordsPrintMenu(menu) {
+        if (!menu || menu.dataset.printMenuBound === '1') {
+            return;
+        }
+
+        var trigger = menu.querySelector('.records-print-trigger');
+        var panel = menu.querySelector('.records-print-dropdown');
+        if (!trigger || !panel) {
+            return;
+        }
+
+        menu.dataset.printMenuBound = '1';
+        trigger.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var open = !panel.classList.contains('hidden');
+            closeRecordsPrintMenus();
+            if (!open) {
+                panel.classList.remove('hidden');
+                panel.classList.add('records-print-dropdown--floating');
+                trigger.setAttribute('aria-expanded', 'true');
+                menu.classList.add('is-open');
+                window.requestAnimationFrame(function () {
+                    positionRecordsPrintDropdown(trigger, panel);
+                });
+            }
+        });
+
+        panel.addEventListener('click', function (e) {
+            e.stopPropagation();
+        });
+    }
+
+    function bindRecordsPrintMenus() {
+        document.querySelectorAll('.records-print-menu').forEach(bindRecordsPrintMenu);
+        document.addEventListener('click', closeRecordsPrintMenus);
+        window.addEventListener('resize', closeRecordsPrintMenus);
+        window.addEventListener('scroll', closeRecordsPrintMenus, true);
     }
 
     function bindViewRecordButtons() {
@@ -722,6 +805,7 @@
         bindImportForm();
         bindModalClose();
         bindViewRecordButtons();
+        bindRecordsPrintMenus();
         bindRecordsSearch();
 
         var recordTypeInput = document.getElementById('recordTypeInput');
@@ -735,6 +819,10 @@
 
         if (cfg.editRecordId && cfg.editLockHeld) {
             startRecordLockHeartbeat();
+        }
+
+        if (window.AlcrosCascadingLocation && cfg.locationsApiUrl) {
+            window.AlcrosCascadingLocation.init({ apiUrl: cfg.locationsApiUrl });
         }
 
         window.addEventListener('beforeunload', function () {

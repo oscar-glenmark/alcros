@@ -114,6 +114,7 @@ function ensurePrintTables(PDO $pdo): void
         static fn (PDO $db) => syncPrintFieldsFromCatalog($db),
         static fn (PDO $db) => restorePrintFieldUserPositionsAfterBulkSync($db),
         static fn (PDO $db) => syncPrintFieldFontSizes($db),
+        static fn (PDO $db) => seedCertificationPrintTemplatesIfAvailable($db),
     ] as $step) {
         try {
             $step($pdo);
@@ -493,21 +494,24 @@ function seedPrintTemplates(PDO $pdo): void
 
     foreach (['birth', 'marriage', 'death'] as $type) {
         foreach (['front', 'back'] as $side) {
+            ensurePrintDocumentKindColumn($pdo);
             $stmt = $pdo->prepare(
-                'SELECT id FROM print_templates WHERE certificate_type = ? AND page_side = ? LIMIT 1'
+                'SELECT id FROM print_templates
+                 WHERE certificate_type = ? AND page_side = ? AND document_kind = ? LIMIT 1'
             );
-            $stmt->execute([$type, $side]);
+            $stmt->execute([$type, $side, 'certificate']);
             $existingId = $stmt->fetchColumn();
 
             if (!$existingId) {
                 $insert = $pdo->prepare(
                     'INSERT INTO print_templates
-                     (certificate_type, page_side, form_number, paper_width_mm, paper_height_mm,
+                     (certificate_type, document_kind, page_side, form_number, paper_width_mm, paper_height_mm,
                       orientation, margin_top_mm, margin_left_mm, reference_image)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
                 );
                 $insert->execute([
                     $type,
+                    'certificate',
                     $side,
                     $meta[$type]['form_number'],
                     $paper['paper_width_mm'],
@@ -538,9 +542,60 @@ function seedPrintTemplates(PDO $pdo): void
     }
 }
 
-function seedPrintFieldsForTemplate(PDO $pdo, int $templateId, string $certificateType, string $pageSide): void
+function seedCertificationPrintTemplatesIfAvailable(PDO $pdo): void
 {
-    $layout = printSeedFieldLayout($certificateType, $pageSide);
+    $path = __DIR__ . '/certification_print.php';
+    if (!is_file($path)) {
+        return;
+    }
+    require_once $path;
+    if (function_exists('seedCertificationPrintTemplates')) {
+        seedCertificationPrintTemplates($pdo);
+    }
+}
+
+function ensurePrintDocumentKindColumn(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+
+    try {
+        $pdo->query('SELECT document_kind FROM print_templates LIMIT 1');
+    } catch (Throwable $e) {
+        try {
+            $pdo->exec(
+                "ALTER TABLE print_templates
+                 ADD COLUMN document_kind VARCHAR(20) NOT NULL DEFAULT 'certificate' AFTER certificate_type"
+            );
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    try {
+        $pdo->exec('ALTER TABLE print_templates DROP INDEX uniq_cert_page');
+    } catch (Throwable $e) {
+    }
+
+    try {
+        $pdo->exec(
+            'ALTER TABLE print_templates
+             ADD UNIQUE KEY uniq_cert_page_kind (certificate_type, page_side, document_kind)'
+        );
+    } catch (Throwable $e) {
+    }
+}
+
+function normalizePrintDocumentKind(?string $kind): string
+{
+    return strtolower(trim((string) $kind)) === 'certification' ? 'certification' : 'certificate';
+}
+
+function seedPrintFieldsForTemplate(PDO $pdo, int $templateId, string $certificateType, string $pageSide, ?array $layoutOverride = null): void
+{
+    $layout = $layoutOverride ?? printSeedFieldLayout($certificateType, $pageSide);
     $insert = $pdo->prepare(
         'INSERT INTO print_fields
          (template_id, field_name, label, x_mm, y_mm, width_mm, height_mm,
@@ -795,17 +850,24 @@ function printOfficeLocationFields(): array
     ];
 }
 
-function printCalibrationNavItems(string $activeType, string $activeSide): array
+function printCalibrationNavItems(string $activeType, string $activeSide, string $documentKind = 'certificate'): array
 {
+    $documentKind = normalizePrintDocumentKind($documentKind);
     $items = [];
+    $sides = $documentKind === 'certification' ? ['front'] : ['front', 'back'];
+
     foreach (printCertificateTypes() as $type) {
-        foreach (['front', 'back'] as $side) {
+        foreach ($sides as $side) {
+            $params = ['type' => $type, 'page' => $side];
+            if ($documentKind === 'certification') {
+                $params['kind'] = 'certification';
+            }
             $items[] = [
                 'type'   => $type,
                 'page'   => $side,
                 'label'  => ucfirst($type) . ' · ' . ucfirst($side),
                 'short'  => strtoupper(substr($type, 0, 1)) . ($side === 'front' ? ' F' : ' B'),
-                'url'    => buildAuthUrl('print_calibration.php', ['type' => $type, 'page' => $side]),
+                'url'    => buildAuthUrl('print_calibration.php', $params),
                 'active' => $type === $activeType && $side === $activeSide,
             ];
         }
@@ -1205,6 +1267,8 @@ function printBuildFieldValues(array $record, string $certificateType, array $op
 {
     $values = printOfficeLocationFields();
     $values['registry_number'] = trim((string) ($record['registry_number'] ?? ''));
+    $values['book_number'] = trim((string) ($record['book_number'] ?? ''));
+    $values['page_number'] = trim((string) ($record['page_number'] ?? ''));
 
     if ($certificateType === 'birth') {
         $values['child_first_name'] = trim((string) ($record['first_name'] ?? ''));
@@ -1572,15 +1636,31 @@ function printFillEditorFields(string $certificateType, array $record, array $op
     return $fields;
 }
 
-function getPrintTemplate(PDO $pdo, string $certificateType, string $pageSide): ?array
+function getPrintTemplate(PDO $pdo, string $certificateType, string $pageSide, string $documentKind = 'certificate'): ?array
 {
+    ensurePrintDocumentKindColumn($pdo);
+    $documentKind = normalizePrintDocumentKind($documentKind);
+
     $stmt = $pdo->prepare(
+        'SELECT * FROM print_templates
+         WHERE certificate_type = ? AND page_side = ? AND document_kind = ? LIMIT 1'
+    );
+    $stmt->execute([$certificateType, $pageSide, $documentKind]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($row) {
+        return $row;
+    }
+
+    if ($documentKind !== 'certificate') {
+        return null;
+    }
+
+    $fallback = $pdo->prepare(
         'SELECT * FROM print_templates WHERE certificate_type = ? AND page_side = ? LIMIT 1'
     );
-    $stmt->execute([$certificateType, $pageSide]);
-    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $fallback->execute([$certificateType, $pageSide]);
 
-    return $row ?: null;
+    return $fallback->fetch(PDO::FETCH_ASSOC) ?: null;
 }
 
 function getPrintFields(PDO $pdo, int $templateId, bool $enabledOnly = true): array
@@ -1608,6 +1688,93 @@ function getPrintCalibration(PDO $pdo, int $templateId): array
         'scale_x'     => 1,
         'scale_y'     => 1,
     ];
+}
+
+function printParseCalibrationLivePayload(?string $raw): array
+{
+    if ($raw === null || trim($raw) === '') {
+        return ['fields' => [], 'template' => [], 'apply_effective' => false];
+    }
+
+    $trimmed = trim($raw);
+    if ($trimmed !== '' && ($trimmed[0] === '{' || $trimmed[0] === '[')) {
+        $decoded = json_decode($trimmed, true);
+    } else {
+        $json = base64_decode(strtr($trimmed, '-_', '+/'), true);
+        $decoded = is_string($json) ? json_decode($json, true) : null;
+    }
+
+    if (!is_array($decoded)) {
+        return ['fields' => [], 'template' => [], 'apply_effective' => false];
+    }
+
+    return [
+        'fields'           => is_array($decoded['fields'] ?? null) ? $decoded['fields'] : [],
+        'template'         => is_array($decoded['template'] ?? null) ? $decoded['template'] : [],
+        'apply_effective'  => !empty($decoded['apply_effective']),
+    ];
+}
+
+function printZeroCalibrationOffsets(): array
+{
+    return [
+        'x_offset_mm' => 0.0,
+        'y_offset_mm' => 0.0,
+        'scale_x'     => 1.0,
+        'scale_y'     => 1.0,
+    ];
+}
+
+function printApplyCalibrationLiveOverrides(array $printData, array $live): array
+{
+    $fieldOverrides = [];
+    foreach ($live['fields'] as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+        $id = (int) ($entry['id'] ?? 0);
+        if ($id <= 0) {
+            continue;
+        }
+        $fieldOverrides[$id] = $entry;
+    }
+
+    $applyEffective = !empty($live['apply_effective']);
+
+    if ($fieldOverrides !== []) {
+        foreach ($printData['fields'] as &$field) {
+            $id = (int) ($field['id'] ?? 0);
+            if (!isset($fieldOverrides[$id])) {
+                continue;
+            }
+            $override = $fieldOverrides[$id];
+            foreach (['x_mm', 'y_mm', 'width_mm', 'height_mm', 'font_size', 'alignment'] as $key) {
+                if (array_key_exists($key, $override)) {
+                    $field[$key] = $override[$key];
+                }
+            }
+        }
+        unset($field);
+    }
+
+    if ($applyEffective) {
+        $printData['template_calibration'] = printZeroCalibrationOffsets();
+        $printData['global_calibration'] = printZeroCalibrationOffsets();
+        $printData['use_effective_positions'] = true;
+    } else {
+        $template = $live['template'] ?? [];
+        if ($template !== []) {
+            $cal = $printData['template_calibration'] ?? printZeroCalibrationOffsets();
+            foreach (['x_offset_mm', 'y_offset_mm', 'scale_x', 'scale_y'] as $key) {
+                if (array_key_exists($key, $template)) {
+                    $cal[$key] = $template[$key];
+                }
+            }
+            $printData['template_calibration'] = $cal;
+        }
+    }
+
+    return $printData;
 }
 
 function printEffectivePosition(array $field, array $templateCalibration, array $globalCalibration): array
@@ -1642,7 +1809,14 @@ function printCertificate(
         return null;
     }
 
-    $template = getPrintTemplate($pdo, $certificateType, $pageSide);
+    $documentKind = normalizePrintDocumentKind($options['document_kind'] ?? 'certificate');
+    if ($documentKind === 'certification') {
+        require_once __DIR__ . '/certification_print.php';
+
+        return printCertification($pdo, $certificateType, $record, $options);
+    }
+
+    $template = getPrintTemplate($pdo, $certificateType, $pageSide, 'certificate');
     if (!$template) {
         return null;
     }
@@ -1672,7 +1846,15 @@ function renderPrintOverlayHtml(array $printData, array $options = []): string
     $globalCalibration = $printData['global_calibration'];
     $mode = $options['mode'] ?? ($printData['mode'] ?? printMode());
     $testMode = !empty($options['test_mode']) || !empty($printData['test_mode']);
-    $showBackground = !empty($options['show_background']) || $mode === 'digital';
+    if (array_key_exists('show_background', $options)) {
+        $showBackground = !empty($options['show_background']);
+    } else {
+        $showBackground = $mode === 'digital';
+    }
+    $useEffectivePositions = !empty($options['use_effective_positions']) || !empty($printData['use_effective_positions']);
+    $documentKind = normalizePrintDocumentKind($template['document_kind'] ?? 'certificate');
+    $isCertification = $documentKind === 'certification';
+    $calibrationPreview = !empty($options['calibration_preview']);
 
     $paperW = (float) $template['paper_width_mm'];
     $paperH = (float) $template['paper_height_mm'];
@@ -1685,8 +1867,15 @@ function renderPrintOverlayHtml(array $printData, array $options = []): string
         $referencePath = (string) ($template['reference_image'] ?? '');
         $certType = (string) ($template['certificate_type'] ?? '');
         $pageSide = (string) ($template['page_side'] ?? 'front');
+        $documentKind = normalizePrintDocumentKind($template['document_kind'] ?? 'certificate');
         $preferScan = !empty($options['prefer_scan_background']);
-        $scan = printFormScanAsset($certType, $pageSide);
+        $scan = $documentKind === 'certification' && function_exists('certificationFormScanAsset')
+            ? certificationFormScanAsset($certType)
+            : printFormScanAsset($certType, $pageSide);
+        if ($scan === null && $documentKind === 'certification') {
+            require_once __DIR__ . '/certification_print.php';
+            $scan = certificationFormScanAsset($certType);
+        }
 
         if ($referencePath !== '') {
             $referenceFull = dirname(__DIR__) . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $referencePath);
@@ -1728,11 +1917,20 @@ function renderPrintOverlayHtml(array $printData, array $options = []): string
             $text = mb_substr($text, 0, (int) $field['max_length']);
         }
 
-        if (!$testMode && trim($text) !== '') {
+        if (!$testMode && trim($text) !== '' && !$isCertification) {
             $text = printFormatFieldDisplayText($text);
         }
 
-        $pos = printEffectivePosition($field, $templateCalibration, $globalCalibration);
+        if ($useEffectivePositions) {
+            $pos = [
+                'x'      => round((float) $field['x_mm'], 2),
+                'y'      => round((float) $field['y_mm'], 2),
+                'width'  => round(max(1, (float) $field['width_mm']), 2),
+                'height' => round(max(1, (float) $field['height_mm']), 2),
+            ];
+        } else {
+            $pos = printEffectivePosition($field, $templateCalibration, $globalCalibration);
+        }
         $x = $marginLeft + $pos['x'];
         $y = $marginTop + $pos['y'];
         $textAlign = printNormalizeAlignment($field['alignment'] ?? null);
@@ -1742,14 +1940,21 @@ function renderPrintOverlayHtml(array $printData, array $options = []): string
         $color = $testMode ? '#666' : '#000';
         $editableClass = $editable ? ' print-field--editable' : '';
         $editableAttr = $editable ? ' contenteditable="true" spellcheck="false" tabindex="0"' : '';
+        $multiline = $editable || ((float) $field['height_mm'] >= 12.0 && $name === 'remarks');
+        $textTransform = ($isCertification || $multiline) ? 'none' : 'uppercase';
+        $alignItems = $multiline ? 'flex-start' : 'center';
+        $fieldPadding = $isCertification ? 'padding:0 0.2rem;' : '';
 
-        $html .= '<div class="print-field' . $editableClass . '" data-field="' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '" style="'
+        $html .= '<div class="print-field' . $editableClass . '"'
+            . ' data-field="' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '"'
+            . ' data-field-id="' . (int) ($field['id'] ?? 0) . '" style="'
             . 'position:absolute;left:' . $x . 'mm;top:' . $y . 'mm;width:' . $pos['width'] . 'mm;height:' . $pos['height'] . 'mm;'
-            . 'display:flex;align-items:center;justify-content:' . $justify . ';'
+            . 'display:flex;align-items:' . $alignItems . ';justify-content:' . $justify . ';'
             . 'font-family:' . htmlspecialchars((string) $field['font_family'], ENT_QUOTES, 'UTF-8') . ',sans-serif;'
-            . 'font-size:' . $fontSize . 'pt;font-weight:' . $weight . ';text-transform:uppercase;'
-            . 'line-height:' . (float) $field['line_height'] . ';text-align:' . $textAlign . ';color:' . $color . ';'
-            . 'overflow:hidden;' . ($editable ? 'white-space:pre-wrap;word-break:break-word;' : 'white-space:nowrap;') . '"'
+            . 'font-size:' . $fontSize . 'pt;font-weight:' . $weight . ';text-transform:' . $textTransform . ';'
+            . 'line-height:' . ($isCertification ? '1.2' : (float) $field['line_height']) . ';text-align:' . $textAlign . ';color:' . $color . ';'
+            . $fieldPadding
+            . 'overflow:hidden;' . ($multiline ? 'white-space:pre-wrap;word-break:break-word;' : 'white-space:nowrap;') . '"'
             . $editableAttr . '>'
             . htmlspecialchars($text, ENT_QUOTES, 'UTF-8')
             . '</div>';
@@ -2318,6 +2523,10 @@ function civilRecordExpandPrintFieldInput(array $input, string $type): array
         csvAssignIfEmpty($input, 'witnesses', $printFill['witnesses'] ?? '');
         csvAssignIfEmpty($input, 'notes', $printFill['remarks_annotations'] ?? '');
     }
+
+    csvAssignIfEmpty($input, 'registry_number', $printFill['registry_number'] ?? '');
+    csvAssignIfEmpty($input, 'book_number', $printFill['book_number'] ?? '');
+    csvAssignIfEmpty($input, 'page_number', $printFill['page_number'] ?? '');
 
     if ($printFill !== []) {
         $input['print_fill_data'] = $printFill;

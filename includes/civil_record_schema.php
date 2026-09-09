@@ -39,6 +39,8 @@ function civilRecordViewFieldLabel(string $field): string
         '_age_at_death'                        => 'Age at Death',
         '_death_time'                          => 'Time of Death',
         'registry_number'                      => 'Registry Number',
+        'book_number'                          => 'Book Number',
+        'page_number'                          => 'Page Number',
         'birth_date'                           => 'Date of Birth',
         'event_date'                           => 'Event Date',
         'birth_time'                           => 'Time of Birth',
@@ -138,6 +140,8 @@ function civilRecordViewSections(string $type): array
                 'fields' => [
                     $field('_person_name', 'Full Name', ['full' => true]),
                     $field('registry_number'),
+                    $field('book_number'),
+                    $field('page_number'),
                     $field('sex'),
                     $field('birth_date', 'Date of Birth', ['format' => 'date']),
                     $field('birth_time'),
@@ -197,6 +201,8 @@ function civilRecordViewSections(string $type): array
                 'fields' => [
                     $field('_person_name', 'Full Name', ['full' => true]),
                     $field('registry_number'),
+                    $field('book_number'),
+                    $field('page_number'),
                     $field('sex'),
                     $field('birth_date', 'Date of Birth', ['format' => 'date']),
                     $field('registration_date', null, ['format' => 'date']),
@@ -295,6 +301,8 @@ function civilRecordViewSections(string $type): array
                 'fields' => [
                     $field('_person_name', 'Couple', ['full' => true]),
                     $field('registry_number'),
+                    $field('book_number'),
+                    $field('page_number'),
                 ],
             ],
             $spouseFields('husband', 'Husband'),
@@ -360,6 +368,8 @@ function civilRecordBaseColumnDefs(): array
     return [
         'record_type'     => "ENUM('birth','death','marriage') NOT NULL",
         'registry_number' => 'VARCHAR(50) NULL',
+        'book_number'     => 'VARCHAR(20) NULL',
+        'page_number'     => 'VARCHAR(20) NULL',
         'first_name'      => 'VARCHAR(80) NULL',
         'middle_name'     => 'VARCHAR(80) NULL',
         'last_name'       => 'VARCHAR(80) NULL',

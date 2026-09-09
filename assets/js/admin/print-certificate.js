@@ -11,14 +11,6 @@
 
     var CALIBRATION_STAMP_KEY = 'alcros-print-cal-updated';
 
-    function markCalibrationRefreshPending() {
-        try {
-            sessionStorage.setItem(CALIBRATION_STAMP_KEY, String(Date.now()));
-        } catch (err) {
-            /* ignore */
-        }
-    }
-
     function refreshIfCalibrationChanged() {
         var stamp = '';
         try {
@@ -50,6 +42,9 @@
     }
 
     function formatPrintFieldText(value) {
+        if (cfg.documentKind === 'certification') {
+            return String(value || '');
+        }
         return String(value || '').toUpperCase();
     }
 
@@ -109,8 +104,7 @@
             delayed_marriage: document.getElementById('optDelayedMarriage') && document.getElementById('optDelayedMarriage').checked,
             delayed_death: document.getElementById('optDelayedDeath') && document.getElementById('optDelayedDeath').checked,
             infant_section: document.getElementById('optInfantSection') && document.getElementById('optInfantSection').checked,
-            postmortem: document.getElementById('optPostmortem') && document.getElementById('optPostmortem').checked,
-            background: document.getElementById('optShowBackground') && document.getElementById('optShowBackground').checked
+            postmortem: document.getElementById('optPostmortem') && document.getElementById('optPostmortem').checked
         };
     }
 
@@ -120,6 +114,11 @@
         var recordId = numericId(cfg.recordId);
         if (requestId > 0) parsed.searchParams.set('request_id', String(requestId));
         if (recordId > 0) parsed.searchParams.set('record_id', String(recordId));
+        if (cfg.documentKind === 'certification') {
+            parsed.searchParams.set('kind', 'certification');
+        } else {
+            parsed.searchParams.delete('kind');
+        }
 
         if (extra) {
             Object.keys(extra).forEach(function (key) {
@@ -150,11 +149,6 @@
             parsed.searchParams.set('background', '1');
         } else {
             parsed.searchParams.delete('preview');
-            if (document.getElementById('optShowBackground') && document.getElementById('optShowBackground').checked) {
-                parsed.searchParams.set('background', '1');
-            } else {
-                parsed.searchParams.delete('background');
-            }
         }
         if (testMode) {
             parsed.searchParams.set('test', '1');
@@ -325,16 +319,18 @@
 
     function openPrintWindow(page, testMode) {
         var flags = optionFlags();
-        if (cfg.printMode !== 'digital') {
-            flags.background = false;
-        }
         var parsed = applyQueryParams(cfg.printAuthUrl || 'print_render.php', flags);
         parsed.searchParams.set('page', page);
         parsed.searchParams.delete('preview');
+        parsed.searchParams.delete('background');
+        parsed.searchParams.set('mode', 'preprinted');
         if (testMode) {
             parsed.searchParams.set('test', '1');
         } else {
             parsed.searchParams.delete('test');
+        }
+        if (cfg.calibrationRev) {
+            parsed.searchParams.set('cal', String(cfg.calibrationRev));
         }
         parsed.searchParams.set('autoprint', '1');
         var url = parsed.pathname + parsed.search;
@@ -415,7 +411,7 @@
             });
         }
 
-        ['optPaternity', 'optDelayedBirth', 'optDelayedMarriage', 'optDelayedDeath', 'optInfantSection', 'optPostmortem', 'optShowBackground'].forEach(function (id) {
+        ['optPaternity', 'optDelayedBirth', 'optDelayedMarriage', 'optDelayedDeath', 'optInfantSection', 'optPostmortem'].forEach(function (id) {
             var el = document.getElementById(id);
             if (el) el.addEventListener('change', refreshPreviews);
         });

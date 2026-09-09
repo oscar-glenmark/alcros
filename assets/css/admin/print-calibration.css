@@ -965,6 +965,15 @@
     text-transform: uppercase;
 }
 
+.print-cal-body--certification .print-cal-marker.is-sample-mode {
+    font-weight: 700;
+    text-transform: none;
+}
+
+.print-cal-body--certification .print-cal-marker-text {
+    line-height: 1.2;
+}
+
 .print-cal-marker.is-sample-mode.is-selected {
     border-color: #dc2626;
 }

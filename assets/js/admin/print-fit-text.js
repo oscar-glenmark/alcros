@@ -32,6 +32,9 @@
         if (!el || !el.classList.contains('print-field')) {
             return;
         }
+        if (el.classList.contains('print-field--certification')) {
+            return;
+        }
 
         var text = (el.textContent || '').replace(/\u00a0/g, ' ').trim();
         if (!text) {

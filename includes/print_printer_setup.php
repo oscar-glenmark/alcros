@@ -73,14 +73,28 @@ function renderPrintBuiltInPrinterSetup(array $options = []): void
             <script type="application/json" data-print-paper-presets><?= htmlspecialchars(json_encode(printPaperPresets(), JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?></script>
         </fieldset>
         <?php else: ?>
+        <?php
+        $usesBuiltInLegal = abs($defaultWidthMm - (float) $spec['width_mm']) < 0.5
+            && abs($defaultHeightMm - (float) $spec['height_mm']) < 0.5;
+        $displayWidthIn = round($defaultWidthMm / 25.4, 2);
+        $displayHeightIn = round($defaultHeightMm / 25.4, 2);
+        ?>
         <div class="print-built-in-setup__paper" aria-label="Paper size">
+            <?php if ($usesBuiltInLegal): ?>
             <span class="print-built-in-setup__paper-primary">
                 <strong><?= htmlspecialchars($spec['name']) ?></strong>
                 (8.5 × 14 in)
             </span>
             <span class="print-built-in-setup__paper-or">or</span>
+            <?php else: ?>
+            <span class="print-built-in-setup__paper-primary">
+                <strong>Custom</strong>
+                (<?= htmlspecialchars(number_format($displayWidthIn, 2, '.', '')) ?> × <?= htmlspecialchars(number_format($displayHeightIn, 2, '.', '')) ?> in)
+            </span>
+            <span class="print-built-in-setup__paper-or">·</span>
+            <?php endif; ?>
             <span class="print-built-in-setup__paper-mm">
-                <strong><?= htmlspecialchars(number_format($spec['width_mm'], 1, '.', '')) ?> × <?= htmlspecialchars(number_format($spec['height_mm'], 1, '.', '')) ?> mm</strong>
+                <strong><?= htmlspecialchars(number_format($defaultWidthMm, 1, '.', '')) ?> × <?= htmlspecialchars(number_format($defaultHeightMm, 1, '.', '')) ?> mm</strong>
             </span>
         </div>
         <?php endif; ?>

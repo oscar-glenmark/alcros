@@ -37,27 +37,6 @@ $pageHeaderMeta = $pageHeaderMeta ?? '';
     </div>
 
     <div class="admin-header__toolbar flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0">
-        <div
-            id="adminGlobalSearch"
-            class="admin-global-search hidden md:block"
-            data-search-url="<?= htmlspecialchars(buildAuthUrl('api/admin_search.php')) ?>"
-        >
-            <label class="sr-only" for="adminGlobalSearchInput">Search requests, appointments, and records</label>
-            <div class="admin-global-search__field">
-                <i data-lucide="search" class="admin-global-search__icon" aria-hidden="true"></i>
-                <input
-                    type="search"
-                    id="adminGlobalSearchInput"
-                    class="admin-global-search__input"
-                    placeholder="Search requests, appointments, records…"
-                    autocomplete="off"
-                    aria-expanded="false"
-                    aria-controls="adminGlobalSearchResults"
-                >
-            </div>
-            <div id="adminGlobalSearchResults" class="admin-global-search__panel hidden" role="listbox"></div>
-        </div>
-
         <div class="relative admin-header__notif" id="notif-wrapper" data-staff-id="<?= htmlspecialchars(staffId()) ?>">
 
             <button

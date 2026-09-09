@@ -3256,7 +3256,11 @@ function documentRequestViewData(array $row): array
         'can_delete'     => ($row['status'] ?? '') === 'completed',
         'can_print'      => canPrintRequestStatus($statusKey)
             && ($row['document_type'] ?? '') !== 'cenomar',
-        'print_url'      => buildAuthUrl('print_certificate.php', ['request_id' => (int) ($row['id'] ?? 0)]),
+        'print_url'              => buildAuthUrl('print_certificate.php', ['request_id' => (int) ($row['id'] ?? 0)]),
+        'print_certification_url'=> buildAuthUrl('print_certificate.php', [
+            'request_id' => (int) ($row['id'] ?? 0),
+            'kind'         => 'certification',
+        ]),
         'actions'        => $actionOptions,
         'privacy_agreed' => !empty($row['privacy_agreed']) ? 'Yes' : 'No',
         'submitted_at'   => !empty($row['submitted_at']) ? formatDateDisplay($row['submitted_at']) : '—',
@@ -3350,150 +3354,6 @@ function findAppointmentDateForSearch(PDO $pdo, string $q): ?string
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
     return !empty($row['appointment_date']) ? (string) $row['appointment_date'] : null;
-}
-
-/** @return array{results: array<int, array<string, mixed>>, q: string} */
-function staffGlobalSearch(PDO $pdo, string $q, int $limitPerKind = 5): array
-{
-    ensureSoftDeleteColumns($pdo);
-    $q = trim($q);
-    if (mb_strlen($q) < 2) {
-        return ['results' => [], 'q' => $q];
-    }
-
-    $term = '%' . $q . '%';
-    $results = [];
-    $upper = strtoupper($q);
-
-    if (preg_match('/^ALR-/i', $q)) {
-        $stmt = $pdo->prepare(
-            'SELECT id, tracking_code, first_name, middle_name, last_name, document_type, status
-             FROM document_requests
-             WHERE deleted_at IS NULL AND tracking_code = ?
-             LIMIT 1'
-        );
-        $stmt->execute([$upper]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($row) {
-            return ['results' => [staffGlobalSearchRequestRow($row)], 'q' => $q];
-        }
-    }
-
-    if (preg_match('/^APT-/i', $q)) {
-        $stmt = $pdo->prepare(
-            'SELECT id, appointment_code, first_name, middle_name, last_name, service_type, status, appointment_date
-             FROM appointments
-             WHERE deleted_at IS NULL AND appointment_code = ?
-             LIMIT 1'
-        );
-        $stmt->execute([$upper]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($row) {
-            return ['results' => [staffGlobalSearchAppointmentRow($row)], 'q' => $q];
-        }
-    }
-
-    $requestStmt = $pdo->prepare(
-        'SELECT id, tracking_code, first_name, middle_name, last_name, document_type, status
-         FROM document_requests
-         WHERE deleted_at IS NULL
-           AND (tracking_code LIKE ? OR first_name LIKE ? OR middle_name LIKE ? OR last_name LIKE ?
-             OR email LIKE ? OR phone LIKE ? OR purpose LIKE ? OR notes LIKE ? OR document_type LIKE ?)
-         ORDER BY submitted_at DESC
-         LIMIT ' . (int) $limitPerKind
-    );
-    $requestStmt->execute(array_fill(0, 9, $term));
-    foreach ($requestStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $results[] = staffGlobalSearchRequestRow($row);
-    }
-
-    $appointmentStmt = $pdo->prepare(
-        'SELECT id, appointment_code, first_name, middle_name, last_name, service_type, status, appointment_date
-         FROM appointments a
-         WHERE ' . appointmentStandaloneSql('a') . ' AND a.deleted_at IS NULL
-           AND (a.appointment_code LIKE ? OR a.tracking_code LIKE ?
-             OR a.first_name LIKE ? OR a.middle_name LIKE ? OR a.last_name LIKE ?
-             OR a.phone LIKE ? OR a.email LIKE ? OR a.service_type LIKE ?)
-         ORDER BY a.appointment_date DESC, a.appointment_time DESC
-         LIMIT ' . (int) $limitPerKind
-    );
-    $appointmentStmt->execute(array_fill(0, 8, $term));
-    foreach ($appointmentStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $results[] = staffGlobalSearchAppointmentRow($row);
-    }
-
-    $recordStmt = $pdo->prepare(
-        'SELECT cr.id, cr.record_type, cr.first_name, cr.middle_name, cr.last_name, cr.registry_number, cr.birth_date, cr.event_date
-         FROM civil_records cr
-         WHERE cr.deleted_at IS NULL
-           AND (cr.first_name LIKE ? OR cr.middle_name LIKE ? OR cr.last_name LIKE ?
-             OR cr.registry_number LIKE ? OR cr.father_name LIKE ? OR cr.mother_name LIKE ?
-             OR cr.place LIKE ? OR CAST(cr.id AS CHAR) LIKE ?)
-         ORDER BY cr.created_at DESC
-         LIMIT ' . (int) $limitPerKind
-    );
-    $recordStmt->execute(array_fill(0, 8, $term));
-    foreach ($recordStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $results[] = staffGlobalSearchRecordRow($row);
-    }
-
-    return ['results' => $results, 'q' => $q];
-}
-
-function staffGlobalSearchRequestRow(array $row): array
-{
-    $code = (string) ($row['tracking_code'] ?? '');
-
-    return [
-        'kind'  => 'request',
-        'label' => personNameFromRow($row),
-        'meta'  => $code . ' · ' . documentTypeLabel((string) ($row['document_type'] ?? ''))
-            . ' · ' . requestStatusLabel((string) ($row['status'] ?? 'pending')),
-        'url'   => buildAuthUrl('manage_request.php', ['q' => $code !== '' ? $code : null, 'status' => 'all_requests']),
-    ];
-}
-
-function staffGlobalSearchAppointmentRow(array $row): array
-{
-    $code = (string) ($row['appointment_code'] ?? '');
-    $date = !empty($row['appointment_date']) ? formatDateDisplay((string) $row['appointment_date']) : '';
-
-    return [
-        'kind'  => 'appointment',
-        'label' => personNameFromRow($row),
-        'meta'  => $code . ' · ' . appointmentServiceLabel((string) ($row['service_type'] ?? ''))
-            . ($date !== '' ? ' · ' . $date : '')
-            . ' · ' . appointmentStatusLabel((string) ($row['status'] ?? 'scheduled')),
-        'url'   => buildAuthUrl('appointment.php', ['q' => $code !== '' ? $code : null]),
-    ];
-}
-
-function staffGlobalSearchRecordRow(array $row): array
-{
-    $name = civilRecordDisplayName($row);
-    $registry = trim((string) ($row['registry_number'] ?? ''));
-
-    return [
-        'kind'  => 'record',
-        'label' => $name !== '' && $name !== '—' ? $name : 'Civil record #' . (int) ($row['id'] ?? 0),
-        'meta'  => civilRecordTypeLabel((string) ($row['record_type'] ?? ''))
-            . ($registry !== '' ? ' · Reg. ' . $registry : '')
-            . ' · ID ' . (int) ($row['id'] ?? 0),
-        'url'   => buildAuthUrl('records.php', ['q' => $name !== '' && $name !== '—' ? $name : (string) ($row['id'] ?? '')]),
-    ];
-}
-
-function staffGlobalSearchFallbackUrl(string $q): string
-{
-    $q = trim($q);
-    if (preg_match('/^APT-/i', $q)) {
-        return buildAuthUrl('appointment.php', ['q' => $q]);
-    }
-    if (preg_match('/^ALR-/i', $q)) {
-        return buildAuthUrl('manage_request.php', ['q' => $q, 'status' => 'all_requests']);
-    }
-
-    return buildAuthUrl('records.php', ['q' => $q]);
 }
 
 function requestStatusLabel(string $status): string

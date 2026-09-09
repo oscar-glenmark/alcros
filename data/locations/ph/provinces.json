@@ -1,0 +1,704 @@
+[
+  {
+    "province_id": 1,
+    "region_id": 1,
+    "code": "012800000",
+    "description": "Ilocos Norte"
+  },
+  {
+    "province_id": 2,
+    "region_id": 1,
+    "code": "012900000",
+    "description": "Ilocos Sur"
+  },
+  {
+    "province_id": 3,
+    "region_id": 1,
+    "code": "013300000",
+    "description": "La Union"
+  },
+  {
+    "province_id": 4,
+    "region_id": 1,
+    "code": "015500000",
+    "description": "Pangasinan"
+  },
+  {
+    "province_id": 5,
+    "region_id": 2,
+    "code": "020900000",
+    "description": "Batanes"
+  },
+  {
+    "province_id": 6,
+    "region_id": 2,
+    "code": "021500000",
+    "description": "Cagayan"
+  },
+  {
+    "province_id": 7,
+    "region_id": 2,
+    "code": "023100000",
+    "description": "Isabela"
+  },
+  {
+    "province_id": 8,
+    "region_id": 2,
+    "code": "025000000",
+    "description": "Nueva Vizcaya"
+  },
+  {
+    "province_id": 9,
+    "region_id": 2,
+    "code": "025700000",
+    "description": "Quirino"
+  },
+  {
+    "province_id": 10,
+    "region_id": 3,
+    "code": "037700000",
+    "description": "Aurora"
+  },
+  {
+    "province_id": 11,
+    "region_id": 3,
+    "code": "030800000",
+    "description": "Bataan"
+  },
+  {
+    "province_id": 12,
+    "region_id": 3,
+    "code": "031400000",
+    "description": "Bulacan"
+  },
+  {
+    "province_id": 13,
+    "region_id": 3,
+    "code": "034900000",
+    "description": "Nueva Ecija"
+  },
+  {
+    "province_id": 14,
+    "region_id": 3,
+    "code": "035400000",
+    "description": "Pampanga"
+  },
+  {
+    "province_id": 15,
+    "region_id": 3,
+    "code": "035401000",
+    "description": "Angeles City"
+  },
+  {
+    "province_id": 16,
+    "region_id": 3,
+    "code": "036900000",
+    "description": "Tarlac"
+  },
+  {
+    "province_id": 17,
+    "region_id": 3,
+    "code": "037100000",
+    "description": "Zambales"
+  },
+  {
+    "province_id": 18,
+    "region_id": 3,
+    "code": "037107000",
+    "description": "Olongapo City"
+  },
+  {
+    "province_id": 19,
+    "region_id": 4,
+    "code": "041000000",
+    "description": "Batangas"
+  },
+  {
+    "province_id": 20,
+    "region_id": 4,
+    "code": "042100000",
+    "description": "Cavite"
+  },
+  {
+    "province_id": 21,
+    "region_id": 4,
+    "code": "043400000",
+    "description": "Laguna"
+  },
+  {
+    "province_id": 22,
+    "region_id": 4,
+    "code": "045600000",
+    "description": "Quezon"
+  },
+  {
+    "province_id": 23,
+    "region_id": 4,
+    "code": "045624000",
+    "description": "Lucena City"
+  },
+  {
+    "province_id": 24,
+    "region_id": 4,
+    "code": "045800000",
+    "description": "Rizal"
+  },
+  {
+    "province_id": 25,
+    "region_id": 5,
+    "code": "050500000",
+    "description": "Albay"
+  },
+  {
+    "province_id": 26,
+    "region_id": 5,
+    "code": "051600000",
+    "description": "Camarines Norte"
+  },
+  {
+    "province_id": 27,
+    "region_id": 5,
+    "code": "051700000",
+    "description": "Camarines Sur"
+  },
+  {
+    "province_id": 28,
+    "region_id": 5,
+    "code": "052000000",
+    "description": "Catanduanes"
+  },
+  {
+    "province_id": 29,
+    "region_id": 5,
+    "code": "054100000",
+    "description": "Masbate"
+  },
+  {
+    "province_id": 30,
+    "region_id": 5,
+    "code": "056200000",
+    "description": "Sorsogon"
+  },
+  {
+    "province_id": 31,
+    "region_id": 6,
+    "code": "060400000",
+    "description": "Aklan"
+  },
+  {
+    "province_id": 32,
+    "region_id": 6,
+    "code": "060600000",
+    "description": "Antique"
+  },
+  {
+    "province_id": 33,
+    "region_id": 6,
+    "code": "061900000",
+    "description": "Capiz"
+  },
+  {
+    "province_id": 34,
+    "region_id": 6,
+    "code": "064500000",
+    "description": "Negros Occidental"
+  },
+  {
+    "province_id": 35,
+    "region_id": 6,
+    "code": "064501000",
+    "description": "Bacolod City (Capital)"
+  },
+  {
+    "province_id": 36,
+    "region_id": 6,
+    "code": "067900000",
+    "description": "Guimaras"
+  },
+  {
+    "province_id": 37,
+    "region_id": 6,
+    "code": "063000000",
+    "description": "Iloilo"
+  },
+  {
+    "province_id": 38,
+    "region_id": 6,
+    "code": "063022000",
+    "description": "Iloilo City (Capital)"
+  },
+  {
+    "province_id": 39,
+    "region_id": 7,
+    "code": "071200000",
+    "description": "Bohol"
+  },
+  {
+    "province_id": 40,
+    "region_id": 7,
+    "code": "072200000",
+    "description": "Cebu"
+  },
+  {
+    "province_id": 41,
+    "region_id": 7,
+    "code": "072217000",
+    "description": "Cebu City (Capital)"
+  },
+  {
+    "province_id": 42,
+    "region_id": 7,
+    "code": "072226000",
+    "description": "Lapu-lapu City (Opon)"
+  },
+  {
+    "province_id": 43,
+    "region_id": 7,
+    "code": "072230000",
+    "description": "Mandaue City"
+  },
+  {
+    "province_id": 44,
+    "region_id": 7,
+    "code": "074600000",
+    "description": "Negros Oriental"
+  },
+  {
+    "province_id": 45,
+    "region_id": 7,
+    "code": "076100000",
+    "description": "Siquijor"
+  },
+  {
+    "province_id": 46,
+    "region_id": 8,
+    "code": "087800000",
+    "description": "Biliran"
+  },
+  {
+    "province_id": 47,
+    "region_id": 8,
+    "code": "082600000",
+    "description": "Eastern Samar"
+  },
+  {
+    "province_id": 48,
+    "region_id": 8,
+    "code": "083700000",
+    "description": "Leyte"
+  },
+  {
+    "province_id": 49,
+    "region_id": 8,
+    "code": "083747000",
+    "description": "Tacloban City"
+  },
+  {
+    "province_id": 50,
+    "region_id": 8,
+    "code": "084800000",
+    "description": "Northern Samar"
+  },
+  {
+    "province_id": 51,
+    "region_id": 8,
+    "code": "086400000",
+    "description": "Southern Leyte"
+  },
+  {
+    "province_id": 52,
+    "region_id": 8,
+    "code": "086000000",
+    "description": "Samar (Western Samar)"
+  },
+  {
+    "province_id": 53,
+    "region_id": 9,
+    "code": "097200000",
+    "description": "Zamboanga del Norte"
+  },
+  {
+    "province_id": 54,
+    "region_id": 9,
+    "code": "097300000",
+    "description": "Zamboanga del Sur"
+  },
+  {
+    "province_id": 55,
+    "region_id": 9,
+    "code": "097332000",
+    "description": "Zamboanga City"
+  },
+  {
+    "province_id": 56,
+    "region_id": 9,
+    "code": "098300000",
+    "description": "Zamboanga Sibugay"
+  },
+  {
+    "province_id": 57,
+    "region_id": 9,
+    "code": "099701000",
+    "description": "City of Isabela"
+  },
+  {
+    "province_id": 58,
+    "region_id": 10,
+    "code": 101300000,
+    "description": "Bukidnon"
+  },
+  {
+    "province_id": 59,
+    "region_id": 10,
+    "code": 101800000,
+    "description": "Camiguin"
+  },
+  {
+    "province_id": 60,
+    "region_id": 10,
+    "code": 103500000,
+    "description": "Lanao del Norte"
+  },
+  {
+    "province_id": 61,
+    "region_id": 10,
+    "code": 103504000,
+    "description": "Iligan City"
+  },
+  {
+    "province_id": 62,
+    "region_id": 10,
+    "code": 104200000,
+    "description": "Misamis Occidental"
+  },
+  {
+    "province_id": 63,
+    "region_id": 10,
+    "code": 104300000,
+    "description": "Misamis Oriental"
+  },
+  {
+    "province_id": 64,
+    "region_id": 10,
+    "code": 104305000,
+    "description": "Cagayan de Oro City (Capital)"
+  },
+  {
+    "province_id": 65,
+    "region_id": 11,
+    "code": 112300000,
+    "description": "Davao del Norte"
+  },
+  {
+    "province_id": 66,
+    "region_id": 11,
+    "code": 112400000,
+    "description": "Davao del Sur"
+  },
+  {
+    "province_id": 67,
+    "region_id": 11,
+    "code": 112402000,
+    "description": "Davao City"
+  },
+  {
+    "province_id": 68,
+    "region_id": 11,
+    "code": 112500000,
+    "description": "Davao Oriental"
+  },
+  {
+    "province_id": 69,
+    "region_id": 11,
+    "code": 118200000,
+    "description": "Compostela Valley"
+  },
+  {
+    "province_id": 70,
+    "region_id": 11,
+    "code": 118600000,
+    "description": "Davao Occidental"
+  },
+  {
+    "province_id": 71,
+    "region_id": 12,
+    "code": 124700000,
+    "description": "North Cotabato"
+  },
+  {
+    "province_id": 72,
+    "region_id": 12,
+    "code": 128000000,
+    "description": "Sarangani"
+  },
+  {
+    "province_id": 73,
+    "region_id": 12,
+    "code": 126300000,
+    "description": "South Cotabato"
+  },
+  {
+    "province_id": 74,
+    "region_id": 12,
+    "code": 126303000,
+    "description": "General Santos City (Dadiangas)"
+  },
+  {
+    "province_id": 75,
+    "region_id": 12,
+    "code": 126500000,
+    "description": "Sultan Kudarat"
+  },
+  {
+    "province_id": 76,
+    "region_id": 12,
+    "code": 129804000,
+    "description": "Cotabato City"
+  },
+  {
+    "province_id": 77,
+    "region_id": 13,
+    "code": 133900000,
+    "description": "City of Manila"
+  },
+  {
+    "province_id": 78,
+    "region_id": 13,
+    "code": 137401000,
+    "description": "City of Mandaluyong"
+  },
+  {
+    "province_id": 79,
+    "region_id": 13,
+    "code": 137402000,
+    "description": "City of Marikina"
+  },
+  {
+    "province_id": 80,
+    "region_id": 13,
+    "code": 137403000,
+    "description": "City of Pasig"
+  },
+  {
+    "province_id": 81,
+    "region_id": 13,
+    "code": 137404000,
+    "description": "Quezon City"
+  },
+  {
+    "province_id": 82,
+    "region_id": 13,
+    "code": 137405000,
+    "description": "City of San Juan"
+  },
+  {
+    "province_id": 83,
+    "region_id": 13,
+    "code": 137501000,
+    "description": "Caloocan City"
+  },
+  {
+    "province_id": 84,
+    "region_id": 13,
+    "code": 137502000,
+    "description": "City of Malabon"
+  },
+  {
+    "province_id": 85,
+    "region_id": 13,
+    "code": 137503000,
+    "description": "City of Navotas"
+  },
+  {
+    "province_id": 86,
+    "region_id": 13,
+    "code": 137504000,
+    "description": "City of Valenzuela"
+  },
+  {
+    "province_id": 87,
+    "region_id": 13,
+    "code": 137601000,
+    "description": "City of Las Piñas"
+  },
+  {
+    "province_id": 88,
+    "region_id": 13,
+    "code": 137602000,
+    "description": "City of Makati"
+  },
+  {
+    "province_id": 89,
+    "region_id": 13,
+    "code": 137603000,
+    "description": "City of Muntinlupa"
+  },
+  {
+    "province_id": 90,
+    "region_id": 13,
+    "code": 137604000,
+    "description": "City of Parañaque"
+  },
+  {
+    "province_id": 91,
+    "region_id": 13,
+    "code": 137605000,
+    "description": "Pasay City"
+  },
+  {
+    "province_id": 92,
+    "region_id": 13,
+    "code": 137606000,
+    "description": "Pateros"
+  },
+  {
+    "province_id": 93,
+    "region_id": 13,
+    "code": 137607000,
+    "description": "Taguig City"
+  },
+  {
+    "province_id": 94,
+    "region_id": 14,
+    "code": 140100000,
+    "description": "Abra"
+  },
+  {
+    "province_id": 95,
+    "region_id": 14,
+    "code": 148100000,
+    "description": "Apayao"
+  },
+  {
+    "province_id": 96,
+    "region_id": 14,
+    "code": 141100000,
+    "description": "Benguet"
+  },
+  {
+    "province_id": 97,
+    "region_id": 14,
+    "code": 141102000,
+    "description": "Baguio City"
+  },
+  {
+    "province_id": 98,
+    "region_id": 14,
+    "code": 142700000,
+    "description": "Ifugao"
+  },
+  {
+    "province_id": 99,
+    "region_id": 14,
+    "code": 143200000,
+    "description": "Kalinga"
+  },
+  {
+    "province_id": 100,
+    "region_id": 14,
+    "code": 144400000,
+    "description": "Mountain Province"
+  },
+  {
+    "province_id": 101,
+    "region_id": 15,
+    "code": 150700000,
+    "description": "Basilan"
+  },
+  {
+    "province_id": 102,
+    "region_id": 15,
+    "code": 153600000,
+    "description": "Lanao del Sur"
+  },
+  {
+    "province_id": 103,
+    "region_id": 15,
+    "code": 153800000,
+    "description": "Maguindanao"
+  },
+  {
+    "province_id": 104,
+    "region_id": 15,
+    "code": 156600000,
+    "description": "Sulu"
+  },
+  {
+    "province_id": 105,
+    "region_id": 15,
+    "code": 157000000,
+    "description": "Tawi-tawi"
+  },
+  {
+    "province_id": 106,
+    "region_id": 16,
+    "code": 160200000,
+    "description": "Agusan del Norte"
+  },
+  {
+    "province_id": 107,
+    "region_id": 16,
+    "code": 160202000,
+    "description": "Butuan City (Capital)"
+  },
+  {
+    "province_id": 108,
+    "region_id": 16,
+    "code": 160300000,
+    "description": "Agusan del Sur"
+  },
+  {
+    "province_id": 109,
+    "region_id": 16,
+    "code": 166700000,
+    "description": "Surigao del Norte"
+  },
+  {
+    "province_id": 110,
+    "region_id": 16,
+    "code": 166800000,
+    "description": "Surigao del Sur"
+  },
+  {
+    "province_id": 111,
+    "region_id": 16,
+    "code": 168500000,
+    "description": "Dinagat Islands"
+  },
+  {
+    "province_id": 112,
+    "region_id": 17,
+    "code": 174000000,
+    "description": "Marinduque"
+  },
+  {
+    "province_id": 113,
+    "region_id": 17,
+    "code": 175100000,
+    "description": "Occidental Mindoro"
+  },
+  {
+    "province_id": 114,
+    "region_id": 17,
+    "code": 175200000,
+    "description": "Oriental Mindoro"
+  },
+  {
+    "province_id": 115,
+    "region_id": 17,
+    "code": 175300000,
+    "description": "Palawan"
+  },
+  {
+    "province_id": 116,
+    "region_id": 17,
+    "code": 175316000,
+    "description": "Puerto Princesa City (Capital)"
+  },
+  {
+    "province_id": 117,
+    "region_id": 17,
+    "code": 175900000,
+    "description": "Romblon"
+  }
+]

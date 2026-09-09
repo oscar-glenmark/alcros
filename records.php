@@ -5,6 +5,7 @@ require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 require_once __DIR__ . '/includes/printing.php';
 require_once __DIR__ . '/includes/record_locks.php';
+require_once __DIR__ . '/includes/cascading_location.php';
 requireStaffLogin();
 requirePageAccess('records.php');
 
@@ -82,6 +83,8 @@ function buildRecordsWhere(array $filters): array
             'cr.middle_name LIKE ?',
             'cr.last_name LIKE ?',
             'cr.registry_number LIKE ?',
+            'cr.book_number LIKE ?',
+            'cr.page_number LIKE ?',
             'cr.father_name LIKE ?',
             'cr.mother_name LIKE ?',
             'cr.place LIKE ?',
@@ -120,7 +123,7 @@ function buildRecordsWhere(array $filters): array
         $where .= ' AND (' . implode(' OR ', $clauses) . ')';
         $params = array_merge(
             $params,
-            array_fill(0, 9, $term),
+            array_fill(0, 13, $term),
             [$term, $term],
             [$term, $term],
             array_fill(0, 8, $term)
@@ -138,6 +141,8 @@ function civilRecordSearchBlob(array $r): string
         $r['middle_name'] ?? '',
         $r['last_name'] ?? '',
         civilRecordRegistryNumber($r) ?? '',
+        $r['book_number'] ?? '',
+        $r['page_number'] ?? '',
         $r['code_number'] ?? '',
         $r['father_name'] ?? '',
         $r['mother_name'] ?? '',
@@ -448,6 +453,8 @@ function normalizeCsvHeader(?string $header): string
         'solemnized_by', 'solemnizing_officer' => 'solemnizing_officer',
         'citizenship' => 'citizenship',
         'registry_no', 'registry', 'registry_num', 'registry_id' => 'registry_number',
+        'book_no', 'book', 'book_num' => 'book_number',
+        'page_no', 'page', 'page_num' => 'page_number',
         default => $key,
     };
 }
@@ -846,6 +853,8 @@ function normalizeRecordInput(array $input, bool $fromCsvImport = false): array
     $data = array_merge([
         'record_type'     => $type,
         'registry_number' => trim($input['registry_number'] ?? '') ?: null,
+        'book_number'     => trim($input['book_number'] ?? '') ?: null,
+        'page_number'     => trim($input['page_number'] ?? '') ?: null,
         'first_name'      => $nameParts['first_name'],
         'middle_name'     => $nameParts['middle_name'],
         'last_name'       => $nameParts['last_name'],
@@ -1098,7 +1107,7 @@ function recordEntryPrintFillSource(string $type, array $modalRecord): array
     return ['record_type' => $type];
 }
 
-function renderRecordEntryPrintFillSection(string $type, array $modalRecord, bool $active, bool $createMode = false): void
+function renderRecordEntryPrintFillSection(string $type, array $modalRecord, bool $active): void
 {
     $fields = printFillEditorFields($type, recordEntryPrintFillSource($type, $modalRecord));
     $panelId = $type . 'PrintFillPanel';
@@ -1106,10 +1115,8 @@ function renderRecordEntryPrintFillSection(string $type, array $modalRecord, boo
     <div id="<?= htmlspecialchars($panelId) ?>" class="records-entry-print-fill <?= $active ? '' : 'hidden' ?>">
         <div class="records-entry-print-fill__head">
             <div>
-                <p class="records-entry-print-fill__title"><?= $createMode ? 'Complete Certificate Fields' : 'Print Certificate Fields' ?></p>
-                <p class="records-entry-print-fill__hint"><?= $createMode
-                    ? 'Enter every value for this ' . htmlspecialchars(civilRecordTypeLabel($type)) . ' certificate — same fields as the municipal form and CSV import. Required: ' . ($type === 'marriage' ? 'husband and wife names' : 'first and last name') . '.'
-                    : 'Additional values for the municipal form (attendant, informant, registrar, LCRO, affidavits, etc.).' ?></p>
+                <p class="records-entry-print-fill__title">Print Certificate Fields</p>
+                <p class="records-entry-print-fill__hint">Additional values for the municipal form (attendant, informant, registrar, LCRO, affidavits, etc.).</p>
             </div>
         </div>
         <div class="records-entry-print-fill__tabs" role="tablist" aria-label="<?= htmlspecialchars(ucfirst($type)) ?> fill-in page">
@@ -1129,6 +1136,7 @@ function renderRecordEntryPrintFillSection(string $type, array $modalRecord, boo
                 <input type="text"
                        name="print_fill[<?= htmlspecialchars($fillField['field_name']) ?>]"
                        value="<?= htmlspecialchars($fillField['value']) ?>"
+                       class="<?= cascadingLocationUsesField($fillField['field_name']) ? htmlspecialchars(cascadingLocationInputClass()) : '' ?>"
                        autocomplete="off"
                        spellcheck="false">
             </label>
@@ -1269,6 +1277,9 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                                 <?php if ($displayRegistry): ?>
                                                 <span class="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 font-bold">#<?= htmlspecialchars($displayRegistry) ?></span>
                                                 <?php endif; ?>
+                                                <?php if (!empty($r['book_number']) || !empty($r['page_number'])): ?>
+                                                <span class="text-[9px] bg-amber-50 px-1.5 py-0.5 rounded text-amber-700 font-bold">Bk <?= htmlspecialchars((string) ($r['book_number'] ?? '—')) ?> · Pg <?= htmlspecialchars((string) ($r['page_number'] ?? '—')) ?></span>
+                                                <?php endif; ?>
                                             </div>
                                             <p class="text-[10px] text-gray-400 font-medium">ID: <?= (int) $r['id'] ?> • Added <?= formatRecordDate(substr($r['created_at'], 0, 10)) ?></p>
                                         </div>
@@ -1285,12 +1296,22 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                     <button type="button" class="view-record-btn text-gray-300 hover:text-blue-600" title="View" data-record="<?= htmlspecialchars(json_encode($r, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), ENT_QUOTES, 'UTF-8') ?>">
                                         <i data-lucide="eye" class="w-4 h-4"></i>
                                     </button>
-                                    <a href="<?= htmlspecialchars(buildAuthUrl('print_certificate.php', ['record_id' => (int) $r['id']])) ?>"
-                                       class="text-gray-300 hover:text-emerald-600 records-row-print"
-                                       title="Print certificate"
-                                       aria-label="Print certificate for <?= htmlspecialchars(civilRecordDisplayName($r)) ?>">
-                                        <i data-lucide="printer" class="w-4 h-4"></i>
-                                    </a>
+                                    <div class="records-print-menu">
+                                        <button type="button"
+                                                class="records-print-trigger records-print-trigger--labeled"
+                                                title="Print options"
+                                                aria-label="Print options for <?= htmlspecialchars(civilRecordDisplayName($r)) ?>"
+                                                aria-haspopup="true"
+                                                aria-expanded="false">
+                                            <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+                                            <span class="records-print-trigger__label">PRINT</span>
+                                            <i data-lucide="chevron-down" class="w-3 h-3 records-print-trigger__chevron"></i>
+                                        </button>
+                                        <div class="records-print-dropdown hidden" role="menu">
+                                            <a href="<?= htmlspecialchars(buildAuthUrl('print_certificate.php', ['record_id' => (int) $r['id']])) ?>" role="menuitem">Certificate</a>
+                                            <a href="<?= htmlspecialchars(buildAuthUrl('print_certificate.php', ['record_id' => (int) $r['id'], 'kind' => 'certification'])) ?>" role="menuitem">Certification</a>
+                                        </div>
+                                    </div>
                                     <a href="<?= buildRecordsUrl(['edit' => $r['id']]) ?>" class="text-gray-300 hover:text-slate-600" title="Edit"><i data-lucide="edit-3" class="w-4 h-4"></i></a>
                                 </div>
                             </td>
@@ -1327,20 +1348,19 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
     $modalRecord = $editRecord ?: [];
     $modalMode = $editRecord ? 'edit' : 'create';
     $entryFormReadOnly = $editRecord && $editLockBlocked;
-    $entryUseCompletePrintForm = $modalMode === 'create';
     $modalTitle = $editRecord
         ? 'Edit Civil Record'
         : 'Add ' . civilRecordTypeLabel($modalRecord['record_type'] ?? ($type !== 'all' ? $type : 'birth')) . ' Record';
     $submitAction = $editRecord ? 'update' : 'create';
     $defaultRecordType = $modalRecord['record_type'] ?? ($type !== 'all' ? $type : 'birth');
     ?>
-    <div class="fixed inset-0 bg-black/40 z-50 hidden items-center justify-center p-4" id="entryModal">
-        <div class="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-4xl max-h-[92vh] overflow-hidden flex flex-col">
-            <div class="flex justify-between items-center px-4 sm:px-6 py-4 border-b border-gray-100 shrink-0">
+    <div class="records-entry-modal hidden" id="entryModal">
+        <div class="records-entry-dialog">
+            <div class="records-entry-header">
                 <h2 class="text-lg font-black text-slate-900" id="entryModalTitle"><?= htmlspecialchars($modalTitle) ?></h2>
                 <button type="button" class="text-gray-400 hover:text-gray-600 close-modal"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
-            <form method="POST" class="flex flex-col flex-1 min-h-0" id="entryForm">
+            <form method="POST" class="records-entry-form" id="entryForm">
                 <?= authFormField() ?>
                 <input type="hidden" name="action" id="entryAction" value="<?= $submitAction ?>">
                 <?php if ($editRecord): ?><input type="hidden" name="record_id" value="<?= (int) $editRecord['id'] ?>"><?php endif; ?>
@@ -1353,8 +1373,8 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                 </div>
                 <?php endif; ?>
 
-                <fieldset class="records-entry-fieldset min-h-0 flex flex-col flex-1 border-0 p-0 m-0" <?= $entryFormReadOnly ? 'disabled' : '' ?>>
-                <div class="px-4 sm:px-6 py-4 overflow-y-auto flex-1 space-y-5">
+                <div class="records-entry-scroll space-y-5">
+                <fieldset class="records-entry-fieldset" <?= $entryFormReadOnly ? 'disabled' : '' ?>>
                     <div>
                         <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Record Type</label>
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3" id="recordTypeTabs">
@@ -1368,7 +1388,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                         </div>
                     </div>
 
-                    <div id="birthFieldsPanel" class="entry-detail-panel space-y-5 <?= $entryUseCompletePrintForm ? 'hidden' : ($defaultRecordType === 'birth' ? '' : 'hidden') ?>">
+                    <div id="birthFieldsPanel" class="entry-detail-panel space-y-5 <?= $defaultRecordType === 'birth' ? '' : 'hidden' ?>">
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">First Name *</label>
@@ -1383,11 +1403,21 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                 <input type="text" name="last_name" id="birthLastName" value="<?= htmlspecialchars($modalRecord['last_name'] ?? '') ?>" placeholder="Cruz" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
                         </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Registry Number</label>
                                 <input type="text" name="registry_number" value="<?= htmlspecialchars($modalRecord['registry_number'] ?? '') ?>" placeholder="e.g. 2024-0001" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Book Number</label>
+                                <input type="text" name="book_number" value="<?= htmlspecialchars($modalRecord['book_number'] ?? '') ?>" placeholder="e.g. 12" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Page Number</label>
+                                <input type="text" name="page_number" value="<?= htmlspecialchars($modalRecord['page_number'] ?? '') ?>" placeholder="e.g. 45" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Date of Birth</label>
                                 <input type="date" name="birth_date" value="<?= htmlspecialchars($modalRecord['birth_date'] ?? '') ?>" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
@@ -1407,7 +1437,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Place of Birth</label>
-                            <input type="text" name="place" value="<?= htmlspecialchars($modalRecord['place'] ?? '') ?>" placeholder="Name of Hospital / Institution; Street / Barangay" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            <input type="text" name="place" value="<?= htmlspecialchars($modalRecord['place'] ?? '') ?>" placeholder="Philippines, Province, City/Municipality, Barangay" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
@@ -1465,7 +1495,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                     </div>
                                     <div>
                                         <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Residence</label>
-                                        <input type="text" name="mother_residence" value="<?= htmlspecialchars($modalRecord['mother_residence'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                        <input type="text" name="mother_residence" value="<?= htmlspecialchars($modalRecord['mother_residence'] ?? '') ?>" placeholder="Philippines, Province, City/Municipality, Barangay" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>">
                                     </div>
                                 </div>
                                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1513,7 +1543,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                     </div>
                                     <div>
                                         <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Residence</label>
-                                        <input type="text" name="father_residence" value="<?= htmlspecialchars($modalRecord['father_residence'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                        <input type="text" name="father_residence" value="<?= htmlspecialchars($modalRecord['father_residence'] ?? '') ?>" placeholder="Philippines, Province, City/Municipality, Barangay" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>">
                                     </div>
                                 </div>
                             </div>
@@ -1538,7 +1568,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                         </div>
                     </div>
 
-                    <div id="deathFieldsPanel" class="entry-detail-panel space-y-5 <?= $entryUseCompletePrintForm ? 'hidden' : ($defaultRecordType === 'death' ? '' : 'hidden') ?>">
+                    <div id="deathFieldsPanel" class="entry-detail-panel space-y-5 <?= $defaultRecordType === 'death' ? '' : 'hidden' ?>">
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">First Name *</label>
@@ -1553,11 +1583,21 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                 <input type="text" name="last_name" id="deathLastName" value="<?= htmlspecialchars($modalRecord['last_name'] ?? '') ?>" placeholder="Santos" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
                         </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Registry Number</label>
                                 <input type="text" name="registry_number" value="<?= htmlspecialchars($modalRecord['registry_number'] ?? '') ?>" placeholder="e.g. 2024-0001" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Book Number</label>
+                                <input type="text" name="book_number" value="<?= htmlspecialchars($modalRecord['book_number'] ?? '') ?>" placeholder="e.g. 12" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Page Number</label>
+                                <input type="text" name="page_number" value="<?= htmlspecialchars($modalRecord['page_number'] ?? '') ?>" placeholder="e.g. 45" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Date of Birth</label>
                                 <input type="date" name="birth_date" value="<?= htmlspecialchars($modalRecord['birth_date'] ?? '') ?>" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
@@ -1577,7 +1617,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Residence of Deceased</label>
-                            <input type="text" name="residence_deceased" value="<?= htmlspecialchars($modalRecord['residence_deceased'] ?? '') ?>" placeholder="Complete Address" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            <input type="text" name="residence_deceased" value="<?= htmlspecialchars($modalRecord['residence_deceased'] ?? '') ?>" placeholder="Philippines, Province, City/Municipality, Barangay" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>">
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
@@ -1750,15 +1790,19 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                         </div>
                     </div>
 
-                    <div id="marriageFieldsPanel" class="entry-detail-panel space-y-5 <?= $entryUseCompletePrintForm ? 'hidden' : ($defaultRecordType === 'marriage' ? '' : 'hidden') ?>">
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div id="marriageFieldsPanel" class="entry-detail-panel space-y-5 <?= $defaultRecordType === 'marriage' ? '' : 'hidden' ?>">
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Registry Number</label>
                                 <input type="text" name="registry_number" value="<?= htmlspecialchars($modalRecord['registry_number'] ?? '') ?>" placeholder="e.g. 2024-0001" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
                             <div>
-                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Date of Birth</label>
-                                <input type="date" name="birth_date" value="<?= htmlspecialchars($modalRecord['birth_date'] ?? '') ?>" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Book Number</label>
+                                <input type="text" name="book_number" value="<?= htmlspecialchars($modalRecord['book_number'] ?? '') ?>" placeholder="e.g. 12" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Page Number</label>
+                                <input type="text" name="page_number" value="<?= htmlspecialchars($modalRecord['page_number'] ?? '') ?>" placeholder="e.g. 45" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
                         </div>
 
@@ -1791,7 +1835,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                 </div>
                                 <div class="sm:col-span-2">
                                     <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Place of Birth</label>
-                                    <input type="text" name="<?= $prefix ?>_birth_place" value="<?= htmlspecialchars($modalRecord[$prefix . '_birth_place'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                    <input type="text" name="<?= $prefix ?>_birth_place" value="<?= htmlspecialchars($modalRecord[$prefix . '_birth_place'] ?? '') ?>" placeholder="Philippines, Province, City/Municipality, Barangay" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>">
                                 </div>
                                 <div>
                                     <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Citizenship</label>
@@ -1807,7 +1851,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                 </div>
                                 <div>
                                     <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Residence</label>
-                                    <input type="text" name="<?= $prefix ?>_residence" value="<?= htmlspecialchars($modalRecord[$prefix . '_residence'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                    <input type="text" name="<?= $prefix ?>_residence" value="<?= htmlspecialchars($modalRecord[$prefix . '_residence'] ?? '') ?>" placeholder="Philippines, Province, City/Municipality, Barangay" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>">
                                 </div>
                                 <div class="sm:col-span-2">
                                     <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Father's Full Name</label>
@@ -1876,12 +1920,12 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                     </div>
 
                     <?php foreach ($validTypes as $fillType): ?>
-                        <?php renderRecordEntryPrintFillSection($fillType, $modalRecord, $defaultRecordType === $fillType, $entryUseCompletePrintForm); ?>
+                        <?php renderRecordEntryPrintFillSection($fillType, $modalRecord, $defaultRecordType === $fillType); ?>
                     <?php endforeach; ?>
-                </div>
                 </fieldset>
+                </div>
 
-                <div class="px-4 sm:px-6 py-4 border-t border-gray-100 flex flex-col-reverse sm:flex-row gap-3 shrink-0 bg-white">
+                <div class="records-entry-footer">
                     <button type="button" class="border border-gray-200 rounded-xl py-3 px-4 text-sm font-bold text-gray-600 hover:bg-gray-50 close-modal sm:flex-1"><?= $entryFormReadOnly ? 'Close' : 'Cancel' ?></button>
                     <?php if (!$entryFormReadOnly): ?>
                     <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 text-sm font-bold inline-flex items-center justify-center gap-2">
@@ -1911,7 +1955,10 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
             <div id="viewContent" class="records-view-modal__body"></div>
             <div class="records-view-modal__actions">
                 <a href="#" id="viewEditLink" class="records-view-action records-view-action--primary">Edit Record</a>
-                <a href="#" id="viewPrintLink" class="records-view-action records-view-action--print">Print Certificate</a>
+                <div class="records-view-print-group">
+                    <a href="#" id="viewPrintCertificateLink" class="records-view-action records-view-action--print">Print Certificate</a>
+                    <a href="#" id="viewPrintCertificationLink" class="records-view-action records-view-action--print-secondary">Print Certification</a>
+                </div>
                 <button type="button" class="records-view-action close-modal">Close</button>
             </div>
         </div>
@@ -1952,6 +1999,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
         ],
         'recordsAuthUrl' => buildAuthUrl('records.php'),
         'printCertificateUrl' => buildAuthUrl('print_certificate.php'),
+        'printCertificationUrl' => buildAuthUrl('print_certificate.php', ['kind' => 'certification']),
         'recordViewSections' => [
             'birth' => civilRecordViewSections('birth'),
             'death' => civilRecordViewSections('death'),
@@ -1964,13 +2012,14 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
         ],
         'openEntryModal' => (bool) ($showModal || $editRecord),
         'defaultEntryType' => $defaultRecordType,
-        'entryUseCompletePrintForm' => $entryUseCompletePrintForm,
         'editRecordId' => $editRecord ? (int) $editRecord['id'] : null,
         'editLockHeld' => $editLockHeld,
         'editLockBlocked' => $editLockBlocked,
         'recordsLockApiUrl' => buildAuthUrl('api/records.php'),
+        'locationsApiUrl' => buildAuthUrl('api/locations.php'),
     ], 'records-config') ?>
     <?= scriptTag('core/page-config.js') ?>
+    <?= scriptTag('core/cascading-location.js') ?>
     <?= scriptTag('admin/records.js') ?>
     <?= lucideInitScript() ?>
 </body>

@@ -143,10 +143,10 @@ function handleDeleteField(PDO $pdo): void
     }
 
     if (!deletePrintField($pdo, $fieldId)) {
-        apiError('Only custom textboxes can be deleted.');
+        apiError('Could not delete textbox.');
     }
 
-    logActivity(staffId(), 'Print Field Deleted', 'Deleted custom textbox ' . $field['field_name']);
+    logActivity(staffId(), 'Print Field Deleted', 'Deleted print field ' . $field['field_name']);
     bumpPrintCalibrationRevision();
     apiJsonResponse(['field_id' => $fieldId]);
 }

@@ -3332,30 +3332,6 @@ function appointmentSearchClause(string $search, string $alias = 'a'): array
     ];
 }
 
-function findAppointmentDateForSearch(PDO $pdo, string $q): ?string
-{
-    $q = trim($q);
-    if ($q === '') {
-        return null;
-    }
-
-    $term = '%' . $q . '%';
-    $stmt = $pdo->prepare(
-        'SELECT appointment_date
-         FROM appointments a
-         WHERE ' . appointmentStandaloneSql('a') . '
-           AND (a.appointment_code LIKE ? OR a.tracking_code LIKE ?
-            OR a.first_name LIKE ? OR a.middle_name LIKE ? OR a.last_name LIKE ?
-            OR a.phone LIKE ? OR a.email LIKE ?)
-         ORDER BY a.appointment_date DESC
-         LIMIT 1'
-    );
-    $stmt->execute([$term, $term, $term, $term, $term, $term, $term]);
-    $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    return !empty($row['appointment_date']) ? (string) $row['appointment_date'] : null;
-}
-
 function requestStatusLabel(string $status): string
 {
     return match (normalizeRequestStatus($status)) {

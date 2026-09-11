@@ -1909,7 +1909,7 @@ function renderPrintOverlayHtml(array $printData, array $options = []): string
 
         $editable = !empty($options['editable']) && !$testMode;
 
-        if (!$testMode && trim($text) === '' && !$editable) {
+        if (!$testMode && !$calibrationPreview && trim($text) === '' && !$editable) {
             continue;
         }
 
@@ -1945,7 +1945,8 @@ function renderPrintOverlayHtml(array $printData, array $options = []): string
         $alignItems = $multiline ? 'flex-start' : 'center';
         $fieldPadding = $isCertification ? 'padding:0 0.2rem;' : '';
 
-        $html .= '<div class="print-field' . $editableClass . '"'
+        $certClass = $isCertification ? ' print-field--certification' : '';
+        $html .= '<div class="print-field' . $certClass . $editableClass . '"'
             . ' data-field="' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '"'
             . ' data-field-id="' . (int) ($field['id'] ?? 0) . '" style="'
             . 'position:absolute;left:' . $x . 'mm;top:' . $y . 'mm;width:' . $pos['width'] . 'mm;height:' . $pos['height'] . 'mm;'
@@ -2210,7 +2211,7 @@ function getPrintFieldById(PDO $pdo, int $fieldId): ?array
 function deletePrintField(PDO $pdo, int $fieldId): bool
 {
     $field = getPrintFieldById($pdo, $fieldId);
-    if (!$field || !printIsCustomField((string) $field['field_name'])) {
+    if (!$field) {
         return false;
     }
 

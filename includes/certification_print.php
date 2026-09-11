@@ -18,18 +18,25 @@ function certificationFormNumber(string $certificateType): string
     };
 }
 
+/** @return array<string, string> */
+function certificationSharedFooterCatalog(): array
+{
+    return [
+        'purpose'        => 'Issued To (Requester)',
+        'remarks'        => 'Remarks',
+        'amount_paid'    => 'Amount Paid',
+        'or_number'      => 'O.R. Number',
+        'registrar_name' => 'Municipal Civil Registrar',
+        'verified_by'    => 'Verified By',
+    ];
+}
+
 /** @return array<string, array<string, string>> */
 function certificationFieldCatalog(): array
 {
-    $footer = [
-        'purpose'             => 'Issued To (Requester)',
-        'remarks'             => 'Remarks',
-        'amount_paid'         => 'Amount Paid',
-        'or_number'           => 'O.R. Number',
-        'certification_date'  => 'Date Issued',
-        'registrar_name'      => 'Municipal Civil Registrar',
-        'verified_by'         => 'Verified By',
-    ];
+    $sharedFooter = certificationSharedFooterCatalog();
+    $birthFooter = $sharedFooter + ['certification_date' => 'Date Issued'];
+    $deathMarriageFooter = $sharedFooter + ['date_printed' => 'Date Paid'];
 
     return [
         'birth' => [
@@ -47,7 +54,7 @@ function certificationFieldCatalog(): array
             'father_citizenship'       => 'Citizenship of Father',
             'parents_marriage_date'    => 'Date of Marriage of Parents',
             'parents_marriage_place'   => 'Place of Marriage of Parents',
-        ] + $footer,
+        ] + $birthFooter,
         'death' => [
             'page_number'              => 'Page Number (intro)',
             'book_number'              => 'Book Number (intro)',
@@ -61,7 +68,7 @@ function certificationFieldCatalog(): array
             'death_date'               => 'Date of Death',
             'death_place'              => 'Place of Death',
             'cause_of_death'           => 'Cause of Death',
-        ] + $footer,
+        ] + $deathMarriageFooter,
         'marriage' => [
             'page_number'              => 'Page Number (intro)',
             'book_number'              => 'Book Number (intro)',
@@ -81,39 +88,14 @@ function certificationFieldCatalog(): array
             'registration_date'        => 'Date of Registration',
             'marriage_date'            => 'Date of Marriage',
             'marriage_place'           => 'Place of Marriage',
-        ] + $footer,
+        ] + $deathMarriageFooter,
     ];
 }
 
 function certificationLegacyPaperHeightMm(): float
 {
-    // Original PDF page box height (731 × 1000 pt) before PNG aspect alignment.
-    return round(1000 * 25.4 / 72, 2);
-}
-
-/** @return array{width_px:int,height_px:int}|null */
-function certificationFormImageMetrics(?string $certificateType = null): ?array
-{
-    $type = $certificateType ?? 'birth';
-    if (!in_array($type, printCertificateTypes(), true)) {
-        $type = 'birth';
-    }
-
-    $relative = 'assets/print/forms/certification/' . $type . '.png';
-    $full = dirname(__DIR__) . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative);
-    if (!is_file($full)) {
-        return null;
-    }
-
-    $size = getimagesize($full);
-    if (!$size || (int) $size[0] <= 0 || (int) $size[1] <= 0) {
-        return null;
-    }
-
-    return [
-        'width_px'  => (int) $size[0],
-        'height_px' => (int) $size[1],
-    ];
+    // certification_form.pdf page box height (A4, 595.4 × 841.8 pt) before PNG aspect alignment.
+    return round(841.8 * 25.4 / 72, 2);
 }
 
 function certificationVerticalCoordScale(?string $certificateType = null): float
@@ -125,17 +107,11 @@ function certificationVerticalCoordScale(?string $certificateType = null): float
 
 function certificationPaperSize(?string $certificateType = null): array
 {
-    // Width follows certifications.pdf page box (731 pt). Height follows the PNG scan aspect
-    // so object-fit:fill backgrounds are uniformly scaled and mm coordinates line up.
-    $widthMm = round(731 * 25.4 / 72, 2);
-    $metrics = certificationFormImageMetrics($certificateType);
-    $heightMm = $metrics
-        ? round($widthMm * ($metrics['height_px'] / $metrics['width_px']), 2)
-        : certificationLegacyPaperHeightMm();
+    $a4 = printPaperPresets()['a4'];
 
     return [
-        'paper_width_mm'  => $widthMm,
-        'paper_height_mm' => $heightMm,
+        'paper_width_mm'  => (float) $a4['width_mm'],
+        'paper_height_mm' => (float) $a4['height_mm'],
         'orientation'     => 'portrait',
         'margin_top_mm'   => 0.00,
         'margin_left_mm'  => 0.00,
@@ -214,6 +190,261 @@ function ensureCertificationPaperAspect(PDO $pdo): void
     setSetting('certification_paper_aspect_v1', '1');
 }
 
+function ensureCertificationPaperA4(PDO $pdo): void
+{
+    if (getSetting('certification_paper_a4_v1', '') === '1') {
+        return;
+    }
+
+    $target = certificationPaperSize();
+    $targetW = (float) $target['paper_width_mm'];
+    $targetH = (float) $target['paper_height_mm'];
+
+    foreach (printCertificateTypes() as $type) {
+        $template = getPrintTemplate($pdo, $type, 'front', 'certification');
+        if (!$template) {
+            continue;
+        }
+
+        $templateId = (int) $template['id'];
+        $oldW = (float) $template['paper_width_mm'];
+        $oldH = (float) $template['paper_height_mm'];
+
+        if (abs($oldW - $targetW) < 0.01 && abs($oldH - $targetH) < 0.01) {
+            continue;
+        }
+
+        $scaleX = $oldW > 0 ? $targetW / $oldW : 1.0;
+        $scaleY = $oldH > 0 ? $targetH / $oldH : 1.0;
+
+        $pdo->prepare(
+            'UPDATE print_templates SET paper_width_mm = ?, paper_height_mm = ?, updated_at = NOW() WHERE id = ?'
+        )->execute([$targetW, $targetH, $templateId]);
+
+        if (abs($scaleX - 1.0) > 0.0001 || abs($scaleY - 1.0) > 0.0001) {
+            $pdo->prepare(
+                'UPDATE print_fields
+                 SET x_mm = ROUND(x_mm * ?, 2), y_mm = ROUND(y_mm * ?, 2),
+                     width_mm = ROUND(width_mm * ?, 2), height_mm = ROUND(height_mm * ?, 2),
+                     updated_at = NOW()
+                 WHERE template_id = ?'
+            )->execute([$scaleX, $scaleY, $scaleX, $scaleY, $templateId]);
+
+            $pdo->prepare(
+                'UPDATE print_calibrations
+                 SET x_offset_mm = ROUND(x_offset_mm * ?, 2), y_offset_mm = ROUND(y_offset_mm * ?, 2),
+                     updated_at = NOW()
+                 WHERE template_id = ?'
+            )->execute([$scaleX, $scaleY, $templateId]);
+        }
+    }
+
+    setSetting('certification_paper_a4_v1', '1');
+}
+
+/** @return array<string, array<string, mixed>> */
+function certificationIntroFieldReference(PDO $pdo): array
+{
+    $birthTemplate = getPrintTemplate($pdo, 'birth', 'front', 'certification');
+    if (!$birthTemplate) {
+        return [];
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT field_name, x_mm, y_mm, width_mm, height_mm
+         FROM print_fields
+         WHERE template_id = ? AND field_name IN (?, ?)'
+    );
+    $stmt->execute([(int) $birthTemplate['id'], 'page_number', 'book_number']);
+    $reference = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $reference[(string) $row['field_name']] = $row;
+    }
+
+    return isset($reference['page_number'], $reference['book_number']) ? $reference : [];
+}
+
+function ensureCertificationIntroFieldAlignment(PDO $pdo): void
+{
+    $version = (int) getSetting('certification_intro_fields_version', '0');
+    if ($version >= 2) {
+        return;
+    }
+
+    $reference = certificationIntroFieldReference($pdo);
+
+    foreach (printCertificateTypes() as $type) {
+        $template = getPrintTemplate($pdo, $type, 'front', 'certification');
+        if (!$template) {
+            continue;
+        }
+
+        $templateId = (int) $template['id'];
+        $paperW = (float) $template['paper_width_mm'];
+        $presets = certificationFieldCoordinatePresets()[$type] ?? [];
+        $pagePreset = $presets['page_number'] ?? null;
+        $bookPreset = $presets['book_number'] ?? null;
+        if (!$pagePreset || !$bookPreset) {
+            continue;
+        }
+
+        $fieldStmt = $pdo->prepare(
+            'SELECT id, field_name, x_mm, y_mm, width_mm, height_mm
+             FROM print_fields
+             WHERE template_id = ? AND field_name IN (?, ?)'
+        );
+        $fieldStmt->execute([$templateId, 'page_number', 'book_number']);
+        $fields = [];
+        foreach ($fieldStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $fields[(string) $row['field_name']] = $row;
+        }
+
+        if (!isset($fields['page_number'], $fields['book_number'])) {
+            continue;
+        }
+
+        $page = $fields['page_number'];
+        $book = $fields['book_number'];
+        $pageRight = (float) $page['x_mm'] + (float) $page['width_mm'];
+        $bookRight = (float) $book['x_mm'] + (float) $book['width_mm'];
+        $useReference = $type !== 'birth' && $reference !== [];
+
+        if ($useReference) {
+            $refPage = $reference['page_number'];
+            $refBook = $reference['book_number'];
+            $sharedY = (float) $refPage['y_mm'];
+
+            $pdo->prepare(
+                'UPDATE print_fields
+                 SET x_mm = ?, y_mm = ?, width_mm = ?, height_mm = ?, updated_at = NOW()
+                 WHERE id = ?'
+            )->execute([
+                (float) $refPage['x_mm'],
+                $sharedY,
+                (float) $refPage['width_mm'],
+                (float) $refPage['height_mm'],
+                (int) $page['id'],
+            ]);
+
+            $pdo->prepare(
+                'UPDATE print_fields
+                 SET x_mm = ?, y_mm = ?, width_mm = ?, height_mm = ?, updated_at = NOW()
+                 WHERE id = ?'
+            )->execute([
+                (float) $refBook['x_mm'],
+                $sharedY,
+                (float) $refBook['width_mm'],
+                (float) $refBook['height_mm'],
+                (int) $book['id'],
+            ]);
+
+            continue;
+        }
+
+        if ($pageRight > $paperW - 5 || (float) $page['x_mm'] > 120) {
+            $pdo->prepare(
+                'UPDATE print_fields
+                 SET x_mm = ?, y_mm = ?, width_mm = ?, height_mm = ?, updated_at = NOW()
+                 WHERE id = ?'
+            )->execute([
+                (float) $pagePreset['x_mm'],
+                (float) $pagePreset['y_mm'],
+                (float) $pagePreset['width_mm'],
+                (float) $pagePreset['height_mm'],
+                (int) $page['id'],
+            ]);
+            $page['y_mm'] = $pagePreset['y_mm'];
+        }
+
+        if ($bookRight > $paperW - 5 || (float) $book['x_mm'] > 120) {
+            $pdo->prepare(
+                'UPDATE print_fields
+                 SET x_mm = ?, y_mm = ?, width_mm = ?, height_mm = ?, updated_at = NOW()
+                 WHERE id = ?'
+            )->execute([
+                (float) $bookPreset['x_mm'],
+                (float) $page['y_mm'],
+                (float) $bookPreset['width_mm'],
+                (float) $bookPreset['height_mm'],
+                (int) $book['id'],
+            ]);
+        }
+    }
+
+    setSetting('certification_intro_fields_version', '2');
+    bumpPrintCalibrationRevision();
+}
+
+function ensureCertificationDatePrintedFields(PDO $pdo): void
+{
+    $version = (int) getSetting('certification_date_printed_version', '0');
+    if ($version >= 1) {
+        return;
+    }
+
+    $insert = $pdo->prepare(
+        'INSERT INTO print_fields
+         (template_id, field_name, label, x_mm, y_mm, width_mm, height_mm,
+          font_family, font_size, font_weight, alignment, max_length, line_height, enabled)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+
+    foreach (['death', 'marriage'] as $type) {
+        $template = getPrintTemplate($pdo, $type, 'front', 'certification');
+        if (!$template) {
+            continue;
+        }
+
+        $templateId = (int) $template['id'];
+        $fieldStmt = $pdo->prepare(
+            'SELECT id, field_name, label, x_mm, y_mm, width_mm, height_mm,
+                    font_family, font_size, font_weight, alignment, max_length, line_height, enabled
+             FROM print_fields
+             WHERE template_id = ? AND field_name IN (?, ?)'
+        );
+        $fieldStmt->execute([$templateId, 'certification_date', 'date_printed']);
+        $fields = [];
+        foreach ($fieldStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $fields[(string) $row['field_name']] = $row;
+        }
+
+        if (!isset($fields['date_printed'])) {
+            $source = $fields['certification_date'] ?? null;
+            $preset = certificationFieldCoordinatePresets()[$type]['date_printed'] ?? null;
+
+            $insert->execute([
+                $templateId,
+                'date_printed',
+                'Date Paid',
+                (float) ($source['x_mm'] ?? $preset['x_mm'] ?? 42.0),
+                (float) ($source['y_mm'] ?? $preset['y_mm'] ?? 316.0),
+                (float) ($source['width_mm'] ?? $preset['width_mm'] ?? 55.0),
+                (float) ($source['height_mm'] ?? $preset['height_mm'] ?? 4.8),
+                $source['font_family'] ?? 'Arial',
+                (float) ($source['font_size'] ?? 10.0),
+                $source['font_weight'] ?? 'bold',
+                $source['alignment'] ?? 'left',
+                (int) ($source['max_length'] ?? 120),
+                (float) ($source['line_height'] ?? 1.20),
+                1,
+            ]);
+        } else {
+            $pdo->prepare(
+                'UPDATE print_fields SET label = ?, enabled = 1, updated_at = NOW() WHERE id = ?'
+            )->execute(['Date Paid', (int) $fields['date_printed']['id']]);
+        }
+
+        if (isset($fields['certification_date'])) {
+            $pdo->prepare(
+                'UPDATE print_fields SET enabled = 0, updated_at = NOW() WHERE id = ?'
+            )->execute([(int) $fields['certification_date']['id']]);
+        }
+    }
+
+    setSetting('certification_date_printed_version', '1');
+    bumpPrintCalibrationRevision();
+}
+
 function certificationFormReferenceImage(string $certificateType): string
 {
     return 'assets/print/forms/certification/' . $certificateType . '.png';
@@ -272,17 +503,22 @@ function certificationFieldCoordinatePresets(): array
         'x_mm' => $x, 'y_mm' => $y, 'width_mm' => $w, 'height_mm' => $h,
     ];
 
-    $introPage = $line(168, 52.0, 18, 5);
-    $introBook = $line(218, 52.0, 28, 5);
+    $introPage = $line(51, 38.0, 18, 5);
+    $introBook = $line(89, 38.0, 28, 5);
     $value = static fn (float $y, float $w = 165.0): array => $line(74, $y, $w, 4.8);
     $issuedTo = $line(58, 152.0, 118, 5);
     $remarks = $line(22, 168.0, 210, 28);
-    $footer = [
-        'amount_paid'        => $line(42, 302.0, 55, 4.8),
-        'or_number'          => $line(42, 309.0, 55, 4.8),
+    $sharedFooter = [
+        'amount_paid'    => $line(42, 302.0, 55, 4.8),
+        'or_number'      => $line(42, 309.0, 55, 4.8),
+        'registrar_name' => $line(138, 268.0, 95, 5),
+        'verified_by'    => $line(22, 268.0, 88, 5),
+    ];
+    $birthFooter = $sharedFooter + [
         'certification_date' => $line(42, 316.0, 55, 4.8),
-        'registrar_name'     => $line(138, 268.0, 95, 5),
-        'verified_by'        => $line(22, 268.0, 88, 5),
+    ];
+    $deathMarriageFooter = $sharedFooter + [
+        'date_printed' => $line(42, 316.0, 55, 4.8),
     ];
 
     return [
@@ -303,7 +539,7 @@ function certificationFieldCoordinatePresets(): array
             'parents_marriage_place' => $value(140.0),
             'purpose'                => $issuedTo,
             'remarks'                => $remarks,
-        ] + $footer,
+        ] + $birthFooter,
         'death' => [
             'page_number'       => $introPage,
             'book_number'       => $introBook,
@@ -319,7 +555,7 @@ function certificationFieldCoordinatePresets(): array
             'cause_of_death'    => $value(127.0),
             'purpose'           => $issuedTo,
             'remarks'           => $remarks,
-        ] + $footer,
+        ] + $deathMarriageFooter,
         'marriage' => [
             'page_number'           => $introPage,
             'book_number'           => $introBook,
@@ -341,7 +577,7 @@ function certificationFieldCoordinatePresets(): array
             'marriage_place'        => $value(139.5),
             'purpose'               => $issuedTo,
             'remarks'               => $remarks,
-        ] + $footer,
+        ] + $deathMarriageFooter,
     ];
 }
 
@@ -420,13 +656,16 @@ function reseedCertificationPrintFields(PDO $pdo, int $templateId, string $certi
 function certificationBuildFieldValues(array $record, string $certificateType, array $options = []): array
 {
     $values = [];
-    $today = printDateParts(date('Y-m-d'));
 
     $values['page_number'] = trim((string) ($record['page_number'] ?? ''));
     $values['book_number'] = trim((string) ($record['book_number'] ?? ''));
     $values['registry_number'] = trim((string) ($record['registry_number'] ?? ''));
     $values['registration_date'] = printFormatDateField($record['registration_date'] ?? null);
-    $values['certification_date'] = printFormatDateField(date('Y-m-d'));
+    if ($certificateType === 'birth') {
+        $values['certification_date'] = printFormatDateField(date('Y-m-d'));
+    } elseif (in_array($certificateType, ['death', 'marriage'], true)) {
+        $values['date_printed'] = printFormatDateField(date('Y-m-d'));
+    }
     $values['purpose'] = trim((string) ($options['purpose'] ?? ''));
     $values['remarks'] = trim((string) ($record['notes'] ?? ''));
     $values['amount_paid'] = trim((string) ($options['amount_paid'] ?? getSetting('certification_amount_paid', '')));
@@ -493,6 +732,9 @@ function seedCertificationPrintTemplates(PDO $pdo): void
 {
     ensurePrintDocumentKindColumn($pdo);
     ensureCertificationPaperAspect($pdo);
+    ensureCertificationPaperA4($pdo);
+    ensureCertificationIntroFieldAlignment($pdo);
+    ensureCertificationDatePrintedFields($pdo);
 
     foreach (printCertificateTypes() as $type) {
         $paper = certificationPaperSize($type);
@@ -592,6 +834,11 @@ function printCertification(PDO $pdo, string $certificateType, array $record, ar
     $fields = getPrintFields($pdo, (int) $template['id'], empty($options['include_disabled_fields']));
     $values = certificationBuildFieldValues($record, $certificateType, $options);
     $values = printApplyFillOverrides($values, $options['fill_overrides'] ?? []);
+    if ($certificateType === 'birth') {
+        $values['certification_date'] = printFormatDateField(date('Y-m-d'));
+    } elseif (in_array($certificateType, ['death', 'marriage'], true)) {
+        $values['date_printed'] = printFormatDateField(date('Y-m-d'));
+    }
 
     return [
         'template'             => $template,

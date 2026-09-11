@@ -13,6 +13,7 @@
     var saveInFlight = false;
     var labelSaveTimer = null;
     var labelSaveInFlight = false;
+    var savedTemplateCalibration = null;
 
     function placedStorageKey() {
         return 'alcros-print-cal-placed-' + (cfg.templateId || '0');
@@ -80,6 +81,12 @@
         cfg.fieldHints = cfg.fieldHints || {};
         cfg.templateCalibration = cfg.templateCalibration || { x_offset_mm: 0, y_offset_mm: 0, scale_x: 1, scale_y: 1 };
         cfg.globalCalibration = cfg.globalCalibration || { x_offset_mm: 0, y_offset_mm: 0, scale_x: 1, scale_y: 1 };
+        savedTemplateCalibration = {
+            x_offset_mm: Number(cfg.templateCalibration.x_offset_mm || 0),
+            y_offset_mm: Number(cfg.templateCalibration.y_offset_mm || 0),
+            scale_x: Number(cfg.templateCalibration.scale_x || 1),
+            scale_y: Number(cfg.templateCalibration.scale_y || 1)
+        };
         if (cfg.csrfToken) {
             csrfToken = cfg.csrfToken;
         }
@@ -297,6 +304,29 @@
         };
     }
 
+    function templateCalibrationChanged() {
+        var current = readTemplateFormValues();
+        if (!current || !savedTemplateCalibration) {
+            return false;
+        }
+
+        return ['x_offset_mm', 'y_offset_mm', 'scale_x', 'scale_y'].some(function (key) {
+            return Math.abs(Number(current[key] || 0) - Number(savedTemplateCalibration[key] || 0)) > 0.001;
+        });
+    }
+
+    function rememberSavedTemplateCalibration(values) {
+        if (!values) {
+            return;
+        }
+        savedTemplateCalibration = {
+            x_offset_mm: Number(values.x_offset_mm || 0),
+            y_offset_mm: Number(values.y_offset_mm || 0),
+            scale_x: Number(values.scale_x || 1),
+            scale_y: Number(values.scale_y || 1)
+        };
+    }
+
     function fieldHint(field) {
         var hints = cfg.fieldHints || {};
         var hint = hints[field.field_name];
@@ -337,6 +367,8 @@
         marker.style.textAlign = alignment;
         marker.style.justifyContent = markerJustifyContent(alignment);
         marker.style.fontFamily = field.font_family;
+        var multiline = Number(field.height_mm) >= 12 && field.field_name === 'remarks';
+        marker.style.alignItems = multiline ? 'flex-start' : 'center';
         marker.classList.toggle('is-disabled', !field.enabled);
         marker.classList.toggle('is-sample-mode', showSampleText);
 
@@ -502,7 +534,7 @@
         var resetForm = document.getElementById('calResetFieldForm');
         var labelWrap = document.getElementById('calFieldLabelWrap');
         var labelInput = document.getElementById('calFieldLabel');
-        if (deleteBtn) deleteBtn.hidden = !isCustom;
+        if (deleteBtn) deleteBtn.hidden = false;
         if (resetForm) resetForm.hidden = isCustom;
         if (labelWrap) labelWrap.hidden = false;
         if (labelInput) {
@@ -545,13 +577,13 @@
 
     function deleteCustomField() {
         if (!activeFieldId) {
-            showToast('error', 'Select a custom textbox to delete.');
+            showToast('error', 'Select a textbox to delete.');
             return Promise.resolve();
         }
 
         var field = findFieldConfig(activeFieldId);
-        if (!field || !isCustomField(field)) {
-            showToast('error', 'Only custom textboxes can be deleted.');
+        if (!field) {
+            showToast('error', 'Select a textbox to delete.');
             return Promise.resolve();
         }
 
@@ -587,7 +619,7 @@
                     updateAllMarkerVisibility();
                 }
 
-                showToast('success', 'Custom textbox deleted.');
+                showToast('success', 'Textbox deleted.');
             }).catch(function () {
                 if (deleteBtn) deleteBtn.disabled = false;
                 showToast('error', 'Could not delete textbox. Check your connection.');
@@ -701,8 +733,9 @@
         btn.textContent = count > 0
             ? ('Save all changes (' + count + ')')
             : btn.dataset.defaultLabel;
-        btn.disabled = count === 0 || saveInFlight;
-        btn.classList.toggle('is-dirty', count > 0);
+        var pendingTemplateCal = templateCalibrationChanged();
+        btn.disabled = (count === 0 && !pendingTemplateCal) || saveInFlight;
+        btn.classList.toggle('is-dirty', count > 0 || pendingTemplateCal);
     }
 
     function setSaveStatus(state, detail) {
@@ -731,7 +764,73 @@
         updateSaveAllButton();
     }
 
+    function saveTemplateCalibrationNow() {
+        var templateForm = document.getElementById('calTemplateForm');
+        if (!templateForm) {
+            return Promise.resolve(null);
+        }
+
+        var data = {};
+        new FormData(templateForm).forEach(function (value, key) {
+            data[key] = value;
+        });
+
+        return postForm('save_calibration', data).then(function (res) {
+            if (!res || res.ok === false) {
+                throw new Error((res && res.error) || 'Could not save form shift.');
+            }
+            cfg.templateCalibration = readTemplateFormValues();
+            rememberSavedTemplateCalibration(cfg.templateCalibration);
+            markCalibrationRefreshPending();
+            return res;
+        });
+    }
+
     function saveAllChangesNow() {
+        if (saveInFlight) {
+            return Promise.resolve();
+        }
+
+        var needFields = dirtyFieldIds.size > 0;
+        var needTemplateCal = templateCalibrationChanged();
+
+        if (!needFields && !needTemplateCal) {
+            setSaveStatus('saved');
+            showToast('error', 'No changes to save.');
+            return Promise.resolve();
+        }
+
+        if (needTemplateCal && !needFields) {
+            saveInFlight = true;
+            updateSaveAllButton();
+            return saveTemplateCalibrationNow()
+                .then(function () {
+                    saveInFlight = false;
+                    updateSaveAllButton();
+                    setSaveStatus('saved');
+                    showToast('success', 'Form shift saved.');
+                })
+                .catch(function (err) {
+                    saveInFlight = false;
+                    updateSaveAllButton();
+                    setSaveStatus('error', err.message || 'Could not save form shift.');
+                    showToast('error', err.message || 'Could not save form shift.');
+                });
+        }
+
+        if (needTemplateCal) {
+            return saveTemplateCalibrationNow()
+                .then(function () {
+                    return saveAllChangedFields({ manual: true, toast: true, message: 'Saved calibration changes.' });
+                })
+                .catch(function (err) {
+                    saveInFlight = false;
+                    updateSaveAllButton();
+                    setSaveStatus('error', err.message || 'Could not save form shift.');
+                    showToast('error', err.message || 'Could not save form shift.');
+                });
+        }
+
         return saveAllChangedFields({ manual: true, toast: true });
     }
 
@@ -1229,6 +1328,10 @@
             templateForm.querySelectorAll('input').forEach(function (el) {
                 el.addEventListener('input', function () {
                     applyTemplatePreview(readTemplateFormValues());
+                    updateSaveAllButton();
+                    if (templateCalibrationChanged()) {
+                        setSaveStatus('pending');
+                    }
                 });
             });
         }
@@ -1678,7 +1781,7 @@
         }
 
         window.addEventListener('beforeunload', function (e) {
-            if (dirtyFieldIds.size > 0) {
+            if (dirtyFieldIds.size > 0 || templateCalibrationChanged()) {
                 e.preventDefault();
                 e.returnValue = '';
             }
@@ -1696,6 +1799,8 @@
                         return;
                     }
                     cfg.templateCalibration = readTemplateFormValues();
+                    rememberSavedTemplateCalibration(cfg.templateCalibration);
+                    updateSaveAllButton();
                     markCalibrationRefreshPending();
                     showToast('success', 'Form shift saved.');
                 }).catch(function () {

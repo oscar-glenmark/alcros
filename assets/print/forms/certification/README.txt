@@ -1,9 +1,9 @@
 LCRO Certification form backgrounds (Forms 1A / 2A / 3A)
 
-Source PDF: certifications.pdf
-  Page 1 → death.png   (Form 2A)
-  Page 2 → marriage.png (Form 3A)
-  Page 3 → birth.png    (Form 1A)
+Source PDF: CivilRegistryForm.pdf
+  Page 1 → birth.png    (Form 1A)
+  Page 2 → death.png     (Form 2A)
+  Page 3 → marriage.png  (Form 3A)
 
 To re-import from PDF, run from repo root:
 

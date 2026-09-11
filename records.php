@@ -1308,7 +1308,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                             <i data-lucide="chevron-down" class="w-3 h-3 records-print-trigger__chevron"></i>
                                         </button>
                                         <div class="records-print-dropdown hidden" role="menu">
-                                            <a href="<?= htmlspecialchars(buildAuthUrl('print_certificate.php', ['record_id' => (int) $r['id']])) ?>" role="menuitem">Certificate</a>
+                                            <a href="<?= htmlspecialchars(buildAuthUrl('print_certificate.php', ['record_id' => (int) $r['id']])) ?>" role="menuitem">Local Certificate</a>
                                             <a href="<?= htmlspecialchars(buildAuthUrl('print_certificate.php', ['record_id' => (int) $r['id'], 'kind' => 'certification'])) ?>" role="menuitem">Certification</a>
                                         </div>
                                     </div>

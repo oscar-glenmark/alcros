@@ -74,6 +74,10 @@ $printOptions = [
     'test_mode'                         => $testMode,
     'mode'                              => $mode,
 ];
+if ($calibrationPreview) {
+    $printOptions['include_disabled_fields'] = true;
+    $printOptions['keep_empty'] = true;
+}
 
 $printData = printCertificate($pdo, $certificateType, $pageSide, $record, $printOptions);
 if (!$printData) {

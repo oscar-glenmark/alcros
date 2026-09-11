@@ -371,7 +371,7 @@ if (!$formDefaults && !empty($fields[0])) {
                         <input type="hidden" name="field_id" value="<?= (int) $formDefaults['id'] ?>">
                         <button type="button" class="print-cal-reset" id="calResetFieldBtn">Reset this field to default</button>
                     </form>
-                    <button type="button" class="print-cal-delete" id="calDeleteFieldBtn" hidden>Delete custom textbox</button>
+                    <button type="button" class="print-cal-delete" id="calDeleteFieldBtn" hidden>Delete textbox</button>
                     </div>
                     <?php endif; ?>
                 </div>
@@ -487,7 +487,7 @@ if (!$formDefaults && !empty($fields[0])) {
                     <button type="button" class="print-cal-tool-btn" id="calZoomIn" aria-label="Zoom in">+</button>
                     <span id="calZoomLabel">100%</span>
                 </div>
-                <a href="<?= htmlspecialchars($previewPrintUrl) ?>" id="calPreviewPrintLink" target="_blank" rel="noopener" class="print-cal-tool-link">Test print preview ↗</a>
+                <button type="button" id="calPreviewPrintLink" class="print-cal-tool-link">Test print preview ↗</button>
             </div>
             <div class="print-cal-canvas-wrap" id="calCanvasWrap">
                 <div class="print-cal-canvas-scaler" id="calCanvasScaler">

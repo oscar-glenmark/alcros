@@ -850,32 +850,6 @@ function printOfficeLocationFields(): array
     ];
 }
 
-function printCalibrationNavItems(string $activeType, string $activeSide, string $documentKind = 'certificate'): array
-{
-    $documentKind = normalizePrintDocumentKind($documentKind);
-    $items = [];
-    $sides = $documentKind === 'certification' ? ['front'] : ['front', 'back'];
-
-    foreach (printCertificateTypes() as $type) {
-        foreach ($sides as $side) {
-            $params = ['type' => $type, 'page' => $side];
-            if ($documentKind === 'certification') {
-                $params['kind'] = 'certification';
-            }
-            $items[] = [
-                'type'   => $type,
-                'page'   => $side,
-                'label'  => ucfirst($type) . ' · ' . ucfirst($side),
-                'short'  => strtoupper(substr($type, 0, 1)) . ($side === 'front' ? ' F' : ' B'),
-                'url'    => buildAuthUrl('print_calibration.php', $params),
-                'active' => $type === $activeType && $side === $activeSide,
-            ];
-        }
-    }
-
-    return $items;
-}
-
 function printCalibrationSampleRecord(string $certificateType): array
 {
     $base = [

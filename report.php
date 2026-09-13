@@ -83,7 +83,7 @@ $analytics = $section === 'analytics' ? fetchAnalyticsDashboard($pdo) : null;
 
 $pageTitle = 'Reports';
 $pageSubtitle = $section === 'analytics'
-    ? 'Live charts and statistics for requests, appointments, queue, and civil records.'
+    ? 'Live charts for online and walk-in requests, certifications, appointments, queue, and civil records.'
     : 'Export and print summaries for requests, appointments, queue, and civil records.';
 $pageHeaderMeta = $section === 'analytics'
     ? '<p class="admin-header__meta">' . htmlspecialchars($report['office_name']) . ' · Live charts and statistics</p>'
@@ -363,19 +363,19 @@ $rangeOptions = [
 
                     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
                         <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="stat-card bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 block">
-                            <p class="text-[10px] font-bold uppercase text-gray-400">Requests</p>
-                            <p class="text-2xl font-black text-slate-900 mt-1"><?= (int) $analytics['totalRequests'] ?></p>
-                            <p class="text-[11px] text-gray-400 mt-0.5"><?= (int) $analytics['todayRequests'] ?> today · <?= (int) $analytics['weekRequests'] ?> this week</p>
+                            <p class="text-[10px] font-bold uppercase text-gray-400">Requests & walk-ins</p>
+                            <p class="text-2xl font-black text-slate-900 mt-1"><?= (int) $analytics['totalIntake'] ?></p>
+                            <p class="text-[11px] text-gray-400 mt-0.5"><?= (int) $analytics['todayIntake'] ?> today · <?= (int) $analytics['totalRequests'] ?> online · <?= (int) $analytics['walkInTotal'] ?> walk-in</p>
                         </a>
                         <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php')) ?>" class="stat-card bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 block">
                             <p class="text-[10px] font-bold uppercase text-gray-400">Appointments today</p>
                             <p class="text-2xl font-black text-slate-900 mt-1"><?= (int) $analytics['apptToday'] ?></p>
                             <p class="text-[11px] text-gray-400 mt-0.5"><?= (int) $analytics['apptTotal'] ?> all-time</p>
                         </a>
-                        <a href="<?= htmlspecialchars(buildAuthUrl('live-queue.php')) ?>" class="stat-card bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 block">
-                            <p class="text-[10px] font-bold uppercase text-gray-400">Queue waiting</p>
-                            <p class="text-2xl font-black text-slate-900 mt-1"><?= (int) $analytics['queueWaiting'] ?></p>
-                            <p class="text-[11px] text-gray-400 mt-0.5"><?= (int) $analytics['queueServed'] ?> served today</p>
+                        <a href="<?= htmlspecialchars(buildAuthUrl('records.php')) ?>" class="stat-card bg-white rounded-xl border border-gray-100 p-4 hover:border-violet-200 block">
+                            <p class="text-[10px] font-bold uppercase text-gray-400">Certifications</p>
+                            <p class="text-2xl font-black text-slate-900 mt-1"><?= (int) $analytics['certTotal'] ?></p>
+                            <p class="text-[11px] text-gray-400 mt-0.5"><?= (int) $analytics['certToday'] ?> today · <?= (int) $analytics['certWeek'] ?> this week</p>
                         </a>
                         <a href="<?= htmlspecialchars(buildAuthUrl('records.php')) ?>" class="stat-card bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 block">
                             <p class="text-[10px] font-bold uppercase text-gray-400">Civil records</p>
@@ -387,11 +387,11 @@ $rangeOptions = [
                     <div class="analytics-charts">
                         <div class="analytics-chart-card analytics-chart-card--featured">
                             <div class="analytics-chart-head">
-                                <h2>Monthly requests</h2>
-                                <p>Submission trend · last 6 months</p>
+                                <h2>Monthly intake</h2>
+                                <p>Online requests and walk-in queue · last 6 months</p>
                             </div>
                             <?php if ($analytics['maxMonth'] === 0): ?>
-                            <div class="analytics-empty">No data yet.</div>
+                            <div class="analytics-empty">No request or walk-in data yet.</div>
                             <?php else: ?>
                             <div class="chart-box chart-box--tall"><canvas id="chartMonths"></canvas></div>
                             <?php endif; ?>
@@ -401,15 +401,29 @@ $rangeOptions = [
                             <div class="analytics-chart-card">
                                 <div class="analytics-chart-head">
                                     <h2>Request pipeline</h2>
-                                    <p>Current stage breakdown</p>
+                                    <p>Online requests by current stage</p>
                                 </div>
                                 <?php if ($analytics['totalRequests'] === 0): ?>
-                                <div class="analytics-empty">No requests yet.</div>
+                                <div class="analytics-empty">No online requests yet.</div>
                                 <?php else: ?>
                                 <div class="chart-box chart-box--compact"><canvas id="chartPipeline"></canvas></div>
                                 <?php endif; ?>
                             </div>
 
+                            <div class="analytics-chart-card">
+                                <div class="analytics-chart-head">
+                                    <h2>Request channels</h2>
+                                    <p>Online submissions vs walk-in queue tickets</p>
+                                </div>
+                                <?php if ($analytics['totalIntake'] === 0): ?>
+                                <div class="analytics-empty">No intake data yet.</div>
+                                <?php else: ?>
+                                <div class="chart-box chart-box--compact"><canvas id="chartIntakeChannels"></canvas></div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+
+                        <div class="analytics-chart-grid">
                             <div class="analytics-chart-card">
                                 <div class="analytics-chart-head">
                                     <h2>Appointments</h2>
@@ -421,9 +435,33 @@ $rangeOptions = [
                                 <div class="chart-box chart-box--compact"><canvas id="chartAppointments"></canvas></div>
                                 <?php endif; ?>
                             </div>
+
+                            <div class="analytics-chart-card">
+                                <div class="analytics-chart-head">
+                                    <h2>Certifications by type</h2>
+                                    <p>Production certification prints issued</p>
+                                </div>
+                                <?php if ($analytics['certTotal'] === 0): ?>
+                                <div class="analytics-empty">No certifications printed yet.</div>
+                                <?php else: ?>
+                                <div class="chart-box chart-box--compact"><canvas id="chartCertTypes"></canvas></div>
+                                <?php endif; ?>
+                            </div>
                         </div>
 
                         <div class="analytics-chart-grid">
+                            <div class="analytics-chart-card">
+                                <div class="analytics-chart-head">
+                                    <h2>Monthly certifications</h2>
+                                    <p>Production certification prints · last 6 months</p>
+                                </div>
+                                <?php if ($analytics['maxCertMonth'] === 0): ?>
+                                <div class="analytics-empty">No certification prints yet.</div>
+                                <?php else: ?>
+                                <div class="chart-box chart-box--compact"><canvas id="chartCertMonths"></canvas></div>
+                                <?php endif; ?>
+                            </div>
+
                             <div class="analytics-chart-card">
                                 <div class="analytics-chart-head">
                                     <h2>Civil records by type</h2>

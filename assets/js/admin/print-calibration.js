@@ -5,7 +5,7 @@
     var csrfToken = '';
     var activeFieldId = null;
     var dragState = null;
-    var zoomLevel = 1;
+    var zoomLevel = 0.84;
     var showSampleText = false;
     var showAllBoxes = true;
     var placedFieldIds = new Set();

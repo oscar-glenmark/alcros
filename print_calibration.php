@@ -55,7 +55,6 @@ if ($isCertification) {
     $displayPng = is_file($pngFull);
     $displayPngSrc = $displayPng ? ($pngRelative . '?v=' . filemtime($pngFull)) : '';
 }
-$calNavItems = printCalibrationNavItems($certificateType, $pageSide, $documentKind);
 $calQueryParams = static function (array $extra = []) use ($certificateType, $pageSide, $isCertification): array {
     $params = array_merge(['type' => $certificateType, 'page' => $pageSide], $extra);
     if ($isCertification) {
@@ -191,23 +190,14 @@ if (!$formDefaults && !empty($fields[0])) {
                 <?php endif; ?>
             </div>
 
-            <div class="print-cal-progress" aria-label="Calibration pages">
-                <?php foreach ($calNavItems as $item): ?>
-                    <a href="<?= htmlspecialchars($item['url']) ?>"
-                       class="print-cal-progress-item<?= !empty($item['active']) ? ' is-active' : '' ?>"
-                       title="<?= htmlspecialchars($item['label']) ?>">
-                        <?= htmlspecialchars($item['short']) ?>
-                    </a>
-                <?php endforeach; ?>
+            <div class="print-cal-toolbar-meta">
+                <form method="post" class="print-cal-reset-all" data-confirm="Reset all fields on this page to their default positions?">
+                    <?= csrfField() ?>
+                    <input type="hidden" name="action" value="reset_all_fields">
+                    <button type="submit" class="print-cal-reset print-cal-reset--inline">Reset all fields on this page</button>
+                </form>
+                <p class="print-cal-note"><?= htmlspecialchars($meta['title']) ?> · Form <?= htmlspecialchars($meta['form_number']) ?> · <?= $isCertification ? 'LCRO certification form layout' : 'Official LGU bond-paper layout' ?></p>
             </div>
-
-            <p class="print-cal-note"><?= htmlspecialchars($meta['title']) ?> · Form <?= htmlspecialchars($meta['form_number']) ?> · <?= $isCertification ? 'LCRO certification form layout' : 'Official LGU bond-paper layout' ?></p>
-
-            <form method="post" class="print-cal-reset-all" data-confirm="Reset all fields on this page to their default positions?">
-                <?= csrfField() ?>
-                <input type="hidden" name="action" value="reset_all_fields">
-                <button type="submit" class="print-cal-reset print-cal-reset--inline">Reset all fields on this page</button>
-            </form>
         </div>
 
         <div class="print-cal-layout print-cal-layout--wide">
@@ -483,9 +473,9 @@ if (!$formDefaults && !empty($fields[0])) {
                 </label>
                 <div class="print-cal-zoom-controls">
                     <button type="button" class="print-cal-tool-btn" id="calZoomOut" aria-label="Zoom out">−</button>
-                    <input type="range" id="calZoom" min="0.75" max="1.5" step="0.05" value="1" aria-label="Zoom">
+                    <input type="range" id="calZoom" min="0.75" max="1.5" step="0.05" value="0.84" aria-label="Zoom">
                     <button type="button" class="print-cal-tool-btn" id="calZoomIn" aria-label="Zoom in">+</button>
-                    <span id="calZoomLabel">100%</span>
+                    <span id="calZoomLabel">84%</span>
                 </div>
                 <button type="button" id="calPreviewPrintLink" class="print-cal-tool-link">Test print preview ↗</button>
             </div>

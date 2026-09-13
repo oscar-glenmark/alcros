@@ -65,12 +65,12 @@
     }
 
     if (document.getElementById('chartMonths') && data.months) {
-        trackChart(new Chart(document.getElementById('chartMonths'), {
-            type: 'line',
-            data: {
-                labels: data.months.labels,
-                datasets: [{
-                    data: data.months.counts,
+        var monthDatasets = [];
+        if (Array.isArray(data.months.online) && Array.isArray(data.months.walkIn)) {
+            monthDatasets = [
+                {
+                    label: 'Online requests',
+                    data: data.months.online,
                     borderColor: '#2563eb',
                     backgroundColor: 'rgba(37, 99, 235, 0.08)',
                     borderWidth: 2,
@@ -81,13 +81,60 @@
                     pointBackgroundColor: '#2563eb',
                     pointBorderColor: '#ffffff',
                     pointBorderWidth: 2
-                }]
+                },
+                {
+                    label: 'Walk-in queue',
+                    data: data.months.walkIn,
+                    borderColor: '#f97316',
+                    backgroundColor: 'rgba(249, 115, 22, 0.08)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.35,
+                    pointRadius: 3,
+                    pointHoverRadius: 4,
+                    pointBackgroundColor: '#f97316',
+                    pointBorderColor: '#ffffff',
+                    pointBorderWidth: 2
+                }
+            ];
+        } else {
+            monthDatasets = [{
+                data: data.months.counts || [],
+                borderColor: '#2563eb',
+                backgroundColor: 'rgba(37, 99, 235, 0.08)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.35,
+                pointRadius: 3,
+                pointHoverRadius: 4,
+                pointBackgroundColor: '#2563eb',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2
+            }];
+        }
+
+        trackChart(new Chart(document.getElementById('chartMonths'), {
+            type: 'line',
+            data: {
+                labels: data.months.labels,
+                datasets: monthDatasets
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
-                plugins: sharedPlugins,
+                plugins: Object.assign({}, sharedPlugins, {
+                    legend: monthDatasets.length > 1 ? {
+                        position: 'bottom',
+                        labels: {
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            padding: 14,
+                            font: { size: 10 },
+                            color: '#64748b'
+                        }
+                    } : { display: false }
+                }),
                 scales: {
                     y: {
                         beginAtZero: true,
@@ -98,6 +145,39 @@
                         grid: { display: false },
                         ticks: { color: '#94a3b8', font: { size: 10 } }
                     }
+                }
+            }
+        }));
+    }
+
+    if (document.getElementById('chartIntakeChannels') && data.intakeChannels) {
+        trackChart(new Chart(document.getElementById('chartIntakeChannels'), {
+            type: 'doughnut',
+            data: {
+                labels: data.intakeChannels.labels,
+                datasets: [{
+                    data: data.intakeChannels.counts,
+                    backgroundColor: data.intakeChannels.colors,
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '68%',
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            padding: 14,
+                            font: { size: 10 },
+                            color: '#64748b'
+                        }
+                    },
+                    tooltip: sharedPlugins.tooltip
                 }
             }
         }));
@@ -196,6 +276,71 @@
                         }
                     },
                     tooltip: sharedPlugins.tooltip
+                }
+            }
+        }));
+    }
+
+    if (document.getElementById('chartCertTypes') && data.certifications && data.certifications.types) {
+        trackChart(new Chart(document.getElementById('chartCertTypes'), {
+            type: 'doughnut',
+            data: {
+                labels: data.certifications.types.labels,
+                datasets: [{
+                    data: data.certifications.types.counts,
+                    backgroundColor: data.certifications.types.colors,
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '68%',
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            padding: 14,
+                            font: { size: 10 },
+                            color: '#64748b'
+                        }
+                    },
+                    tooltip: sharedPlugins.tooltip
+                }
+            }
+        }));
+    }
+
+    if (document.getElementById('chartCertMonths') && data.certifications && data.certifications.months) {
+        trackChart(new Chart(document.getElementById('chartCertMonths'), {
+            type: 'bar',
+            data: {
+                labels: data.certifications.months.labels,
+                datasets: [{
+                    data: data.certifications.months.counts,
+                    backgroundColor: 'rgba(124, 58, 237, 0.85)',
+                    borderRadius: 6,
+                    barThickness: 22,
+                    maxBarThickness: 28
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: sharedPlugins,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: axisStyle.grid,
+                        ticks: { padding: 6, color: '#94a3b8', font: { size: 10 }, precision: 0, maxTicksLimit: 5 }
+                    },
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#94a3b8', font: { size: 10 } }
+                    }
                 }
             }
         }));

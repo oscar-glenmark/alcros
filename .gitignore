@@ -18,9 +18,10 @@ uploads/staff/*
 *.tmp
 *.temp
 
-# Composer (use global composer; vendor/ is committed for deploy)
+# Composer is not used; Excel export is handled by includes/xlsx_writer.php
 composer.phar
 composer-setup.php
+vendor/
 
 # Runtime rate-limit cache
 storage/rate_limits/*.json

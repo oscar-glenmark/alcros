@@ -16,9 +16,110 @@
     box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
 }
 
-.stat-link:hover {
-    border-color: #93c5fd;
+.dash-stat-card {
+    display: block;
+    padding: 1.25rem;
+    border-radius: 0.75rem;
+    border: 1px solid transparent;
+    text-decoration: none;
+    color: inherit;
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
+
+.dash-stat-card:hover {
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    transform: translateY(-1px);
+}
+
+.dash-stat-card__head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.875rem;
+}
+
+.dash-stat-card__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 9999px;
+    flex-shrink: 0;
+}
+
+.dash-stat-card__label {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.dash-stat-card__value {
+    font-size: 2rem;
+    line-height: 1;
+    font-weight: 800;
+    color: #0f172a;
+    margin: 0;
+}
+
+.dash-stat-card__trend {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.75rem;
+    font-size: 0.6875rem;
+    line-height: 1.2;
+}
+
+.dash-stat-card__trend-value {
+    font-weight: 700;
+}
+
+.dash-stat-card__trend-note {
+    color: #94a3b8;
+    font-weight: 500;
+}
+
+.dash-stat-card--blue {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.dash-stat-card--blue .dash-stat-card__label { color: #1e40af; }
+.dash-stat-card--blue .dash-stat-card__icon { background: #dbeafe; color: #2563eb; }
+.dash-stat-card--blue .dash-stat-card__trend-value--up { color: #059669; }
+.dash-stat-card--blue .dash-stat-card__trend-value--down { color: #dc2626; }
+
+.dash-stat-card--emerald {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+}
+
+.dash-stat-card--emerald .dash-stat-card__label { color: #047857; }
+.dash-stat-card--emerald .dash-stat-card__icon { background: #d1fae5; color: #059669; }
+.dash-stat-card--emerald .dash-stat-card__trend-value--up { color: #059669; }
+.dash-stat-card--emerald .dash-stat-card__trend-value--down { color: #dc2626; }
+
+.dash-stat-card--amber {
+    background: #fffbeb;
+    border-color: #fde68a;
+}
+
+.dash-stat-card--amber .dash-stat-card__label { color: #b45309; }
+.dash-stat-card--amber .dash-stat-card__icon { background: #fef3c7; color: #d97706; }
+.dash-stat-card--amber .dash-stat-card__trend-value--up { color: #d97706; }
+.dash-stat-card--amber .dash-stat-card__trend-value--down { color: #dc2626; }
+
+.dash-stat-card--violet {
+    background: #f5f3ff;
+    border-color: #ddd6fe;
+}
+
+.dash-stat-card--violet .dash-stat-card__label { color: #6d28d9; }
+.dash-stat-card--violet .dash-stat-card__icon { background: #ede9fe; color: #7c3aed; }
+.dash-stat-card--violet .dash-stat-card__trend-value--up { color: #7c3aed; }
+.dash-stat-card--violet .dash-stat-card__trend-value--down { color: #dc2626; }
 
 .dash-schedule-calendar {
     user-select: none;

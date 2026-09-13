@@ -2,6 +2,8 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
+require_once __DIR__ . '/includes/analytics_dashboard.php';
+require_once __DIR__ . '/includes/excel_report_exports.php';
 require_once __DIR__ . '/includes/scripts.php';
 requireStaffLogin();
 requirePageAccess('report.php');
@@ -20,15 +22,23 @@ $validDownloads = ['full', 'summary', 'requests', 'appointments', 'queue', 'acti
 $reportYear = resolveReportYear($_GET['year'] ?? null);
 
 if (isset($_GET['action']) && $_GET['action'] === 'download' && in_array($downloadType, $validDownloads, true)) {
+    $downloadFormat = strtolower((string) ($_GET['format'] ?? 'xlsx'));
+
     if ($downloadType === 'records_quarterly') {
         $recordsReport = buildQuarterlyCivilRecordsReport($pdo, $reportYear);
         logActivity(staffId(), 'Report Downloaded', 'Quarterly civil records report for ' . $reportYear);
+        if ($downloadFormat === 'xlsx') {
+            exportQuarterlyCivilRecordsXlsx($recordsReport);
+        }
         exportQuarterlyCivilRecordsCsv($recordsReport);
         exit;
     }
 
     $exportReport = buildOperationalReport($pdo, $fromDate, $toDate);
     logActivity(staffId(), 'Report Downloaded', 'Operational report (' . $downloadType . ') for ' . $rangeLabel);
+    if ($downloadFormat === 'xlsx') {
+        exportOperationalReportXlsx($exportReport, $downloadType);
+    }
     exportOperationalReportCsv($exportReport, $downloadType);
     exit;
 }
@@ -37,11 +47,12 @@ $report = buildOperationalReport($pdo, $fromDate, $toDate);
 $recordsReport = buildQuarterlyCivilRecordsReport($pdo, $reportYear);
 $summary = $report['summary'];
 
-function reportDownloadUrl(string $type, string $range, string $from, string $to, ?int $year = null): string
+function reportDownloadUrl(string $type, string $range, string $from, string $to, ?int $year = null, string $format = 'xlsx'): string
 {
     return buildAuthUrl('report.php', array_filter([
         'action' => 'download',
         'download' => $type,
+        'format' => $format !== 'xlsx' ? $format : null,
         'range' => $range,
         'from' => $range === 'custom' ? $from : null,
         'to' => $range === 'custom' ? $to : null,
@@ -62,20 +73,26 @@ function reportPageUrl(string $range, string $from, string $to, string $section 
 
 $purposeLabels = ['walk_in' => 'Walk-in', 'appointment' => 'Appointment', 'document_claim' => 'Document claim'];
 
-$validSections = ['overview', 'requests', 'appointments', 'queue', 'activity', 'records'];
+$validSections = ['overview', 'analytics', 'requests', 'appointments', 'queue', 'activity', 'records'];
 $section = $_GET['section'] ?? 'overview';
 if (!in_array($section, $validSections, true)) {
     $section = 'overview';
 }
 
-$pageTitle = 'Operational Reports';
-$pageSubtitle = 'Export and print summaries for requests, appointments, queue, and civil records.';
-$pageHeaderMeta = '<p class="admin-header__meta">' . htmlspecialchars($report['office_name']) . ' · Showing <strong>'
-    . htmlspecialchars($rangeLabel) . '</strong>'
-    . ($section === 'records'
-        ? ' · Civil records use calendar year <strong>' . (int) $reportYear . '</strong>'
-        : '')
-    . '</p>';
+$analytics = $section === 'analytics' ? fetchAnalyticsDashboard($pdo) : null;
+
+$pageTitle = 'Reports';
+$pageSubtitle = $section === 'analytics'
+    ? 'Live charts and statistics for requests, appointments, queue, and civil records.'
+    : 'Export and print summaries for requests, appointments, queue, and civil records.';
+$pageHeaderMeta = $section === 'analytics'
+    ? '<p class="admin-header__meta">' . htmlspecialchars($report['office_name']) . ' · Live charts and statistics</p>'
+    : '<p class="admin-header__meta">' . htmlspecialchars($report['office_name']) . ' · Showing <strong>'
+        . htmlspecialchars($rangeLabel) . '</strong>'
+        . ($section === 'records'
+            ? ' · Civil records use calendar year <strong>' . (int) $reportYear . '</strong>'
+            : '')
+        . '</p>';
 
 $yearOptions = [];
 for ($y = (int) date('Y'); $y >= (int) date('Y') - 4; $y--) {
@@ -102,6 +119,7 @@ $liveSnapshot = [
 
 $reportTabs = [
     'overview'     => ['label' => 'Overview',     'icon' => 'layout-dashboard', 'count' => null],
+    'analytics'    => ['label' => 'Analytics',    'icon' => 'bar-chart-2',      'count' => null, 'print' => false],
     'requests'     => ['label' => 'Requests',     'icon' => 'file-text',        'count' => count($report['requests'])],
     'appointments' => ['label' => 'Appointments', 'icon' => 'calendar',         'count' => count($report['appointments'])],
     'queue'        => ['label' => 'Queue',        'icon' => 'users',            'count' => count($report['queue_tickets'])],
@@ -122,11 +140,14 @@ $rangeOptions = [
     <meta charset="UTF-8">
     <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Operational Reports - ALCROS</title>
+    <title>Reports - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= vendorStylesheetTag('inter/inter.css') ?>
     <?= adminLayoutHeadStyles('report') ?>
     <?= vendorScriptTag('lucide.min.js') ?>
+    <?php if ($section === 'analytics'): ?>
+    <?= vendorScriptTag('chart.umd.min.js') ?>
+    <?php endif; ?>
 </head>
 <body class="flex min-h-screen">
     <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
@@ -134,16 +155,18 @@ $rangeOptions = [
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
 
         <div class="p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto admin-page-wrap space-y-5">
+            <?php if ($section !== 'analytics'): ?>
             <div class="no-print flex flex-wrap gap-2 justify-end mb-2">
                         <div class="relative" id="reportPrintMenu">
                             <button type="button" id="reportPrintBtn" class="inline-flex items-center gap-2 bg-white border border-gray-200 hover:border-gray-300 text-slate-700 px-3.5 py-2 rounded-lg text-xs font-bold">
-                                <i data-lucide="printer" class="w-3.5 h-3.5"></i> Print
+                                <i data-lucide="printer" class="w-3.5 h-3.5"></i> Print Report
                                 <i data-lucide="chevron-down" class="w-3.5 h-3.5 opacity-70"></i>
                             </button>
                             <div id="reportPrintPanel" class="hidden absolute right-0 mt-2 w-64 bg-white border border-gray-100 rounded-xl shadow-lg z-20 p-4 text-xs">
                                 <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3">Sections to print</p>
                                 <div class="space-y-2 mb-3">
                                     <?php foreach ($reportTabs as $tabKey => $tab): ?>
+                                    <?php if (($tab['print'] ?? true) === false) continue; ?>
                                     <label class="flex items-center gap-2.5 cursor-pointer text-slate-700 font-medium">
                                         <input type="checkbox" class="report-print-check rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                                value="<?= htmlspecialchars($tabKey) ?>"
@@ -162,12 +185,12 @@ $rangeOptions = [
                             </div>
                         </div>
                         <div class="relative" id="reportDownloadMenu">
-                            <button type="button" id="reportDownloadBtn" class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-lg text-xs font-bold">
-                                <i data-lucide="download" class="w-3.5 h-3.5"></i> Export CSV
+                            <button type="button" id="reportDownloadBtn" class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg text-xs font-bold">
+                                <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> Download Excel
                                 <i data-lucide="chevron-down" class="w-3.5 h-3.5 opacity-80"></i>
                             </button>
-                            <div id="reportDownloadPanel" class="hidden absolute right-0 mt-2 w-52 bg-white border border-gray-100 rounded-xl shadow-lg z-20 py-1 text-xs">
-                                <p class="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider text-gray-400">Combined</p>
+                            <div id="reportDownloadPanel" class="hidden absolute right-0 mt-2 w-56 bg-white border border-gray-100 rounded-xl shadow-lg z-20 py-1 text-xs">
+                                <p class="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider text-gray-400">Excel (.xlsx)</p>
                                 <a href="<?= htmlspecialchars(reportDownloadUrl('full', $range, $fromDate, $toDate)) ?>" class="block px-3 py-2 font-semibold text-slate-700 hover:bg-gray-50">Full report</a>
                                 <a href="<?= htmlspecialchars(reportDownloadUrl('summary', $range, $fromDate, $toDate)) ?>" class="block px-3 py-2 font-semibold text-slate-700 hover:bg-gray-50">Summary only</a>
                                 <div class="border-t border-gray-100 my-1"></div>
@@ -179,11 +202,13 @@ $rangeOptions = [
                                 <div class="border-t border-gray-100 my-1"></div>
                                 <p class="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider text-gray-400">Civil registry</p>
                                 <a href="<?= htmlspecialchars(reportDownloadUrl('records_quarterly', $range, $fromDate, $toDate, $reportYear)) ?>" class="block px-3 py-2 font-semibold text-slate-700 hover:bg-gray-50">Quarterly records (<?= (int) $reportYear ?>)</a>
+                                <div class="border-t border-gray-100 my-1"></div>
+                                <p class="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider text-gray-400">Legacy CSV</p>
+                                <a href="<?= htmlspecialchars(reportDownloadUrl('full', $range, $fromDate, $toDate, null, 'csv')) ?>" class="block px-3 py-2 font-semibold text-slate-500 hover:bg-gray-50">Full report (CSV)</a>
                             </div>
                         </div>
             </div>
 
-            <!-- Period filter -->
             <div class="no-print admin-toolbar flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                 <div class="flex flex-wrap gap-1.5 shrink-0">
                     <?php foreach ($rangeOptions as $key => $label): ?>
@@ -210,6 +235,14 @@ $rangeOptions = [
                     <button type="submit" class="bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-bold">Apply</button>
                 </form>
             </div>
+            <?php else: ?>
+            <div class="no-print flex flex-wrap gap-2 justify-end mb-2">
+                <a href="<?= htmlspecialchars(reportPageUrl($range, $fromDate, $toDate, 'overview')) ?>"
+                   class="inline-flex items-center gap-2 bg-white border border-gray-200 hover:border-gray-300 text-slate-700 px-3.5 py-2 rounded-lg text-xs font-bold">
+                    <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i> Report overview
+                </a>
+            </div>
+            <?php endif; ?>
 
             <?php if ($section !== 'overview'): ?>
             <div class="no-print">
@@ -219,12 +252,14 @@ $rangeOptions = [
             </div>
             <?php endif; ?>
 
+            <?php if ($section !== 'analytics'): ?>
             <!-- Print header -->
-            <div class="hidden print:block mb-6 pb-4 border-b border-gray-200">
-                <h1 class="text-xl font-black text-slate-900"><?= htmlspecialchars($report['site_name']) ?> — Operational Report</h1>
-                <p class="text-sm text-gray-600"><?= htmlspecialchars($report['office_name']) ?> · <?= htmlspecialchars($rangeLabel) ?></p>
-                <p class="text-xs text-gray-400">Generated <?= htmlspecialchars($report['generated_at']) ?></p>
+            <div class="print-report-header">
+                <h1 class="print-report-header__title"><?= htmlspecialchars($report['site_name']) ?> — Operational Report</h1>
+                <p class="print-report-header__meta"><?= htmlspecialchars($report['office_name']) ?> · <?= htmlspecialchars($rangeLabel) ?></p>
+                <p class="print-report-header__meta">Generated <?= htmlspecialchars(formatReportDateTime($report['generated_at'])) ?></p>
             </div>
+            <?php endif; ?>
 
             <!-- Overview -->
             <div class="report-panel" data-print-section="overview" <?= $section !== 'overview' ? 'hidden' : '' ?>>
@@ -275,6 +310,7 @@ $rangeOptions = [
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <?php
                             $detailLinks = [
+                                ['key' => 'analytics', 'desc' => 'Charts and live statistics at a glance', 'color' => 'border-indigo-100 hover:border-indigo-200 hover:bg-indigo-50/50'],
                                 ['key' => 'requests', 'desc' => 'Track submissions, status, and document types', 'color' => 'border-blue-100 hover:border-blue-200 hover:bg-blue-50/50'],
                                 ['key' => 'appointments', 'desc' => 'Scheduled visits and appointment status', 'color' => 'border-purple-100 hover:border-purple-200 hover:bg-purple-50/50'],
                                 ['key' => 'queue', 'desc' => 'Queue tickets served, waiting, and by purpose', 'color' => 'border-green-100 hover:border-green-200 hover:bg-green-50/50'],
@@ -292,7 +328,9 @@ $rangeOptions = [
                                 <div class="min-w-0">
                                     <p class="text-sm font-bold text-slate-800 flex items-center gap-2">
                                         <?= htmlspecialchars($tab['label']) ?>
+                                        <?php if ($tab['count'] !== null): ?>
                                         <span class="text-[10px] font-black bg-gray-100 text-slate-600 px-1.5 py-0.5 rounded-full"><?= (int) $tab['count'] ?></span>
+                                        <?php endif; ?>
                                     </p>
                                     <p class="text-xs text-gray-500 mt-0.5"><?= htmlspecialchars($link['desc']) ?></p>
                                 </div>
@@ -304,6 +342,138 @@ $rangeOptions = [
                 </div>
             </div>
 
+            <!-- Analytics -->
+            <?php if ($analytics !== null): ?>
+            <div class="report-panel no-print" <?= $section !== 'analytics' ? 'hidden' : '' ?>>
+                <div class="space-y-6">
+                    <?php if ($analytics['pendingCount'] > 0 || $analytics['readyCount'] > 0 || $analytics['queueWaiting'] > 0): ?>
+                    <div class="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 flex flex-wrap items-center gap-2 text-sm">
+                        <span class="font-semibold text-amber-900 mr-1">Needs attention:</span>
+                        <?php if ($analytics['pendingCount'] > 0): ?>
+                        <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php', ['status' => 'pending'])) ?>" class="text-xs font-bold bg-white border border-amber-200 text-amber-800 px-2.5 py-1 rounded-lg hover:bg-amber-100"><?= (int) $analytics['pendingCount'] ?> pending</a>
+                        <?php endif; ?>
+                        <?php if ($analytics['readyCount'] > 0): ?>
+                        <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php', ['status' => 'ready'])) ?>" class="text-xs font-bold bg-white border border-amber-200 text-amber-800 px-2.5 py-1 rounded-lg hover:bg-amber-100"><?= (int) $analytics['readyCount'] ?> ready</a>
+                        <?php endif; ?>
+                        <?php if ($analytics['queueWaiting'] > 0): ?>
+                        <a href="<?= htmlspecialchars(buildAuthUrl('live-queue.php')) ?>" class="text-xs font-bold bg-white border border-amber-200 text-amber-800 px-2.5 py-1 rounded-lg hover:bg-amber-100"><?= (int) $analytics['queueWaiting'] ?> in queue</a>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
+
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="stat-card bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 block">
+                            <p class="text-[10px] font-bold uppercase text-gray-400">Requests</p>
+                            <p class="text-2xl font-black text-slate-900 mt-1"><?= (int) $analytics['totalRequests'] ?></p>
+                            <p class="text-[11px] text-gray-400 mt-0.5"><?= (int) $analytics['todayRequests'] ?> today · <?= (int) $analytics['weekRequests'] ?> this week</p>
+                        </a>
+                        <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php')) ?>" class="stat-card bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 block">
+                            <p class="text-[10px] font-bold uppercase text-gray-400">Appointments today</p>
+                            <p class="text-2xl font-black text-slate-900 mt-1"><?= (int) $analytics['apptToday'] ?></p>
+                            <p class="text-[11px] text-gray-400 mt-0.5"><?= (int) $analytics['apptTotal'] ?> all-time</p>
+                        </a>
+                        <a href="<?= htmlspecialchars(buildAuthUrl('live-queue.php')) ?>" class="stat-card bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 block">
+                            <p class="text-[10px] font-bold uppercase text-gray-400">Queue waiting</p>
+                            <p class="text-2xl font-black text-slate-900 mt-1"><?= (int) $analytics['queueWaiting'] ?></p>
+                            <p class="text-[11px] text-gray-400 mt-0.5"><?= (int) $analytics['queueServed'] ?> served today</p>
+                        </a>
+                        <a href="<?= htmlspecialchars(buildAuthUrl('records.php')) ?>" class="stat-card bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 block">
+                            <p class="text-[10px] font-bold uppercase text-gray-400">Civil records</p>
+                            <p class="text-2xl font-black text-slate-900 mt-1"><?= (int) $analytics['recordsTotal'] ?></p>
+                            <p class="text-[11px] text-gray-400 mt-0.5"><?= (int) $analytics['birthRecords'] ?> birth · <?= (int) $analytics['deathRecords'] ?> death · <?= (int) $analytics['marriageRecords'] ?> marriage</p>
+                        </a>
+                    </div>
+
+                    <div class="analytics-charts">
+                        <div class="analytics-chart-card analytics-chart-card--featured">
+                            <div class="analytics-chart-head">
+                                <h2>Monthly requests</h2>
+                                <p>Submission trend · last 6 months</p>
+                            </div>
+                            <?php if ($analytics['maxMonth'] === 0): ?>
+                            <div class="analytics-empty">No data yet.</div>
+                            <?php else: ?>
+                            <div class="chart-box chart-box--tall"><canvas id="chartMonths"></canvas></div>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="analytics-chart-grid">
+                            <div class="analytics-chart-card">
+                                <div class="analytics-chart-head">
+                                    <h2>Request pipeline</h2>
+                                    <p>Current stage breakdown</p>
+                                </div>
+                                <?php if ($analytics['totalRequests'] === 0): ?>
+                                <div class="analytics-empty">No requests yet.</div>
+                                <?php else: ?>
+                                <div class="chart-box chart-box--compact"><canvas id="chartPipeline"></canvas></div>
+                                <?php endif; ?>
+                            </div>
+
+                            <div class="analytics-chart-card">
+                                <div class="analytics-chart-head">
+                                    <h2>Appointments</h2>
+                                    <p>All bookings by status</p>
+                                </div>
+                                <?php if ($analytics['apptTotal'] === 0): ?>
+                                <div class="analytics-empty">No appointments yet.</div>
+                                <?php else: ?>
+                                <div class="chart-box chart-box--compact"><canvas id="chartAppointments"></canvas></div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+
+                        <div class="analytics-chart-grid">
+                            <div class="analytics-chart-card">
+                                <div class="analytics-chart-head">
+                                    <h2>Civil records by type</h2>
+                                    <p>Birth, death, and marriage registry</p>
+                                </div>
+                                <?php if ($analytics['recordsTotal'] === 0): ?>
+                                <div class="analytics-empty">No civil records yet.</div>
+                                <?php else: ?>
+                                <div class="chart-box chart-box--compact"><canvas id="chartRecordsType"></canvas></div>
+                                <?php endif; ?>
+                            </div>
+
+                            <div class="analytics-chart-card">
+                                <div class="analytics-chart-head">
+                                    <h2>Monthly registry entries</h2>
+                                    <p>New civil records · last 6 months</p>
+                                </div>
+                                <?php if ($analytics['maxRecordMonth'] === 0): ?>
+                                <div class="analytics-empty">No registry entries yet.</div>
+                                <?php else: ?>
+                                <div class="chart-box chart-box--compact"><canvas id="chartRecordsMonths"></canvas></div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+
+                        <div class="analytics-chart-card">
+                            <div class="analytics-chart-head">
+                                <h2>Queue today</h2>
+                                <p>Live ticket counts</p>
+                            </div>
+                            <div class="analytics-queue-strip">
+                                <div class="analytics-queue-item bg-amber-50">
+                                    <strong class="text-amber-700"><?= (int) $analytics['queueWaiting'] ?></strong>
+                                    <span class="text-amber-800/70">Waiting</span>
+                                </div>
+                                <div class="analytics-queue-item bg-blue-50">
+                                    <strong class="text-blue-700"><?= (int) $analytics['queueServing'] ?></strong>
+                                    <span class="text-blue-800/70">Serving</span>
+                                </div>
+                                <div class="analytics-queue-item bg-emerald-50">
+                                    <strong class="text-emerald-700"><?= (int) $analytics['queueServed'] ?></strong>
+                                    <span class="text-emerald-800/70">Done</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+
             <!-- Document Requests -->
             <div class="report-panel" data-print-section="requests" <?= $section !== 'requests' ? 'hidden' : '' ?>>
                 <section class="report-section bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
@@ -312,8 +482,8 @@ $rangeOptions = [
                             <h2 class="text-base font-black text-slate-900">Document Requests</h2>
                             <p class="text-xs text-gray-400 mt-0.5"><?= count($report['requests']) ?> record(s) in <?= htmlspecialchars(strtolower($rangeLabel)) ?></p>
                         </div>
-                        <a href="<?= htmlspecialchars(reportDownloadUrl('requests', $range, $fromDate, $toDate)) ?>" class="no-print shrink-0 inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline">
-                            <i data-lucide="download" class="w-3.5 h-3.5"></i> Export
+                        <a href="<?= htmlspecialchars(reportDownloadUrl('requests', $range, $fromDate, $toDate)) ?>" class="no-print shrink-0 inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 hover:underline">
+                            <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> Download Excel
                         </a>
                     </div>
                     <?php if (!empty($report['requests_by_status']) || !empty($report['requests_by_type'])): ?>
@@ -336,8 +506,8 @@ $rangeOptions = [
                         </div>
                     </div>
                     <?php endif; ?>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-sm text-left">
+                    <div class="overflow-x-auto print-table-wrap print-landscape">
+                        <table class="w-full text-sm text-left print-table">
                             <thead class="bg-white text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
                                 <tr>
                                     <th class="px-5 py-3">Tracking</th>
@@ -374,7 +544,7 @@ $rangeOptions = [
                             <p class="text-xs text-gray-400 mt-0.5"><?= count($report['appointments']) ?> visit(s) in <?= htmlspecialchars(strtolower($rangeLabel)) ?></p>
                         </div>
                         <a href="<?= htmlspecialchars(reportDownloadUrl('appointments', $range, $fromDate, $toDate)) ?>" class="no-print shrink-0 inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline">
-                            <i data-lucide="download" class="w-3.5 h-3.5"></i> Export
+                            <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> Download Excel
                         </a>
                     </div>
                     <?php if (!empty($report['appointments_by_status'])): ?>
@@ -390,8 +560,8 @@ $rangeOptions = [
                         </div>
                     </div>
                     <?php endif; ?>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-sm text-left">
+                    <div class="overflow-x-auto print-table-wrap print-landscape">
+                        <table class="w-full text-sm text-left print-table">
                             <thead class="bg-white text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
                                 <tr>
                                     <th class="px-5 py-3">Code</th>
@@ -430,7 +600,7 @@ $rangeOptions = [
                             </p>
                         </div>
                         <a href="<?= htmlspecialchars(reportDownloadUrl('queue', $range, $fromDate, $toDate)) ?>" class="no-print shrink-0 inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline">
-                            <i data-lucide="download" class="w-3.5 h-3.5"></i> Export
+                            <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> Download Excel
                         </a>
                     </div>
                     <?php if (!empty($report['queue_by_purpose'])): ?>
@@ -441,8 +611,8 @@ $rangeOptions = [
                         <?php endforeach; ?>
                     </div>
                     <?php endif; ?>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-sm text-left">
+                    <div class="overflow-x-auto print-table-wrap print-landscape">
+                        <table class="w-full text-sm text-left print-table">
                             <thead class="bg-white text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
                                 <tr>
                                     <th class="px-5 py-3">Ticket</th>
@@ -478,7 +648,7 @@ $rangeOptions = [
                                 <p class="text-xs text-gray-400 mt-0.5">How many birth, death, and marriage records were registered each quarter.</p>
                             </div>
                             <a href="<?= htmlspecialchars(reportDownloadUrl('records_quarterly', $range, $fromDate, $toDate, $reportYear)) ?>" class="no-print shrink-0 inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline">
-                                <i data-lucide="download" class="w-3.5 h-3.5"></i> Export <?= (int) $reportYear ?> CSV
+                                <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> Download Excel (<?= (int) $reportYear ?>)
                             </a>
                         </div>
                         <div class="no-print flex flex-wrap gap-1.5 mt-4">
@@ -517,8 +687,8 @@ $rangeOptions = [
                         </div>
                     </div>
 
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-sm text-left">
+                    <div class="overflow-x-auto print-table-wrap print-landscape">
+                        <table class="w-full text-sm text-left print-table">
                             <thead class="bg-white text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
                                 <tr>
                                     <th class="px-5 py-3">Quarter</th>
@@ -563,11 +733,11 @@ $rangeOptions = [
                             <p class="text-xs text-gray-400 mt-0.5">Actions recorded in this period (up to 500 entries)</p>
                         </div>
                         <a href="<?= htmlspecialchars(reportDownloadUrl('activity', $range, $fromDate, $toDate)) ?>" class="no-print shrink-0 inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline">
-                            <i data-lucide="download" class="w-3.5 h-3.5"></i> Export
+                            <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> Download Excel
                         </a>
                     </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-sm text-left">
+                    <div class="overflow-x-auto print-table-wrap print-landscape">
+                        <table class="w-full text-sm text-left print-table">
                             <thead class="bg-white text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
                                 <tr>
                                     <th class="px-5 py-3">Staff</th>
@@ -595,6 +765,11 @@ $rangeOptions = [
         </div>
     </main>
     <?= scriptTag('admin/report.js') ?>
+    <?php if ($section === 'analytics' && $analytics !== null): ?>
+    <?= pageConfigJson($analytics['chartPayload'], 'analytics-config') ?>
+    <?= scriptTag('core/page-config.js') ?>
+    <?= scriptTag('admin/analytics.js') ?>
+    <?php endif; ?>
     <?= lucideInitScript() ?>
 </body>
 </html>

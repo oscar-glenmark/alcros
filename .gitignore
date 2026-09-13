@@ -18,6 +18,14 @@ uploads/staff/*
 *.tmp
 *.temp
 
+# Composer (use global composer; vendor/ is committed for deploy)
+composer.phar
+composer-setup.php
+
+# Runtime rate-limit cache
+storage/rate_limits/*.json
+!storage/rate_limits/.gitkeep
+
 # OS
 .DS_Store
 Thumbs.db

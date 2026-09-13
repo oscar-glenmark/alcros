@@ -413,8 +413,15 @@
 
         this.listEl.innerHTML = '';
         if (this.loading) {
-            this.listEl.textContent = 'Loading options…';
+            if (window.AlcrosLoading && typeof window.AlcrosLoading.skeletonInto === 'function') {
+                window.AlcrosLoading.skeletonInto(this.listEl, 'inline', 5);
+            } else {
+                this.listEl.textContent = 'Loading options…';
+            }
             return;
+        }
+        if (window.AlcrosLoading && typeof window.AlcrosLoading.clearSkeletonHost === 'function') {
+            window.AlcrosLoading.clearSkeletonHost(this.listEl);
         }
         if (!filtered.length) {
             if (this.loadError) {

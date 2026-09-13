@@ -58,15 +58,88 @@ $quickActions = [
 ];
 
 if ($isAdminUser) {
-    $quickActions[] = ['href' => 'analytics.php', 'label' => 'Analytics', 'desc' => 'Reports & trends', 'icon' => 'bar-chart-2', 'color' => 'bg-slate-100 text-slate-600'];
+    $quickActions[] = ['href' => 'report.php', 'label' => 'Reports', 'desc' => 'Charts, stats & exports', 'icon' => 'bar-chart-2', 'color' => 'bg-slate-100 text-slate-600', 'query' => ['section' => 'analytics']];
     $quickActions[] = ['href' => 'system_settings.php', 'label' => 'Settings', 'desc' => 'System config', 'icon' => 'settings', 'color' => 'bg-slate-100 text-slate-600'];
 }
 
+function dashboardCountBetween(PDO $pdo, string $sql, string $start, string $end): int
+{
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$start, $end]);
+
+    return (int) $stmt->fetchColumn();
+}
+
+function dashboardTrendPercent(int $current, int $previous): array
+{
+    if ($current === 0 && $previous === 0) {
+        return ['pct' => 0, 'up' => true];
+    }
+    if ($previous === 0) {
+        return ['pct' => 100, 'up' => $current > 0];
+    }
+
+    $change = (($current - $previous) / $previous) * 100;
+
+    return ['pct' => max(0, (int) round(abs($change))), 'up' => $change >= 0];
+}
+
+$periodCurStart = date('Y-m-d 00:00:00', strtotime('-7 days'));
+$periodCurEnd = date('Y-m-d 00:00:00', strtotime('+1 day'));
+$periodPrevStart = date('Y-m-d 00:00:00', strtotime('-14 days'));
+$periodPrevEnd = $periodCurStart;
+$weekAgoDate = date('Y-m-d', strtotime($todayDate . ' -7 days'));
+
 $statCards = [
-    ['id' => 'stat-pending',  'label' => 'Needs Review',      'hint' => 'Pending & verified',     'value' => $pendingCount,  'icon' => 'clipboard-list', 'accent' => 'border-amber-400', 'iconColor' => 'text-amber-500', 'page' => 'manage_request.php', 'query' => ['status' => 'pending']],
-    ['id' => 'stat-queue',    'label' => 'Queue Waiting',     'hint' => 'Citizens in line today', 'value' => $queueCount,    'icon' => 'users',          'accent' => 'border-violet-400', 'iconColor' => 'text-violet-500', 'page' => 'live-queue.php', 'query' => []],
-    ['id' => 'stat-appts',    'label' => "Today's Appointments", 'hint' => 'Special services today', 'value' => $todayAppts,    'icon' => 'calendar',       'accent' => 'border-blue-400',  'iconColor' => 'text-blue-500',   'page' => 'appointment.php', 'query' => ['date' => $todayDate, 'status' => 'all_appointments']],
-    ['id' => 'stat-ready',    'label' => 'Ready for Pickup',  'hint' => 'Awaiting release',     'value' => $readyCount,    'icon' => 'package',        'accent' => 'border-emerald-400', 'iconColor' => 'text-emerald-500', 'page' => 'manage_request.php', 'query' => ['status' => 'ready']],
+    [
+        'id' => 'stat-pending',
+        'label' => 'Needs Review',
+        'value' => $pendingCount,
+        'icon' => 'clipboard-list',
+        'tone' => 'amber',
+        'page' => 'manage_request.php',
+        'query' => ['status' => 'pending'],
+        'trend' => dashboardTrendPercent(
+            dashboardCountBetween($pdo, 'SELECT COUNT(*) FROM document_requests WHERE submitted_at >= ? AND submitted_at < ?', $periodCurStart, $periodCurEnd),
+            dashboardCountBetween($pdo, 'SELECT COUNT(*) FROM document_requests WHERE submitted_at >= ? AND submitted_at < ?', $periodPrevStart, $periodPrevEnd)
+        ),
+    ],
+    [
+        'id' => 'stat-queue',
+        'label' => 'Queue Waiting',
+        'value' => $queueCount,
+        'icon' => 'users',
+        'tone' => 'blue',
+        'page' => 'live-queue.php',
+        'query' => [],
+        'trend' => dashboardTrendPercent(
+            dashboardCountBetween($pdo, 'SELECT COUNT(*) FROM queue_tickets WHERE created_at >= ? AND created_at < ?', $periodCurStart, $periodCurEnd),
+            dashboardCountBetween($pdo, 'SELECT COUNT(*) FROM queue_tickets WHERE created_at >= ? AND created_at < ?', $periodPrevStart, $periodPrevEnd)
+        ),
+    ],
+    [
+        'id' => 'stat-appts',
+        'label' => "Today's Appointments",
+        'value' => $todayAppts,
+        'icon' => 'calendar',
+        'tone' => 'violet',
+        'page' => 'appointment.php',
+        'query' => ['date' => $todayDate, 'status' => 'all_appointments'],
+        'trend' => dashboardTrendPercent($todayAppts, countSpecialAppointmentsOnDate($pdo, $weekAgoDate)),
+    ],
+    [
+        'id' => 'stat-ready',
+        'label' => 'Ready for Pickup',
+        'value' => $readyCount,
+        'icon' => 'package',
+        'tone' => 'emerald',
+        'page' => 'manage_request.php',
+        'query' => ['status' => 'ready'],
+        'trend' => dashboardTrendPercent(
+            dashboardCountBetween($pdo, "SELECT COUNT(*) FROM document_requests WHERE status = 'ready' AND updated_at >= ? AND updated_at < ?", $periodCurStart, $periodCurEnd),
+            dashboardCountBetween($pdo, "SELECT COUNT(*) FROM document_requests WHERE status = 'ready' AND updated_at >= ? AND updated_at < ?", $periodPrevStart, $periodPrevEnd)
+        ),
+    ],
 ];
 
 function activityIcon(string $action): string
@@ -113,28 +186,27 @@ function activityIcon(string $action): string
                         <p class="text-gray-500 text-sm mt-1"><?= htmlspecialchars($todayLabel) ?> · <?= htmlspecialchars(staffId()) ?> · <?= htmlspecialchars($staffRole) ?></p>
                     </div>
                 </div>
-                <div class="flex flex-wrap gap-2">
-                    <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold inline-flex items-center gap-2">
-                        <i data-lucide="file-text" class="w-3.5 h-3.5"></i> Manage Requests
-                    </a>
-                    <a href="<?= htmlspecialchars(buildAuthUrl('live-queue.php')) ?>" class="bg-white border border-gray-200 hover:border-blue-300 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold inline-flex items-center gap-2">
-                        <i data-lucide="users" class="w-3.5 h-3.5"></i> Open Queue
-                    </a>
-                </div>
             </div>
 
             <!-- Stats -->
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
                 <?php foreach ($statCards as $card): ?>
-                <a href="<?= htmlspecialchars(buildAuthUrl($card['page'], $card['query'])) ?>" class="stat-link dash-card bg-white rounded-2xl border border-gray-100 border-l-4 <?= $card['accent'] ?> p-4 block">
-                    <div class="flex items-start justify-between mb-3">
-                        <div class="p-2 rounded-lg bg-gray-50 <?= $card['iconColor'] ?>">
-                            <i data-lucide="<?= $card['icon'] ?>" class="w-4 h-4"></i>
-                        </div>
+                <?php $trend = $card['trend']; ?>
+                <a href="<?= htmlspecialchars(buildAuthUrl($card['page'], $card['query'])) ?>"
+                   class="dash-stat-card dash-stat-card--<?= htmlspecialchars($card['tone']) ?>">
+                    <div class="dash-stat-card__head">
+                        <span class="dash-stat-card__icon">
+                            <i data-lucide="<?= htmlspecialchars($card['icon']) ?>" class="w-4 h-4"></i>
+                        </span>
+                        <span class="dash-stat-card__label"><?= htmlspecialchars($card['label']) ?></span>
                     </div>
-                    <p id="<?= $card['id'] ?>" class="text-2xl lg:text-3xl font-black text-slate-900 leading-none"><?= $card['value'] ?></p>
-                    <p class="text-[11px] font-bold text-slate-700 mt-2"><?= htmlspecialchars($card['label']) ?></p>
-                    <p class="text-[10px] text-gray-400 mt-0.5"><?= htmlspecialchars($card['hint']) ?></p>
+                    <p id="<?= htmlspecialchars($card['id']) ?>" class="dash-stat-card__value"><?= number_format($card['value']) ?></p>
+                    <p class="dash-stat-card__trend">
+                        <span class="dash-stat-card__trend-value dash-stat-card__trend-value--<?= $trend['up'] ? 'up' : 'down' ?>">
+                            <?= $trend['up'] ? '↑' : '↓' ?> <?= (int) $trend['pct'] ?>%
+                        </span>
+                        <span class="dash-stat-card__trend-note">vs. last 7 days</span>
+                    </p>
                 </a>
                 <?php endforeach; ?>
             </div>

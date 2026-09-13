@@ -6,6 +6,7 @@
 
     var modal = null;
     var iconWrapEl = null;
+    var badgeEl = null;
     var titleEl = null;
     var messageEl = null;
     var okBtn = null;
@@ -33,21 +34,23 @@
         modal.setAttribute('aria-labelledby', 'alcrosActionResultTitle');
         modal.innerHTML =
             '<div class="alcros-action-result-modal__panel">' +
-                '<div class="alcros-action-result-modal__head">' +
-                    '<div id="alcrosActionResultIconWrap" class="alcros-action-result-modal__icon alcros-action-result-modal__icon--success">' +
-                        '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>' +
+                '<div class="alcros-action-result-modal__hero">' +
+                    '<div id="alcrosActionResultIconWrap" class="alcros-action-result-modal__icon-wrap alcros-action-result-modal__icon-wrap--success">' +
+                        '<div class="alcros-action-result-modal__icon alcros-action-result-modal__icon--success">' +
+                            '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>' +
+                        '</div>' +
                     '</div>' +
-                    '<div class="alcros-action-result-modal__copy">' +
-                        '<h3 id="alcrosActionResultTitle" class="alcros-action-result-modal__title">Action Successful</h3>' +
-                        '<p id="alcrosActionResultMessage" class="alcros-action-result-modal__message"></p>' +
-                    '</div>' +
+                    '<p id="alcrosActionResultBadge" class="alcros-modal-badge alcros-modal-badge--success">Success</p>' +
+                    '<h3 id="alcrosActionResultTitle" class="alcros-action-result-modal__title">Action Successful</h3>' +
+                    '<p id="alcrosActionResultMessage" class="alcros-action-result-modal__message"></p>' +
                 '</div>' +
-                '<button type="button" id="alcrosActionResultOkBtn" class="alcros-action-result-modal__btn">OK</button>' +
+                '<button type="button" id="alcrosActionResultOkBtn" class="alcros-action-result-modal__btn alcros-action-result-modal__btn--success">Done</button>' +
             '</div>';
 
         document.body.appendChild(modal);
 
         iconWrapEl = modal.querySelector('#alcrosActionResultIconWrap');
+        badgeEl = modal.querySelector('#alcrosActionResultBadge');
         titleEl = modal.querySelector('#alcrosActionResultTitle');
         messageEl = modal.querySelector('#alcrosActionResultMessage');
         okBtn = modal.querySelector('#alcrosActionResultOkBtn');
@@ -68,9 +71,21 @@
 
     function applyType(type) {
         var isSuccess = type === 'success';
-        iconWrapEl.className = 'alcros-action-result-modal__icon ' + (isSuccess ? 'alcros-action-result-modal__icon--success' : 'alcros-action-result-modal__icon--error');
+        var tone = isSuccess ? 'success' : 'error';
+        iconWrapEl.className = 'alcros-action-result-modal__icon-wrap alcros-action-result-modal__icon-wrap--' + tone;
+        iconWrapEl.innerHTML =
+            '<div class="alcros-action-result-modal__icon alcros-action-result-modal__icon--' + tone + '">' +
+                (isSuccess
+                    ? '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>'
+                    : '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>') +
+            '</div>';
+        if (badgeEl) {
+            badgeEl.className = 'alcros-modal-badge alcros-modal-badge--' + tone;
+            badgeEl.textContent = isSuccess ? 'Success' : 'Error';
+        }
         titleEl.textContent = isSuccess ? 'Action Successful' : 'Action Failed';
-        okBtn.className = 'alcros-action-result-modal__btn ' + (isSuccess ? 'alcros-action-result-modal__btn--success' : 'alcros-action-result-modal__btn--error');
+        okBtn.textContent = isSuccess ? 'Done' : 'Try Again';
+        okBtn.className = 'alcros-action-result-modal__btn alcros-action-result-modal__btn--' + tone;
     }
 
     function openModal(type, message) {

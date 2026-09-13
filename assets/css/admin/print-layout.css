@@ -1,0 +1,161 @@
+@media print {
+    @page {
+        size: A4 portrait;
+        margin: 12mm 10mm;
+    }
+
+    html,
+    body {
+        background: #fff !important;
+        color: #0f172a !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .admin-sidebar,
+    .no-print,
+    .admin-header,
+    header,
+    #logoutConfirmModal,
+    .entry-dropdown,
+    .manage-print-dropdown,
+    .records-print-dropdown {
+        display: none !important;
+    }
+
+    .admin-main {
+        margin: 0 !important;
+        width: 100% !important;
+        max-width: none !important;
+    }
+
+    .admin-content,
+    .admin-page-wrap {
+        padding: 0 !important;
+        max-width: none !important;
+    }
+
+    .print-report-header {
+        display: block !important;
+        margin: 0 0 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 2px solid #cbd5e1;
+    }
+
+    .print-report-header__title {
+        font-size: 1.125rem;
+        font-weight: 800;
+        color: #0f172a;
+        margin: 0 0 0.25rem;
+    }
+
+    .print-report-header__meta {
+        font-size: 0.75rem;
+        color: #475569;
+        margin: 0.125rem 0;
+    }
+
+    .print-report-body {
+        display: block !important;
+    }
+
+    .print-table-wrap {
+        overflow: visible !important;
+    }
+
+    .print-table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        font-size: 0.6875rem !important;
+        table-layout: fixed;
+    }
+
+    .print-table thead {
+        display: table-header-group;
+    }
+
+    .print-table tfoot {
+        display: table-footer-group;
+    }
+
+    .print-table tr {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    .print-table th,
+    .print-table td {
+        border: 1px solid #cbd5e1 !important;
+        padding: 0.35rem 0.45rem !important;
+        vertical-align: top !important;
+        word-wrap: break-word;
+        overflow-wrap: anywhere;
+        white-space: normal !important;
+        background: #fff !important;
+        color: #0f172a !important;
+    }
+
+    .print-table th {
+        background: #eff6ff !important;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        font-size: 0.625rem !important;
+    }
+
+    .print-table th a {
+        color: inherit !important;
+        text-decoration: none !important;
+        pointer-events: none;
+    }
+
+    .print-table tbody tr:nth-child(even) td {
+        background: #f8fafc !important;
+    }
+
+    .print-landscape {
+        page: landscape;
+    }
+
+    @page landscape {
+        size: A4 landscape;
+        margin: 10mm;
+    }
+
+    .report-panel.print-selected {
+        display: block !important;
+    }
+
+    .report-panel:not(.print-selected) {
+        display: none !important;
+    }
+
+    .report-panel.print-selected + .report-panel.print-selected {
+        break-before: page;
+        margin-top: 1.5rem;
+    }
+
+    .report-section,
+    .print-section {
+        break-inside: avoid;
+    }
+
+    .dash-card,
+    .bg-white.rounded-xl,
+    .bg-white.rounded-2xl {
+        box-shadow: none !important;
+        border-color: #e2e8f0 !important;
+    }
+
+    .print-details-col {
+        display: table-cell !important;
+    }
+
+    .print-landscape .print-table {
+        font-size: 0.625rem !important;
+    }
+}
+
+.print-report-header {
+    display: none;
+}

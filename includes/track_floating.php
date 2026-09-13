@@ -35,10 +35,7 @@ $initialTrackCode = strtoupper(trim($_GET['track'] ?? $_GET['code'] ?? ''));
                     </button>
                 </form>
 
-                <div id="track-floating-loading" class="hidden text-center py-8 text-sm text-slate-400">
-                    <svg class="animate-spin h-6 w-6 mx-auto mb-2 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                    Looking up your code…
-                </div>
+                <div id="track-floating-loading" class="hidden py-2" aria-hidden="true"></div>
 
                 <div id="track-floating-error" class="hidden rounded-xl p-4 bg-red-50 border border-red-100 text-red-600 text-sm text-center"></div>
 
@@ -47,3 +44,8 @@ $initialTrackCode = strtoupper(trim($_GET['track'] ?? $_GET['code'] ?? ''));
         </div>
     </div>
 </div>
+<?php
+require_once __DIR__ . '/scripts.php';
+echo actionCoreStyles();
+echo scriptTag('core/loading.js');
+?>

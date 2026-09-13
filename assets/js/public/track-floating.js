@@ -70,6 +70,13 @@
         if (show) {
             errorEl.classList.add('hidden');
             resultEl.classList.add('hidden');
+            if (window.AlcrosLoading && typeof window.AlcrosLoading.skeletonInto === 'function') {
+                window.AlcrosLoading.skeletonInto(loadingEl, 'track');
+            } else {
+                loadingEl.innerHTML = '<p class="text-center py-8 text-sm text-slate-400">Looking up your code…</p>';
+            }
+        } else if (window.AlcrosLoading && typeof window.AlcrosLoading.clearSkeletonHost === 'function') {
+            window.AlcrosLoading.clearSkeletonHost(loadingEl);
         }
         submitBtn.disabled = show;
     }

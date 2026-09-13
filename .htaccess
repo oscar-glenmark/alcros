@@ -2,7 +2,14 @@
     RewriteEngine On
     # Legacy bookmark: track.php?track=... or track.php?code=... → home page tracker
     RewriteRule ^track\.php$ index.php [R=302,L,QSA]
+    # Legacy analytics page → Reports analytics section
+    RewriteRule ^analytics\.php$ report.php?section=analytics [R=302,L,QSA]
 </IfModule>
+
+# Block Composer installer files if they are ever copied into the web root again.
+<FilesMatch "^(composer\.phar|composer-setup\.php)$">
+    Require all denied
+</FilesMatch>
 
 # Raise limits for large CSV imports and print calibration saves (XAMPP mod_php).
 <IfModule mod_php.c>

@@ -138,6 +138,9 @@
 
     function renderAppointments(rows) {
         rows = rows || [];
+        if (listEl && window.AlcrosLoading && typeof window.AlcrosLoading.clearSkeletonHost === 'function') {
+            window.AlcrosLoading.clearSkeletonHost(listEl);
+        }
         if (countEl) countEl.textContent = String(rows.length);
         if (dateLabelEl) dateLabelEl.textContent = formatDateDisplay(selectedDate);
         if (openLinkEl) {
@@ -177,7 +180,17 @@
         }).join('');
     }
 
+    function showScheduleSkeleton() {
+        if (!listEl || !window.AlcrosLoading || typeof window.AlcrosLoading.skeletonInto !== 'function') {
+            return;
+        }
+        if (emptyEl) emptyEl.classList.add('hidden');
+        listEl.classList.remove('hidden');
+        window.AlcrosLoading.skeletonInto(listEl, 'schedule', 4);
+    }
+
     function loadSchedule() {
+        showScheduleSkeleton();
         var url = window.AlcrosPoll && AlcrosPoll.buildUrl
             ? AlcrosPoll.buildUrl('api/dashboard_stats.php', { month: month, date: selectedDate })
             : 'api/dashboard_stats.php?month=' + encodeURIComponent(month) + '&date=' + encodeURIComponent(selectedDate);

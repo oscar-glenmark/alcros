@@ -1,3 +1,5 @@
+@import url('analytics.css');
+
 .stat-row {
     display: flex;
     align-items: center;
@@ -11,32 +13,4 @@
     border-bottom: 0;
 }
 
-@media print {
-    .admin-sidebar,
-    .no-print,
-    header {
-        display: none !important;
-    }
-
-    .admin-main {
-        margin-left: 0 !important;
-        width: 100% !important;
-    }
-
-    .report-panel.print-selected {
-        display: block !important;
-    }
-
-    .report-panel:not(.print-selected) {
-        display: none !important;
-    }
-
-    .report-panel.print-selected + .report-panel.print-selected {
-        break-before: page;
-        margin-top: 2rem;
-    }
-
-    .report-section {
-        break-inside: avoid;
-    }
-}
+/* Print rules extended in print-layout.css */

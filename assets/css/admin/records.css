@@ -640,50 +640,89 @@ body.records-view-modal-open {
     outline: none;
 }
 
-.records-print-menu {
-    position: relative;
+.manage-row-actions {
     display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
 }
 
-.records-print-trigger {
+.manage-row-action {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: 0.5rem;
     background: transparent;
-    border: 0;
-    padding: 0;
+    color: #64748b;
+    flex-shrink: 0;
     cursor: pointer;
+    padding: 0;
+    position: relative;
+    z-index: 1;
+    text-decoration: none;
 }
 
-.records-print-trigger--labeled {
-    gap: 0.3125rem;
-    min-height: 1.75rem;
-    padding: 0.3125rem 0.5rem;
-    border-radius: 0.5rem;
-    border: 1px solid #a7f3d0;
-    background: #ecfdf5;
-    color: #059669;
+.manage-row-action svg,
+.manage-row-action i {
+    pointer-events: none;
+}
+
+.manage-row-action:hover:not(.manage-row-action--print) {
+    background: #f1f5f9;
+}
+
+.view-record-btn:hover {
+    color: #2563eb;
+}
+
+a.manage-row-action:hover {
+    color: #475569;
+}
+
+.manage-row-action--labeled {
     font-size: 0.625rem;
     font-weight: 800;
     letter-spacing: 0.04em;
 }
 
-.records-print-trigger--labeled:hover {
+.manage-row-action__label {
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.manage-row-action--print {
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    color: #059669;
+    width: auto;
+    height: auto;
+    min-height: 1.75rem;
+    padding: 0.3125rem 0.5rem;
+    gap: 0.3125rem;
+}
+
+.manage-row-action--print:hover {
     background: #d1fae5;
     border-color: #6ee7b7;
     color: #047857;
 }
 
-.records-print-trigger__label {
-    line-height: 1;
-    white-space: nowrap;
+.manage-print-menu {
+    position: relative;
+    display: inline-flex;
 }
 
-.records-print-trigger__chevron {
+.manage-print-trigger {
+    cursor: pointer;
+}
+
+.manage-print-trigger__chevron {
     opacity: 0.75;
 }
 
-.records-print-dropdown {
+.manage-print-dropdown {
     position: absolute;
     right: 0;
     top: calc(100% + 0.35rem);
@@ -694,25 +733,27 @@ body.records-view-modal-open {
     box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
     z-index: 70;
     overflow: hidden;
+    text-align: left;
 }
 
-.records-print-dropdown--floating {
+.manage-print-dropdown--floating {
     position: fixed;
     top: auto;
     right: auto;
     z-index: 200;
 }
 
-.records-print-dropdown a {
+.manage-print-dropdown a {
     display: block;
     padding: 0.625rem 0.75rem;
     font-size: 0.75rem;
     font-weight: 600;
     color: #334155;
     text-decoration: none;
+    text-align: left;
 }
 
-.records-print-dropdown a:hover {
+.manage-print-dropdown a:hover {
     background: #f8fafc;
     color: #059669;
 }

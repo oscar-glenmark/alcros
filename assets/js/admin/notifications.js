@@ -120,6 +120,10 @@
     function renderListEl(listEl, all, options) {
         if (!listEl) return;
 
+        if (window.AlcrosLoading && typeof window.AlcrosLoading.clearSkeletonHost === 'function') {
+            window.AlcrosLoading.clearSkeletonHost(listEl);
+        }
+
         options = options || {};
         var items = visibleList(all);
         var emptyText = listEl.getAttribute('data-notif-empty') || 'No notifications';
@@ -271,8 +275,19 @@
         return function () { return isOpen; };
     }
 
+    function showInitialSkeletons() {
+        if (!window.AlcrosLoading || typeof window.AlcrosLoading.skeletonInto !== 'function') {
+            return;
+        }
+        document.querySelectorAll('.alcros-notif-list').forEach(function (listEl) {
+            window.AlcrosLoading.skeletonInto(listEl, 'list', listEl.id === 'notif-page-list' ? 6 : 4);
+        });
+    }
+
     function init() {
         if (!window.AlcrosPoll) return;
+
+        showInitialSkeletons();
 
         var latest = [];
         var headerOpen = initHeaderDropdown(refresh, function () { return latest; });

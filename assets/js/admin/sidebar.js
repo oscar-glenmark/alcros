@@ -100,9 +100,8 @@
 
     function initLogoutModal() {
         var modal = document.getElementById('logoutConfirmModal');
-        var openBtn = document.getElementById('logoutOpenBtn');
         var cancelBtn = document.getElementById('logoutCancelBtn');
-        if (!modal || !openBtn || !cancelBtn || modal.dataset.bound === '1') {
+        if (!modal || !cancelBtn || modal.dataset.bound === '1') {
             return;
         }
         modal.dataset.bound = '1';
@@ -118,7 +117,13 @@
             modal.classList.remove('flex');
         }
 
-        openBtn.addEventListener('click', openModal);
+        document.querySelectorAll('[data-logout-trigger]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                closeProfileDropdown();
+                openModal();
+            });
+        });
+
         cancelBtn.addEventListener('click', closeModal);
         modal.addEventListener('click', function (e) {
             if (e.target === modal) closeModal();
@@ -128,8 +133,53 @@
         });
     }
 
+    var profileDropdownOpen = false;
+
+    function closeProfileDropdown() {
+        var wrapper = document.getElementById('profile-wrapper');
+        var menuBtn = document.getElementById('profile-menu-btn');
+        var dropdown = document.getElementById('profile-dropdown');
+        if (!wrapper || !menuBtn || !dropdown) return;
+        profileDropdownOpen = false;
+        dropdown.classList.add('hidden');
+        menuBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    function initProfileDropdown() {
+        var wrapper = document.getElementById('profile-wrapper');
+        var menuBtn = document.getElementById('profile-menu-btn');
+        var dropdown = document.getElementById('profile-dropdown');
+        if (!wrapper || !menuBtn || !dropdown || wrapper.dataset.bound === '1') {
+            return;
+        }
+        wrapper.dataset.bound = '1';
+
+        menuBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            profileDropdownOpen = !profileDropdownOpen;
+            dropdown.classList.toggle('hidden', !profileDropdownOpen);
+            menuBtn.setAttribute('aria-expanded', profileDropdownOpen ? 'true' : 'false');
+            if (profileDropdownOpen && typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        });
+
+        document.addEventListener('click', function (e) {
+            if (profileDropdownOpen && !wrapper.contains(e.target)) {
+                closeProfileDropdown();
+            }
+        });
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && profileDropdownOpen) {
+                closeProfileDropdown();
+            }
+        });
+    }
+
     function init() {
         initSidebar();
+        initProfileDropdown();
         initLogoutModal();
     }
 

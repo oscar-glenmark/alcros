@@ -61,25 +61,19 @@ function sidebarSectionLabel(string $label): string
         <?= sidebarLink('notifications.php', 'Notifications', 'bell', $activePage, false, 'sidebar-notif-badge') ?>
         <?= sidebarLink('manage_request.php', 'Manage Requests', 'file-text', $activePage) ?>
         <?= sidebarLink('appointment.php', 'Manage Appointments', 'calendar', $activePage, false, null, ['date' => alcrosTodayDate()]) ?>
-        <?= sidebarLink('records.php', 'Civil records', 'book-open', $activePage) ?>
-        <?= sidebarLink('report.php', 'Operational Reports', 'file-bar-chart-2', $activePage) ?>
+        <?= sidebarLink('records.php', 'Records', 'book-open', $activePage) ?>
+        <?= sidebarLink('report.php', 'Reports', 'bar-chart-2', $activePage) ?>
         <?= sidebarLink('live-queue.php', 'Manage live queue', 'users', $activePage, true) ?>
         <?php if (isAdmin()): ?>
         <?= sidebarSectionLabel('Administration') ?>
-        <?= sidebarLink('analytics.php', 'Analytics', 'bar-chart-2', $activePage) ?>
         <?= sidebarLink('print_calibration.php', 'Print calibration', 'crosshair', $activePage) ?>
         <?= sidebarLink('activity-log.php', 'Activity log', 'scroll-text', $activePage) ?>
-        <?= sidebarLink('system_settings.php', 'System settings', 'settings', $activePage) ?>
+        <?= sidebarLink('system_settings.php', 'Settings', 'settings', $activePage) ?>
         <?php else: ?>
         <?= sidebarSectionLabel('Account') ?>
-        <?= sidebarLink('system_settings.php', 'My settings', 'settings', $activePage) ?>
+        <?= sidebarLink('system_settings.php', 'Settings', 'settings', $activePage) ?>
         <?php endif; ?>
     </nav>
-    <div class="admin-sidebar-footer p-4 border-t border-gray-100 bg-white">
-        <button type="button" id="logoutOpenBtn" class="flex items-center text-red-500 text-[11px] font-bold uppercase tracking-wider hover:bg-red-50 w-full px-3 py-2 rounded-lg transition-colors duration-150">
-            <i data-lucide="log-out" class="w-4 h-4 mr-2 shrink-0"></i><span class="sidebar-logout-label">Logout</span>
-        </button>
-    </div>
 </aside>
 
 <div id="logoutConfirmModal" class="fixed inset-0 bg-black/40 z-[100] hidden items-center justify-center p-4">

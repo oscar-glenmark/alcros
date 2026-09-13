@@ -19,7 +19,6 @@ $pageHeaderMeta = $pageHeaderMeta ?? '';
         <button
             type="button"
             id="adminSidebarToggle"
-            class="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors shrink-0"
             aria-label="Toggle sidebar"
             aria-expanded="false"
         >
@@ -36,21 +35,32 @@ $pageHeaderMeta = $pageHeaderMeta ?? '';
         <?php endif; ?>
     </div>
 
-    <div class="admin-header__toolbar flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0">
-        <div class="relative admin-header__notif" id="notif-wrapper" data-staff-id="<?= htmlspecialchars(staffId()) ?>">
+    <div class="admin-header__toolbar flex items-center min-w-0">
+        <div class="admin-header__actions flex items-center shrink-0">
+            <div class="admin-header__theme-wrap">
+                <button
+                    type="button"
+                    id="alcrosThemeToggle"
+                    class="admin-header__theme-btn"
+                    aria-label="Switch to dark mode"
+                    aria-pressed="false"
+                    title="Dark mode"
+                >
+                    <i data-lucide="moon" class="alcros-theme-icon alcros-theme-icon--dark pointer-events-none"></i>
+                    <i data-lucide="sun" class="alcros-theme-icon alcros-theme-icon--light pointer-events-none"></i>
+                </button>
+            </div>
 
-            <button
+            <div class="relative admin-header__notif" id="notif-wrapper" data-staff-id="<?= htmlspecialchars(staffId()) ?>">
+                <button
                 type="button"
                 id="notif-bell-btn"
-                class="relative p-1.5 rounded-lg hover:bg-gray-50 transition-colors focus:outline-none"
+                class="admin-header__notif-btn"
                 aria-label="Notifications"
                 aria-expanded="false"
                 aria-haspopup="true"
             >
-                <i
-                    data-lucide="bell"
-                    class="w-4 h-4 text-gray-400 pointer-events-none"
-                ></i>
+                <i data-lucide="bell" class="admin-header__notif-icon pointer-events-none"></i>
 
                 <span
                     id="notif-badge"
@@ -58,36 +68,63 @@ $pageHeaderMeta = $pageHeaderMeta ?? '';
                 >
                     0
                 </span>
-            </button>
+                </button>
 
-            <div
-                id="notif-dropdown"
+                <div
+                    id="notif-dropdown"
                 class="hidden fixed sm:absolute left-4 right-4 sm:left-auto sm:right-0 top-16 sm:top-full sm:mt-2 w-auto sm:w-80 lg:w-96 bg-white rounded-xl border border-gray-100 shadow-xl z-50 overflow-hidden"
-            >
-                <?php
-                $notifPanel = [
-                    'context'       => 'dropdown',
-                    'listId'        => 'notif-list',
-                    'listClass'     => 'max-h-96 overflow-y-auto',
-                    'showFooter'    => true,
-                    'toolbarPrefix' => '',
-                ];
-                require __DIR__ . '/notifications_panel.php';
-                ?>
+                >
+                    <?php
+                    $notifPanel = [
+                        'context'       => 'dropdown',
+                        'listId'        => 'notif-list',
+                        'listClass'     => 'max-h-96 overflow-y-auto',
+                        'showFooter'    => true,
+                        'toolbarPrefix' => '',
+                    ];
+                    require __DIR__ . '/notifications_panel.php';
+                    ?>
+                </div>
             </div>
         </div>
 
-        <div class="flex items-center space-x-1.5 sm:space-x-2">
-            <div class="text-right hidden md:block min-w-0">
-                <p class="text-[11px] font-bold text-slate-900 leading-none truncate max-w-[6rem] sm:max-w-[8rem] lg:max-w-[10rem] xl:max-w-none">
-                    <?= htmlspecialchars(staffName()) ?>
-                </p>
-                <p class="text-[8px] text-gray-400 uppercase font-bold tracking-tighter">
-                    <?= htmlspecialchars(staffRole()) ?>
-                </p>
-            </div>
+        <?php $myInfoUrl = buildAuthUrl('system_settings.php', ['tab' => 'my-account']); ?>
+        <div class="relative admin-header__profile" id="profile-wrapper">
+            <button
+                type="button"
+                id="profile-menu-btn"
+                class="admin-header__profile-btn"
+                aria-label="Account menu"
+                aria-expanded="false"
+                aria-haspopup="true"
+            >
+                <span class="admin-header__profile-text hidden lg:block">
+                    <span class="admin-header__profile-name"><?= htmlspecialchars(staffName()) ?></span>
+                    <span class="admin-header__profile-role"><?= htmlspecialchars(staffRole()) ?></span>
+                </span>
+                <?= renderStaffAvatar(staffPhotoPath(), staffName(), 'w-7 h-7 text-[10px]') ?>
+                <i data-lucide="chevron-down" class="admin-header__profile-chevron w-3.5 h-3.5 text-gray-400 shrink-0 pointer-events-none hidden sm:block"></i>
+            </button>
 
-            <?= renderStaffAvatar(staffPhotoPath(), staffName(), 'w-7 h-7 text-[10px]') ?>
+            <div
+                id="profile-dropdown"
+                class="admin-header__profile-menu hidden"
+                role="menu"
+                aria-labelledby="profile-menu-btn"
+            >
+                <div class="admin-header__profile-menu-head lg:hidden">
+                    <p class="admin-header__profile-menu-name"><?= htmlspecialchars(staffName()) ?></p>
+                    <p class="admin-header__profile-menu-role"><?= htmlspecialchars(staffRole()) ?></p>
+                </div>
+                <a href="<?= htmlspecialchars($myInfoUrl) ?>" class="admin-header__profile-menu-item" role="menuitem">
+                    <i data-lucide="user" class="w-4 h-4 shrink-0"></i>
+                    <span>My information</span>
+                </a>
+                <button type="button" class="admin-header__profile-menu-item admin-header__profile-menu-item--danger" data-logout-trigger role="menuitem">
+                    <i data-lucide="log-out" class="w-4 h-4 shrink-0"></i>
+                    <span>Logout</span>
+                </button>
+            </div>
         </div>
     </div>
 

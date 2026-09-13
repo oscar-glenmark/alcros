@@ -857,8 +857,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <?php
                                     $adminQuickLinks = [
-                                        ['url' => buildAuthUrl('analytics.php'), 'label' => 'Analytics', 'desc' => 'Charts and live metrics', 'icon' => 'bar-chart-2'],
-                                        ['url' => buildAuthUrl('report.php'), 'label' => 'Operational Reports', 'desc' => 'Export period reports', 'icon' => 'file-bar-chart-2'],
+                                        ['url' => buildAuthUrl('report.php', ['section' => 'analytics']), 'label' => 'Reports', 'desc' => 'Charts, statistics & exports', 'icon' => 'bar-chart-2'],
                                         ['url' => buildAuthUrl('activity-log.php'), 'label' => 'Full Activity Log', 'desc' => 'Search all staff actions', 'icon' => 'scroll-text'],
                                         ['url' => settingsPageUrl('system-configuration'), 'label' => 'Configuration', 'desc' => 'Office & portal settings', 'icon' => 'settings'],
                                     ];

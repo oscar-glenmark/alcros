@@ -67,6 +67,49 @@ function currentRecordsFilters(): array
     ];
 }
 
+function recordsExportTypeFromRequest(): string
+{
+    global $validTypes;
+
+    $exportType = $_GET['export_type'] ?? $_GET['type'] ?? 'all';
+    if (!in_array($exportType, ['all', ...$validTypes], true)) {
+        return 'all';
+    }
+
+    return $exportType;
+}
+
+function recordsExportFilters(): array
+{
+    return [
+        'type' => recordsExportTypeFromRequest(),
+        'q'    => $_GET['q'] ?? '',
+        'sort' => $_GET['sort'] ?? 'name',
+        'dir'  => strtolower($_GET['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc',
+        'page' => max(1, (int) ($_GET['page'] ?? 1)),
+    ];
+}
+
+function recordsExportUrl(string $exportType, string $search = ''): string
+{
+    global $validTypes;
+
+    if (!in_array($exportType, ['all', ...$validTypes], true)) {
+        $exportType = 'all';
+    }
+
+    $query = [
+        'action'      => 'export',
+        'format'      => 'xlsx',
+        'export_type' => $exportType,
+    ];
+    if ($search !== '') {
+        $query['q'] = $search;
+    }
+
+    return buildAuthUrl('records.php', $query);
+}
+
 function buildRecordsWhere(array $filters): array
 {
     $where  = 'cr.deleted_at IS NULL';
@@ -825,6 +868,115 @@ function exportCivilRecordsCsv(PDO $pdo, array $filters): void
     fclose($out);
 }
 
+function exportCivilRecordsXlsx(PDO $pdo, array $filters): void
+{
+    global $validTypes;
+
+    require_once __DIR__ . '/includes/excel_export.php';
+
+    [$where, $params] = buildRecordsWhere($filters);
+    $exportType = $filters['type'] ?? 'all';
+    $types = ($exportType !== 'all' && in_array($exportType, $validTypes, true))
+        ? [$exportType]
+        : $validTypes;
+
+    $stmt = $pdo->prepare("SELECT cr.* FROM civil_records cr WHERE $where ORDER BY cr.record_type ASC, cr.last_name ASC, cr.first_name ASC");
+    $stmt->execute($params);
+    $rows = hydrateCivilRecordRows($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC));
+
+    $grouped = array_fill_keys($validTypes, []);
+    foreach ($rows as $row) {
+        $recordType = (string) ($row['record_type'] ?? '');
+        if (isset($grouped[$recordType])) {
+            $grouped[$recordType][] = $row;
+        }
+    }
+
+    $filename = 'alcros_civil_records_'
+        . ($exportType !== 'all' ? $exportType . '_' : 'all_')
+        . date('Y-m-d') . '.xlsx';
+
+    $spreadsheet = alcrosExcelNewSpreadsheet('ALCROS Civil Records Export');
+    $sheetIndex = 0;
+
+    foreach ($types as $type) {
+        $sheet = $sheetIndex === 0
+            ? $spreadsheet->getActiveSheet()
+            : $spreadsheet->createSheet($sheetIndex);
+        $sheet->setTitle(ucfirst($type));
+        $sheetIndex++;
+
+        $row = 1;
+        $metaLines = [
+            'ALCROS Civil Records Export',
+            ['Record type', civilRecordTypeLabel($type)],
+            ['Generated on', date('Y-m-d g:i A')],
+            ['Total records', (string) count($grouped[$type])],
+        ];
+        if (($filters['q'] ?? '') !== '') {
+            $metaLines[] = ['Search filter', (string) $filters['q']];
+        }
+        alcrosExcelWriteMetaBlock($sheet, $metaLines, $row);
+
+        $headers = civilRecordCsvColumns($type);
+        $dataRows = array_map(
+            static fn ($record) => civilRecordExportRowValues($record, $type),
+            $grouped[$type]
+        );
+
+        alcrosExcelWriteTable(
+            $sheet,
+            $headers,
+            $dataRows,
+            $row,
+            [
+                'section_title' => civilRecordTypeLabel($type) . ' records',
+                'empty_message' => 'No records found for this filter.',
+            ]
+        );
+    }
+
+    if ($spreadsheet->getSheetCount() > 0) {
+        $spreadsheet->setActiveSheetIndex(0);
+    }
+
+    alcrosExcelSendDownload($spreadsheet, $filename);
+}
+
+function exportCivilRecordTemplateXlsx(string $type): void
+{
+    global $validTypes;
+
+    if (!in_array($type, $validTypes, true)) {
+        $type = 'birth';
+    }
+
+    require_once __DIR__ . '/includes/excel_export.php';
+
+    $spreadsheet = alcrosExcelNewSpreadsheet('ALCROS ' . ucfirst($type) . ' Import Template');
+    $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setTitle('Import data');
+
+    $headers = civilRecordCsvColumns($type);
+    $sample = civilRecordCsvSampleRow($type);
+
+    $row = 1;
+    alcrosExcelWriteMetaBlock($sheet, [
+        'ALCROS bulk import template — ' . civilRecordTypeLabel($type),
+        ['Instructions', 'Enter one record per row using the column headers below. The sample row is skipped on import.'],
+        ['Dates', 'Use YYYY-MM-DD or MM/DD/YYYY, or separate day / month / year columns where provided.'],
+        ['Required', $type === 'marriage'
+            ? 'Husband and wife name columns (see template headers).'
+            : ($type === 'death'
+                ? 'deceased_first_name and deceased_last_name'
+                : 'child_first_name and child_last_name')],
+    ], $row);
+
+    alcrosExcelWriteTable($sheet, $headers, [$sample], $row);
+
+    alcrosExcelSendDownload($spreadsheet, 'alcros_' . $type . '_import_template.xlsx');
+}
+
 function normalizeRecordInput(array $input, bool $fromCsvImport = false): array
 {
     global $validTypes;
@@ -935,12 +1087,17 @@ if (isset($_GET['action']) && $_GET['action'] === 'view_record') {
     exit;
 }
 
-// CSV template download
+// Import template download
 if (isset($_GET['action']) && $_GET['action'] === 'template') {
     $tplType = $_GET['type'] ?? 'birth';
     if (!in_array($tplType, $validTypes, true)) {
         $tplType = 'birth';
     }
+    $format = strtolower((string) ($_GET['format'] ?? 'xlsx'));
+    if ($format === 'xlsx') {
+        exportCivilRecordTemplateXlsx($tplType);
+    }
+
     $filename = "alcros_{$tplType}_import_template.csv";
     header('Content-Type: text/csv; charset=UTF-8');
     header('Content-Disposition: attachment; filename="' . $filename . '"');
@@ -957,9 +1114,15 @@ if (isset($_GET['action']) && $_GET['action'] === 'template') {
 // Export filtered records
 if (isset($_GET['action']) && $_GET['action'] === 'export') {
     @set_time_limit(300);
-    $filters = currentRecordsFilters();
-    exportCivilRecordsCsv($pdo, $filters);
+    $filters = recordsExportFilters();
+    $format = strtolower((string) ($_GET['format'] ?? 'xlsx'));
+    if ($format === 'xlsx') {
+        logActivity(staffId(), 'Excel Export', 'Exported civil records (' . ($filters['type'] ?? 'all') . ')');
+        exportCivilRecordsXlsx($pdo, $filters);
+        exit;
+    }
     logActivity(staffId(), 'CSV Export', 'Exported civil records (' . ($filters['type'] ?? 'all') . ')');
+    exportCivilRecordsCsv($pdo, $filters);
     exit;
 }
 
@@ -1178,11 +1341,33 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
 
         <div class="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full admin-page-wrap space-y-6">
             <div class="flex flex-wrap gap-2 sm:gap-3 items-center justify-end">
-                    <a href="<?= htmlspecialchars(buildAuthUrl('records.php', array_filter(['action' => 'export', 'type' => $type !== 'all' ? $type : null, 'q' => $search ?: null]))) ?>"
-                       title="<?= $type === 'all' ? 'Download all records grouped by Birth, Death, and Marriage' : 'Download ' . civilRecordTypeLabel($type) . ' records (re-importable CSV)' ?>"
-                       class="border border-gray-200 text-slate-700 px-4 py-2 rounded-lg text-[11px] font-bold uppercase flex items-center bg-white shadow-sm hover:bg-gray-50">
-                        <i data-lucide="download" class="w-4 h-4 mr-2"></i> Export CSV<?= $type !== 'all' ? ' (' . civilRecordTypeLabel($type) . ')' : '' ?>
-                    </a>
+                    <div class="relative" id="recordsExportMenu">
+                        <button type="button" id="recordsExportBtn"
+                                class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-[11px] font-bold uppercase flex items-center shadow-sm">
+                            <i data-lucide="file-spreadsheet" class="w-4 h-4 mr-2"></i> Download Excel
+                            <i data-lucide="chevron-down" class="w-3.5 h-3.5 ml-1.5 opacity-80"></i>
+                        </button>
+                        <div id="recordsExportPanel" class="hidden absolute right-0 mt-2 w-56 bg-white border border-gray-100 rounded-xl shadow-lg z-50 py-1 text-xs">
+                            <p class="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider text-gray-400">Export as Excel</p>
+                            <?php
+                            $exportOptions = [
+                                'all'      => 'All records',
+                                'birth'    => 'Birth records',
+                                'death'    => 'Death records',
+                                'marriage' => 'Marriage records',
+                            ];
+                            foreach ($exportOptions as $exportKey => $exportLabel):
+                            ?>
+                            <a href="<?= htmlspecialchars(recordsExportUrl($exportKey, $search)) ?>"
+                               class="block px-3 py-2.5 font-semibold text-slate-700 hover:bg-gray-50">
+                                <?= htmlspecialchars($exportLabel) ?>
+                            </a>
+                            <?php endforeach; ?>
+                            <?php if ($search !== ''): ?>
+                            <p class="px-3 py-2 border-t border-gray-100 text-[10px] text-gray-400 leading-snug">Current search filter applies to all options above.</p>
+                            <?php endif; ?>
+                        </div>
+                    </div>
                     <div class="relative" id="newEntryWrapper">
                         <button type="button" id="newEntryBtn"
                             class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-[11px] font-bold uppercase flex items-center shadow-md transition">
@@ -1292,27 +1477,30 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                 <?= htmlspecialchars(implode(' • ', $parents) ?: ($r['place'] ?? '—')) ?>
                             </td>
                             <td class="p-4 text-right">
-                                <div class="inline-flex items-center space-x-2">
-                                    <button type="button" class="view-record-btn text-gray-300 hover:text-blue-600" title="View" data-record="<?= htmlspecialchars(json_encode($r, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), ENT_QUOTES, 'UTF-8') ?>">
-                                        <i data-lucide="eye" class="w-4 h-4"></i>
-                                    </button>
-                                    <div class="records-print-menu">
+                                <div class="manage-row-actions" onclick="event.stopPropagation()">
+                                    <div class="manage-print-menu">
                                         <button type="button"
-                                                class="records-print-trigger records-print-trigger--labeled"
+                                                class="manage-row-action manage-row-action--labeled manage-row-action--print manage-print-trigger"
                                                 title="Print options"
                                                 aria-label="Print options for <?= htmlspecialchars(civilRecordDisplayName($r)) ?>"
                                                 aria-haspopup="true"
                                                 aria-expanded="false">
                                             <i data-lucide="printer" class="w-3.5 h-3.5"></i>
-                                            <span class="records-print-trigger__label">PRINT</span>
-                                            <i data-lucide="chevron-down" class="w-3 h-3 records-print-trigger__chevron"></i>
+                                            <span class="manage-row-action__label">PRINT</span>
+                                            <i data-lucide="chevron-down" class="w-3 h-3 manage-print-trigger__chevron"></i>
                                         </button>
-                                        <div class="records-print-dropdown hidden" role="menu">
-                                            <a href="<?= htmlspecialchars(buildAuthUrl('print_certificate.php', ['record_id' => (int) $r['id']])) ?>" role="menuitem">Local Certificate</a>
-                                            <a href="<?= htmlspecialchars(buildAuthUrl('print_certificate.php', ['record_id' => (int) $r['id'], 'kind' => 'certification'])) ?>" role="menuitem">Certification</a>
+                                        <div class="manage-print-dropdown hidden" role="menu">
+                                            <a href="<?= htmlspecialchars(buildAuthUrl('print_certificate.php', ['record_id' => (int) $r['id']])) ?>"
+                                               role="menuitem">Local Certificate</a>
+                                            <a href="<?= htmlspecialchars(buildAuthUrl('print_certificate.php', ['record_id' => (int) $r['id'], 'kind' => 'certification'])) ?>"
+                                               role="menuitem">Certification</a>
                                         </div>
                                     </div>
-                                    <a href="<?= buildRecordsUrl(['edit' => $r['id']]) ?>" class="text-gray-300 hover:text-slate-600" title="Edit"><i data-lucide="edit-3" class="w-4 h-4"></i></a>
+                                    <button type="button" class="view-record-btn manage-row-action" title="View" aria-label="View record"
+                                            data-record="<?= htmlspecialchars(json_encode($r, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), ENT_QUOTES, 'UTF-8') ?>">
+                                        <i data-lucide="eye" class="w-4 h-4"></i>
+                                    </button>
+                                    <a href="<?= buildRecordsUrl(['edit' => $r['id']]) ?>" class="manage-row-action" title="Edit" aria-label="Edit record"><i data-lucide="edit-3" class="w-4 h-4"></i></a>
                                 </div>
                             </td>
                         </tr>
@@ -1974,13 +2162,13 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                 <?= authFormField() ?>
                 <input type="hidden" name="action" value="import_csv">
                 <input type="hidden" name="import_type" id="importType" value="">
-                <p class="text-xs text-gray-500" id="importColumnsHelp">Download the matching CSV template below. Enter each value in its own column (do not paste an entire row into cell A). Template sample rows are skipped automatically. Use dates as <strong>YYYY-MM-DD</strong> or <strong>MM/DD/YYYY</strong>. In Excel, use <strong>Save As → CSV UTF-8 (Comma delimited)</strong>. Required: <strong>first_name</strong> and <strong>last_name</strong> (birth/death), or <strong>husband_name</strong> and <strong>wife_name</strong> (marriage).</p>
+                <p class="text-xs text-gray-500" id="importColumnsHelp">Download the Excel template below, enter one record per row, then upload the file. The sample row is skipped automatically.</p>
                 <div>
                     <label class="block text-[11px] font-bold text-gray-700 mb-1">CSV File *</label>
                     <input type="file" name="csv_file" accept=".csv,text/csv,text/plain" required class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-600 file:font-bold file:text-xs">
                 </div>
                 <a href="#" id="importTemplateLink" download class="text-blue-600 text-[10px] font-bold flex items-center hover:underline">
-                    <i data-lucide="download" class="w-3.5 h-3.5 mr-2"></i> Download CSV Template
+                    <i data-lucide="download" class="w-3.5 h-3.5 mr-2"></i> Download Excel Template
                 </a>
                 <div class="flex gap-3 pt-2">
                     <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 text-sm font-bold">Import Records</button>
@@ -1992,11 +2180,6 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
 
     <?= actionResultScript($flash) ?>
     <?= pageConfigJson([
-        'csvTemplateColumns' => [
-            'birth' => civilRecordCsvColumns('birth'),
-            'death' => civilRecordCsvColumns('death'),
-            'marriage' => civilRecordCsvColumns('marriage'),
-        ],
         'recordsAuthUrl' => buildAuthUrl('records.php'),
         'printCertificateUrl' => buildAuthUrl('print_certificate.php'),
         'printCertificationUrl' => buildAuthUrl('print_certificate.php', ['kind' => 'certification']),

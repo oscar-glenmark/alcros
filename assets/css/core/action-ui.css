@@ -8,9 +8,11 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 1rem;
-    background: rgba(15, 23, 42, 0.45);
+    padding: 1.25rem;
+    background: rgba(15, 23, 42, 0.52);
+    backdrop-filter: blur(4px);
     pointer-events: auto;
+    animation: alcros-modal-backdrop-in 0.2s ease-out;
 }
 
 #alcrosConfirmModal.is-hidden,
@@ -18,65 +20,136 @@
     display: none;
 }
 
+.alcros-modal-close {
+    position: absolute;
+    top: 0.875rem;
+    right: 0.875rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.alcros-modal-close:hover {
+    background: #f1f5f9;
+    color: #475569;
+}
+
+.alcros-modal-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 0 0.625rem;
+    padding: 0.25rem 0.625rem;
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.alcros-modal-badge--confirm {
+    background: #eff6ff;
+    color: #2563eb;
+}
+
+.alcros-modal-badge--success {
+    background: #ecfdf5;
+    color: #059669;
+}
+
+.alcros-modal-badge--error {
+    background: #fef2f2;
+    color: #dc2626;
+}
+
 .alcros-confirm-modal__panel {
     position: relative;
     z-index: 1;
-    width: min(100%, 26rem);
+    width: min(100%, 22.5rem);
+    overflow: hidden;
     background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 1rem;
-    box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18);
-    padding: 1.375rem;
+    border: 1px solid rgba(226, 232, 240, 0.95);
+    border-radius: 1.25rem;
+    box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.65) inset,
+        0 24px 48px rgba(15, 23, 42, 0.2),
+        0 8px 16px rgba(15, 23, 42, 0.08);
     pointer-events: auto;
+    animation: alcros-modal-panel-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.alcros-confirm-modal__head {
+.alcros-confirm-modal__hero {
+    padding: 1.75rem 1.5rem 1.25rem;
+    text-align: center;
+}
+
+.alcros-confirm-modal__icon-wrap {
     display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
+    align-items: center;
+    justify-content: center;
+    width: 4.25rem;
+    height: 4.25rem;
+    margin: 0 auto 1rem;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
+    box-shadow: 0 0 0 6px rgba(239, 246, 255, 0.85);
 }
 
 .alcros-confirm-modal__icon {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 2.25rem;
-    height: 2.25rem;
-    border-radius: 0.75rem;
-    background: #eff6ff;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 999px;
+    background: #fff;
     color: #2563eb;
-    flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.18);
 }
 
 .alcros-confirm-modal__title {
     margin: 0;
-    font-size: 1rem;
+    font-size: 1.125rem;
     font-weight: 800;
     color: #0f172a;
-    line-height: 1.3;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
 }
 
 .alcros-confirm-modal__message {
-    margin: 0.375rem 0 0;
-    font-size: 0.9375rem;
-    line-height: 1.55;
-    color: #475569;
+    margin: 0.625rem 0 0;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: #64748b;
 }
 
 .alcros-confirm-modal__actions {
     display: flex;
-    gap: 0.5rem;
+    gap: 0.625rem;
+    padding: 0 1.25rem 1.25rem;
 }
 
 .alcros-confirm-modal__btn {
     flex: 1;
-    min-height: 2.5rem;
-    border-radius: 0.75rem;
+    min-height: 2.75rem;
+    border-radius: 0.875rem;
     font-size: 0.875rem;
     font-weight: 700;
     cursor: pointer;
     pointer-events: auto;
+    transition: transform 0.12s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.alcros-confirm-modal__btn:active {
+    transform: scale(0.98);
 }
 
 .alcros-confirm-modal__btn--cancel {
@@ -87,16 +160,19 @@
 
 .alcros-confirm-modal__btn--cancel:hover {
     background: #f8fafc;
+    border-color: #cbd5e1;
 }
 
 .alcros-confirm-modal__btn--ok {
-    border: 1px solid #071428;
-    background: #071428;
+    border: 1px solid #1d4ed8;
+    background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
     color: #fff;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.28);
 }
 
 .alcros-confirm-modal__btn--ok:hover {
-    background: #0c2247;
+    background: linear-gradient(180deg, #1d4ed8 0%, #1e40af 100%);
+    box-shadow: 0 6px 18px rgba(37, 99, 235, 0.34);
 }
 
 body.alcros-confirm-open .manage-request-modal,
@@ -120,9 +196,11 @@ body.alcros-confirm-open #alcrosActionResultModal {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 1rem;
-    background: rgba(15, 23, 42, 0.45);
+    padding: 1.25rem;
+    background: rgba(15, 23, 42, 0.52);
+    backdrop-filter: blur(4px);
     pointer-events: auto;
+    animation: alcros-modal-backdrop-in 0.2s ease-out;
 }
 
 #alcrosActionResultModal.is-hidden,
@@ -133,82 +211,133 @@ body.alcros-confirm-open #alcrosActionResultModal {
 .alcros-action-result-modal__panel {
     position: relative;
     z-index: 1;
-    width: min(100%, 26rem);
+    width: min(100%, 22.5rem);
+    overflow: hidden;
     background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 1rem;
-    box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18);
-    padding: 1.375rem;
+    border: 1px solid rgba(226, 232, 240, 0.95);
+    border-radius: 1.25rem;
+    box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.65) inset,
+        0 24px 48px rgba(15, 23, 42, 0.2),
+        0 8px 16px rgba(15, 23, 42, 0.08);
     pointer-events: auto;
+    animation: alcros-modal-panel-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.alcros-action-result-modal__head {
+.alcros-action-result-modal__hero {
+    padding: 1.75rem 1.5rem 1.25rem;
+    text-align: center;
+}
+
+.alcros-action-result-modal__icon-wrap {
     display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
+    align-items: center;
+    justify-content: center;
+    width: 4.25rem;
+    height: 4.25rem;
+    margin: 0 auto 1rem;
+    border-radius: 999px;
+    box-shadow: 0 0 0 6px rgba(236, 253, 245, 0.85);
+}
+
+.alcros-action-result-modal__icon-wrap--success {
+    background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);
+}
+
+.alcros-action-result-modal__icon-wrap--error {
+    background: linear-gradient(180deg, #fef2f2 0%, #fee2e2 100%);
+    box-shadow: 0 0 0 6px rgba(254, 242, 242, 0.85);
 }
 
 .alcros-action-result-modal__icon {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 2.25rem;
-    height: 2.25rem;
-    border-radius: 0.75rem;
-    flex-shrink: 0;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
 .alcros-action-result-modal__icon--success {
-    background: #ecfdf5;
     color: #059669;
+    box-shadow: 0 4px 12px rgba(5, 150, 105, 0.18);
 }
 
 .alcros-action-result-modal__icon--error {
-    background: #fef2f2;
     color: #dc2626;
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.18);
 }
 
 .alcros-action-result-modal__title {
     margin: 0;
-    font-size: 1rem;
+    font-size: 1.125rem;
     font-weight: 800;
     color: #0f172a;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
 }
 
 .alcros-action-result-modal__message {
-    margin: 0.375rem 0 0;
-    font-size: 0.9375rem;
-    line-height: 1.55;
-    color: #475569;
+    margin: 0.625rem 0 0;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: #64748b;
 }
 
 .alcros-action-result-modal__btn {
-    width: 100%;
-    min-height: 2.5rem;
+    width: calc(100% - 2.5rem);
+    min-height: 2.75rem;
+    margin: 0 1.25rem 1.25rem;
     border: none;
-    border-radius: 0.75rem;
+    border-radius: 0.875rem;
     font-size: 0.875rem;
     font-weight: 700;
     color: #fff;
     cursor: pointer;
     pointer-events: auto;
+    transition: transform 0.12s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.alcros-action-result-modal__btn:active {
+    transform: scale(0.98);
 }
 
 .alcros-action-result-modal__btn--success {
-    background: #059669;
+    background: linear-gradient(180deg, #10b981 0%, #059669 100%);
+    box-shadow: 0 4px 14px rgba(5, 150, 105, 0.28);
 }
 
 .alcros-action-result-modal__btn--success:hover {
-    background: #047857;
+    background: linear-gradient(180deg, #059669 0%, #047857 100%);
+    box-shadow: 0 6px 18px rgba(5, 150, 105, 0.34);
 }
 
 .alcros-action-result-modal__btn--error {
-    background: #dc2626;
+    background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
+    box-shadow: 0 4px 14px rgba(220, 38, 38, 0.28);
 }
 
 .alcros-action-result-modal__btn--error:hover {
-    background: #b91c1c;
+    background: linear-gradient(180deg, #dc2626 0%, #b91c1c 100%);
+    box-shadow: 0 6px 18px rgba(220, 38, 38, 0.34);
+}
+
+@keyframes alcros-modal-backdrop-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes alcros-modal-panel-in {
+    from {
+        opacity: 0;
+        transform: translateY(10px) scale(0.97);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
 #alcros-loading-overlay,
@@ -220,7 +349,8 @@ body.alcros-confirm-open #alcrosActionResultModal {
     align-items: center;
     justify-content: center;
     padding: 1rem;
-    background: rgba(15, 23, 42, 0.4);
+    background: rgba(15, 23, 42, 0.28);
+    backdrop-filter: blur(2px);
     pointer-events: auto;
 }
 
@@ -231,21 +361,45 @@ body.alcros-confirm-open #alcrosActionResultModal {
 
 .alcros-loading-overlay__panel {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 0.875rem;
-    min-width: min(100%, 16rem);
-    padding: 1rem 1.25rem;
+    gap: 0.75rem;
+    min-width: min(100%, 12rem);
+    padding: 1.125rem 1.375rem;
     background: #fff;
     border: 1px solid #e2e8f0;
     border-radius: 1rem;
-    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.16);
+    box-shadow: 0 16px 36px rgba(15, 23, 42, 0.12);
 }
 
 .alcros-loading-message {
     margin: 0;
-    font-size: 0.875rem;
-    font-weight: 700;
-    color: #334155;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #64748b;
+    letter-spacing: 0.01em;
+}
+
+.alcros-loading-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+
+.alcros-loading-dots span {
+    width: 0.4375rem;
+    height: 0.4375rem;
+    border-radius: 999px;
+    background: #2563eb;
+    animation: alcros-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.alcros-loading-dots span:nth-child(2) {
+    animation-delay: 0.15s;
+}
+
+.alcros-loading-dots span:nth-child(3) {
+    animation-delay: 0.3s;
 }
 
 .alcros-loading-spinner {
@@ -272,6 +426,161 @@ body.alcros-loading-open {
     overflow: hidden;
 }
 
+.alcros-skeleton-host {
+    min-height: 2rem;
+}
+
+.alcros-sk-line,
+.alcros-sk-circle,
+.alcros-sk-square,
+.alcros-sk-step,
+.alcros-sk-preview-block {
+    display: block;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #eef2f7 0%, #f8fafc 45%, #eef2f7 90%);
+    background-size: 200% 100%;
+    animation: alcros-shimmer 1.35s ease-in-out infinite;
+}
+
+.alcros-sk-line {
+    height: 0.625rem;
+    border-radius: 0.375rem;
+    width: 100%;
+}
+
+.alcros-sk-line--xs { width: 28%; height: 0.5rem; }
+.alcros-sk-line--sm { width: 55%; height: 0.5rem; margin-top: 0.375rem; }
+.alcros-sk-line--md { width: 72%; }
+.alcros-sk-line--lg { width: 100%; margin-top: 0.375rem; }
+
+.alcros-sk-circle {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 999px;
+    flex-shrink: 0;
+}
+
+.alcros-sk-square {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.625rem;
+    flex-shrink: 0;
+}
+
+.alcros-sk-col {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.alcros-sk-row,
+.alcros-sk-activity {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 0;
+}
+
+.alcros-sk-row + .alcros-sk-row,
+.alcros-sk-activity + .alcros-sk-activity {
+    border-top: 1px solid #f1f5f9;
+}
+
+.alcros-sk-field + .alcros-sk-field {
+    margin-top: 1rem;
+}
+
+.alcros-sk-steps {
+    display: flex;
+    gap: 0.5rem;
+    margin: 1rem 0 0.75rem;
+}
+
+.alcros-sk-step {
+    flex: 1 1 0;
+    height: 0.375rem;
+    border-radius: 999px;
+}
+
+.alcros-sk--track .alcros-sk-line--xs {
+    width: 36%;
+}
+
+.alcros-sk--track .alcros-sk-line--md {
+    width: 64%;
+    margin-top: 0.375rem;
+}
+
+.alcros-sk--track .alcros-sk-line--sm {
+    width: 48%;
+    margin-top: 0.75rem;
+}
+
+.alcros-sk--inline {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+}
+
+.alcros-sk--preview {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+    height: 100%;
+    padding: 1rem;
+    justify-content: center;
+}
+
+.alcros-sk-preview-block {
+    height: 1rem;
+    border-radius: 0.375rem;
+    width: 88%;
+    margin: 0 auto;
+}
+
+.alcros-sk-preview-block--short {
+    width: 62%;
+}
+
+.alcros-sk-preview-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(248, 250, 252, 0.92);
+    border-radius: inherit;
+    pointer-events: none;
+}
+
+.print-cert-preview-block {
+    position: relative;
+}
+
+.print-cert-frame.is-loading {
+    opacity: 0.35;
+}
+
 @keyframes alcros-spin {
     to { transform: rotate(360deg); }
+}
+
+@keyframes alcros-dot-pulse {
+    0%, 80%, 100% {
+        transform: scale(0.72);
+        opacity: 0.45;
+    }
+    40% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes alcros-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
 }

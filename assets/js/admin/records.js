@@ -2,7 +2,6 @@
     'use strict';
 
     var cfg = {};
-    var csvTemplateColumns = {};
     var recordsAuthUrl = 'records.php';
     var recordLockTimer = null;
     var activeEditRecordId = null;
@@ -11,7 +10,6 @@
         if (window.AlcrosPage && typeof AlcrosPage.readConfig === 'function') {
             cfg = AlcrosPage.readConfig('records-config') || {};
         }
-        csvTemplateColumns = cfg.csvTemplateColumns || {};
         recordsAuthUrl = cfg.recordsAuthUrl || 'records.php';
         activeEditRecordId = cfg.editRecordId || null;
     }
@@ -292,19 +290,36 @@
 
         importType.value = type;
         importModalTitle.textContent = 'Import ' + type.charAt(0).toUpperCase() + type.slice(1) + ' Records';
-        importTemplateLink.href = recordsAuthUrl + (recordsAuthUrl.indexOf('?') !== -1 ? '&' : '?') + 'action=template&type=' + encodeURIComponent(type) + '&v=3';
-        importTemplateLink.download = 'alcros_' + type + '_import_template.csv';
-        var cols = csvTemplateColumns[type] || [];
+        importTemplateLink.href = recordsAuthUrl + (recordsAuthUrl.indexOf('?') !== -1 ? '&' : '?') + 'action=template&format=xlsx&type=' + encodeURIComponent(type) + '&v=4';
+        importTemplateLink.download = 'alcros_' + type + '_import_template.xlsx';
         var requiredHint = type === 'marriage'
-            ? '<strong>husband_first_name</strong> + <strong>husband_last_name</strong> and <strong>wife_first_name</strong> + <strong>wife_last_name</strong>'
+            ? 'husband and wife first and last names'
             : (type === 'death'
-                ? '<strong>deceased_first_name</strong> and <strong>deceased_last_name</strong>'
-                : '<strong>child_first_name</strong> and <strong>child_last_name</strong>');
-        importColumnsHelp.innerHTML =
-            'Upload a CSV using the same column names as the print certificate fill-in fields for <strong>' + type + '</strong>. Put each value in its own column — do not paste a whole row into cell A. Required: ' + requiredHint + ' (legacy columns such as first_name / last_name or husband_name / wife_name still work). Dates may use YYYY-MM-DD, MM/DD/YYYY, or separate day / month / year columns. Template sample rows are skipped automatically.<br><span class="text-[10px] text-gray-400 mt-1 inline-block">' + cols.join(', ') + '</span>';
+                ? 'deceased first and last name'
+                : 'child first and last name');
+        importColumnsHelp.textContent =
+            'Download the Excel template below, enter one record per row, then upload the file. Required: ' + requiredHint + '. The sample row is skipped automatically.';
         var fileInput = document.querySelector('#importForm input[name="csv_file"]');
         if (fileInput) fileInput.value = '';
         openModal('importModal');
+    }
+
+    function bindRecordsExportMenu() {
+        var menu = document.getElementById('recordsExportMenu');
+        var btn = document.getElementById('recordsExportBtn');
+        var panel = document.getElementById('recordsExportPanel');
+        if (!menu || !btn || !panel) return;
+
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            panel.classList.toggle('hidden');
+        });
+
+        document.addEventListener('click', function (e) {
+            if (!menu.contains(e.target)) {
+                panel.classList.add('hidden');
+            }
+        });
     }
 
     function bindNewEntryMenu() {
@@ -592,6 +607,9 @@
 
     function renderViewRecordPresentation(r, printValues) {
         var viewContent = document.getElementById('viewContent');
+        if (viewContent && window.AlcrosLoading && typeof window.AlcrosLoading.clearSkeletonHost === 'function') {
+            window.AlcrosLoading.clearSkeletonHost(viewContent);
+        }
         var viewEditLink = document.getElementById('viewEditLink');
         var viewPrintCertificateLink = document.getElementById('viewPrintCertificateLink');
         var viewPrintCertificationLink = document.getElementById('viewPrintCertificationLink');
@@ -646,16 +664,16 @@
         }
     }
 
-    function resetRecordsPrintDropdownPosition(panel) {
+    function resetPrintDropdownPosition(panel) {
         if (!panel) return;
-        panel.classList.remove('records-print-dropdown--floating');
+        panel.classList.remove('manage-print-dropdown--floating');
         panel.style.top = '';
         panel.style.left = '';
         panel.style.right = '';
         panel.style.bottom = '';
     }
 
-    function positionRecordsPrintDropdown(trigger, panel) {
+    function positionPrintDropdown(trigger, panel) {
         if (!trigger || !panel) return;
 
         var rect = trigger.getBoundingClientRect();
@@ -683,26 +701,26 @@
         panel.style.top = Math.round(top) + 'px';
     }
 
-    function closeRecordsPrintMenus() {
-        document.querySelectorAll('.records-print-menu.is-open').forEach(function (menu) {
+    function closePrintMenus() {
+        document.querySelectorAll('.manage-print-menu.is-open').forEach(function (menu) {
             menu.classList.remove('is-open');
         });
-        document.querySelectorAll('.records-print-dropdown').forEach(function (el) {
+        document.querySelectorAll('.manage-print-dropdown').forEach(function (el) {
             el.classList.add('hidden');
-            resetRecordsPrintDropdownPosition(el);
+            resetPrintDropdownPosition(el);
         });
-        document.querySelectorAll('.records-print-trigger').forEach(function (btn) {
+        document.querySelectorAll('.manage-print-trigger').forEach(function (btn) {
             btn.setAttribute('aria-expanded', 'false');
         });
     }
 
-    function bindRecordsPrintMenu(menu) {
+    function bindPrintMenu(menu) {
         if (!menu || menu.dataset.printMenuBound === '1') {
             return;
         }
 
-        var trigger = menu.querySelector('.records-print-trigger');
-        var panel = menu.querySelector('.records-print-dropdown');
+        var trigger = menu.querySelector('.manage-print-trigger');
+        var panel = menu.querySelector('.manage-print-dropdown');
         if (!trigger || !panel) {
             return;
         }
@@ -711,14 +729,14 @@
         trigger.addEventListener('click', function (e) {
             e.stopPropagation();
             var open = !panel.classList.contains('hidden');
-            closeRecordsPrintMenus();
+            closePrintMenus();
             if (!open) {
                 panel.classList.remove('hidden');
-                panel.classList.add('records-print-dropdown--floating');
+                panel.classList.add('manage-print-dropdown--floating');
                 trigger.setAttribute('aria-expanded', 'true');
                 menu.classList.add('is-open');
                 window.requestAnimationFrame(function () {
-                    positionRecordsPrintDropdown(trigger, panel);
+                    positionPrintDropdown(trigger, panel);
                 });
             }
         });
@@ -729,10 +747,10 @@
     }
 
     function bindRecordsPrintMenus() {
-        document.querySelectorAll('.records-print-menu').forEach(bindRecordsPrintMenu);
-        document.addEventListener('click', closeRecordsPrintMenus);
-        window.addEventListener('resize', closeRecordsPrintMenus);
-        window.addEventListener('scroll', closeRecordsPrintMenus, true);
+        document.querySelectorAll('.manage-print-menu').forEach(bindPrintMenu);
+        document.addEventListener('click', closePrintMenus);
+        window.addEventListener('resize', closePrintMenus);
+        window.addEventListener('scroll', closePrintMenus, true);
     }
 
     function bindViewRecordButtons() {
@@ -750,7 +768,11 @@
 
                 var viewContent = document.getElementById('viewContent');
                 if (viewContent) {
-                    viewContent.innerHTML = '<p class="records-detail-loading">Loading record details…</p>';
+                    if (window.AlcrosLoading && typeof window.AlcrosLoading.skeletonInto === 'function') {
+                        window.AlcrosLoading.skeletonInto(viewContent, 'detail', 8);
+                    } else {
+                        viewContent.innerHTML = '<p class="records-detail-loading">Loading record details…</p>';
+                    }
                 }
                 openModal('viewModal');
 
@@ -799,6 +821,7 @@
     function initRecordsPage() {
         readPageConfig();
         refreshIcons();
+        bindRecordsExportMenu();
         bindNewEntryMenu();
         bindRecordTypeTabs();
         bindEntryPrintFillTabs();

@@ -13,6 +13,114 @@
             '</svg>';
     }
 
+    function dotsMarkup() {
+        return '<span class="alcros-loading-dots" aria-hidden="true">' +
+            '<span></span><span></span><span></span>' +
+            '</span>';
+    }
+
+    function skLine(size) {
+        return '<span class="alcros-sk-line' + (size ? ' alcros-sk-line--' + size : '') + '"></span>';
+    }
+
+    function skeletonList(count) {
+        var rows = '';
+        var i;
+        count = count || 3;
+        for (i = 0; i < count; i++) {
+            rows += '<div class="alcros-sk-row">' +
+                '<span class="alcros-sk-circle"></span>' +
+                '<span class="alcros-sk-col">' + skLine('md') + skLine('sm') + '</span>' +
+                '</div>';
+        }
+        return '<div class="alcros-sk alcros-sk--list" aria-hidden="true">' + rows + '</div>';
+    }
+
+    function skeletonDetail(count) {
+        var rows = '';
+        var i;
+        count = count || 6;
+        for (i = 0; i < count; i++) {
+            rows += '<div class="alcros-sk-field">' + skLine('xs') + skLine('lg') + '</div>';
+        }
+        return '<div class="alcros-sk alcros-sk--detail" aria-hidden="true">' + rows + '</div>';
+    }
+
+    function skeletonTrack() {
+        return '<div class="alcros-sk alcros-sk--track" aria-hidden="true">' +
+            skLine('xs') + skLine('md') +
+            '<div class="alcros-sk-steps">' +
+            '<span class="alcros-sk-step"></span><span class="alcros-sk-step"></span>' +
+            '<span class="alcros-sk-step"></span><span class="alcros-sk-step"></span>' +
+            '</div>' +
+            skLine('sm') +
+            '</div>';
+    }
+
+    function skeletonActivity(count) {
+        var cards = '';
+        var i;
+        count = count || 3;
+        for (i = 0; i < count; i++) {
+            cards += '<div class="alcros-sk-activity">' +
+                '<span class="alcros-sk-square"></span>' +
+                '<span class="alcros-sk-col">' + skLine('md') + skLine('sm') + skLine('xs') + '</span>' +
+                '</div>';
+        }
+        return '<div class="alcros-sk alcros-sk--activity" aria-hidden="true">' + cards + '</div>';
+    }
+
+    function skeletonPreview() {
+        return '<div class="alcros-sk alcros-sk--preview" aria-hidden="true">' +
+            '<span class="alcros-sk-preview-block"></span>' +
+            '<span class="alcros-sk-preview-block alcros-sk-preview-block--short"></span>' +
+            '</div>';
+    }
+
+    function skeletonInline(count) {
+        var lines = '';
+        var i;
+        count = count || 4;
+        for (i = 0; i < count; i++) {
+            lines += skLine(i === 0 ? 'md' : 'lg');
+        }
+        return '<div class="alcros-sk alcros-sk--inline" aria-hidden="true">' + lines + '</div>';
+    }
+
+    function skeleton(type, count) {
+        switch (type) {
+            case 'list':
+            case 'schedule':
+            case 'rows':
+                return skeletonList(count);
+            case 'detail':
+                return skeletonDetail(count);
+            case 'track':
+                return skeletonTrack();
+            case 'activity':
+                return skeletonActivity(count);
+            case 'preview':
+                return skeletonPreview();
+            case 'inline':
+                return skeletonInline(count);
+            default:
+                return skeletonList(count || 3);
+        }
+    }
+
+    function skeletonInto(el, type, count) {
+        if (!el) return;
+        el.innerHTML = skeleton(type, count);
+        el.setAttribute('aria-busy', 'true');
+        el.classList.add('alcros-skeleton-host');
+    }
+
+    function clearSkeletonHost(el) {
+        if (!el) return;
+        el.removeAttribute('aria-busy');
+        el.classList.remove('alcros-skeleton-host');
+    }
+
     function ensureOverlay() {
         if (overlayEl) return overlayEl;
 
@@ -24,7 +132,7 @@
         overlayEl.setAttribute('aria-busy', 'true');
         overlayEl.innerHTML =
             '<div class="alcros-loading-overlay__panel">' +
-                spinnerMarkup('alcros-loading-spinner--lg') +
+                dotsMarkup() +
                 '<p class="alcros-loading-message">Working…</p>' +
             '</div>';
         document.body.appendChild(overlayEl);
@@ -141,6 +249,9 @@
         page: page,
         wrap: wrap,
         spinner: spinnerMarkup,
+        skeleton: skeleton,
+        skeletonInto: skeletonInto,
+        clearSkeletonHost: clearSkeletonHost,
         init: init
     };
 

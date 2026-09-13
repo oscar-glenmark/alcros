@@ -384,7 +384,7 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                                         </button>
                                         <div class="manage-print-dropdown hidden" role="menu">
                                             <a href="<?= htmlspecialchars(buildAuthUrl('print_certificate.php', ['request_id' => (int) $req['id']])) ?>"
-                                               role="menuitem">Certificate</a>
+                                               role="menuitem">Local Certificate</a>
                                             <a href="<?= htmlspecialchars(buildAuthUrl('print_certificate.php', ['request_id' => (int) $req['id'], 'kind' => 'certification'])) ?>"
                                                role="menuitem">Certification</a>
                                         </div>

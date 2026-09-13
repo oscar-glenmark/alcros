@@ -4,14 +4,45 @@
     var data = (window.AlcrosPage && AlcrosPage.readConfig('analytics-config')) || {};
     if (typeof Chart === 'undefined') return;
 
+    var charts = [];
+
+    function isDarkTheme() {
+        return document.documentElement.classList.contains('alcros-dark');
+    }
+
+    function chartPalette() {
+        return isDarkTheme()
+            ? { text: '#94a3b8', grid: '#334155', tooltip: '#111827' }
+            : { text: '#94a3b8', grid: '#f1f5f9', tooltip: '#0f172a' };
+    }
+
+    function applyChartTheme() {
+        var palette = chartPalette();
+        Chart.defaults.color = palette.text;
+        charts.forEach(function (chart) {
+            if (!chart || !chart.options) return;
+            if (chart.options.scales) {
+                Object.keys(chart.options.scales).forEach(function (axisKey) {
+                    var axis = chart.options.scales[axisKey];
+                    if (axis.grid) axis.grid.color = palette.grid;
+                    if (axis.ticks) axis.ticks.color = palette.text;
+                });
+            }
+            if (chart.options.plugins && chart.options.plugins.tooltip) {
+                chart.options.plugins.tooltip.backgroundColor = palette.tooltip;
+            }
+            chart.update('none');
+        });
+    }
+
     Chart.defaults.font.family = 'Inter, sans-serif';
     Chart.defaults.font.size = 11;
-    Chart.defaults.color = '#64748b';
+    Chart.defaults.color = chartPalette().text;
 
     var sharedPlugins = {
         legend: { display: false },
         tooltip: {
-            backgroundColor: '#0f172a',
+            backgroundColor: chartPalette().tooltip,
             titleFont: { size: 11, weight: '600' },
             bodyFont: { size: 11 },
             padding: 10,
@@ -24,12 +55,17 @@
     };
 
     var axisStyle = {
-        grid: { color: '#f1f5f9', drawBorder: false },
-        ticks: { padding: 6, color: '#94a3b8', font: { size: 10 } }
+        grid: { color: chartPalette().grid, drawBorder: false },
+        ticks: { padding: 6, color: chartPalette().text, font: { size: 10 } }
     };
 
+    function trackChart(chart) {
+        charts.push(chart);
+        return chart;
+    }
+
     if (document.getElementById('chartMonths') && data.months) {
-        new Chart(document.getElementById('chartMonths'), {
+        trackChart(new Chart(document.getElementById('chartMonths'), {
             type: 'line',
             data: {
                 labels: data.months.labels,
@@ -64,11 +100,11 @@
                     }
                 }
             }
-        });
+        }));
     }
 
     if (document.getElementById('chartPipeline') && data.pipeline) {
-        new Chart(document.getElementById('chartPipeline'), {
+        trackChart(new Chart(document.getElementById('chartPipeline'), {
             type: 'bar',
             data: {
                 labels: data.pipeline.labels,
@@ -96,11 +132,11 @@
                     }
                 }
             }
-        });
+        }));
     }
 
     if (document.getElementById('chartAppointments') && data.appointments) {
-        new Chart(document.getElementById('chartAppointments'), {
+        trackChart(new Chart(document.getElementById('chartAppointments'), {
             type: 'doughnut',
             data: {
                 labels: data.appointments.labels,
@@ -129,11 +165,11 @@
                     tooltip: sharedPlugins.tooltip
                 }
             }
-        });
+        }));
     }
 
     if (document.getElementById('chartRecordsType') && data.records && data.records.types) {
-        new Chart(document.getElementById('chartRecordsType'), {
+        trackChart(new Chart(document.getElementById('chartRecordsType'), {
             type: 'doughnut',
             data: {
                 labels: data.records.types.labels,
@@ -162,11 +198,11 @@
                     tooltip: sharedPlugins.tooltip
                 }
             }
-        });
+        }));
     }
 
     if (document.getElementById('chartRecordsMonths') && data.records && data.records.months) {
-        new Chart(document.getElementById('chartRecordsMonths'), {
+        trackChart(new Chart(document.getElementById('chartRecordsMonths'), {
             type: 'bar',
             data: {
                 labels: data.records.months.labels,
@@ -194,6 +230,8 @@
                     }
                 }
             }
-        });
+        }));
     }
+
+    window.addEventListener('alcros:theme-change', applyChartTheme);
 })();

@@ -76,10 +76,55 @@ function activityLogPageUrl(array $overrides = []): string
 }
 
 if (isset($_GET['action']) && $_GET['action'] === 'export') {
+    require_once __DIR__ . '/includes/excel_export.php';
+
     [$whereSql, $params] = activityLogWhereClause();
-    $stmt = $pdo->prepare("SELECT staff_id, action, details, created_at FROM activity_logs $whereSql ORDER BY created_at DESC LIMIT 5000");
+    $stmt = $pdo->prepare("SELECT staff_id, action, details, created_at FROM activity_logs $whereSql ORDER BY created_at DESC");
     $stmt->execute($params);
     $exportRows = $stmt->fetchAll();
+    $format = strtolower((string) ($_GET['format'] ?? 'xlsx'));
+
+    if ($format === 'xlsx') {
+        $spreadsheet = alcrosExcelNewSpreadsheet('ALCROS Activity Log');
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Activity Log');
+
+        $row = 1;
+        alcrosExcelWriteMetaBlock($sheet, [
+            'ALCROS Staff Activity Log',
+            ['Office', getSetting('office_name', 'Local Civil Registrar Office')],
+            ['Generated on', date('Y-m-d g:i A')],
+            ['Total entries', (string) count($exportRows)],
+            ['Filters applied', trim(($search !== '' ? 'Search: ' . $search . ' · ' : '') . ($staffFilter !== '' ? 'Staff: ' . $staffFilter . ' · ' : '') . 'Range: ' . match ($range) {
+                'today' => 'Today',
+                '7d' => 'Last 7 days',
+                '30d' => 'Last 30 days',
+                '90d' => 'Last 90 days',
+                default => 'All time',
+            })],
+        ], $row);
+
+        $dataRows = array_map(static fn ($item) => [
+            $item['staff_id'] ?: 'System',
+            $item['action'],
+            $item['details'] ?: '',
+            formatReportDateTime($item['created_at']),
+        ], $exportRows);
+
+        alcrosExcelWriteTable(
+            $sheet,
+            ['Staff account ID', 'Action performed', 'Additional details', 'Date and time'],
+            $dataRows,
+            $row,
+            [
+                'section_title' => 'Activity entries',
+                'empty_message' => 'No activity matches the current filters.',
+                'column_formats' => [4 => 'datetime'],
+            ]
+        );
+
+        alcrosExcelSendDownload($spreadsheet, 'alcros_activity_logs_' . date('Y-m-d') . '.xlsx');
+    }
 
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="alcros_activity_logs_' . date('Y-m-d') . '.csv"');
@@ -106,6 +151,21 @@ $offset = ($page - 1) * $perPage;
 $stmt = $pdo->prepare("SELECT id, staff_id, action, details, created_at FROM activity_logs $whereSql ORDER BY created_at DESC LIMIT $perPage OFFSET $offset");
 $stmt->execute($params);
 $logs = $stmt->fetchAll();
+
+ensureStaffProfileColumns($pdo);
+$staffById = [];
+$logStaffIds = array_values(array_unique(array_filter(array_column($logs, 'staff_id'))));
+if ($logStaffIds !== []) {
+    $staffPlaceholders = implode(',', array_fill(0, count($logStaffIds), '?'));
+    $staffStmt = $pdo->prepare(
+        "SELECT staff_id, first_name, middle_name, last_name, profile_photo_path
+         FROM staff WHERE staff_id IN ($staffPlaceholders)"
+    );
+    $staffStmt->execute($logStaffIds);
+    foreach ($staffStmt->fetchAll() as $staffRow) {
+        $staffById[(string) $staffRow['staff_id']] = $staffRow;
+    }
+}
 
 $staffList = $pdo->query("SELECT DISTINCT staff_id FROM activity_logs WHERE staff_id IS NOT NULL AND staff_id != '' ORDER BY staff_id")->fetchAll(PDO::FETCH_COLUMN);
 
@@ -138,16 +198,33 @@ $showingTo = min($offset + $perPage, $totalCount);
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
         <div class="p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto admin-page-wrap">
             <div class="admin-page-head mb-6">
-                <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-    
-                    <a href="<?= htmlspecialchars(activityLogPageUrl(['action' => 'export', 'page' => null])) ?>"
-                       class="inline-flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold shrink-0">
-                        <i data-lucide="download" class="w-4 h-4"></i> Export CSV
-                    </a>
+                <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 no-print">
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" id="activityLogPrintBtn"
+                                class="inline-flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold shrink-0">
+                            <i data-lucide="printer" class="w-4 h-4"></i> Print Report
+                        </button>
+                        <a href="<?= htmlspecialchars(activityLogPageUrl(['action' => 'export', 'format' => 'xlsx', 'page' => null])) ?>"
+                           class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold shrink-0">
+                            <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Download Excel
+                        </a>
+                    </div>
                 </div>
             </div>
 
-            <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden mb-5">
+            <div class="print-report-header">
+                <h1 class="print-report-header__title">Staff Activity Log</h1>
+                <p class="print-report-header__meta"><?= htmlspecialchars(getSetting('office_name', 'Local Civil Registrar Office')) ?></p>
+                <p class="print-report-header__meta">
+                    Range: <?= htmlspecialchars($rangeOptions[$range] ?? $range) ?>
+                    <?= $search !== '' ? ' · Search: ' . htmlspecialchars($search) : '' ?>
+                    <?= $staffFilter !== '' ? ' · Staff: ' . htmlspecialchars($staffFilter) : '' ?>
+                    · Generated <?= date('M j, Y g:i A') ?>
+                </p>
+                <p class="print-report-header__meta">Showing page <?= (int) $page ?> of <?= (int) $totalPages ?> (<?= number_format($totalCount) ?> matching entries). Use Download Excel for the full filtered export.</p>
+            </div>
+
+            <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden mb-5 print-report-body">
                 <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('activity-log.php')) ?>" class="admin-toolbar !mb-0 !rounded-none !border-0 !shadow-none border-b border-slate-100">
                     <div class="relative flex-1 admin-toolbar-search">
                         <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
@@ -206,14 +283,14 @@ $showingTo = min($offset + $perPage, $totalCount);
                     <p class="text-xs text-slate-400 mt-1">Try widening the date range or clearing your search.</p>
                 </div>
                 <?php else: ?>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm">
+                <div class="overflow-x-auto print-table-wrap print-landscape">
+                    <table class="w-full text-sm print-table">
                         <thead>
                             <tr class="text-left text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 bg-white">
                                 <th class="px-4 sm:px-5 py-3 font-bold">When</th>
                                 <th class="px-4 sm:px-5 py-3 font-bold">Staff</th>
                                 <th class="px-4 sm:px-5 py-3 font-bold">Action</th>
-                                <th class="px-4 sm:px-5 py-3 font-bold hidden md:table-cell">Details</th>
+                                <th class="px-4 sm:px-5 py-3 font-bold hidden md:table-cell print-details-col">Details</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-50">
@@ -224,11 +301,25 @@ $showingTo = min($offset + $perPage, $totalCount);
                                     <p class="text-[11px] text-slate-400 mt-0.5"><?= htmlspecialchars(formatTimeAgo($log['created_at'])) ?></p>
                                 </td>
                                 <td class="px-4 sm:px-5 py-3.5 align-top">
-                                    <span class="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                                        <span class="w-6 h-6 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                                            <i data-lucide="user" class="w-3 h-3"></i>
+                                    <?php
+                                    $logStaffId = trim((string) ($log['staff_id'] ?? ''));
+                                    $logStaff = $logStaffId !== '' ? ($staffById[$logStaffId] ?? null) : null;
+                                    $logStaffName = $logStaff ? personNameFromRow($logStaff) : ($logStaffId !== '' ? $logStaffId : 'System');
+                                    ?>
+                                    <span class="inline-flex items-center gap-2.5 text-xs font-bold text-slate-700">
+                                        <?php if ($logStaffId !== ''): ?>
+                                            <?= renderStaffAvatar($logStaff ? ($logStaff['profile_photo_path'] ?? null) : null, $logStaffName, 'w-8 h-8 text-[10px]') ?>
+                                        <?php else: ?>
+                                            <span class="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 text-slate-400 flex items-center justify-center shrink-0">
+                                                <i data-lucide="bot" class="w-3.5 h-3.5"></i>
+                                            </span>
+                                        <?php endif; ?>
+                                        <span class="min-w-0">
+                                            <span class="block truncate"><?= htmlspecialchars($logStaffName) ?></span>
+                                            <?php if ($logStaff && $logStaffName !== $logStaffId): ?>
+                                            <span class="block text-[10px] font-semibold text-slate-400 truncate"><?= htmlspecialchars($logStaffId) ?></span>
+                                            <?php endif; ?>
                                         </span>
-                                        <?= htmlspecialchars($log['staff_id'] ?? 'System') ?>
                                     </span>
                                 </td>
                                 <td class="px-4 sm:px-5 py-3.5 align-top">
@@ -237,7 +328,7 @@ $showingTo = min($offset + $perPage, $totalCount);
                                     <p class="text-xs text-slate-500 mt-1 md:hidden"><?= htmlspecialchars($log['details']) ?></p>
                                     <?php endif; ?>
                                 </td>
-                                <td class="px-4 sm:px-5 py-3.5 text-xs text-slate-500 hidden md:table-cell align-top max-w-md">
+                                <td class="px-4 sm:px-5 py-3.5 text-xs text-slate-500 hidden md:table-cell print-details-col align-top max-w-md">
                                     <?= htmlspecialchars($log['details'] ?? '—') ?>
                                 </td>
                             </tr>
@@ -249,6 +340,7 @@ $showingTo = min($offset + $perPage, $totalCount);
             </div>
         </div>
     </main>
+    <?= scriptTag('admin/activity-log.js') ?>
     <?= lucideInitScript() ?>
 </body>
 </html>

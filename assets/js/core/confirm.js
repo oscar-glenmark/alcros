@@ -177,14 +177,18 @@
         modal.setAttribute('aria-labelledby', 'alcrosConfirmTitle');
         modal.innerHTML =
             '<div class="alcros-confirm-modal__panel">' +
-                '<div class="alcros-confirm-modal__head">' +
-                    '<div class="alcros-confirm-modal__icon" aria-hidden="true">' +
-                        '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>' +
+                '<button type="button" class="alcros-modal-close" id="alcrosConfirmCloseBtn" aria-label="Close">' +
+                    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>' +
+                '</button>' +
+                '<div class="alcros-confirm-modal__hero">' +
+                    '<div class="alcros-confirm-modal__icon-wrap" aria-hidden="true">' +
+                        '<div class="alcros-confirm-modal__icon">' +
+                            '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>' +
+                        '</div>' +
                     '</div>' +
-                    '<div class="alcros-confirm-modal__copy">' +
-                        '<h3 id="alcrosConfirmTitle" class="alcros-confirm-modal__title">Confirm Action</h3>' +
-                        '<p id="alcrosConfirmMessage" class="alcros-confirm-modal__message"></p>' +
-                    '</div>' +
+                    '<p class="alcros-modal-badge alcros-modal-badge--confirm">Confirmation</p>' +
+                    '<h3 id="alcrosConfirmTitle" class="alcros-confirm-modal__title">Confirm Action</h3>' +
+                    '<p id="alcrosConfirmMessage" class="alcros-confirm-modal__message"></p>' +
                 '</div>' +
                 '<div class="alcros-confirm-modal__actions">' +
                     '<button type="button" id="alcrosConfirmCancelBtn" class="alcros-confirm-modal__btn alcros-confirm-modal__btn--cancel">Cancel</button>' +
@@ -197,6 +201,7 @@
         messageEl = modal.querySelector('#alcrosConfirmMessage');
         var okBtn = modal.querySelector('#alcrosConfirmOkBtn');
         var cancelBtn = modal.querySelector('#alcrosConfirmCancelBtn');
+        var closeBtn = modal.querySelector('#alcrosConfirmCloseBtn');
         var panel = modal.querySelector('.alcros-confirm-modal__panel');
 
         okBtn.addEventListener('click', function (e) {
@@ -209,6 +214,13 @@
             e.stopPropagation();
             closeModal(false);
         });
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                closeModal(false);
+            });
+        }
         if (panel) {
             panel.addEventListener('click', function (e) {
                 e.stopPropagation();

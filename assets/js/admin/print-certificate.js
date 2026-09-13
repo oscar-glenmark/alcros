@@ -232,9 +232,24 @@
         var back = document.getElementById('previewBack');
 
         function markLoading(iframe) {
-            if (iframe) {
-                iframe.classList.add('is-loading');
+            if (!iframe) return;
+            iframe.classList.add('is-loading');
+            var block = iframe.closest('.print-cert-preview-block');
+            if (!block || block.querySelector('.alcros-sk-preview-overlay')) return;
+            var overlay = document.createElement('div');
+            overlay.className = 'alcros-sk-preview-overlay';
+            if (window.AlcrosLoading && typeof window.AlcrosLoading.skeleton === 'function') {
+                overlay.innerHTML = window.AlcrosLoading.skeleton('preview');
             }
+            block.appendChild(overlay);
+        }
+
+        function clearLoading(iframe) {
+            if (!iframe) return;
+            iframe.classList.remove('is-loading');
+            var block = iframe.closest('.print-cert-preview-block');
+            var overlay = block && block.querySelector('.alcros-sk-preview-overlay');
+            if (overlay) overlay.remove();
         }
 
         function loadBack() {
@@ -246,18 +261,19 @@
             markLoading(back);
             var backTimer = window.setTimeout(function () {
                 if (back.classList.contains('is-loading')) {
-                    back.classList.remove('is-loading');
+                    clearLoading(back);
                     syncingPreview = false;
                 }
             }, 60000);
             back.onload = function () {
                 window.clearTimeout(backTimer);
+                clearLoading(back);
                 bindEditablePreview(back);
                 syncingPreview = false;
             };
             back.onerror = function () {
                 window.clearTimeout(backTimer);
-                back.classList.remove('is-loading');
+                clearLoading(back);
                 syncingPreview = false;
             };
             back.src = renderUrl('back', false);
@@ -267,18 +283,19 @@
             markLoading(front);
             var frontTimer = window.setTimeout(function () {
                 if (front.classList.contains('is-loading')) {
-                    front.classList.remove('is-loading');
+                    clearLoading(front);
                 }
                 loadBack();
             }, 60000);
             front.onload = function () {
                 window.clearTimeout(frontTimer);
+                clearLoading(front);
                 bindEditablePreview(front);
                 loadBack();
             };
             front.onerror = function () {
                 window.clearTimeout(frontTimer);
-                front.classList.remove('is-loading');
+                clearLoading(front);
                 loadBack();
             };
             front.src = renderUrl('front', false);

@@ -170,8 +170,7 @@ html.alcros-dark .hover\:bg-white:hover {
     background-color: #1e293b !important;
 }
 
-html.alcros-dark .border-gray-50,
-html.alcros-dark .border-slate-50 {
+html.alcros-dark .border-gray-50 {
     border-color: #243244 !important;
 }
 
@@ -197,8 +196,7 @@ html.alcros-dark .text-gray-900 {
     color: #f8fafc !important;
 }
 
-html.alcros-dark .text-slate-800,
-html.alcros-dark .text-gray-800 {
+html.alcros-dark .text-slate-800 {
     color: #f1f5f9 !important;
 }
 
@@ -327,10 +325,8 @@ html.alcros-dark .records-entry-modal .bg-white,
 html.alcros-dark #importModal .bg-white,
 html.alcros-dark #entryModal .bg-white,
 html.alcros-dark #viewModal .bg-white,
-html.alcros-dark #logoutConfirmModal .bg-white,
 html.alcros-dark .entry-dropdown,
-html.alcros-dark .manage-print-dropdown,
-html.alcros-dark .records-print-dropdown {
+html.alcros-dark .manage-print-dropdown {
     background-color: #111827 !important;
     border-color: #475569 !important;
 }
@@ -587,6 +583,33 @@ html.alcros-dark .alcros-modal-close {
 html.alcros-dark .alcros-modal-close:hover {
     background: #1e293b;
     color: #e2e8f0;
+}
+
+html.alcros-dark .alcros-modal-badge--logout {
+    background: #450a0a;
+    color: #fca5a5;
+}
+
+html.alcros-dark .alcros-logout-modal__icon-wrap {
+    background: linear-gradient(180deg, #450a0a 0%, #7f1d1d 100%);
+    box-shadow: 0 0 0 6px rgba(127, 29, 29, 0.35);
+}
+
+html.alcros-dark .alcros-logout-modal__icon {
+    background: #1e293b;
+    color: #f87171;
+    box-shadow: 0 4px 12px rgba(248, 113, 113, 0.15);
+}
+
+html.alcros-dark .alcros-confirm-modal__btn--danger {
+    border-color: #991b1b;
+    background: linear-gradient(180deg, #dc2626 0%, #991b1b 100%);
+    box-shadow: 0 4px 14px rgba(220, 38, 38, 0.22);
+}
+
+html.alcros-dark .alcros-confirm-modal__btn--danger:hover {
+    background: linear-gradient(180deg, #b91c1c 0%, #7f1d1d 100%);
+    box-shadow: 0 6px 18px rgba(220, 38, 38, 0.28);
 }
 
 html.alcros-dark .alcros-loading-overlay {

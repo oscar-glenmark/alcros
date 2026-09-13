@@ -2,11 +2,6 @@
 
 require_once __DIR__ . '/xlsx_writer.php';
 
-function alcrosExcelBootstrap(): void
-{
-    // Kept for call-site compatibility; the writer has no external dependencies.
-}
-
 function alcrosExcelNewSpreadsheet(string $title = 'ALCROS Export'): AlcrosXlsxWorkbook
 {
     $workbook = new AlcrosXlsxWorkbook($title);
@@ -36,16 +31,6 @@ function alcrosExcelSendDownload(AlcrosXlsxWorkbook $spreadsheet, string $filena
 
     echo $binary;
     exit;
-}
-
-function alcrosExcelColumnLetter(int $columnIndex): string
-{
-    return AlcrosXlsxWorkbook::columnLetter($columnIndex);
-}
-
-function alcrosExcelSetCell(AlcrosXlsxSheet $sheet, int $columnIndex, int $row, mixed $value): void
-{
-    $sheet->setCell($columnIndex, $row, $value);
 }
 
 function alcrosExcelWriteMetaBlock(AlcrosXlsxSheet $sheet, array $lines, int &$row): void
@@ -225,23 +210,4 @@ function alcrosExcelWriteTable(
     $row++;
 
     return $headerRow;
-}
-
-function alcrosExcelWriteKeyValueTable(AlcrosXlsxSheet $sheet, array $pairs, int &$row, string $sectionTitle = ''): void
-{
-    $rows = [];
-    foreach ($pairs as $label => $value) {
-        $rows[] = [$label, $value];
-    }
-
-    alcrosExcelWriteTable(
-        $sheet,
-        ['Description', 'Count'],
-        $rows,
-        $row,
-        [
-            'section_title' => $sectionTitle,
-            'column_formats' => [2 => 'number'],
-        ]
-    );
 }

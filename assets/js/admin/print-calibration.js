@@ -1686,10 +1686,6 @@
         if (zoomOut) zoomOut.addEventListener('click', function () { setZoomLevel(zoomLevel - 0.1); });
     }
 
-    function encodeCalibrationLivePayload(payload) {
-        return btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
-    }
-
     function buildCalibrationLivePayload() {
         if (activeFieldId) {
             syncActiveFieldFormFromConfig();

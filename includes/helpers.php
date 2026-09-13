@@ -3220,6 +3220,11 @@ function publicTrackingRevision(array $requestRow, ?array $appointmentRow = null
 
 function documentRequestViewData(array $row): array
 {
+    // can_print comes from printing.php, which API callers do not always load.
+    if (!function_exists('canPrintRequestStatus')) {
+        require_once __DIR__ . '/printing.php';
+    }
+
     $appointment = formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
     $statusKey = normalizeRequestStatus((string) ($row['status'] ?? 'pending'));
     $actions = requestStatusActionsFor($statusKey);

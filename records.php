@@ -216,11 +216,6 @@ function recordInitial(string $name): string
     return strtoupper(substr(trim($name), 0, 1));
 }
 
-function civilRecordExtendedFieldNames(): array
-{
-    return civilRecordAllTypeFieldNames();
-}
-
 function civilRecordCsvDateFields(): array
 {
     return [

@@ -576,11 +576,6 @@ final class AlcrosXlsxWorkbook
         return $sheet;
     }
 
-    public function getSheet(int $index): ?AlcrosXlsxSheet
-    {
-        return $this->sheets[$index] ?? null;
-    }
-
     public function getSheetCount(): int
     {
         return count($this->sheets);
@@ -655,11 +650,6 @@ final class AlcrosXlsxWorkbook
         }
 
         return $this->zipParts($parts);
-    }
-
-    public function save(string $path): void
-    {
-        file_put_contents($path, $this->toBinary());
     }
 
     private function ensureUniqueSheetNames(): void

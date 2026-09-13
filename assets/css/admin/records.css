@@ -373,12 +373,6 @@ body.records-entry-modal-open {
     color: #065f46;
 }
 
-.records-row-print {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
 .records-detail-block {
     background: #fff;
     border: 1px solid #e8eef4;

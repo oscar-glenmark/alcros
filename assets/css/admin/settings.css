@@ -7,10 +7,6 @@
     color: #ffffff;
 }
 
-.toggle-dot {
-    transition: transform 0.2s;
-}
-
 .settings-layout {
     align-items: start;
 }

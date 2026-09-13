@@ -76,20 +76,24 @@ function sidebarSectionLabel(string $label): string
     </nav>
 </aside>
 
-<div id="logoutConfirmModal" class="fixed inset-0 bg-black/40 z-[100] hidden items-center justify-center p-4">
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-xl w-full max-w-sm p-6">
-        <div class="flex items-start gap-3 mb-4">
-            <div class="bg-red-50 text-red-500 p-2 rounded-xl">
-                <i data-lucide="log-out" class="w-5 h-5"></i>
+<div id="logoutConfirmModal" class="alcros-confirm-modal alcros-logout-modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="logoutConfirmTitle">
+    <div class="alcros-confirm-modal__panel">
+        <button type="button" class="alcros-modal-close" id="logoutCloseBtn" aria-label="Close">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+        <div class="alcros-confirm-modal__hero">
+            <div class="alcros-confirm-modal__icon-wrap alcros-logout-modal__icon-wrap" aria-hidden="true">
+                <div class="alcros-confirm-modal__icon alcros-logout-modal__icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                </div>
             </div>
-            <div>
-                <h3 class="text-base font-black text-slate-900">Confirm Logout</h3>
-                <p class="text-sm text-gray-500 mt-1">Are you sure you want to logout?</p>
-            </div>
+            <p class="alcros-modal-badge alcros-modal-badge--logout">Sign out</p>
+            <h3 id="logoutConfirmTitle" class="alcros-confirm-modal__title">Confirm Logout</h3>
+            <p class="alcros-confirm-modal__message">Are you sure you want to logout?</p>
         </div>
-        <div class="flex gap-2">
-            <button type="button" id="logoutCancelBtn" class="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50">Cancel</button>
-            <a href="<?= htmlspecialchars(buildAuthUrl('logout.php')) ?>" id="logoutConfirmBtn" class="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-xl py-2.5 text-sm font-bold text-center">Logout</a>
+        <div class="alcros-confirm-modal__actions">
+            <button type="button" id="logoutCancelBtn" class="alcros-confirm-modal__btn alcros-confirm-modal__btn--cancel">Cancel</button>
+            <a href="<?= htmlspecialchars(buildAuthUrl('logout.php')) ?>" id="logoutConfirmBtn" class="alcros-confirm-modal__btn alcros-confirm-modal__btn--danger">Logout</a>
         </div>
     </div>
 </div>

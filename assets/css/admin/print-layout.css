@@ -18,8 +18,7 @@
     header,
     #logoutConfirmModal,
     .entry-dropdown,
-    .manage-print-dropdown,
-    .records-print-dropdown {
+    .manage-print-dropdown {
         display: none !important;
     }
 

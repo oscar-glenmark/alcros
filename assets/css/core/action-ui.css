@@ -175,6 +175,38 @@
     box-shadow: 0 6px 18px rgba(37, 99, 235, 0.34);
 }
 
+.alcros-modal-badge--logout {
+    background: #fef2f2;
+    color: #dc2626;
+}
+
+.alcros-logout-modal__icon-wrap {
+    background: linear-gradient(180deg, #fef2f2 0%, #fee2e2 100%);
+    box-shadow: 0 0 0 6px rgba(254, 242, 242, 0.85);
+}
+
+.alcros-logout-modal__icon {
+    color: #dc2626;
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.18);
+}
+
+.alcros-confirm-modal__btn--danger {
+    border: 1px solid #b91c1c;
+    background: linear-gradient(180deg, #dc2626 0%, #b91c1c 100%);
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(220, 38, 38, 0.28);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.alcros-confirm-modal__btn--danger:hover {
+    background: linear-gradient(180deg, #b91c1c 0%, #991b1b 100%);
+    box-shadow: 0 6px 18px rgba(220, 38, 38, 0.34);
+    color: #fff;
+}
+
 body.alcros-confirm-open .manage-request-modal,
 body.alcros-confirm-open .manage-request-modal__dialog,
 body.alcros-confirm-open .manage-request-modal__backdrop,
@@ -408,11 +440,6 @@ body.alcros-confirm-open #alcrosActionResultModal {
     color: #2563eb;
     animation: alcros-spin 0.8s linear infinite;
     flex-shrink: 0;
-}
-
-.alcros-loading-spinner--lg {
-    width: 1.375rem;
-    height: 1.375rem;
 }
 
 .alcros-loading-btn {

@@ -100,11 +100,6 @@
     line-height: 1.45;
 }
 
-.citizen-request-upload {
-    border: 2px dashed #e2e8f0;
-    transition: border-color 0.2s;
-}
-
 .citizen-btn-navy {
     background: var(--alcros-navy-mid);
     color: #fff;

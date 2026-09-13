@@ -322,7 +322,7 @@ $faqs = [
                 <div>
                     <h4 class="text-white font-bold text-xs uppercase tracking-wider mb-4">Follow Us</h4>
                     <div class="flex gap-3">
-                        <a href="#" class="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition" aria-label="Facebook">
+                        <a href="https://www.facebook.com/glen.mark.876335" class="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition" aria-label="Facebook">
                             <i data-lucide="facebook" class="w-4 h-4"></i>
                         </a>
                         <a href="#" class="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition" aria-label="Twitter">

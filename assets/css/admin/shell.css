@@ -84,10 +84,6 @@ body.flex.min-h-screen {
     }
 }
 
-.admin-sidebar-footer {
-    flex-shrink: 0;
-}
-
 /* ── Main content area ── */
 .admin-main {
     grid-column: 2;
@@ -170,8 +166,7 @@ body.flex.min-h-screen {
     }
 
     .sidebar-section-label,
-    .sidebar-link-label,
-    .sidebar-logout-label {
+    .sidebar-link-label {
         display: none;
     }
 
@@ -219,18 +214,6 @@ body.flex.min-h-screen {
         font-size: 0.5rem;
     }
 
-    .admin-sidebar-footer {
-        padding: 0.5rem !important;
-    }
-
-    .admin-sidebar-footer button {
-        justify-content: center;
-        padding: 0.625rem !important;
-    }
-
-    .admin-sidebar-footer button [data-lucide] {
-        margin-right: 0 !important;
-    }
 }
 
 /* ── User-minimized sidebar (desktop icon rail) ── */
@@ -272,8 +255,7 @@ body.flex.min-h-screen {
     }
 
     body.admin-sidebar-minimized .sidebar-section-label,
-    body.admin-sidebar-minimized .sidebar-link-label,
-    body.admin-sidebar-minimized .sidebar-logout-label {
+    body.admin-sidebar-minimized .sidebar-link-label {
         display: none !important;
         visibility: hidden;
         width: 0;
@@ -326,18 +308,6 @@ body.flex.min-h-screen {
         font-size: 0.5rem;
     }
 
-    body.admin-sidebar-minimized .admin-sidebar-footer {
-        padding: 0.5rem !important;
-    }
-
-    body.admin-sidebar-minimized .admin-sidebar-footer button {
-        justify-content: center;
-        padding: 0.625rem !important;
-    }
-
-    body.admin-sidebar-minimized .admin-sidebar-footer button [data-lucide] {
-        margin-right: 0 !important;
-    }
 }
 
 /* ── Medium sidebar (narrow labels) ── */
@@ -825,8 +795,7 @@ body.admin-sidebar-minimized .admin-sidebar button {
     }
 
     body.admin-sidebar-drawer-open .sidebar-section-label,
-    body.admin-sidebar-drawer-open .sidebar-link-label,
-    body.admin-sidebar-drawer-open .sidebar-logout-label {
+    body.admin-sidebar-drawer-open .sidebar-link-label {
         display: inline;
     }
 

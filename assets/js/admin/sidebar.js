@@ -101,35 +101,59 @@
     function initLogoutModal() {
         var modal = document.getElementById('logoutConfirmModal');
         var cancelBtn = document.getElementById('logoutCancelBtn');
+        var closeBtn = document.getElementById('logoutCloseBtn');
+        var confirmBtn = document.getElementById('logoutConfirmBtn');
+        var panel = modal ? modal.querySelector('.alcros-confirm-modal__panel') : null;
         if (!modal || !cancelBtn || modal.dataset.bound === '1') {
             return;
         }
         modal.dataset.bound = '1';
 
         function openModal() {
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-            if (typeof lucide !== 'undefined') lucide.createIcons();
+            modal.classList.remove('is-hidden');
+            modal.classList.add('is-open');
+            document.body.classList.add('alcros-confirm-open');
+            if (confirmBtn) {
+                window.requestAnimationFrame(function () {
+                    confirmBtn.focus();
+                });
+            }
         }
 
         function closeModal() {
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
+            modal.classList.add('is-hidden');
+            modal.classList.remove('is-open');
+            document.body.classList.remove('alcros-confirm-open');
         }
 
         document.querySelectorAll('[data-logout-trigger]').forEach(function (btn) {
-            btn.addEventListener('click', function () {
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
                 closeProfileDropdown();
                 openModal();
             });
         });
 
-        cancelBtn.addEventListener('click', closeModal);
+        cancelBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            closeModal();
+        });
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                closeModal();
+            });
+        }
+        if (panel) {
+            panel.addEventListener('click', function (e) {
+                e.stopPropagation();
+            });
+        }
         modal.addEventListener('click', function (e) {
             if (e.target === modal) closeModal();
         });
         document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape' && modal.classList.contains('flex')) closeModal();
+            if (e.key === 'Escape' && modal.classList.contains('is-open')) closeModal();
         });
     }
 

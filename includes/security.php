@@ -192,9 +192,32 @@ function isJsonApiRequest(): bool
     return strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest';
 }
 
+/**
+ * Send a response status.
+ *
+ * Apache replaces status codes it does not know (such as 419) with 500 unless
+ * the status line carries an explicit reason phrase, which would hide session
+ * expiry from the front-end handlers that check for it.
+ */
+function sendHttpStatus(int $status): void
+{
+    $reasons = [
+        419 => 'Authentication Timeout',
+    ];
+
+    if (isset($reasons[$status])) {
+        $protocol = (string) ($_SERVER['SERVER_PROTOCOL'] ?? 'HTTP/1.1');
+        header($protocol . ' ' . $status . ' ' . $reasons[$status], true, $status);
+
+        return;
+    }
+
+    http_response_code($status);
+}
+
 function jsonClientError(int $status, string $code, string $message): never
 {
-    http_response_code($status);
+    sendHttpStatus($status);
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store, no-cache, must-revalidate');
     echo json_encode([
@@ -221,7 +244,7 @@ function requireCsrf(): void
         if (isJsonApiRequest()) {
             jsonClientError(419, 'csrf_expired', 'Invalid or expired security token. Please refresh the page and try again.');
         }
-        http_response_code(419);
+        sendHttpStatus(419);
         exit('Invalid or expired security token. Please refresh the page and try again.');
     }
 }

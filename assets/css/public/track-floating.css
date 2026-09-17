@@ -1,0 +1,26 @@
+@media (max-width: 639px) {
+    #track-floating-panel {
+        top: auto;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        transform: none;
+        width: 100%;
+        max-width: none;
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    #track-floating-panel > div {
+        border-radius: 1.25rem 1.25rem 0 0;
+        max-height: min(92dvh, 640px);
+        overflow-y: auto;
+    }
+
+    #track-floating-form {
+        flex-direction: column;
+    }
+
+    #track-floating-submit {
+        width: 100%;
+    }
+}

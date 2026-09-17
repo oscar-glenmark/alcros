@@ -336,9 +336,9 @@ CREATE TABLE IF NOT EXISTS staff_password_otps (
 ) ENGINE=InnoDB;
 
 -- Default administrator (change password after first login in System Settings).
-INSERT INTO staff (staff_id, first_name, middle_name, last_name, password_hash, role) VALUES
-('ALORAN-001', 'Glen Mark', NULL, 'Gonzaga', '$2y$10$Cx6KHQWZUxmyrz.7v3s.UeGNWmwmyncSad1FhNh8N.YPqoUwL5zbO', 'Administrator')
-ON DUPLICATE KEY UPDATE first_name = VALUES(first_name), middle_name = VALUES(middle_name), last_name = VALUES(last_name), role = VALUES(role);
+INSERT INTO staff (staff_id, first_name, middle_name, last_name, password_hash, role, email) VALUES
+('ALORAN-001', 'Glen Mark', NULL, 'Gonzaga', '$2y$10$Cx6KHQWZUxmyrz.7v3s.UeGNWmwmyncSad1FhNh8N.YPqoUwL5zbO', 'Administrator', 'glenmarkgonzaga57@gmail.com')
+ON DUPLICATE KEY UPDATE first_name = VALUES(first_name), middle_name = VALUES(middle_name), last_name = VALUES(last_name), role = VALUES(role), email = VALUES(email);
 
 -- Default office settings (no other sample records).
 INSERT INTO system_settings (setting_key, setting_value) VALUES

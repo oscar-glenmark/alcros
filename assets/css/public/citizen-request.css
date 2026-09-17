@@ -108,11 +108,61 @@
 }
 
 @media (max-width: 639px) {
+    .citizen-request-card {
+        padding: 1.25rem;
+    }
+
+    .citizen-request-step-mobile {
+        color: var(--alcros-gold);
+    }
+
     .citizen-form-actions {
-        flex-wrap: wrap;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
     }
 
     .citizen-form-actions__forward {
         width: 100%;
+        text-align: center;
+    }
+
+    .citizen-form-actions__forward .citizen-btn-gold {
+        width: 100%;
+        justify-content: center;
+        margin-left: 0 !important;
+    }
+
+    .citizen-continue-hint {
+        max-width: none;
+        margin-left: 0;
+        text-align: center;
+    }
+
+    .citizen-request-card .flex.gap-2:has(#gmailInput),
+    .citizen-request-card .flex.gap-2:has(#verifyGmailBtn) {
+        flex-direction: column;
+    }
+
+    .citizen-request-card .flex.gap-2:has(#gmailInput) #verifyGmailBtn,
+    .citizen-request-card .flex.gap-2:has(#verifyGmailBtn) #verifyGmailBtn {
+        width: 100%;
+    }
+
+    .citizen-request-card .grid.grid-cols-2 {
+        grid-template-columns: 1fr;
+    }
+
+    .citizen-request-card .flex.justify-end {
+        justify-content: stretch;
+    }
+
+    .citizen-request-card .flex.justify-end #checkRecordBtn {
+        width: 100%;
+    }
+
+    .citizen-request-card #success-tracking-code {
+        font-size: 1.5rem;
+        word-break: break-all;
     }
 }

@@ -103,3 +103,16 @@
     text-transform: uppercase;
     color: #047857;
 }
+
+@media (max-width: 639px) {
+    .citizen-id-upload,
+    .citizen-id-upload__empty,
+    .citizen-id-upload__preview,
+    .citizen-id-upload__pdf {
+        min-height: 8rem;
+    }
+
+    .citizen-id-upload__image {
+        height: 8rem;
+    }
+}

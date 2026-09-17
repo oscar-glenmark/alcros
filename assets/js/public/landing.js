@@ -4,9 +4,26 @@
     var toggle = document.getElementById('mobileNavToggle');
     var mobileNav = document.getElementById('mobileNav');
     if (toggle && mobileNav) {
+        function closeNav() {
+            mobileNav.classList.add('hidden');
+            mobileNav.classList.remove('is-open');
+        }
+
+        function openNav() {
+            mobileNav.classList.remove('hidden');
+            mobileNav.classList.add('is-open');
+        }
+
         toggle.addEventListener('click', function () {
-            mobileNav.classList.toggle('hidden');
-            mobileNav.classList.toggle('is-open');
+            if (mobileNav.classList.contains('is-open')) {
+                closeNav();
+            } else {
+                openNav();
+            }
+        });
+
+        mobileNav.querySelectorAll('a, button[data-open-track]').forEach(function (link) {
+            link.addEventListener('click', closeNav);
         });
     }
 

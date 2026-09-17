@@ -214,3 +214,56 @@ body.auth-reset-page {
     font-family: 'Inter', sans-serif;
     background-color: #f8fafc;
 }
+
+@media (max-width: 639px) {
+    html,
+    body.auth-portal {
+        height: auto;
+        min-height: 100%;
+        overflow: auto;
+    }
+
+    .auth-portal {
+        height: auto;
+        min-height: 100dvh;
+        max-height: none;
+        overflow: visible;
+    }
+
+    .auth-portal-main {
+        align-items: flex-start;
+        padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1.5rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+        overflow: visible;
+    }
+
+    .auth-portal-header-inner {
+        padding-left: max(1rem, env(safe-area-inset-left));
+        padding-right: max(1rem, env(safe-area-inset-right));
+    }
+
+    .auth-portal-brand-logo {
+        width: 2.5rem;
+        height: 2.5rem;
+    }
+
+    .auth-portal-brand-title {
+        font-size: 1rem;
+    }
+
+    .auth-portal-brand-subtitle {
+        display: none;
+    }
+
+    .auth-portal-header-link {
+        padding: 0.45rem 0.75rem;
+        font-size: 0.625rem;
+    }
+
+    .auth-portal-card {
+        border-radius: 1.25rem;
+    }
+
+    .auth-portal-card-footer {
+        padding: 1rem 1.25rem;
+    }
+}

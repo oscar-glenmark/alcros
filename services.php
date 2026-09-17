@@ -172,7 +172,7 @@ $year = date('Y');
 
 
 
-        <section class="max-w-6xl mx-auto px-6 pb-12">
+        <section class="max-w-6xl mx-auto px-4 sm:px-6 pb-12">
 
             <p class="citizen-section-label">Fast-Track Online Services</p>
 

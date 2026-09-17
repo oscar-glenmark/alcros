@@ -47,5 +47,6 @@ $initialTrackCode = strtoupper(trim($_GET['track'] ?? $_GET['code'] ?? ''));
 <?php
 require_once __DIR__ . '/scripts.php';
 echo actionCoreStyles();
+echo publicStylesheet('track-floating');
 echo scriptTag('core/loading.js');
 ?>

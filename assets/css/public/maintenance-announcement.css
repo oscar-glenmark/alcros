@@ -14,3 +14,16 @@
     transform: translateY(0) scale(1);
     opacity: 1;
 }
+
+@media (max-width: 639px) {
+    #alcros-maintenance-overlay {
+        align-items: flex-end;
+        padding: 0;
+    }
+
+    #alcros-maintenance-panel {
+        max-height: 92dvh;
+        border-radius: 1.25rem 1.25rem 0 0;
+        margin-bottom: env(safe-area-inset-bottom);
+    }
+}

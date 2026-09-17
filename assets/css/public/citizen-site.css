@@ -202,3 +202,76 @@ body.citizen-site {
 #citizenMobileNav.is-open {
     display: block;
 }
+
+/* ── Mobile & small-tablet responsiveness ── */
+@media (max-width: 1023px) {
+    html,
+    body.citizen-site {
+        height: auto;
+        min-height: 100%;
+        overflow: auto;
+    }
+
+    .citizen-site {
+        height: auto;
+        min-height: 100dvh;
+        max-height: none;
+        overflow: visible;
+    }
+
+    .citizen-site-main {
+        overflow: visible;
+        min-height: auto;
+    }
+}
+
+@media (max-width: 639px) {
+    .citizen-site-header .max-w-7xl {
+        padding-left: max(1rem, env(safe-area-inset-left));
+        padding-right: max(1rem, env(safe-area-inset-right));
+    }
+
+    .citizen-brand-logo {
+        width: 2.5rem;
+        height: 2.5rem;
+    }
+
+    #citizenMobileNav .citizen-nav-link {
+        display: block;
+        padding: 0.65rem 0.5rem;
+        font-size: 0.75rem;
+    }
+
+    .citizen-page-hero {
+        padding: 1.5rem 1rem 1.25rem;
+    }
+
+    .citizen-page-hero h1 {
+        font-size: clamp(1.35rem, 6vw, 1.75rem);
+    }
+
+    .citizen-page-hero p {
+        font-size: 0.8125rem;
+    }
+
+    .citizen-service-card.p-8,
+    .citizen-service-card.p-6 {
+        padding: 1.25rem;
+    }
+
+    .citizen-help-card {
+        padding: 1.25rem !important;
+    }
+
+    .citizen-footer {
+        padding-left: max(1rem, env(safe-area-inset-left));
+        padding-right: max(1rem, env(safe-area-inset-right));
+        text-align: center;
+    }
+
+    .citizen-footer > div {
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+    }
+}

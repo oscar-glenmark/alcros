@@ -351,7 +351,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
             </div>
             <?php endforeach; ?>
         </div>
-        <div class="citizen-request-card p-8 md:p-10">
+        <div class="citizen-request-card p-4 sm:p-6 md:p-8 lg:p-10">
             <div class="text-center mb-8">
                 <div class="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
                     <i data-lucide="check-circle" class="w-8 h-8"></i>
@@ -404,8 +404,11 @@ $requestDocumentLabel = !empty($draft['document_type'])
         <?= scriptTag('public/request-success.js') ?>
 
         <?php else: ?>
+        <p class="citizen-request-step-mobile sm:hidden text-center text-[10px] font-bold uppercase tracking-wide mb-3 citizen-request-step-active">
+            Step <?= min($step, 3) ?> of 3 — <?= htmlspecialchars($stepLabels[$step]['label'] ?? '') ?>
+        </p>
         <!-- Progress bar -->
-        <div class="flex justify-center mb-10 px-2 sm:px-4 overflow-x-auto">
+        <div class="flex justify-center mb-6 sm:mb-10 px-2 sm:px-4 overflow-x-auto">
             <?php foreach ($stepLabels as $i => $s): ?>
             <?php if ($i <= 3): ?>
             <div class="flex items-center flex-1 last:flex-none min-w-[4.5rem]">
@@ -431,7 +434,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
             <?php endforeach; ?>
         </div>
 
-        <div class="citizen-request-card p-8">
+        <div class="citizen-request-card p-4 sm:p-6 md:p-8">
             <h1 class="text-xl font-black text-slate-900 mb-1"><?= htmlspecialchars($stepTitles[$step]['title'] ?? 'Request') ?></h1>
             <p class="text-gray-400 text-sm mb-6"><?= htmlspecialchars($stepTitles[$step]['subtitle'] ?? '') ?></p>
 

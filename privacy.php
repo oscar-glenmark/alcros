@@ -8,13 +8,9 @@ require_once __DIR__ . '/includes/scripts.php';
 
 $site = getSiteSettings();
 $isStaffLoggedIn = isset($_SESSION['staff_id']);
-$staffPortalUrl = 'login.php';
-$currentPage = basename($_SERVER['PHP_SELF']);
+$staffPortalUrl = $isStaffLoggedIn ? 'dashboard.php' : 'login.php';
+$staffPortalLabel = $isStaffLoggedIn ? 'Dashboard' : 'Staff Login';
 $year = date('Y');
-
-function navClass($page, $current) {
-    return $page === $current ? 'text-blue-600 font-semibold' : 'hover:text-blue-600';
-}
 
 $sections = [
     [
@@ -57,7 +53,7 @@ $sections = [
         'id' => 'rights',
         'icon' => 'scale',
         'title' => 'Your Rights',
-        'content' => '<p>Under the Data Privacy Act, you have the right to be informed, access, correct, and object to the processing of your personal data, subject to applicable laws and regulations. To exercise these rights, please contact our office using the details below.</p>',
+        'content' => '<p>Under the Data Privacy Act, you have the right to be informed, access, correct, and object to the processing of your personal data, subject to applicable laws and regulations. To exercise these rights, please contact our office using the contact information on the home page.</p>',
     ],
 ];
 ?>
@@ -70,140 +66,176 @@ $sections = [
     <title>Privacy &amp; Safety - <?= htmlspecialchars($site['name']) ?></title>
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= vendorScriptTag('lucide.min.js') ?>
+    <?= publicStylesheet('landing') ?>
     <?= publicStylesheet('back-home') ?>
     <?= publicStylesheet('privacy') ?>
 </head>
-<body class="bg-gray-50 text-gray-900">
+<body class="bg-white">
 
-    <nav class="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-gray-100 bg-white">
-        <a href="index.php" class="group flex items-center gap-3 rounded-xl pr-2 -ml-1 py-1 transition hover:opacity-90 min-w-0">
-            <?= alcrosFaviconImg(36, 'shadow-md shadow-blue-200/70') ?>
-            <div class="flex flex-col leading-none min-w-0">
-                <span class="font-black text-base tracking-tight text-slate-900 truncate"><?= htmlspecialchars($site['name']) ?></span>
-                <span class="text-[9px] font-bold text-blue-600 tracking-widest uppercase mt-1">Civil Registry Portal</span>
-            </div>
-        </a>
-        <div class="hidden md:flex items-center gap-8 text-sm font-medium text-gray-600">
-            <a href="index.php" class="<?= navClass('index.php', $currentPage) ?>">Home</a>
-            <button type="button" data-open-track class="text-gray-600 hover:text-blue-600 font-medium bg-transparent border-0 cursor-pointer p-0">Track Request</button>
-            <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="bg-blue-600 text-white px-4 py-1.5 rounded-md text-xs hover:bg-blue-700 transition">
-                <?= $isStaffLoggedIn ? 'Staff Dashboard' : 'Staff Portal' ?>
-            </a>
-        </div>
-        <div class="md:hidden flex items-center gap-2 shrink-0">
-            <button type="button" data-open-track class="text-xs font-semibold text-blue-700 px-3 py-2 rounded-lg bg-blue-50">Track</button>
-            <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="text-xs font-bold text-white px-3 py-2 rounded-lg bg-blue-700">Staff</a>
-        </div>
-    </nav>
-
-    <header class="bg-white border-b border-gray-100">
-        <div class="max-w-5xl mx-auto px-6 py-12">
-            <a href="index.php" class="back-home back-home--inline mb-6">
-                <i data-lucide="chevron-left" class="back-home__icon w-3 h-3"></i>
-                <span>Back to Home</span>
-            </a>
-            <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
-                <div class="max-w-2xl">
-                    <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold uppercase tracking-wider mb-4">
-                        <i data-lucide="shield" class="w-3.5 h-3.5"></i> Data Privacy Act Compliant
+    <header class="site-header sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between gap-4 py-3">
+                <a href="index.php" class="flex items-center gap-3 min-w-0">
+                    <?= alcrosFaviconImg(48, 'brand-logo shrink-0') ?>
+                    <div class="min-w-0 hidden sm:block">
+                        <div class="text-white font-extrabold text-lg leading-tight tracking-tight">ALCROS</div>
+                        <div class="text-white/70 text-[11px] italic leading-snug">Aloran Local Civil Registry Online System</div>
                     </div>
-                    <h1 class="text-3xl md:text-4xl font-extrabold text-slate-900 mb-2">Privacy &amp; <span class="gradient-text">Safety Policy</span></h1>
-                    <p class="text-gray-500 text-sm leading-relaxed"><?= htmlspecialchars($site['office']) ?> — how we collect, protect, and use your personal information.</p>
+                </a>
+
+                <nav class="hidden lg:flex items-center gap-1 xl:gap-2">
+                    <a href="index.php" class="nav-link">Home</a>
+                    <a href="index.php#services" class="nav-link">Services</a>
+                    <button type="button" data-open-track class="nav-link cursor-pointer bg-transparent border-0 border-b-2 border-transparent">Track Request</button>
+                    <a href="index.php#about" class="nav-link">About</a>
+                    <a href="index.php#faqs" class="nav-link">FAQs</a>
+                    <a href="index.php#contact" class="nav-link">Contact Us</a>
+                </nav>
+
+                <div class="flex items-center gap-2 shrink-0">
+                    <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="btn-login hidden sm:inline-block">
+                        <?= htmlspecialchars($staffPortalLabel) ?>
+                    </a>
+                    <button type="button" id="mobileNavToggle" class="lg:hidden p-2 text-white" aria-label="Open menu">
+                        <i data-lucide="menu" class="w-6 h-6"></i>
+                    </button>
                 </div>
-                <div class="flex flex-wrap gap-2">
-                    <span class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-wide">RA 10173</span>
-                    <span class="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-[10px] font-bold uppercase tracking-wide">Secure Processing</span>
-                    <span class="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 text-[10px] font-bold uppercase tracking-wide">LGU Official Portal</span>
+            </div>
+
+            <div id="mobileNav" class="hidden lg:hidden pb-4 border-t border-white/10 pt-3">
+                <div class="flex flex-col gap-1">
+                    <a href="index.php" class="nav-link">Home</a>
+                    <a href="index.php#services" class="nav-link">Services</a>
+                    <button type="button" data-open-track class="nav-link text-left cursor-pointer bg-transparent border-0">Track Request</button>
+                    <a href="index.php#about" class="nav-link">About</a>
+                    <a href="index.php#faqs" class="nav-link">FAQs</a>
+                    <a href="index.php#contact" class="nav-link">Contact Us</a>
+                    <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="btn-login inline-block text-center mt-2 w-fit"><?= htmlspecialchars($staffPortalLabel) ?></a>
                 </div>
             </div>
         </div>
     </header>
 
-    <main class="max-w-5xl mx-auto px-6 py-10">
-        <div class="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-8 items-start">
-            <aside class="lg:sticky lg:top-6 bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-                <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-3 px-2">On this page</p>
-                <nav class="space-y-1">
+    <section class="privacy-hero hero-section flex items-center">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full py-12 md:py-16">
+            <a href="index.php" class="back-home back-home--inline is-centered">
+                <i data-lucide="chevron-left" class="back-home__icon w-3 h-3"></i>
+                <span>Back to Home</span>
+            </a>
+            <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-6 max-w-5xl">
+                <div class="max-w-2xl">
+                    <div class="privacy-badge mb-4">
+                        <i data-lucide="shield" class="w-3.5 h-3.5"></i>
+                        Data Privacy Act Compliant
+                    </div>
+                    <h1 class="text-white text-2xl sm:text-3xl md:text-4xl font-black leading-tight tracking-tight uppercase mb-2">
+                        Privacy &amp; <span class="text-gold-accent">Safety Policy</span>
+                    </h1>
+                    <p class="text-white/75 text-sm md:text-base leading-relaxed">
+                        <?= htmlspecialchars($site['office']) ?> — how we collect, protect, and use your personal information.
+                    </p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <span class="privacy-tag privacy-tag--gold">RA 10173</span>
+                    <span class="privacy-tag">Secure Processing</span>
+                    <span class="privacy-tag">LGU Official Portal</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <main class="bg-slate-50 py-10 md:py-14">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-8 items-start">
+                <aside class="privacy-sidebar lg:sticky lg:top-24 p-4">
+                    <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3 px-2">On this page</p>
+                    <nav class="space-y-1">
+                        <?php foreach ($sections as $i => $section): ?>
+                        <a href="#<?= htmlspecialchars($section['id']) ?>" class="privacy-sidebar-link">
+                            <span class="privacy-sidebar-link__num"><?= $i + 1 ?></span>
+                            <?= htmlspecialchars($section['title']) ?>
+                        </a>
+                        <?php endforeach; ?>
+                    </nav>
+                </aside>
+
+                <div class="space-y-4">
                     <?php foreach ($sections as $i => $section): ?>
-                    <a href="#<?= htmlspecialchars($section['id']) ?>" class="flex items-center gap-2 px-2 py-2 rounded-lg text-xs font-semibold text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition">
-                        <span class="text-[10px] font-black text-blue-400 w-4"><?= $i + 1 ?></span>
-                        <?= htmlspecialchars($section['title']) ?>
-                    </a>
+                    <section id="<?= htmlspecialchars($section['id']) ?>" class="privacy-section-card p-6 scroll-mt-24">
+                        <div class="flex items-start gap-4 mb-4">
+                            <div class="privacy-section-icon">
+                                <i data-lucide="<?= htmlspecialchars($section['icon']) ?>" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <p class="privacy-section-label mb-1">Section <?= $i + 1 ?></p>
+                                <h2 class="text-lg font-extrabold text-slate-900"><?= htmlspecialchars($section['title']) ?></h2>
+                            </div>
+                        </div>
+                        <div class="text-sm text-slate-600 leading-relaxed pl-0 md:pl-14">
+                            <?= $section['content'] ?>
+                        </div>
+                    </section>
                     <?php endforeach; ?>
-                    <a href="#contact" class="flex items-center gap-2 px-2 py-2 rounded-lg text-xs font-semibold text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition">
-                        <span class="text-[10px] font-black text-blue-400 w-4">7</span>
-                        Contact Us
-                    </a>
-                </nav>
-            </aside>
-
-            <div class="space-y-4">
-                <?php foreach ($sections as $i => $section): ?>
-                <section id="<?= htmlspecialchars($section['id']) ?>" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 scroll-mt-6">
-                    <div class="flex items-start gap-4 mb-4">
-                        <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                            <i data-lucide="<?= htmlspecialchars($section['icon']) ?>" class="w-5 h-5"></i>
-                        </div>
-                        <div>
-                            <p class="text-[10px] font-bold uppercase tracking-widest text-blue-500 mb-1">Section <?= $i + 1 ?></p>
-                            <h2 class="text-lg font-extrabold text-slate-900"><?= htmlspecialchars($section['title']) ?></h2>
-                        </div>
-                    </div>
-                    <div class="text-sm text-gray-600 leading-relaxed pl-0 md:pl-14">
-                        <?= $section['content'] ?>
-                    </div>
-                </section>
-                <?php endforeach; ?>
-
-                <section id="contact" class="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl shadow-lg p-6 md:p-8 text-white scroll-mt-6">
-                    <div class="flex items-start gap-4 mb-6">
-                        <div class="w-10 h-10 rounded-xl bg-white/10 text-blue-200 flex items-center justify-center shrink-0">
-                            <i data-lucide="mail" class="w-5 h-5"></i>
-                        </div>
-                        <div>
-                            <p class="text-[10px] font-bold uppercase tracking-widest text-blue-300 mb-1">Section 7</p>
-                            <h2 class="text-lg font-extrabold">Contact Us</h2>
-                            <p class="text-sm text-slate-300 mt-1">For privacy-related concerns or data requests, reach our office:</p>
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 md:pl-14">
-                        <div class="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-                            <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Address</p>
-                            <p class="text-sm text-slate-100"><?= htmlspecialchars($site['address']) ?></p>
-                        </div>
-                        <div class="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-                            <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Phone</p>
-                            <a href="tel:<?= htmlspecialchars($site['phone']) ?>" class="text-sm text-blue-300 hover:text-blue-200 hover:underline"><?= htmlspecialchars($site['phone']) ?></a>
-                        </div>
-                        <div class="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-                            <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Email</p>
-                            <a href="mailto:<?= htmlspecialchars($site['email']) ?>" class="text-sm text-blue-300 hover:text-blue-200 hover:underline"><?= htmlspecialchars($site['email']) ?></a>
-                        </div>
-                        <div class="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-                            <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Office Hours</p>
-                            <p class="text-sm text-slate-100"><?= htmlspecialchars($site['hours']) ?></p>
-                        </div>
-                    </div>
-                </section>
+                </div>
             </div>
         </div>
     </main>
 
-    <footer class="bg-[#0b1120] text-gray-500 py-6 px-12 text-[10px] flex flex-wrap justify-between items-center gap-4 border-t border-gray-800 mt-12">
-        <div class="flex flex-wrap items-center gap-6">
-            <a href="index.php" class="group flex items-center gap-2.5 transition hover:opacity-90">
-                <?= alcrosFaviconImg(28, 'shadow-md shadow-blue-900/40') ?>
-                <div class="flex flex-col leading-none">
-                    <span class="font-bold text-white text-[11px]"><?= htmlspecialchars($site['name']) ?></span>
-                    <span class="text-[8px] font-semibold text-blue-400 tracking-wider uppercase mt-0.5">Civil Registry Portal</span>
+    <footer class="footer-dark">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10">
+                <div class="lg:col-span-1">
+                    <a href="index.php" class="flex items-center gap-3 mb-4">
+                        <?= alcrosFaviconImg(40, 'brand-logo shrink-0') ?>
+                        <div>
+                            <div class="text-white font-extrabold text-sm">ALCROS</div>
+                            <div class="text-white/60 text-[10px] italic">Aloran Local Civil Registry Online System</div>
+                        </div>
+                    </a>
+                    <p class="text-xs leading-relaxed text-white/60">Official online portal for civil registry services in the Municipality of Aloran.</p>
                 </div>
-            </a>
-            <span>&copy; <?= htmlspecialchars($year) ?> Aloran Civil Registry Office. All rights reserved.</span>
+                <div>
+                    <h4 class="text-white font-bold text-xs uppercase tracking-wider mb-4">Quick Links</h4>
+                    <ul class="space-y-2 text-xs">
+                        <li><a href="index.php" class="hover:text-gold transition">Home</a></li>
+                        <li><a href="index.php#services" class="hover:text-gold transition">Services</a></li>
+                        <li><button type="button" data-open-track class="hover:text-gold transition bg-transparent border-0 p-0 cursor-pointer text-left text-white/75">Track Request</button></li>
+                        <li><a href="services.php" class="hover:text-gold transition">All Services</a></li>
+                        <li><a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="hover:text-gold transition"><?= htmlspecialchars($staffPortalLabel) ?></a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="text-white font-bold text-xs uppercase tracking-wider mb-4">Contact Us</h4>
+                    <ul class="space-y-3 text-xs">
+                        <li class="flex items-start gap-2">
+                            <i data-lucide="map-pin" class="w-4 h-4 text-gold shrink-0 mt-0.5"></i>
+                            <span><?= htmlspecialchars($site['address']) ?></span>
+                        </li>
+                        <li class="flex items-center gap-2">
+                            <i data-lucide="phone" class="w-4 h-4 text-gold shrink-0"></i>
+                            <a href="tel:<?= htmlspecialchars($site['phone']) ?>" class="hover:text-gold transition"><?= htmlspecialchars($site['phone']) ?></a>
+                        </li>
+                        <li class="flex items-center gap-2">
+                            <i data-lucide="mail" class="w-4 h-4 text-gold shrink-0"></i>
+                            <a href="mailto:<?= htmlspecialchars($site['email']) ?>" class="hover:text-gold transition break-all"><?= htmlspecialchars($site['email']) ?></a>
+                        </li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="text-white font-bold text-xs uppercase tracking-wider mb-4">Office Hours</h4>
+                    <p class="text-[11px] text-white/60 leading-relaxed"><?= htmlspecialchars($site['hours']) ?></p>
+                </div>
+            </div>
         </div>
-        <div class="flex gap-4">
-            <a href="index.php" class="hover:text-white transition">Home</a>
-            <button type="button" data-open-track class="hover:text-white transition bg-transparent border-0 p-0 cursor-pointer">Track</button>
-            <button type="button" data-open-privacy class="hover:text-white transition">Privacy &amp; Safety</button>
+        <div class="border-t border-white/10">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-center gap-2 text-[11px] text-white/50">
+                <span>&copy; <?= htmlspecialchars($year) ?> ALCROS. All Rights Reserved.</span>
+                <div class="flex gap-4">
+                    <button type="button" data-open-privacy class="hover:text-white transition bg-transparent border-0 p-0 cursor-pointer">Privacy Policy</button>
+                    <span class="text-white/30">|</span>
+                    <a href="privacy.php" class="hover:text-white transition text-white/80">Privacy &amp; Safety</a>
+                </div>
+            </div>
         </div>
     </footer>
 
@@ -212,6 +244,7 @@ $sections = [
     <?php require __DIR__ . '/includes/maintenance_announcement.php'; ?>
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>
     <?php require __DIR__ . '/includes/notification_consent.php'; ?>
+    <?= scriptTag('public/landing.js') ?>
     <?= lucideInitScript() ?>
 </body>
 </html>

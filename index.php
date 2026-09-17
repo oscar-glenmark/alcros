@@ -187,7 +187,7 @@ $faqs = [
     </section>
 
     <!-- TRACK BANNER -->
-    <section class="px-12 sm:px-24 md:px-32 lg:px-48 xl:px-64 2xl:px-72">
+    <section class="track-banner-section px-4 sm:px-6 lg:px-8">
         <div class="track-banner py-6 md:py-7 max-w-4xl mx-auto">
             <div class="track-banner-inner px-4 sm:px-5">
                 <div class="flex items-center gap-2 sm:gap-2.5 shrink-0">

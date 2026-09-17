@@ -209,7 +209,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <section class="max-w-lg mx-auto px-4 pb-12">
         <?php if ($success): ?>
-        <div class="citizen-request-card p-8 text-center">
+        <div class="citizen-request-card p-4 sm:p-6 md:p-8 text-center">
             <div class="w-12 h-12 bg-green-50 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <i data-lucide="calendar-check" class="w-6 h-6"></i>
             </div>
@@ -222,7 +222,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </button>
         </div>
         <?php else: ?>
-        <form method="POST" enctype="multipart/form-data" class="citizen-request-card p-6 space-y-4" id="bookAppointmentForm" data-continue-hint="bookContinueHint" data-slot-type="standalone">
+        <form method="POST" enctype="multipart/form-data" class="citizen-request-card p-4 sm:p-6 space-y-4" id="bookAppointmentForm" data-continue-hint="bookContinueHint" data-slot-type="standalone">
             <?= publicCsrfField() ?>
             <input type="hidden" name="service" value="<?= htmlspecialchars($service) ?>">
             <input type="hidden" name="email_verified" id="emailVerified" value="<?= $gmailVerified ? '1' : '0' ?>">

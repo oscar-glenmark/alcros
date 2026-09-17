@@ -27,5 +27,10 @@ try {
         $dateOfMarriage !== '' ? $dateOfMarriage : null
     ));
 } catch (PDOException $e) {
-    apiError(dbConnectionHelpMessage(), 503);
+    error_log('check_civil_record: ' . $e->getMessage());
+    $message = dbConnectionHelpMessage();
+    if (str_contains($e->getMessage(), 'Unknown column') || str_contains($e->getMessage(), 'Base table or view not found')) {
+        $message = 'Civil registry database schema is out of date. Ask staff to open Records once while logged in, or run install.php migrations.';
+    }
+    apiError($message, 503);
 }

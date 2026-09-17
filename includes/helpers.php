@@ -2512,7 +2512,7 @@ function findCivilRecordMatch(PDO $pdo, string $citizenName, string $dateOfBirth
         return null;
     }
 
-    $sql = 'SELECT id, record_type, first_name, middle_name, last_name, birth_date, sex, registry_number
+    $sql = 'SELECT id, record_type, first_name, middle_name, last_name, birth_date, registry_number
          FROM civil_records
          WHERE deleted_at IS NULL AND birth_date = ?';
     $params = [$dateOfBirth];
@@ -2534,7 +2534,12 @@ function findCivilRecordMatch(PDO $pdo, string $citizenName, string $dateOfBirth
             $row['middle_name'] ?? null,
             (string) ($row['last_name'] ?? '')
         ) === $normalized) {
-            return $row;
+            if (!function_exists('hydrateCivilRecordRow')) {
+                require_once __DIR__ . '/civil_record_schema.php';
+            }
+            ensureCivilRecordTypeTables($pdo);
+
+            return hydrateCivilRecordRow($pdo, $row);
         }
     }
 

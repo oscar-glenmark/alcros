@@ -87,9 +87,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
         $email         = trim($_POST['email'] ?? '');
         $purpose       = trim($_POST['purpose'] ?? '');
         $phone         = trim($_POST['phone'] ?? '');
-        $privacyAgreed = isset($_POST['privacy_agreed']);
-        $notifyEmail   = isset($_POST['notify_email']);
-        $notifySms     = isset($_POST['notify_sms']);
+        $notifyEmail = isset($_POST['notify_email']) && (string) $_POST['notify_email'] === '1';
+        $notifySms   = isset($_POST['notify_sms']) && (string) $_POST['notify_sms'] === '1';
 
         if (!isValidGmail($email)) {
             $error = 'Please enter a valid Gmail address (example@gmail.com).';
@@ -101,8 +100,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
             $error = 'Please enter a valid cellphone number (09XXXXXXXXX).';
         } elseif (empty($_FILES['id_front']['name']) && empty($draft['id_front_path'])) {
             $error = 'Please upload the front side of your valid ID.';
-        } elseif (!$privacyAgreed) {
-            $error = 'You must agree to the Data Privacy Notice to continue.';
         } else {
             $frontPath = saveIdUpload($_FILES['id_front'] ?? [], 'front');
             if (!empty($_FILES['id_front']['name']) && $frontPath === null) {
@@ -508,6 +505,9 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 <?= publicCsrfField() ?>
                 <input type="hidden" name="step" value="2">
                 <input type="hidden" name="email_verified" id="emailVerified" value="<?= isGmailVerifiedInSession($draft['email'] ?? '') ? '1' : '0' ?>">
+                <input type="hidden" name="privacy_agreed" value="1">
+                <input type="hidden" name="notify_email" id="notifyEmailHidden" value="<?= !empty($draft['notify_email']) ? '1' : '0' ?>">
+                <input type="hidden" name="notify_sms" id="notifySmsHidden" value="<?= !empty($draft['notify_sms']) ? '1' : '0' ?>">
                 <div>
                     <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
                         <i data-lucide="mail" class="w-3.5 h-3.5 text-blue-500"></i> Active Gmail Account *
@@ -580,27 +580,6 @@ $requestDocumentLabel = !empty($draft['document_type'])
                             </div>
                         </label>
                     </div>
-                </div>
-                <div class="bg-amber-50 border border-amber-100 rounded-xl p-4">
-                    <div class="flex gap-2 mb-2">
-                        <i data-lucide="alert-circle" class="w-4 h-4 text-amber-500 shrink-0 mt-0.5"></i>
-                        <div>
-                            <p class="text-xs font-bold text-amber-800">Pickup Policy & Data Privacy</p>
-                            <p class="text-[11px] text-amber-700 mt-1 leading-relaxed">Please visit the LGU office during business hours (8:00 AM - 5:00 PM) once notified. Bring your tracking code and a valid ID. By submitting this request, you agree to the processing of your personal data for civil registry purposes.</p>
-                        </div>
-                    </div>
-                    <label class="flex items-center gap-2 mt-3 cursor-pointer">
-                        <input type="checkbox" name="privacy_agreed" value="1" class="rounded border-amber-300 text-blue-600 focus:ring-blue-500" required>
-                        <span class="text-xs font-semibold text-amber-800">I Agree to Data Privacy Notice</span>
-                    </label>
-                    <label class="flex items-start gap-2 mt-3 cursor-pointer">
-                        <input type="checkbox" name="notify_email" value="1" id="notifyEmailCheckbox" class="mt-0.5 rounded border-amber-300 text-blue-600 focus:ring-blue-500" <?= !empty($draft['notify_email']) ? 'checked' : '' ?>>
-                        <span class="text-xs font-semibold text-amber-800">Send Gmail updates when my request is received, verified, confirmed for pickup, or changes status — and at 5 hours, 3 hours, and 1 hour before a confirmed visit</span>
-                    </label>
-                    <label class="flex items-start gap-2 mt-3 cursor-pointer">
-                        <input type="checkbox" name="notify_sms" value="1" id="notifySmsCheckbox" class="mt-0.5 rounded border-amber-300 text-blue-600 focus:ring-blue-500" <?= !empty($draft['notify_sms']) ? 'checked' : '' ?>>
-                        <span class="text-xs font-semibold text-amber-800">Send SMS text updates to my cellphone when my request is accepted, ready for pickup, and 3 hours before my confirmed visit</span>
-                    </label>
                 </div>
                 <div class="citizen-form-actions">
                     <a href="request.php?step=1" class="back-home back-home--step">

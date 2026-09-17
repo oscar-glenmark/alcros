@@ -20,26 +20,29 @@ $notifySite = $site ?? getSiteSettings();
             </div>
         </div>
         <div class="px-6 py-4 overflow-y-auto text-[12px] text-gray-600 leading-relaxed space-y-3 flex-1">
-            <p>Would you like to receive Gmail updates from this web app about your civil registry request or appointment?</p>
+            <p>Choose how you would like to receive updates about your civil registry request or appointment. You can still use ALCROS if you opt out.</p>
             <ul class="list-disc pl-5 space-y-1.5">
-                <li>A confirmation when you submit a document request or book an appointment, including your tracking or appointment code.</li>
-                <li>Status updates when staff review your request or confirm your visit — not while it is still awaiting confirmation.</li>
-                <li>Reminders about 5 hours, 3 hours, and 1 hour before a confirmed visit or appointment.</li>
-                <li>Follow-up emails when your request or appointment status changes (for example, confirmed, ready for pickup, or completed).</li>
+                <li>Gmail updates when you submit a request, when staff confirm your visit, and when your status changes.</li>
+                <li>Email reminders at 5 hours, 3 hours, and 1 hour before a confirmed visit or appointment.</li>
+                <li>Optional SMS text updates to your cellphone when a request is accepted, ready for pickup, or 3 hours before a visit.</li>
             </ul>
-            <p>Emails are sent only to the Gmail address you provide. You can still use ALCROS if you choose not to receive notifications.</p>
+            <p class="text-[11px] text-gray-500">Please visit the LGU office during business hours once notified. Bring your tracking code and a valid ID.</p>
         </div>
         <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 space-y-3">
             <label class="flex items-start gap-2.5 cursor-pointer">
                 <input type="checkbox" id="alcros-notify-checkbox" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                <span class="text-xs font-semibold text-slate-800">I agree to receive Gmail notifications from this web app</span>
+                <span class="text-xs font-semibold text-slate-800">Send Gmail updates about my request or appointment</span>
+            </label>
+            <label class="flex items-start gap-2.5 cursor-pointer">
+                <input type="checkbox" id="alcros-notify-sms-checkbox" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                <span class="text-xs font-semibold text-slate-800">Send SMS text updates to my cellphone</span>
             </label>
             <div class="flex flex-col sm:flex-row gap-2">
                 <button type="button" id="alcros-notify-decline" class="flex-1 border border-gray-200 hover:bg-gray-50 text-slate-600 rounded-xl py-3 text-sm font-bold transition">
                     No thanks
                 </button>
                 <button type="button" id="alcros-notify-accept" disabled class="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl py-3 text-sm font-bold transition">
-                    Yes, send me updates
+                    Save preferences
                 </button>
             </div>
         </div>

@@ -617,10 +617,35 @@ function &settingsCacheStore(): array
     return $cache;
 }
 
+function ensureSettingsLoaded(): void
+{
+    $cache = &settingsCacheStore();
+    if (array_key_exists('__all_loaded__', $cache)) {
+        return;
+    }
+
+    try {
+        $pdo = getDB();
+        $stmt = $pdo->query('SELECT setting_key, setting_value FROM system_settings');
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $cache[(string) $row['setting_key']] = (string) $row['setting_value'];
+        }
+    } catch (PDOException $e) {
+        // Fall back to per-key lookups below.
+    }
+
+    $cache['__all_loaded__'] = '1';
+}
+
 function getSetting(string $key, string $default = ''): string
 {
     $cache = &settingsCacheStore();
 
+    if (array_key_exists($key, $cache)) {
+        return $cache[$key];
+    }
+
+    ensureSettingsLoaded();
     if (array_key_exists($key, $cache)) {
         return $cache[$key];
     }
@@ -652,6 +677,8 @@ function setSetting(string $key, string $value): void
 
 function getSiteSettings(): array
 {
+    ensureSettingsLoaded();
+
     return [
         'name'               => getSetting('site_name', 'ALCROS'),
         'office'             => getSetting('office_name', 'Local Civil Registrar Office (LCRO) of Aloran'),

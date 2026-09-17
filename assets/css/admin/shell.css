@@ -193,7 +193,7 @@ body.flex.min-h-screen {
         flex: 0 0 auto;
     }
 
-    .admin-sidebar a [data-lucide] {
+    .admin-sidebar a .admin-sidebar-icon {
         margin-right: 0 !important;
     }
 
@@ -290,7 +290,7 @@ body.flex.min-h-screen {
         flex: 0 0 auto;
     }
 
-    body.admin-sidebar-minimized .admin-sidebar a [data-lucide] {
+    body.admin-sidebar-minimized .admin-sidebar a .admin-sidebar-icon {
         margin-right: 0 !important;
     }
 
@@ -409,11 +409,14 @@ body.admin-sidebar-minimized .admin-sidebar button {
     box-shadow: none;
 }
 
-.admin-sidebar [data-lucide] {
+.admin-sidebar .admin-sidebar-icon {
     display: inline-block;
+    width: 1rem;
+    height: 1rem;
     min-width: 1rem;
     min-height: 1rem;
     flex-shrink: 0;
+    margin-right: 0.75rem;
 }
 
 .admin-sidebar-brand {
@@ -608,6 +611,12 @@ body.admin-sidebar-minimized .admin-sidebar button {
     color: #475569;
     cursor: pointer;
     transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#adminSidebarToggle svg {
+    width: 1rem;
+    height: 1rem;
+    display: block;
 }
 
 .admin-header__theme-btn:hover,
@@ -854,7 +863,7 @@ body.admin-sidebar-minimized .admin-sidebar button {
         flex: 1 1 auto;
     }
 
-    body.admin-sidebar-drawer-open .admin-sidebar a [data-lucide] {
+    body.admin-sidebar-drawer-open .admin-sidebar a .admin-sidebar-icon {
         margin-right: 0.75rem !important;
     }
 

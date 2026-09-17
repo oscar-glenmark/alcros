@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
@@ -1215,9 +1215,15 @@ if (!isset($validSorts[$sort])) {
     $sort = 'name';
 }
 
-$birthCount    = (int) $pdo->query("SELECT COUNT(*) FROM civil_records WHERE record_type = 'birth' AND deleted_at IS NULL")->fetchColumn();
-$deathCount    = (int) $pdo->query("SELECT COUNT(*) FROM civil_records WHERE record_type = 'death' AND deleted_at IS NULL")->fetchColumn();
-$marriageCount = (int) $pdo->query("SELECT COUNT(*) FROM civil_records WHERE record_type = 'marriage' AND deleted_at IS NULL")->fetchColumn();
+$typeCounts = $pdo->query(
+    "SELECT record_type, COUNT(*) AS cnt
+     FROM civil_records
+     WHERE deleted_at IS NULL AND record_type IN ('birth', 'death', 'marriage')
+     GROUP BY record_type"
+)->fetchAll(PDO::FETCH_KEY_PAIR);
+$birthCount    = (int) ($typeCounts['birth'] ?? 0);
+$deathCount    = (int) ($typeCounts['death'] ?? 0);
+$marriageCount = (int) ($typeCounts['marriage'] ?? 0);
 
 [$where, $params] = buildRecordsWhere($filters);
 $countStmt = $pdo->prepare("SELECT COUNT(*) FROM civil_records cr WHERE $where");
@@ -1230,7 +1236,7 @@ $sql = "SELECT cr.* FROM civil_records cr WHERE $where ORDER BY $orderCol $dir L
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $records = $stmt->fetchAll();
-$records = array_map(static fn (array $row) => hydrateCivilRecordRow($pdo, $row), $records);
+$records = hydrateCivilRecordRows($pdo, $records);
 
 $editRecord = null;
 $editLockBlocked = null;

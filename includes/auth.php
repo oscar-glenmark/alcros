@@ -123,6 +123,7 @@ function getAuthenticatedStaff(): ?array
             $staff = hydrateStaffFromDatabase($staff);
             if ($staff) {
                 staffSessionLogin($staff);
+                $_SESSION['staff_hydrated_at'] = time();
                 return $staff;
             }
         }
@@ -133,13 +134,24 @@ function getAuthenticatedStaff(): ?array
         return null;
     }
 
+    $hydratedAt = (int) ($_SESSION['staff_hydrated_at'] ?? 0);
+    if ($hydratedAt > 0 && (time() - $hydratedAt) < 300) {
+        return $staff;
+    }
+
     $staff = hydrateStaffFromDatabase($staff);
     if (!$staff) {
         staffSessionLogout();
         return null;
     }
 
-    staffSessionLogin($staff);
+    $prevName = (string) ($_SESSION['staff_name'] ?? '');
+    $prevRole = (string) ($_SESSION['staff_role'] ?? '');
+    if ($prevName !== $staff['name'] || $prevRole !== $staff['role']) {
+        staffSessionLogin($staff);
+    }
+    $_SESSION['staff_hydrated_at'] = time();
+
     return $staff;
 }
 
@@ -208,6 +220,9 @@ function requireStaffLogin(): void
 {
     if (getAuthenticatedStaff()) {
         requireStaffPostCsrf();
+        if (isJsonApiRequest() || (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET')) {
+            releaseSessionLock();
+        }
         return;
     }
 

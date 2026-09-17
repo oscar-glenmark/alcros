@@ -649,7 +649,6 @@ $requestDocumentLabel = !empty($draft['document_type'])
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>
     <?php require __DIR__ . '/includes/notification_consent.php'; ?>
     <?php if ($step === 3): ?><?= scriptTag('public/appointment-slots.js') ?><?php endif; ?>
-    <?= scriptTag('core/reminders.js') ?>
     <?= lucideInitScript() ?>
 </body>
 </html>

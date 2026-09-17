@@ -9,6 +9,7 @@ requirePageAccess('live-queue.php');
 releaseSessionLock();
 
 $activePage = 'live-queue.php';
+$alcrosAdminRealtime = true;
 $pdo = getDB();
 $tables = queuePurposeConfig();
 

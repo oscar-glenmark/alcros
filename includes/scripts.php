@@ -202,7 +202,9 @@ function actionCoreScripts(): string
 
 function adminCoreScripts(): string
 {
-    return scriptTags([
+    $includeRealtime = !empty($GLOBALS['alcros_admin_realtime']);
+
+    $scripts = [
         'admin/sidebar.js',
         'core/dark-mode.js',
         'core/admin-auth.js',
@@ -210,10 +212,14 @@ function adminCoreScripts(): string
         'core/loading.js',
         'core/action-result.js',
         'core/poll.js',
-        'core/realtime.js',
         'admin/notifications.js',
-        'core/reminders.js',
-    ]);
+    ];
+
+    if ($includeRealtime) {
+        $scripts[] = 'core/realtime.js';
+    }
+
+    return scriptTags($scripts);
 }
 
 function lucideInitScript(): string

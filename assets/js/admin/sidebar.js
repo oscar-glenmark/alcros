@@ -254,9 +254,6 @@
             profileDropdownOpen = !profileDropdownOpen;
             dropdown.classList.toggle('hidden', !profileDropdownOpen);
             menuBtn.setAttribute('aria-expanded', profileDropdownOpen ? 'true' : 'false');
-            if (profileDropdownOpen && typeof lucide !== 'undefined') {
-                lucide.createIcons();
-            }
         });
 
         document.addEventListener('click', function (e) {

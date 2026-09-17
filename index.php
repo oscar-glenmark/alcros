@@ -55,6 +55,7 @@ $faqs = [
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ALCROS -Aloran Local Civil Registry Online System</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
+    <?= interFontTags() ?>
     <?= vendorScriptTag('lucide.min.js') ?>
     <?= publicStylesheet('landing') ?>
 </head>
@@ -347,7 +348,6 @@ $faqs = [
     <?php require __DIR__ . '/includes/maintenance_announcement.php'; ?>
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>
     <?php require __DIR__ . '/includes/notification_consent.php'; ?>
-    <?= scriptTag('core/reminders.js') ?>
     <?= scriptTag('public/landing.js') ?>
     <?= lucideInitScript() ?>
 </body>

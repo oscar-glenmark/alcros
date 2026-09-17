@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/lucide_icons.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/api_helpers.php';
 
@@ -22,7 +23,7 @@ $pageHeaderMeta = $pageHeaderMeta ?? '';
             aria-label="Toggle sidebar"
             aria-expanded="false"
         >
-            <i data-lucide="panel-left" class="w-4 h-4 pointer-events-none"></i>
+            <?= lucideSvg('panel-left', 'w-4 h-4 pointer-events-none') ?>
         </button>
         <?php if ($pageTitle !== ''): ?>
         <div class="admin-header__titles min-w-0">
@@ -46,8 +47,8 @@ $pageHeaderMeta = $pageHeaderMeta ?? '';
                     aria-pressed="false"
                     title="Dark mode"
                 >
-                    <i data-lucide="moon" class="alcros-theme-icon alcros-theme-icon--dark pointer-events-none"></i>
-                    <i data-lucide="sun" class="alcros-theme-icon alcros-theme-icon--light pointer-events-none"></i>
+                    <?= lucideSvg('moon', 'alcros-theme-icon alcros-theme-icon--dark pointer-events-none') ?>
+                    <?= lucideSvg('sun', 'alcros-theme-icon alcros-theme-icon--light pointer-events-none') ?>
                 </button>
             </div>
 
@@ -60,7 +61,7 @@ $pageHeaderMeta = $pageHeaderMeta ?? '';
                 aria-expanded="false"
                 aria-haspopup="true"
             >
-                <i data-lucide="bell" class="admin-header__notif-icon pointer-events-none"></i>
+                <?= lucideSvg('bell', 'admin-header__notif-icon pointer-events-none') ?>
 
                 <span
                     id="notif-badge"
@@ -103,7 +104,7 @@ $pageHeaderMeta = $pageHeaderMeta ?? '';
                     <span class="admin-header__profile-role"><?= htmlspecialchars(staffRole()) ?></span>
                 </span>
                 <?= renderStaffAvatar(staffPhotoPath(), staffName(), 'w-7 h-7 text-[10px]') ?>
-                <i data-lucide="chevron-down" class="admin-header__profile-chevron w-3.5 h-3.5 text-gray-400 shrink-0 pointer-events-none hidden sm:block"></i>
+                <?= lucideSvg('chevron-down', 'admin-header__profile-chevron w-3.5 h-3.5 text-gray-400 shrink-0 pointer-events-none hidden sm:block') ?>
             </button>
 
             <div
@@ -117,11 +118,11 @@ $pageHeaderMeta = $pageHeaderMeta ?? '';
                     <p class="admin-header__profile-menu-role"><?= htmlspecialchars(staffRole()) ?></p>
                 </div>
                 <a href="<?= htmlspecialchars($myInfoUrl) ?>" class="admin-header__profile-menu-item" role="menuitem">
-                    <i data-lucide="user" class="w-4 h-4 shrink-0"></i>
+                    <?= lucideSvg('user', 'w-4 h-4 shrink-0') ?>
                     <span>My information</span>
                 </a>
                 <button type="button" class="admin-header__profile-menu-item admin-header__profile-menu-item--danger" data-logout-trigger role="menuitem">
-                    <i data-lucide="log-out" class="w-4 h-4 shrink-0"></i>
+                    <?= lucideSvg('log-out', 'w-4 h-4 shrink-0') ?>
                     <span>Logout</span>
                 </button>
             </div>

@@ -3,6 +3,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/scripts.php';
+require_once __DIR__ . '/lucide_icons.php';
 
 $activePage = $activePage ?? basename($_SERVER['PHP_SELF']);
 
@@ -20,8 +21,7 @@ function sidebarLink(string $page, string $label, string $icon, string $active, 
     $justify = $hasTrailing ? ' justify-between' : '';
     $href = buildAuthUrl($page, $query);
 
-    // Pre-sizing icon wrapper prevents reflow layout flickering when JS icons initialize
-    $iconHtml = '<i data-lucide="' . $icon . '" class="w-4 h-4 mr-3 shrink-0 inline-block align-middle"></i>';
+    $iconHtml = lucideSvg($icon, 'admin-sidebar-icon w-4 h-4 mr-3 shrink-0 inline-block align-middle');
 
     if ($liveBadge) {
         $inner = '<div class="flex items-center min-w-0 flex-1">' . $iconHtml . '<span class="sidebar-link-label">' . htmlspecialchars($label) . '</span></div>' . $badge;

@@ -9,6 +9,7 @@ requirePageAccess('dashboard.php');
 releaseSessionLock();
 
 $activePage = 'dashboard.php';
+$alcrosAdminRealtime = true;
 $pdo = getDB();
 ensureCitizenNotifyColumns($pdo);
 ensureSoftDeleteColumns($pdo);

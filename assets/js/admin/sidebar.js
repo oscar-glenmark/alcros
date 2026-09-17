@@ -13,6 +13,7 @@
         if (sidebarToggle) {
             sidebarToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
         }
+        document.dispatchEvent(new CustomEvent('alcros:sidebar-layout-change'));
     }
 
     function setSidebarMinimized(minimized, persist) {
@@ -25,6 +26,7 @@
         if (sidebarToggle && !isCompactViewport()) {
             sidebarToggle.setAttribute('aria-expanded', minimized ? 'false' : 'true');
         }
+        document.dispatchEvent(new CustomEvent('alcros:sidebar-layout-change'));
     }
 
     function restoreSidebarState() {
@@ -59,9 +61,78 @@
         });
     }
 
+    function shouldShowSidebarTips() {
+        if (document.body.classList.contains('admin-sidebar-drawer-open')) {
+            return false;
+        }
+        return document.body.classList.contains('admin-sidebar-minimized') || isCompactViewport();
+    }
+
+    function initSidebarTooltips() {
+        var sidebar = document.querySelector('.admin-sidebar');
+        if (!sidebar || sidebar.dataset.tipsBound === '1') {
+            return;
+        }
+        sidebar.dataset.tipsBound = '1';
+
+        var tipEl = document.createElement('div');
+        tipEl.className = 'admin-sidebar-tooltip';
+        tipEl.setAttribute('role', 'tooltip');
+        tipEl.hidden = true;
+        document.body.appendChild(tipEl);
+
+        var activeLink = null;
+
+        function hideTip() {
+            activeLink = null;
+            tipEl.classList.remove('is-visible');
+            tipEl.hidden = true;
+        }
+
+        function showTip(link) {
+            var label = link.getAttribute('data-sidebar-tip');
+            if (!label || !shouldShowSidebarTips()) {
+                hideTip();
+                return;
+            }
+
+            activeLink = link;
+            tipEl.textContent = label;
+            tipEl.hidden = false;
+
+            window.requestAnimationFrame(function () {
+                if (activeLink !== link) {
+                    return;
+                }
+                var rect = link.getBoundingClientRect();
+                tipEl.style.top = (rect.top + rect.height / 2) + 'px';
+                tipEl.style.left = (rect.right + 10) + 'px';
+                tipEl.style.transform = 'translateY(-50%)';
+                tipEl.classList.add('is-visible');
+            });
+        }
+
+        sidebar.querySelectorAll('[data-sidebar-tip]').forEach(function (link) {
+            link.addEventListener('mouseenter', function () {
+                showTip(link);
+            });
+            link.addEventListener('mouseleave', hideTip);
+            link.addEventListener('focus', function () {
+                showTip(link);
+            });
+            link.addEventListener('blur', hideTip);
+        });
+
+        window.addEventListener('resize', hideTip);
+        window.addEventListener('scroll', hideTip, true);
+        document.addEventListener('click', hideTip);
+        document.addEventListener('alcros:sidebar-layout-change', hideTip);
+    }
+
     function initSidebar() {
         restoreSidebarState();
         bindSidebarToggle();
+        initSidebarTooltips();
 
         document.addEventListener('click', function (e) {
             if (!document.body.classList.contains('admin-sidebar-drawer-open')) {

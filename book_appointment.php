@@ -143,7 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Schedule Appointment - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= vendorScriptTag('lucide.min.js') ?>
-    <?= vendorStylesheetTag('inter/inter.css') ?>
+    <?= interFontTags() ?>
     <?= publicStylesheet('citizen-site') ?>
     <?= publicStylesheet('citizen-request') ?>
     <?= publicStylesheet('id-upload') ?>

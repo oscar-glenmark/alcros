@@ -153,7 +153,7 @@ if (!$formDefaults && !empty($fields[0])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($pageTitle) ?> · ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
-    <?= vendorStylesheetTag('inter/inter.css') ?>
+    <?= interFontTags() ?>
     <?= adminLayoutHeadStyles('print-calibration') ?>
     <?= printPrinterSetupStylesheet() ?>
     <?= vendorScriptTag('lucide.min.js') ?>
@@ -567,6 +567,5 @@ if (!$formDefaults && !empty($fields[0])) {
 <?= scriptTag('core/page-config.js') ?>
 <?= scriptTag('admin/print-calibration.js') ?>
 <?= lucideInitScript() ?>
-<?= adminCoreScripts() ?>
 </body>
 </html>

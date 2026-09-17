@@ -7,6 +7,7 @@ require_once __DIR__ . '/includes/excel_report_exports.php';
 require_once __DIR__ . '/includes/scripts.php';
 requireStaffLogin();
 requirePageAccess('report.php');
+releaseSessionLock();
 
 $activePage = 'report.php';
 $pdo = getDB();
@@ -142,7 +143,7 @@ $rangeOptions = [
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reports - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
-    <?= vendorStylesheetTag('inter/inter.css') ?>
+    <?= interFontTags() ?>
     <?= adminLayoutHeadStyles('report') ?>
     <?= vendorScriptTag('lucide.min.js') ?>
     <?php if ($section === 'analytics'): ?>

@@ -48,7 +48,7 @@ $year = date('Y');
 
     <?= vendorScriptTag('lucide.min.js') ?>
 
-    <?= vendorStylesheetTag('inter/inter.css') ?>
+    <?= interFontTags() ?>
 
     <?= publicStylesheet('citizen-site') ?>
 

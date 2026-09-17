@@ -6,6 +6,7 @@ require_once __DIR__ . '/includes/scripts.php';
 require_once __DIR__ . '/includes/printing.php';
 requireStaffLogin();
 requirePageAccess('manage_request.php');
+releaseSessionLock();
 
 $activePage = 'manage_request.php';
 $pdo = getDB();
@@ -190,7 +191,7 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Requests - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
-    <?= vendorStylesheetTag('inter/inter.css') ?>
+    <?= interFontTags() ?>
     <?= adminLayoutHeadStyles('manage-requests') ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>
@@ -554,7 +555,6 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
     ]) ?>
     <div id="requestActionAuthFields" class="hidden" aria-hidden="true"><?= authFormField() ?></div>
     <?= actionResultScript($flash) ?>
-    <?= scriptTag('core/poll.js') ?>
     <?= scriptTag('admin/id-preview.js') ?>
     <?= scriptTag('core/page-config.js') ?>
     <?= scriptTag('admin/manage-bulk.js') ?>

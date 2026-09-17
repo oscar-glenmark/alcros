@@ -133,7 +133,13 @@ $printPaperPrefs = printPaperPreferences();
 $printCsrfToken = csrfToken();
 $isPreview = !empty($_GET['preview']);
 $autoPrint = !empty($_GET['autoprint']);
-$showBackground = !empty($_GET['background']) || $isPreview || $autoPrint;
+$isCertificationDoc = $documentKind === 'certification';
+if ($isCertificationDoc) {
+    $showBackground = !empty($_GET['background']);
+} else {
+    $showBackground = !empty($_GET['background']) || $isPreview || $autoPrint;
+}
+$printWithBackground = $showBackground && $isCertificationDoc;
 $overlayHtml = renderPrintOverlayHtml($printData, [
     'mode'                    => $mode,
     'test_mode'               => $testMode,
@@ -254,7 +260,7 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
             .print-test-marker {
                 display: none !important;
             }
-            .print-sheet__background {
+            body:not(.print-render--with-background) .print-sheet__background {
                 display: none !important;
             }
             .print-field--editable {
@@ -293,7 +299,7 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
         }
     </style>
 </head>
-<body class="<?= trim(($isPreview ? 'print-render--preview ' : '') . ($autoPrint ? 'print-render--autoprint ' : '') . ($documentKind === 'certification' ? ' print-render--certification' : '')) ?>">
+<body class="<?= trim(($isPreview ? 'print-render--preview ' : '') . ($autoPrint ? 'print-render--autoprint ' : '') . ($documentKind === 'certification' ? ' print-render--certification' : '') . ($printWithBackground ? ' print-render--with-background' : '')) ?>">
     <?php if ($autoPrint && $documentKind !== 'certification'): ?>
     <div class="print-setup-notice" id="printSetupNotice" role="dialog" aria-labelledby="printSetupTitle">
         <div class="print-setup-notice__card">

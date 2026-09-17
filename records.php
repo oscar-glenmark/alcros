@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
@@ -8,6 +8,7 @@ require_once __DIR__ . '/includes/record_locks.php';
 require_once __DIR__ . '/includes/cascading_location.php';
 requireStaffLogin();
 requirePageAccess('records.php');
+releaseSessionLock();
 
 $activePage = 'records.php';
 $pdo = getDB();
@@ -618,7 +619,7 @@ function parseCsvRecordRow(array $headers, array $row, string $importType, ?stri
         }
         if ($husbandName === '' || $wifeName === '') {
             if (csvRowLooksMergedIntoOneCell($row)) {
-                $error = 'This row is in one Excel column. Open the CSV template, paste each value in its own column (A, B, Câ€¦), then Save As â†’ CSV UTF-8.';
+                $error = 'This row is in one Excel column. Open the CSV template, paste each value in its own column (A, B, C…), then Save As → CSV UTF-8.';
             } else {
                 $error = 'husband_first_name + husband_last_name and wife_first_name + wife_last_name are required (legacy CSV may use husband_name / wife_name).';
             }
@@ -644,7 +645,7 @@ function parseCsvRecordRow(array $headers, array $row, string $importType, ?stri
         }
         if ($parts['first_name'] === '' || $parts['last_name'] === '') {
             if (csvRowLooksMergedIntoOneCell($row)) {
-                $error = 'This row is in one Excel column. Open the CSV template, paste each value in its own column (A, B, Câ€¦), then Save As â†’ CSV UTF-8.';
+                $error = 'This row is in one Excel column. Open the CSV template, paste each value in its own column (A, B, C…), then Save As → CSV UTF-8.';
             } else {
                 $required = $effectiveType === 'death'
                     ? 'deceased_first_name and deceased_last_name are required (legacy CSV may use first_name / last_name or person_name).'
@@ -957,7 +958,7 @@ function exportCivilRecordTemplateXlsx(string $type): void
 
     $row = 1;
     alcrosExcelWriteMetaBlock($sheet, [
-        'ALCROS bulk import template â€” ' . civilRecordTypeLabel($type),
+        'ALCROS bulk import template — ' . civilRecordTypeLabel($type),
         ['Instructions', 'Enter one record per row using the column headers below. The sample row is skipped on import.'],
         ['Dates', 'Use YYYY-MM-DD or MM/DD/YYYY, or separate day / month / year columns where provided.'],
         ['Required', $type === 'marriage'
@@ -1163,7 +1164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($imported === 0) {
                 $msg = 'No records were imported.';
                 if ($sampleSkipped > 0) {
-                    $msg .= " $sampleSkipped template sample row(s) skipped â€” add your own data rows below the header.";
+                    $msg .= " $sampleSkipped template sample row(s) skipped — add your own data rows below the header.";
                 }
                 if ($skipped > 0) {
                     $msg .= " $skipped row(s) skipped.";
@@ -1323,7 +1324,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Civil Records - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
-    <?= vendorStylesheetTag('inter/inter.css') ?>
+    <?= interFontTags() ?>
     <?= adminLayoutHeadStyles('records') ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>
@@ -1428,9 +1429,9 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                 <table class="w-full min-w-[720px]">
                     <thead class="bg-gray-50/50 border-b border-gray-100">
                         <tr>
-                            <th class="p-4 text-left table-head"><a href="<?= sortUrl('name') ?>" class="hover:text-blue-600">Record Name <?= $sort === 'name' ? ($dir === 'asc' ? 'â†‘' : 'â†“') : '' ?></a></th>
-                            <th class="p-4 text-left table-head"><a href="<?= sortUrl('type') ?>" class="hover:text-blue-600">Type <?= $sort === 'type' ? ($dir === 'asc' ? 'â†‘' : 'â†“') : '' ?></a></th>
-                            <th class="p-4 text-left table-head"><a href="<?= sortUrl('date') ?>" class="hover:text-blue-600">Key Date <?= $sort === 'date' ? ($dir === 'asc' ? 'â†‘' : 'â†“') : '' ?></a></th>
+                            <th class="p-4 text-left table-head"><a href="<?= sortUrl('name') ?>" class="hover:text-blue-600">Record Name <?= $sort === 'name' ? ($dir === 'asc' ? '↑' : '↓') : '' ?></a></th>
+                            <th class="p-4 text-left table-head"><a href="<?= sortUrl('type') ?>" class="hover:text-blue-600">Type <?= $sort === 'type' ? ($dir === 'asc' ? '↑' : '↓') : '' ?></a></th>
+                            <th class="p-4 text-left table-head"><a href="<?= sortUrl('date') ?>" class="hover:text-blue-600">Key Date <?= $sort === 'date' ? ($dir === 'asc' ? '↑' : '↓') : '' ?></a></th>
                             <th class="p-4 text-left table-head">Details</th>
                             <th class="p-4 text-right table-head">Action</th>
                         </tr>
@@ -1458,18 +1459,18 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                                 <span class="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 font-bold">#<?= htmlspecialchars($displayRegistry) ?></span>
                                                 <?php endif; ?>
                                                 <?php if (!empty($r['book_number']) || !empty($r['page_number'])): ?>
-                                                <span class="text-[9px] bg-amber-50 px-1.5 py-0.5 rounded text-amber-700 font-bold">Bk <?= htmlspecialchars((string) ($r['book_number'] ?? 'â€”')) ?> Â· Pg <?= htmlspecialchars((string) ($r['page_number'] ?? 'â€”')) ?></span>
+                                                <span class="text-[9px] bg-amber-50 px-1.5 py-0.5 rounded text-amber-700 font-bold">Bk <?= htmlspecialchars((string) ($r['book_number'] ?? '—')) ?> · Pg <?= htmlspecialchars((string) ($r['page_number'] ?? '—')) ?></span>
                                                 <?php endif; ?>
                                             </div>
-                                            <p class="text-[10px] text-gray-400 font-medium">ID: <?= (int) $r['id'] ?> â€¢ Added <?= formatRecordDate(substr($r['created_at'], 0, 10)) ?></p>
+                                            <p class="text-[10px] text-gray-400 font-medium">ID: <?= (int) $r['id'] ?> • Added <?= formatRecordDate(substr($r['created_at'], 0, 10)) ?></p>
                                         </div>
                                     </div>
                                 </button>
                             </td>
                             <td class="p-4"><span class="text-[9px] font-black <?= $badge ?> px-2 py-0.5 rounded uppercase"><?= htmlspecialchars($r['record_type']) ?></span></td>
                             <td class="p-4 text-[10px] text-gray-500 font-medium"><?= formatRecordDate($keyDate) ?></td>
-                            <td class="p-4 text-[10px] text-gray-400 font-medium max-w-[180px] truncate" title="<?= htmlspecialchars(implode(' â€¢ ', $parents) ?: ($r['place'] ?? '')) ?>">
-                                <?= htmlspecialchars(implode(' â€¢ ', $parents) ?: ($r['place'] ?? 'â€”')) ?>
+                            <td class="p-4 text-[10px] text-gray-400 font-medium max-w-[180px] truncate" title="<?= htmlspecialchars(implode(' • ', $parents) ?: ($r['place'] ?? '')) ?>">
+                                <?= htmlspecialchars(implode(' • ', $parents) ?: ($r['place'] ?? '—')) ?>
                             </td>
                             <td class="p-4 text-right">
                                 <div class="manage-row-actions" onclick="event.stopPropagation()">
@@ -1509,7 +1510,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                 <?php endif; ?>
 
                 <div class="p-4 border-t border-gray-100 flex items-center justify-between">
-                    <p class="text-[10px] font-bold text-gray-400 uppercase">Page <?= $page ?> of <?= $totalPages ?> â€¢ Total: <?= $totalRecords ?></p>
+                    <p class="text-[10px] font-bold text-gray-400 uppercase">Page <?= $page ?> of <?= $totalPages ?> • Total: <?= $totalRecords ?></p>
                     <div class="flex space-x-2">
                         <?php if ($page > 1): ?>
                         <a href="<?= buildRecordsUrl(['page' => $page - 1]) ?>" class="p-1 border border-gray-200 rounded text-gray-400 hover:bg-gray-50"><i data-lucide="chevron-left" class="w-4 h-4"></i></a>
@@ -1949,7 +1950,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                         </div>
 
                         <div class="rounded-xl border border-violet-100 bg-violet-50/40 p-4 space-y-4">
-                            <p class="text-[10px] font-black text-violet-800 uppercase tracking-wider">Infant Details (0â€“7 Days)</p>
+                            <p class="text-[10px] font-black text-violet-800 uppercase tracking-wider">Infant Details (0–7 Days)</p>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Age of Mother</label>

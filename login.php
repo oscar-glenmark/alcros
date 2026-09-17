@@ -124,7 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <?= vendorScriptTag('lucide.min.js') ?>
 
-    <?= vendorStylesheetTag('inter/inter.css') ?>
+    <?= interFontTags() ?>
 
     <?= publicStylesheet('auth-portal') ?>
 

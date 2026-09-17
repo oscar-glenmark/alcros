@@ -267,7 +267,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
     <title>Request Document - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= vendorScriptTag('lucide.min.js') ?>
-    <?= vendorStylesheetTag('inter/inter.css') ?>
+    <?= interFontTags() ?>
     <?= publicStylesheet('citizen-site') ?>
     <?= publicStylesheet('citizen-request') ?>
     <?= publicStylesheet('id-upload') ?>
@@ -372,19 +372,19 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 <?php endif; ?>
                 <p><span class="font-bold text-slate-500">Status:</span> Pending review — you can follow every update online.</p>
                 <?php if (!empty($successData['email_sent'])): ?>
-                <p class="flex items-start gap-2 text-green-700 bg-green-50 border border-green-100 rounded-lg p-3">
+                <p class="citizen-request-notice citizen-request-notice--success">
                     <i data-lucide="mail" class="w-4 h-4 shrink-0 mt-0.5"></i>
-                    A Gmail confirmation was sent to <strong><?= htmlspecialchars($successData['email']) ?></strong>. We will also email you when staff verifies your request and when the status changes.
+                    <span>A Gmail confirmation was sent to <strong><?= htmlspecialchars($successData['email']) ?></strong>. We will also email you when staff verifies your request and when the status changes.</span>
                 </p>
                 <?php elseif (!empty($successData['notify_email'])): ?>
-                <p class="flex items-start gap-2 text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-3">
+                <p class="citizen-request-notice citizen-request-notice--warn">
                     <i data-lucide="alert-circle" class="w-4 h-4 shrink-0 mt-0.5"></i>
-                    We could not send the Gmail confirmation right now. Please save your tracking code and check Track Request. Staff can still email later updates once Gmail sending is configured.
+                    <span>We could not send the Gmail confirmation right now. Please save your tracking code and check Track Request. Staff can still email later updates once Gmail sending is configured.</span>
                 </p>
                 <?php else: ?>
-                <p class="flex items-start gap-2 text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-3">
+                <p class="citizen-request-notice citizen-request-notice--warn">
                     <i data-lucide="alert-circle" class="w-4 h-4 shrink-0 mt-0.5"></i>
-                    Please save your tracking code. You can check status anytime using the <strong>Track</strong> button in the header.
+                    <span>Please save your tracking code. You can check status anytime using the <strong>Track</strong> button in the header.</span>
                 </p>
                 <?php endif; ?>
             </div>

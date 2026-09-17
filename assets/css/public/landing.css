@@ -127,12 +127,39 @@ body { font-family: 'Inter', sans-serif; color: #1e293b; }
 
 .service-card {
     border: 1px solid #e2e8f0;
-    transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s;
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+        box-shadow 0.25s ease,
+        transform 0.25s ease,
+        border-color 0.25s ease,
+        background-color 0.25s ease;
 }
+
 .service-card:hover {
-    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
-    transform: translateY(-2px);
-    border-color: #cbd5e1;
+    background: #fff;
+    border-color: var(--alcros-gold);
+    box-shadow: 0 20px 44px rgba(15, 23, 42, 0.12);
+    transform: translateY(-4px);
+}
+
+.service-card > div:first-child {
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.service-card:hover > div:first-child {
+    transform: scale(1.08);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+}
+
+.service-card:hover span.inline-flex i,
+.service-card:hover span.inline-flex svg {
+    transform: translateX(3px);
+}
+
+.service-card span.inline-flex i,
+.service-card span.inline-flex svg {
+    transition: transform 0.25s ease;
 }
 
 .steps-line {

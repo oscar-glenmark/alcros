@@ -298,6 +298,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $deleted = $stmt->rowCount();
             logActivity($currentStaffId, 'Logs Cleared', "Removed $deleted activity log entries older than $days days");
             settingsFlashSet('success', "Cleared $deleted old activity log entries.");
+        } elseif ($action === 'clear_data' && $isAdmin) {
+            $types = is_array($_POST['clear_data_types'] ?? null) ? $_POST['clear_data_types'] : [];
+            $results = clearOperationalData($pdo, $types, $currentStaffId);
+
+            $parts = [];
+            if ($results['document_requests'] > 0) {
+                $parts[] = $results['document_requests'] . ' request(s)';
+            }
+            if ($results['appointments'] > 0) {
+                $parts[] = $results['appointments'] . ' appointment(s)';
+            }
+            if ($results['civil_records'] > 0) {
+                $parts[] = $results['civil_records'] . ' civil record(s)';
+            }
+            if ($results['queue_tickets'] > 0) {
+                $parts[] = $results['queue_tickets'] . ' related queue ticket(s)';
+            }
+
+            settingsFlashSet(
+                'success',
+                $parts !== []
+                    ? 'Cleared ' . implode(', ', $parts) . '.'
+                    : 'No records found for the selected data types.'
+            );
         }
     } catch (InvalidArgumentException $e) {
         settingsFlashSet('error', $e->getMessage());
@@ -370,7 +394,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= $isAdmin ? 'System Settings' : 'My Settings' ?> - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
-    <?= vendorStylesheetTag('inter/inter.css') ?>
+    <?= interFontTags() ?>
     <?= publicStylesheet('password-toggle') ?>
     <?= adminLayoutHeadStyles('settings') ?>
     <?= vendorScriptTag('lucide.min.js') ?>
@@ -930,23 +954,61 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     <h4 class="text-sm font-bold text-red-900 flex items-center gap-2">
                                         <i data-lucide="alert-triangle" class="w-4 h-4"></i> Danger zone
                                     </h4>
-                                    <p class="text-xs text-red-800/80 mt-1 mb-4">Permanently removes old activity log rows. This cannot be undone.</p>
-                                    <form method="POST" class="flex flex-wrap items-end gap-3">
-                                        <?= authFormField() ?>
-                                        <input type="hidden" name="settings_action" value="clear_old_logs">
-                                        <input type="hidden" name="active_tab" value="admin-tools">
-                                        <input type="hidden" name="admin_sub" value="maintenance">
-                                        <div>
-                                            <label class="block text-[10px] font-bold text-red-900/70 uppercase mb-1">Remove logs older than</label>
-                                            <select name="log_retention_days" class="border border-red-200 rounded-lg px-3 py-2 text-sm bg-white">
-                                                <option value="30">30 days</option>
-                                                <option value="60">60 days</option>
-                                                <option value="90">90 days</option>
-                                                <option value="180">180 days</option>
-                                            </select>
-                                        </div>
-                                        <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-xs font-bold">Clear old logs</button>
-                                    </form>
+                                    <p class="text-xs text-red-800/80 mt-1">Destructive maintenance actions. None of these can be undone.</p>
+
+                                    <div class="mt-4 pt-4 border-t border-red-100">
+                                        <p class="text-xs font-bold text-red-900 mb-1">Clear old activity logs</p>
+                                        <p class="text-xs text-red-800/80 mb-3">Permanently removes old activity log rows only.</p>
+                                        <form method="POST" class="flex flex-wrap items-end gap-3">
+                                            <?= authFormField() ?>
+                                            <input type="hidden" name="settings_action" value="clear_old_logs">
+                                            <input type="hidden" name="active_tab" value="admin-tools">
+                                            <input type="hidden" name="admin_sub" value="maintenance">
+                                            <div>
+                                                <label class="block text-[10px] font-bold text-red-900/70 uppercase mb-1">Remove logs older than</label>
+                                                <select name="log_retention_days" class="border border-red-200 rounded-lg px-3 py-2 text-sm bg-white">
+                                                    <option value="30">30 days</option>
+                                                    <option value="60">60 days</option>
+                                                    <option value="90">90 days</option>
+                                                    <option value="180">180 days</option>
+                                                </select>
+                                            </div>
+                                            <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-xs font-bold">Clear old logs</button>
+                                        </form>
+                                    </div>
+
+                                    <div class="mt-4 pt-4 border-t border-red-100">
+                                        <p class="text-xs font-bold text-red-900 mb-1">Clear operational data</p>
+                                        <p class="text-xs text-red-800/80 mb-3">Permanently deletes selected live records. Staff accounts, office settings, and activity logs are kept.</p>
+                                        <form method="POST" id="clearOperationalDataForm" class="space-y-4">
+                                            <?= authFormField() ?>
+                                            <input type="hidden" name="settings_action" value="clear_data">
+                                            <input type="hidden" name="active_tab" value="admin-tools">
+                                            <input type="hidden" name="admin_sub" value="maintenance">
+                                            <fieldset class="space-y-2">
+                                                <legend class="block text-[10px] font-bold text-red-900/70 uppercase mb-1">Data to clear</legend>
+                                                <?php
+                                                $clearDataOptions = [
+                                                    'appointments'      => ['label' => 'Appointment data', 'stat' => 'appointments'],
+                                                    'document_requests' => ['label' => 'Request document data', 'stat' => 'document_requests'],
+                                                    'civil_records'     => ['label' => 'Civil records', 'stat' => 'civil_records'],
+                                                ];
+                                                foreach ($clearDataOptions as $typeKey => $option):
+                                                    $count = (int) ($systemStats[$option['stat']]['count'] ?? 0);
+                                                ?>
+                                                <label class="flex items-start gap-3 rounded-lg border border-red-100 bg-white/80 px-3 py-2.5 cursor-pointer hover:bg-white">
+                                                    <input type="checkbox" name="clear_data_types[]" value="<?= htmlspecialchars($typeKey) ?>" class="mt-0.5 rounded text-red-600">
+                                                    <span class="min-w-0">
+                                                        <span class="block text-sm font-semibold text-red-950"><?= htmlspecialchars($option['label']) ?></span>
+                                                        <span class="block text-[11px] text-red-800/70"><?= number_format($count) ?> record<?= $count === 1 ? '' : 's' ?> in database</span>
+                                                    </span>
+                                                </label>
+                                                <?php endforeach; ?>
+                                            </fieldset>
+                                            <p id="clearOperationalDataError" class="hidden text-xs font-semibold text-red-700">Select at least one data type to clear.</p>
+                                            <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-xs font-bold">Clear selected data</button>
+                                        </form>
+                                    </div>
                                 </div>
                             </div>
                         </div>

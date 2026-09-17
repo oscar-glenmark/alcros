@@ -9,7 +9,7 @@ $activePage = $activePage ?? basename($_SERVER['PHP_SELF']);
 function sidebarLink(string $page, string $label, string $icon, string $active, bool $liveBadge = false, ?string $countBadgeId = null, array $query = []): string
 {
     $isActive = ($page === $active);
-    $class = $isActive ? 'active-nav' : 'sidebar-item text-slate-600';
+    $class = $isActive ? 'active-nav' : 'sidebar-item';
     $badge = $liveBadge
         ? '<span class="bg-white text-blue-600 text-[10px] px-1.5 py-0.5 rounded font-bold">LIVE</span>'
         : '';
@@ -31,7 +31,7 @@ function sidebarLink(string $page, string $label, string $icon, string $active, 
         $inner = $iconHtml . '<span class="sidebar-link-label">' . htmlspecialchars($label) . '</span>';
     }
 
-    return '<a href="' . htmlspecialchars($href) . '" class="' . $class . ' flex items-center min-w-0 px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-150' . $justify . '">'
+    return '<a href="' . htmlspecialchars($href) . '" data-sidebar-tip="' . htmlspecialchars($label) . '" class="' . $class . ' flex items-center min-w-0 px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-150' . $justify . '">'
         . $inner
         . '</a>';
 }
@@ -47,8 +47,8 @@ function sidebarSectionLabel(string $label): string
 <script>(function(){try{if(sessionStorage.getItem('admin_sidebar_minimized')==='1'){document.body.classList.add('admin-sidebar-minimized');}}catch(e){}})();</script>
 <aside class="admin-sidebar" aria-label="Admin navigation">
     <div class="admin-sidebar-brand p-4 sm:p-5 flex items-start justify-between gap-3">
-        <a href="<?= htmlspecialchars(buildAuthUrl('dashboard.php')) ?>" class="flex items-center gap-3 min-w-0 flex-1 transition hover:opacity-90">
-            <?= alcrosFaviconImg(44, 'gov-brand-logo shrink-0') ?>
+        <a href="<?= htmlspecialchars(buildAuthUrl('dashboard.php')) ?>" data-sidebar-tip="Dashboard" class="flex items-center gap-3 min-w-0 flex-1 transition hover:opacity-90">
+            <?= alcrosFaviconImg(52, 'gov-brand-logo shrink-0') ?>
             <div class="min-w-0">
                 <div class="gov-brand-title">Municipality of Aloran Misamis Occidental</div>
                 <div class="gov-brand-subtitle">ALCROS</div>

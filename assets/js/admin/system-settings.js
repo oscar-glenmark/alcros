@@ -137,6 +137,25 @@
     var maintenanceToggle = document.getElementById('maintenanceModeToggle');
     var allowRequestsToggle = document.getElementById('allowPublicRequestsToggle');
 
+    var clearDataForm = document.getElementById('clearOperationalDataForm');
+    if (clearDataForm) {
+        clearDataForm.addEventListener('submit', function (event) {
+            var checked = clearDataForm.querySelectorAll('input[name="clear_data_types[]"]:checked');
+            var errorEl = document.getElementById('clearOperationalDataError');
+            if (checked.length === 0) {
+                event.preventDefault();
+                event.stopPropagation();
+                if (errorEl) {
+                    errorEl.classList.remove('hidden');
+                }
+                return;
+            }
+            if (errorEl) {
+                errorEl.classList.add('hidden');
+            }
+        });
+    }
+
     if (allowRequestsToggle && maintenanceToggle) {
         allowRequestsToggle.addEventListener('change', function () {
             if (allowRequestsToggle.checked) {

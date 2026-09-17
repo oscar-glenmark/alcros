@@ -96,7 +96,8 @@
                 remove_staff_photo: 'Remove profile photo for this account?',
                 remove_staff: 'Remove this staff account permanently?',
                 save_settings: 'Save system settings?',
-                clear_old_logs: 'Delete old activity logs permanently?'
+                clear_old_logs: 'Delete old activity logs permanently?',
+                clear_data: 'Permanently delete the selected operational data? This cannot be undone.'
             };
             if (settingsMessages[settingsAction]) {
                 return settingsMessages[settingsAction];

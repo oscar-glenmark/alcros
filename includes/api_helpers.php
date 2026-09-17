@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/queue_announcements.php';
 
 function apiJsonResponse(array $data, int $code = 200): void
 {
@@ -109,14 +110,46 @@ function fetchPublicQueueDisplay(PDO $pdo): array
 {
     $rows = fetchTodayQueueActiveRows($pdo);
     $grouped = buildQueueGroupedFromRows($rows);
+    $announcement = queueFetchAnnouncementSnapshot($pdo);
 
     $serving = null;
-    foreach ($rows as $row) {
-        if (($row['status'] ?? '') !== 'serving') {
-            continue;
-        }
-        if ($serving === null || (string) ($row['called_at'] ?? '') > (string) ($serving['called_at'] ?? '')) {
-            $serving = $row;
+    if (!empty($announcement['active'])) {
+        $active = $announcement['active'];
+        $serving = [
+            'ticket_number'   => $active['ticket_number'],
+            'window_number'   => $active['window_number'],
+            'purpose'         => $active['purpose'],
+            'called_at'       => $active['started_at'] ?: $active['requested_at'],
+            'announcement_id' => $active['id'],
+        ];
+    } else {
+        $nextPending = queueFetchFirstPendingAnnouncement($pdo);
+        if ($nextPending) {
+            $serving = [
+                'ticket_number'   => $nextPending['ticket_number'],
+                'window_number'   => $nextPending['window_number'],
+                'purpose'         => $nextPending['purpose'],
+                'called_at'       => $nextPending['requested_at'],
+                'announcement_id' => $nextPending['id'],
+            ];
+        } else {
+            foreach ($rows as $row) {
+                if (($row['status'] ?? '') !== 'serving') {
+                    continue;
+                }
+                if ($serving === null || (string) ($row['called_at'] ?? '') > (string) ($serving['called_at'] ?? '')) {
+                    $serving = $row;
+                }
+            }
+            if ($serving) {
+                $serving = [
+                    'ticket_number'   => $serving['ticket_number'],
+                    'window_number'   => $serving['window_number'],
+                    'purpose'         => $serving['purpose'],
+                    'called_at'       => $serving['called_at'] ?? null,
+                    'announcement_id' => null,
+                ];
+            }
         }
     }
 
@@ -143,20 +176,22 @@ function fetchPublicQueueDisplay(PDO $pdo): array
 
     return [
         'serving' => $serving ? [
-            'ticket_number'  => $serving['ticket_number'],
-            'window_number'  => $serving['window_number'],
-            'purpose'        => $serving['purpose'],
-            'called_at'      => $serving['called_at'] ?? null,
+            'ticket_number'   => $serving['ticket_number'],
+            'window_number'   => $serving['window_number'],
+            'purpose'         => $serving['purpose'],
+            'called_at'       => $serving['called_at'] ?? null,
+            'announcement_id' => $serving['announcement_id'] ?? null,
         ] : null,
         'waiting' => $waiting,
         'tables'  => $tables,
+        'announcement' => $announcement,
     ];
 }
 
 function fetchQueueSnapshot(PDO $pdo, string $mode = 'full'): array
 {
     $rows = fetchTodayQueueActiveRows($pdo);
-    $revision = queueStateRevision($rows);
+    $revision = queueStateRevision($rows) . '|' . queueAnnouncementRevision($pdo);
     $payload = [
         'revision' => $revision,
     ];

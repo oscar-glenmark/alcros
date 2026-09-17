@@ -6,6 +6,7 @@ require_once __DIR__ . '/includes/scripts.php';
 require_once __DIR__ . '/includes/api_helpers.php';
 requireStaffLogin();
 requirePageAccess('live-queue.php');
+releaseSessionLock();
 
 $activePage = 'live-queue.php';
 $pdo = getDB();
@@ -73,8 +74,14 @@ $pageSubtitle = 'One button per table — tap when you are ready for the next ci
     <main class="admin-main flex flex-col">
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
         <div class="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto w-full admin-page-wrap">
-            <div class="flex justify-end mb-4">
-                <a href="queue_display.php" target="_blank" rel="noopener noreferrer" class="text-xs font-bold text-blue-600 hover:underline shrink-0">Open display screen</a>
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3">
+                <div class="min-w-0">
+                    <p class="text-xs font-bold text-slate-800">Public display &amp; voice</p>
+                    <p class="text-[11px] text-slate-600">Keep queue display open in another tab (can stay in the background). Enable voice there once — calls announce even while you work here.</p>
+                </div>
+                <a href="queue_display.php" target="_blank" rel="noopener noreferrer" class="shrink-0 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-bold">
+                    <i data-lucide="monitor" class="w-4 h-4"></i> Open queue display
+                </a>
             </div>
 
             <p class="mb-6 text-sm font-semibold text-slate-600">
@@ -146,12 +153,12 @@ $pageSubtitle = 'One button per table — tap when you are ready for the next ci
                         <?php endif; ?>
 
                         <div class="text-left">
-                            <p class="queue-wait-badge text-xs text-slate-500 mb-2" data-purpose="<?= htmlspecialchars($purpose) ?>">
+                            <p class="queue-wait-badge text-sm text-slate-600 mb-2" data-purpose="<?= htmlspecialchars($purpose) ?>">
                                 <?php if ($waitCount === 0): ?>
                                 No one in line
                                 <?php else: ?>
-                                <span class="font-bold text-slate-700"><?= $waitCount ?></span> waiting —
-                                next: <span class="queue-next-preview font-mono font-bold"><?= htmlspecialchars($waiting[0]['ticket_number']) ?></span>
+                                <span class="font-bold text-slate-800"><?= $waitCount ?></span> waiting —
+                                next: <span class="queue-next-preview font-mono font-bold text-base text-slate-900"><?= htmlspecialchars($waiting[0]['ticket_number']) ?></span>
                                 <?php endif; ?>
                             </p>
                             <?php if ($waitCount > 1): ?>
@@ -178,15 +185,18 @@ $pageSubtitle = 'One button per table — tap when you are ready for the next ci
                 <?php endforeach; ?>
             </div>
 
-            <p class="mt-8 text-center text-xs text-slate-400">
-                Citizens get tickets at the <a href="kiosk.php" target="_blank" class="text-blue-500 underline">kiosk</a>.
-                Numbers starting with W, A, or C go to Tables 1, 2, and 3.
-            </p>
+            <div class="mt-8 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3">
+                <div class="min-w-0">
+                    <p class="text-xs font-bold text-slate-800">Citizen kiosk</p>
+                    <p class="text-[11px] text-slate-600">Citizens get queue tickets at the kiosk. Numbers starting with W, A, or C go to Tables 1, 2, and 3.</p>
+                </div>
+                <a href="kiosk.php" target="_blank" rel="noopener noreferrer" class="shrink-0 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-bold">
+                    <i data-lucide="ticket" class="w-4 h-4"></i> Open kiosk
+                </a>
+            </div>
         </div>
     </main>
     <?= actionResultScript($flash) ?>
-    <?= scriptTag('core/poll.js') ?>
-    <?= scriptTag('core/realtime.js') ?>
     <?= lucideInitScript() ?>
 </body>
 </html>

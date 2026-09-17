@@ -188,7 +188,7 @@ $showingTo = min($offset + $perPage, $totalCount);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Activity Log - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
-    <?= vendorStylesheetTag('inter/inter.css') ?>
+    <?= interFontTags() ?>
     <?= adminLayoutHeadStyles('activity-log') ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>

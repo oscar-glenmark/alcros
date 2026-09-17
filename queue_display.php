@@ -105,7 +105,7 @@ $purposeLabels = queuePurposeLabels();
             </div>
             <h3 class="text-2xl font-black mb-2">Enable Voice Announcements</h3>
             <p class="text-gray-400 text-sm mb-4">Browsers require one click before the display can announce queue numbers aloud.</p>
-            <p class="text-gray-500 text-xs mb-8 leading-relaxed">For the lobby screen, open this page in its <strong class="text-gray-400">own browser window</strong> (not a background tab) and leave that window on the display monitor so announcements play automatically.</p>
+            <p class="text-gray-500 text-xs mb-8 leading-relaxed">Leave this page open, enable voice once, then switch to <strong class="text-gray-400">Live Queue</strong> or any other tab. When staff tap Call next, this page still announces — chime, voice, and a desktop notification if the tab is in the background. Allow notifications when asked.</p>
             <button type="button" id="voice-enable-btn" class="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl text-sm font-black uppercase tracking-wider transition-colors">
                 Enable voice
             </button>
@@ -115,6 +115,7 @@ $purposeLabels = queuePurposeLabels();
     <?= scriptTag('public/queue-display.js') ?>
     <?= scriptTag('core/poll.js') ?>
     <?= scriptTag('public/queue-voice.js') ?>
+    <?= scriptTag('core/queue-announcements.js') ?>
     <?= scriptTag('core/realtime.js') ?>
     <?= lucideInitScript() ?>
 </body>

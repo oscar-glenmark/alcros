@@ -79,8 +79,33 @@ function vendorAsset(string $path): string
     return 'assets/vendor/' . ltrim(str_replace('\\', '/', $path), '/');
 }
 
-function vendorScriptTag(string $path): string
+function scriptAttrs(array $attrs = []): string
 {
+    if (!array_key_exists('defer', $attrs) && !array_key_exists('async', $attrs)) {
+        $attrs['defer'] = 'defer';
+    }
+
+    $html = '';
+    foreach ($attrs as $key => $value) {
+        if ($value === false || $value === null || $value === '') {
+            continue;
+        }
+        $html .= ' ' . htmlspecialchars((string) $key);
+        if ($value !== true) {
+            $html .= '="' . htmlspecialchars((string) $value) . '"';
+        }
+    }
+
+    return $html;
+}
+
+function vendorScriptTag(string $path, array $attrs = []): string
+{
+    // Tailwind JIT must run before first paint; defer causes a flash of unstyled HTML on navigation.
+    if ($path === 'tailwindcss.js' && !array_key_exists('defer', $attrs) && !array_key_exists('async', $attrs)) {
+        $attrs['defer'] = false;
+    }
+
     $relative = vendorAsset($path);
     $src = $relative;
     $fullPath = dirname(__DIR__) . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative);
@@ -88,7 +113,7 @@ function vendorScriptTag(string $path): string
         $src .= '?v=' . filemtime($fullPath);
     }
 
-    return '<script src="' . htmlspecialchars($src) . '"></script>';
+    return '<script src="' . htmlspecialchars($src) . '"' . scriptAttrs($attrs) . '></script>';
 }
 
 function vendorStylesheetTag(string $path): string
@@ -103,11 +128,23 @@ function vendorStylesheetTag(string $path): string
     return '<link rel="stylesheet" href="' . htmlspecialchars($href) . '">';
 }
 
+function interFontTags(): string
+{
+    $fontPath = vendorAsset('inter/inter-latin-400-normal.woff2');
+    $fullPath = dirname(__DIR__) . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $fontPath);
+    if (is_file($fullPath)) {
+        $fontPath .= '?v=' . filemtime($fullPath);
+    }
+
+    return '<link rel="preload" href="' . htmlspecialchars($fontPath) . '" as="font" type="font/woff2" crossorigin>' . "\n    "
+        . vendorStylesheetTag('inter/inter.css');
+}
+
 /** Local Tailwind + Inter + Lucide — works on LAN without internet. */
 function alcrosUiHead(): string
 {
     return vendorScriptTag('tailwindcss.js') . "\n    "
-        . vendorStylesheetTag('inter/inter.css') . "\n    "
+        . interFontTags() . "\n    "
         . vendorScriptTag('lucide.min.js');
 }
 
@@ -119,13 +156,7 @@ function scriptTag(string $path, array $attrs = []): string
     if (is_file($fullPath)) {
         $src .= '?v=' . filemtime($fullPath);
     }
-    $src = htmlspecialchars($src);
-    $extra = '';
-    foreach ($attrs as $key => $value) {
-        $extra .= ' ' . htmlspecialchars((string) $key) . '="' . htmlspecialchars((string) $value) . '"';
-    }
-
-    return '<script src="' . $src . '"' . $extra . '></script>';
+    return '<script src="' . htmlspecialchars($src) . '"' . scriptAttrs($attrs) . '></script>';
 }
 
 function scriptTags(array $paths, array $attrs = []): string

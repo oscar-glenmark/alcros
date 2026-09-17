@@ -3,6 +3,13 @@
 :root {
     --admin-sidebar-width: 16rem;
     --admin-header-height: 3rem;
+    --admin-sidebar-bg: #1e293b;
+    --admin-sidebar-brand-bg: #0f172a;
+    --admin-sidebar-border: #334155;
+    --admin-sidebar-text: #cbd5e1;
+    --admin-sidebar-text-muted: #94a3b8;
+    --admin-sidebar-hover: #334155;
+    --admin-sidebar-active: #2563eb;
 }
 
 @media (min-width: 640px) {
@@ -62,11 +69,12 @@ body.flex.min-h-screen {
     z-index: 30;
     display: flex;
     flex-direction: column;
-    background-color: #ffffff;
-    border-right: 1px solid #e2e8f0;
+    background-color: var(--admin-sidebar-bg);
+    border-right: 1px solid var(--admin-sidebar-border);
     flex-shrink: 0;
     min-width: 0;
     overflow: hidden;
+    color: var(--admin-sidebar-text);
 }
 
 .admin-sidebar-nav {
@@ -75,7 +83,9 @@ body.flex.min-h-screen {
     overflow-x: hidden;
     overscroll-behavior: contain;
     scrollbar-width: thin;
+    scrollbar-color: #334155 transparent;
     min-height: 0;
+    background: var(--admin-sidebar-bg);
 }
 
 @media (min-height: 700px) {
@@ -134,7 +144,7 @@ body.flex.min-h-screen {
 /* ── Compact sidebar (icon rail) ── */
 @media (max-width: 1023px) {
     .admin-sidebar-brand {
-        padding: 0.75rem !important;
+        padding: 0.375rem !important;
         justify-content: center;
         overflow: visible;
     }
@@ -151,13 +161,16 @@ body.flex.min-h-screen {
     }
 
     .admin-sidebar-brand .gov-brand-logo {
-        width: 2.25rem;
-        height: 2.25rem;
+        width: calc(var(--admin-sidebar-width) - 0.75rem);
+        height: calc(var(--admin-sidebar-width) - 0.75rem);
         max-width: 100%;
         object-fit: contain;
         object-position: center;
-        padding: 0.125rem;
+        padding: 0;
         box-sizing: border-box;
+        border-radius: 0;
+        background: transparent !important;
+        box-shadow: none;
     }
 
     .admin-sidebar-nav {
@@ -223,7 +236,7 @@ body.flex.min-h-screen {
     }
 
     body.admin-sidebar-minimized .admin-sidebar-brand {
-        padding: 0.75rem !important;
+        padding: 0.375rem !important;
         justify-content: center;
         overflow: visible;
     }
@@ -240,13 +253,16 @@ body.flex.min-h-screen {
     }
 
     body.admin-sidebar-minimized .admin-sidebar-brand .gov-brand-logo {
-        width: 2.25rem;
-        height: 2.25rem;
+        width: calc(var(--admin-sidebar-width) - 0.75rem);
+        height: calc(var(--admin-sidebar-width) - 0.75rem);
         max-width: 100%;
         object-fit: contain;
         object-position: center;
-        padding: 0.125rem;
+        padding: 0;
         box-sizing: border-box;
+        border-radius: 0;
+        background: transparent !important;
+        box-shadow: none;
     }
 
     body.admin-sidebar-minimized .admin-sidebar-nav {
@@ -319,8 +335,8 @@ body.flex.min-h-screen {
     }
 
     .admin-sidebar-brand .gov-brand-logo {
-        width: 2rem;
-        height: 2rem;
+        width: 2.5rem;
+        height: 2.5rem;
     }
 
     .admin-sidebar-brand {
@@ -346,6 +362,7 @@ body.flex.min-h-screen {
 
 /* ── Sidebar nav styling ── */
 .sidebar-item {
+    color: var(--admin-sidebar-text) !important;
     transition: background-color 0.15s ease, color 0.15s ease;
 }
 
@@ -355,11 +372,12 @@ body.admin-sidebar-minimized .admin-sidebar button {
 }
 
 .sidebar-item:hover {
-    background-color: #f1f5f9;
+    background-color: var(--admin-sidebar-hover) !important;
+    color: #f8fafc !important;
 }
 
 .active-nav {
-    background-color: #2563eb !important;
+    background-color: var(--admin-sidebar-active) !important;
     color: #ffffff !important;
 }
 
@@ -367,7 +385,7 @@ body.admin-sidebar-minimized .admin-sidebar button {
 .active-nav:active,
 .active-nav:focus,
 .active-nav:focus-visible {
-    background-color: #2563eb !important;
+    background-color: var(--admin-sidebar-active) !important;
     color: #ffffff !important;
 }
 
@@ -400,17 +418,38 @@ body.admin-sidebar-minimized .admin-sidebar button {
 
 .admin-sidebar-brand {
     flex-shrink: 0;
-    background: #050b18;
+    background: var(--admin-sidebar-brand-bg);
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .admin-sidebar-brand .gov-brand-logo {
-    width: 2.75rem;
-    height: 2.75rem;
-    border-radius: 9999px;
-    object-fit: cover;
-    background: #fff;
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.12);
+    width: 3.25rem;
+    height: 3.25rem;
+    border-radius: 0;
+    object-fit: contain;
+    background: transparent !important;
+    box-shadow: none;
+}
+
+.admin-sidebar-tooltip {
+    position: fixed;
+    z-index: 60;
+    padding: 0.4rem 0.65rem;
+    background: #0f172a;
+    color: #ffffff;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.2;
+    border-radius: 0.5rem;
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.admin-sidebar-tooltip.is-visible {
+    opacity: 1;
 }
 
 .admin-sidebar-brand .gov-brand-title {
@@ -440,7 +479,13 @@ body.admin-sidebar-minimized .admin-sidebar button {
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: #94a3b8;
+    color: var(--admin-sidebar-text-muted);
+}
+
+.admin-sidebar .sidebar-item span.bg-white.text-blue-600 {
+    background-color: #f8fafc !important;
+    color: #2563eb !important;
+    font-size: 0.625rem;
 }
 
 .sidebar-section-label:first-child {

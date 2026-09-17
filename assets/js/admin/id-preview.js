@@ -39,7 +39,6 @@
     }
 
     global.AlcrosIdPreview = {
-        card: idPreviewCard,
         renderGrid: renderIdPreviewGrid
     };
 })(window);

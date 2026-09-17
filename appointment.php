@@ -5,6 +5,7 @@ require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 requireStaffLogin();
 requirePageAccess('appointment.php');
+releaseSessionLock();
 
 $activePage = 'appointment.php';
 $pdo = getDB();
@@ -270,7 +271,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Appointments - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
-    <?= vendorStylesheetTag('inter/inter.css') ?>
+    <?= interFontTags() ?>
     <?= adminLayoutHeadStyles('appointment') ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>

@@ -96,10 +96,19 @@ html.alcros-dark .admin-header__profile-btn > div.rounded-full {
     border-color: #475569;
 }
 
-/* Sidebar */
+/* Sidebar — slightly deeper when full dark mode is on */
 html.alcros-dark .admin-sidebar {
-    background-color: #0f172a;
-    border-right-color: #334155;
+    --admin-sidebar-bg: #0f172a;
+    --admin-sidebar-brand-bg: #020617;
+    --admin-sidebar-border: #1e293b;
+    --admin-sidebar-hover: #1e293b;
+    background-color: var(--admin-sidebar-bg);
+    border-right-color: var(--admin-sidebar-border);
+}
+
+html.alcros-dark .admin-sidebar-brand {
+    background: var(--admin-sidebar-brand-bg);
+    border-bottom-color: var(--admin-sidebar-border);
 }
 
 html.alcros-dark .sidebar-item {
@@ -107,12 +116,12 @@ html.alcros-dark .sidebar-item {
 }
 
 html.alcros-dark .sidebar-item:hover {
-    background-color: #1e293b !important;
+    background-color: var(--admin-sidebar-hover) !important;
     color: #f8fafc !important;
 }
 
 html.alcros-dark .sidebar-section-label {
-    color: #94a3b8;
+    color: #64748b;
 }
 
 html.alcros-dark .active-nav #sidebar-notif-badge {

@@ -167,6 +167,7 @@
 
 .print-cert-fill-tabs {
     display: flex;
+    align-items: center;
     gap: 0.375rem;
     margin-bottom: 0.75rem;
 }
@@ -185,6 +186,16 @@
 .print-cert-fill-tab.is-active {
     background: #2563eb;
     border-color: #2563eb;
+    color: #fff;
+}
+
+.print-cert-fill-tab--both {
+    margin-left: auto;
+}
+
+.print-cert-fill-tab--both.is-active {
+    background: #0f172a;
+    border-color: #0f172a;
     color: #fff;
 }
 
@@ -226,6 +237,63 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
     gap: 1rem;
+}
+
+.print-cert-previews--local {
+    display: block;
+}
+
+.print-cert-previews--local[data-preview-view="both"] {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.print-cert-previews--local[data-preview-view="front"] .print-cert-preview-block[data-preview-side="back"],
+.print-cert-previews--local[data-preview-view="back"] .print-cert-preview-block[data-preview-side="front"] {
+    display: none;
+}
+
+.print-cert-preview-viewport {
+    overflow: auto;
+    background: #94a3b8;
+    padding: 0.75rem;
+    min-height: calc(100vh - 14rem);
+    border-radius: 0 0 0.875rem 0.875rem;
+}
+
+.print-cert-previews--local[data-preview-view="both"] .print-cert-preview-viewport {
+    min-height: calc(100vh - 16rem);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.print-cert-previews--local[data-preview-view="both"] .print-cert-preview-scaler {
+    transform-origin: center center;
+    flex-shrink: 0;
+}
+
+.print-cert-preview-scaler {
+    margin: 0 auto;
+    transform-origin: top center;
+    will-change: transform;
+}
+
+.print-cert-frame--local {
+    display: block;
+    width: var(--print-cert-paper-w, 215.9mm);
+    height: var(--print-cert-paper-h, 358.9mm);
+    aspect-ratio: unset;
+    min-height: 0;
+    background: #fff;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+}
+
+@media (max-width: 960px) {
+    .print-cert-previews--local[data-preview-view="both"] {
+        grid-template-columns: 1fr;
+    }
 }
 
 .print-cert-preview-block {
@@ -272,6 +340,89 @@
 }
 
 
+.print-cert-footer {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.875rem 1.125rem;
+    padding: 0.6875rem 1rem;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    overflow-x: auto;
+}
+
+.print-cert-footer .print-cert-actions {
+    display: flex;
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+    gap: 0.625rem;
+    margin: 0;
+}
+
+.print-cert-footer .print-cert-btn {
+    min-height: 2.5rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    border-radius: 0.625rem;
+    white-space: nowrap;
+}
+
+.print-cert-footer .print-built-in-setup--compact {
+    display: flex;
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.625rem 0.875rem;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.print-cert-footer .print-built-in-setup--compact .print-built-in-setup__head {
+    flex-shrink: 0;
+    margin: 0;
+    gap: 0.4375rem;
+}
+
+.print-cert-footer .print-built-in-setup--compact .print-built-in-setup__badge {
+    padding: 0.1875rem 0.5625rem;
+    font-size: 0.6875rem;
+}
+
+.print-cert-footer .print-built-in-setup--compact .print-built-in-setup__title {
+    font-size: 0.75rem;
+}
+
+.print-cert-footer .print-built-in-setup--compact .print-built-in-setup__paper {
+    flex-shrink: 0;
+    margin: 0;
+    min-width: 0;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.print-cert-footer .print-built-in-setup--compact .print-built-in-setup__paper-or {
+    font-size: 0.6875rem;
+}
+
+.print-cert-footer .print-built-in-setup--compact .print-built-in-setup__back {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    width: auto;
+    flex-shrink: 1;
+    min-width: 0;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .print-cert-actions {
     display: flex;
     flex-wrap: wrap;
@@ -317,6 +468,7 @@
     .print-cert-options,
     .print-cert-fill,
     .print-cert-actions,
+    .print-cert-footer,
     .print-cert-preview-head {
         display: none !important;
     }

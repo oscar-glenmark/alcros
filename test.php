@@ -85,7 +85,7 @@ $pageSubtitle = 'Create and remove sample document requests for development and 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Test Request Generator - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
-    <?= vendorStylesheetTag('inter/inter.css') ?>
+    <?= interFontTags() ?>
     <?= adminLayoutHeadStyles() ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>
@@ -203,7 +203,6 @@ $pageSubtitle = 'Create and remove sample document requests for development and 
     }
     ?>
     <?= actionResultScript($flash) ?>
-    <?= adminCoreScripts() ?>
     <?= lucideInitScript() ?>
 </body>
 </html>

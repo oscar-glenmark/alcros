@@ -8,6 +8,8 @@
     var refreshTimer = null;
     var syncingPreview = false;
     var lastCalibrationStamp = '';
+    var previewZoomLevel = 0.84;
+    var previewViewMode = 'front';
 
     var CALIBRATION_STAMP_KEY = 'alcros-print-cal-updated';
 
@@ -108,6 +110,115 @@
         };
     }
 
+    function showBackgroundEnabled() {
+        var el = document.getElementById('optShowBackground');
+        return !!(el && el.checked);
+    }
+
+    function isLocalCertificate() {
+        return cfg.documentKind !== 'certification';
+    }
+
+    function localPreviewSection() {
+        return document.querySelector('.print-cert-previews--local');
+    }
+
+    function applyLocalPaperCssVars() {
+        var section = localPreviewSection();
+        if (!section) return;
+
+        var paperW = parseFloat(section.getAttribute('data-paper-w') || cfg.paperWidthMm || '215.9');
+        var paperH = parseFloat(section.getAttribute('data-paper-h') || cfg.paperHeightMm || '358.9');
+        if (!(paperW > 0 && paperH > 0)) return;
+
+        section.style.setProperty('--print-cert-paper-w', paperW + 'mm');
+        section.style.setProperty('--print-cert-paper-h', paperH + 'mm');
+    }
+
+    function setBothPreviewButtonActive(active) {
+        var bothBtn = document.getElementById('previewViewBoth');
+        if (!bothBtn) return;
+        bothBtn.classList.toggle('is-active', !!active);
+        bothBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    }
+
+    function syncBackPageOptionsVisibility() {
+        var section = document.getElementById('backPageOptions');
+        if (!section) return;
+        section.hidden = previewViewMode === 'front';
+    }
+
+    function setPreviewView(mode) {
+        if (!isLocalCertificate()) return;
+
+        if (mode === 'both' || mode === 'back' || mode === 'front') {
+            previewViewMode = mode;
+        } else {
+            previewViewMode = 'front';
+        }
+        var section = localPreviewSection();
+        if (section) {
+            section.setAttribute('data-preview-view', previewViewMode);
+        }
+        setBothPreviewButtonActive(previewViewMode === 'both');
+        syncBackPageOptionsVisibility();
+        window.requestAnimationFrame(function () {
+            window.requestAnimationFrame(fitLocalPreviewFrames);
+        });
+    }
+
+    function isLocalPreviewSideVisible(side) {
+        var section = localPreviewSection();
+        if (!section) return true;
+        var view = section.getAttribute('data-preview-view') || previewViewMode || 'front';
+        if (view === 'both') return true;
+        return view === side;
+    }
+
+    function fitLocalPreviewFrame(side) {
+        if (!isLocalPreviewSideVisible(side)) return;
+
+        var viewport = document.querySelector('[data-preview-viewport="' + side + '"]');
+        var scaler = document.querySelector('[data-preview-scaler="' + side + '"]');
+        var iframe = side === 'back' ? document.getElementById('previewBack') : document.getElementById('previewFront');
+        if (!viewport || !scaler || !iframe) return;
+
+        scaler.style.transform = 'none';
+        var naturalWidth = iframe.offsetWidth;
+        var naturalHeight = iframe.offsetHeight;
+        if (!naturalWidth || !naturalHeight) return;
+
+        var availableWidth = Math.max(viewport.clientWidth - 24, 240);
+        var widthScale = availableWidth / naturalWidth;
+        var scale;
+
+        if (previewViewMode === 'both') {
+            var availableHeight = Math.max(viewport.clientHeight - 24, 240);
+            var heightScale = availableHeight / naturalHeight;
+            var fitScale = Math.min(widthScale, heightScale);
+            scale = Math.min(Math.max(fitScale, 0.9), 2) * previewZoomLevel;
+        } else {
+            scale = Math.min(Math.max(widthScale, 0.9), 2) * previewZoomLevel;
+        }
+
+        scale = Math.round(scale * 50) / 50;
+        scaler.style.transform = 'scale(' + scale.toFixed(2) + ') translateZ(0)';
+        scaler.style.width = naturalWidth + 'px';
+        scaler.style.height = (naturalHeight * scale) + 'px';
+
+        if (previewViewMode === 'both') {
+            viewport.scrollLeft = 0;
+            viewport.scrollTop = 0;
+        }
+    }
+
+    function fitLocalPreviewFrames() {
+        if (!isLocalCertificate()) return;
+        applyLocalPaperCssVars();
+        fitLocalPreviewFrame('front');
+        fitLocalPreviewFrame('back');
+    }
+
     function applyQueryParams(url, extra) {
         var parsed = new URL(url, window.location.href);
         var requestId = numericId(cfg.requestId);
@@ -146,7 +257,15 @@
         parsed.searchParams.set('page', page);
         if (opts.preview !== false) {
             parsed.searchParams.set('preview', '1');
-            parsed.searchParams.set('background', '1');
+            if (cfg.documentKind === 'certification') {
+                if (showBackgroundEnabled()) {
+                    parsed.searchParams.set('background', '1');
+                } else {
+                    parsed.searchParams.delete('background');
+                }
+            } else {
+                parsed.searchParams.set('background', '1');
+            }
         } else {
             parsed.searchParams.delete('preview');
         }
@@ -182,6 +301,10 @@
             AlcrosPrintFitText.fitAll(doc);
         }
 
+        if (isLocalCertificate()) {
+            window.requestAnimationFrame(fitLocalPreviewFrames);
+        }
+
         doc.querySelectorAll('.print-field--editable').forEach(function (el) {
             if (el.dataset.fillBound === '1') return;
             el.dataset.fillBound = '1';
@@ -213,11 +336,16 @@
     }
 
     function syncPreviewFrameSize() {
+        if (isLocalCertificate()) {
+            fitLocalPreviewFrames();
+            return;
+        }
+
         var paperW = parseFloat(cfg.paperWidthMm || '215.9');
         var paperH = parseFloat(cfg.paperHeightMm || '358.9');
         if (!(paperW > 0 && paperH > 0)) return;
 
-        document.querySelectorAll('.print-cert-frame').forEach(function (iframe) {
+        document.querySelectorAll('.print-cert-frame:not(.print-cert-frame--local)').forEach(function (iframe) {
             var block = iframe.closest('.print-cert-preview-block');
             var width = block ? block.clientWidth : iframe.clientWidth;
             if (width > 0) {
@@ -340,6 +468,9 @@
         parsed.searchParams.set('page', page);
         parsed.searchParams.delete('preview');
         parsed.searchParams.delete('background');
+        if (cfg.documentKind === 'certification' && showBackgroundEnabled()) {
+            parsed.searchParams.set('background', '1');
+        }
         parsed.searchParams.set('mode', 'preprinted');
         if (testMode) {
             parsed.searchParams.set('test', '1');
@@ -396,8 +527,18 @@
                 document.querySelectorAll('[data-fill-panel]').forEach(function (panel) {
                     panel.hidden = panel.getAttribute('data-fill-panel') !== side;
                 });
+                if (isLocalCertificate()) {
+                    setPreviewView(side);
+                }
             });
         });
+
+        var bothPreviewBtn = document.getElementById('previewViewBoth');
+        if (bothPreviewBtn) {
+            bothPreviewBtn.addEventListener('click', function () {
+                setPreviewView('both');
+            });
+        }
     }
 
     function bindActions() {
@@ -428,7 +569,7 @@
             });
         }
 
-        ['optPaternity', 'optDelayedBirth', 'optDelayedMarriage', 'optDelayedDeath', 'optInfantSection', 'optPostmortem'].forEach(function (id) {
+        ['optPaternity', 'optDelayedBirth', 'optDelayedMarriage', 'optDelayedDeath', 'optInfantSection', 'optPostmortem', 'optShowBackground'].forEach(function (id) {
             var el = document.getElementById(id);
             if (el) el.addEventListener('change', refreshPreviews);
         });
@@ -443,6 +584,8 @@
     }
     bindFillEditor();
     bindActions();
+    applyLocalPaperCssVars();
+    setPreviewView('front');
     syncPreviewFrameSize();
     window.addEventListener('resize', syncPreviewFrameSize);
     window.addEventListener('pageshow', function (e) {

@@ -325,9 +325,6 @@ $faqs = [
                         <a href="https://www.facebook.com/glen.mark.876335" class="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition" aria-label="Facebook">
                             <i data-lucide="facebook" class="w-4 h-4"></i>
                         </a>
-                        <a href="#" class="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition" aria-label="Twitter">
-                            <i data-lucide="twitter" class="w-4 h-4"></i>
-                        </a>
                     </div>
                     <p class="text-[11px] text-white/50 mt-4"><?= htmlspecialchars($site['hours']) ?></p>
                 </div>

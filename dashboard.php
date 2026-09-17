@@ -6,6 +6,7 @@ require_once __DIR__ . '/includes/api_helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 requireStaffLogin();
 requirePageAccess('dashboard.php');
+releaseSessionLock();
 
 $activePage = 'dashboard.php';
 $pdo = getDB();
@@ -163,7 +164,7 @@ function activityIcon(string $action): string
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
-    <?= vendorStylesheetTag('inter/inter.css') ?>
+    <?= interFontTags() ?>
     <?= adminLayoutHeadStyles('dashboard') ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>

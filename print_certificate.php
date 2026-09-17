@@ -72,7 +72,7 @@ $printModeSetting = printMode();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($pageTitle) ?> · ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
-    <?= vendorStylesheetTag('inter/inter.css') ?>
+    <?= interFontTags() ?>
     <?= adminLayoutHeadStyles('print-certificate') ?>
     <?= printPrinterSetupStylesheet() ?>
     <?= vendorScriptTag('lucide.min.js') ?>
@@ -138,7 +138,7 @@ $printModeSetting = printMode();
             </section>
 
             <?php if (!$isCertification): ?>
-            <section class="print-cert-options no-print">
+            <section class="print-cert-options no-print" id="backPageOptions" hidden>
                 <div class="print-cert-options__inner">
                     <h2 class="print-cert-section-title">Back Page Options</h2>
                     <div class="print-cert-checks">
@@ -157,17 +157,21 @@ $printModeSetting = printMode();
                 <p class="print-cert-hint print-cert-hint--compact">Affidavit sections fill only when checked. Signatures are never auto-generated.</p>
             </section>
             <?php else: ?>
-            <section class="print-cert-alert print-cert-alert--warn no-print">
-                <i data-lucide="info"></i>
-                <div>
-                    <strong>Certification from existing record</strong>
-                    <p>This prints an authenticated copy from the civil registry. It does not create a new registration entry. Review the auto-filled fields below, then print directly from the preview.</p>
+            <section class="print-cert-options no-print">
+                <div class="print-cert-options__inner">
+                    <h2 class="print-cert-section-title">Print Options</h2>
+                    <div class="print-cert-checks">
+                        <label><input type="checkbox" id="optShowBackground" checked> Show background</label>
+                    </div>
                 </div>
+                <p class="print-cert-hint print-cert-hint--compact">When checked, the form background is included in the preview and print. When unchecked, only the filled-in data is printed — load blank certification bond paper.</p>
             </section>
             <?php endif; ?>
+            <?php if (!$isCertification): ?>
             <p class="print-cert-hint print-cert-hint--compact no-print">
                 The preview and print setup screen show the form for alignment. The printer receives <strong>data only</strong> — load pre-printed bond paper before printing.
             </p>
+            <?php endif; ?>
 
             <section class="print-cert-fill no-print">
                 <div class="print-cert-fill-head">
@@ -181,6 +185,7 @@ $printModeSetting = printMode();
                 <div class="print-cert-fill-tabs" role="tablist" aria-label="Fill-in page">
                     <button type="button" class="print-cert-fill-tab is-active" data-fill-tab="front" role="tab" aria-selected="true">Front page fields</button>
                     <button type="button" class="print-cert-fill-tab" data-fill-tab="back" role="tab" aria-selected="false">Back page fields</button>
+                    <button type="button" class="print-cert-fill-tab print-cert-fill-tab--both" id="previewViewBoth" data-preview-view="both">Both pages</button>
                 </div>
                 <?php endif; ?>
                 <?php foreach ($isCertification ? ['front'] : ['front', 'back'] as $fillSide): ?>
@@ -203,8 +208,10 @@ $printModeSetting = printMode();
                 <?php endforeach; ?>
             </section>
 
-            <section class="print-cert-previews">
-                <div class="print-cert-preview-block">
+            <section class="print-cert-previews<?= !$isCertification ? ' print-cert-previews--local' : '' ?>"
+                     data-preview-view="front"
+                     <?php if (!$isCertification): ?>data-paper-w="<?= htmlspecialchars((string) $paperW) ?>" data-paper-h="<?= htmlspecialchars((string) $paperH) ?>"<?php endif; ?>>
+                <div class="print-cert-preview-block" data-preview-side="front">
                     <div class="print-cert-preview-head">
                         <h2>Front Preview</h2>
                         <div class="print-cert-preview-actions no-print">
@@ -212,10 +219,18 @@ $printModeSetting = printMode();
                             <button type="button" class="print-cert-btn print-cert-btn--primary" data-print-side="front">Print Front</button>
                         </div>
                     </div>
+                    <?php if (!$isCertification): ?>
+                    <div class="print-cert-preview-viewport" data-preview-viewport="front">
+                        <div class="print-cert-preview-scaler" data-preview-scaler="front">
+                            <iframe id="previewFront" class="print-cert-frame print-cert-frame--local" title="Front preview"></iframe>
+                        </div>
+                    </div>
+                    <?php else: ?>
                     <iframe id="previewFront" class="print-cert-frame" title="Front preview"></iframe>
+                    <?php endif; ?>
                 </div>
                 <?php if (!$isCertification): ?>
-                <div class="print-cert-preview-block">
+                <div class="print-cert-preview-block" data-preview-side="back">
                     <div class="print-cert-preview-head">
                         <h2>Back Preview</h2>
                         <div class="print-cert-preview-actions no-print">
@@ -223,31 +238,36 @@ $printModeSetting = printMode();
                             <button type="button" class="print-cert-btn print-cert-btn--primary" data-print-side="back">Print Back</button>
                         </div>
                     </div>
-                    <iframe id="previewBack" class="print-cert-frame" title="Back preview"></iframe>
+                    <div class="print-cert-preview-viewport" data-preview-viewport="back">
+                        <div class="print-cert-preview-scaler" data-preview-scaler="back">
+                            <iframe id="previewBack" class="print-cert-frame print-cert-frame--local" title="Back preview"></iframe>
+                        </div>
+                    </div>
                 </div>
                 <?php endif; ?>
             </section>
 
+            <?php if (!$isCertification): ?>
+            <div class="print-cert-footer no-print">
+                <section class="print-cert-actions">
+                    <button type="button" class="print-cert-btn print-cert-btn--ghost" id="printTestBoth">Test Print Both Sides</button>
+                    <button type="button" class="print-cert-btn print-cert-btn--primary" id="printFrontBack">Print Front + Back</button>
+                    <a href="<?= htmlspecialchars(buildAuthUrl($request ? 'manage_request.php' : 'records.php')) ?>" class="print-cert-btn print-cert-btn--ghost">Cancel</a>
+                </section>
+                <?php renderPrintBuiltInPrinterSetup([
+                    'variant'               => 'compact',
+                    'show_back_hint'        => true,
+                    'back_orientation_hint' => $globalCalibration['back_orientation_hint'] ?? '',
+                    'default_width_mm'      => $paperW,
+                    'default_height_mm'     => $paperH,
+                ]); ?>
+            </div>
+            <?php else: ?>
             <section class="print-cert-actions no-print">
-                <?php if (!$isCertification): ?>
-                <button type="button" class="print-cert-btn print-cert-btn--ghost" id="printTestBoth">Test Print Both Sides</button>
-                <button type="button" class="print-cert-btn print-cert-btn--primary" id="printFrontBack">Print Front + Back</button>
-                <?php else: ?>
                 <button type="button" class="print-cert-btn print-cert-btn--ghost" data-print-side="front" data-test="1">Test Print</button>
                 <button type="button" class="print-cert-btn print-cert-btn--primary" data-print-side="front">Print Certification</button>
-                <?php endif; ?>
                 <a href="<?= htmlspecialchars(buildAuthUrl($request ? 'manage_request.php' : 'records.php')) ?>" class="print-cert-btn print-cert-btn--ghost">Cancel</a>
             </section>
-
-            <?php if (!$isCertification): ?>
-            <?php renderPrintBuiltInPrinterSetup([
-                'variant'               => 'compact',
-                'show_back_hint'        => true,
-                'back_orientation_hint' => $globalCalibration['back_orientation_hint'] ?? '',
-                'extra_class'           => 'no-print',
-                'default_width_mm'      => $paperW,
-                'default_height_mm'     => $paperH,
-            ]); ?>
             <?php endif; ?>
         <?php endif; ?>
     </div>
@@ -271,6 +291,5 @@ $printModeSetting = printMode();
 <?= scriptTag('admin/print-certificate.js') ?>
 <?php endif; ?>
 <?= lucideInitScript() ?>
-<?= adminCoreScripts() ?>
 </body>
 </html>

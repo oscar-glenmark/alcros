@@ -197,6 +197,13 @@ function outputAuthBootstrap(): void
     exit;
 }
 
+function releaseSessionLock(): void
+{
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
+}
+
 function requireStaffLogin(): void
 {
     if (getAuthenticatedStaff()) {

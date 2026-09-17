@@ -181,3 +181,39 @@
         word-break: break-all;
     }
 }
+
+.citizen-request-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    min-width: 0;
+    max-width: 100%;
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.45;
+}
+
+.citizen-request-notice > span {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.citizen-request-notice strong {
+    overflow-wrap: anywhere;
+    word-break: break-all;
+}
+
+.citizen-request-notice--success {
+    color: #15803d;
+    background: #f0fdf4;
+    border: 1px solid #dcfce7;
+}
+
+.citizen-request-notice--warn {
+    color: #b45309;
+    background: #fffbeb;
+    border: 1px solid #fef3c7;
+}

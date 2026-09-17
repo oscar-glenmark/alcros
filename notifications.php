@@ -19,7 +19,7 @@ $pageSubtitle = 'Alerts for pending requests, ready pickups, queue, and appointm
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Notifications - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
-    <?= vendorStylesheetTag('inter/inter.css') ?>
+    <?= interFontTags() ?>
     <?= adminLayoutHeadStyles() ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>

@@ -273,6 +273,11 @@ function queueAdvanceNext(PDO $pdo, string $purpose, int $tableNum, string $staf
 
         $pdo->commit();
 
+        if ($calledTicket !== null) {
+            require_once __DIR__ . '/queue_announcements.php';
+            queueEnqueueAnnouncement($pdo, $purpose, $calledTicket, $tableNum);
+        }
+
         return [
             'called_ticket' => $calledTicket,
             'had_serving'   => (bool) $servingRow,
@@ -310,6 +315,9 @@ function queueCallAgain(PDO $pdo, string $purpose, int $tableNum, string $staffI
             ->execute([$tableNum, (int) $row['id']]);
         $pdo->commit();
         logActivity($staffId, 'Queue', "Table $tableNum: called again {$row['ticket_number']}");
+
+        require_once __DIR__ . '/queue_announcements.php';
+        queueEnqueueAnnouncement($pdo, $purpose, (string) $row['ticket_number'], $tableNum, true);
 
         return (string) $row['ticket_number'];
     } catch (Throwable $e) {
@@ -4518,6 +4526,97 @@ function getSystemStats(PDO $pdo): array
         }
     }
     return $stats;
+}
+
+function clearOperationalData(PDO $pdo, array $types, string $staffId): array
+{
+    $allowed = ['appointments', 'document_requests', 'civil_records'];
+    $types = array_values(array_unique(array_intersect($allowed, $types)));
+    if ($types === []) {
+        throw new InvalidArgumentException('Select at least one data type to clear.');
+    }
+
+    $results = [
+        'appointments'       => 0,
+        'document_requests'  => 0,
+        'civil_records'      => 0,
+        'queue_tickets'      => 0,
+    ];
+
+    $pdo->beginTransaction();
+    try {
+        if (in_array('document_requests', $types, true)) {
+            $rows = $pdo->query('SELECT id_front_path, id_back_path FROM document_requests')->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($rows as $row) {
+                deleteIdUploadFiles($row['id_front_path'] ?? null, $row['id_back_path'] ?? null);
+            }
+
+            $results['document_requests'] = (int) $pdo->exec('DELETE FROM document_requests');
+            $results['queue_tickets'] += (int) $pdo->exec("DELETE FROM queue_tickets WHERE purpose = 'document_claim'");
+        }
+
+        if (in_array('appointments', $types, true)) {
+            $rows = $pdo->query('SELECT id_front_path, id_back_path FROM appointments')->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($rows as $row) {
+                deleteIdUploadFiles($row['id_front_path'] ?? null, $row['id_back_path'] ?? null);
+            }
+
+            $results['appointments'] = (int) $pdo->exec('DELETE FROM appointments');
+            $results['queue_tickets'] += (int) $pdo->exec("DELETE FROM queue_tickets WHERE purpose = 'appointment'");
+
+            $lockFile = __DIR__ . '/../storage/appointment_reminders.lock';
+            if (is_file($lockFile)) {
+                @unlink($lockFile);
+            }
+        }
+
+        if (in_array('civil_records', $types, true)) {
+            if (!in_array('document_requests', $types, true)) {
+                $pdo->exec('UPDATE document_requests SET civil_record_id = NULL WHERE civil_record_id IS NOT NULL');
+            }
+
+            $pdo->exec('DELETE FROM civil_record_edit_locks');
+            $results['civil_records'] = (int) $pdo->exec('DELETE FROM civil_records');
+        }
+
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+
+    $clearedLabels = [];
+    if (in_array('document_requests', $types, true)) {
+        $clearedLabels[] = 'request documents';
+    }
+    if (in_array('appointments', $types, true)) {
+        $clearedLabels[] = 'appointments';
+    }
+    if (in_array('civil_records', $types, true)) {
+        $clearedLabels[] = 'civil records';
+    }
+
+    $detailParts = [];
+    if ($results['document_requests'] > 0) {
+        $detailParts[] = $results['document_requests'] . ' request(s)';
+    }
+    if ($results['appointments'] > 0) {
+        $detailParts[] = $results['appointments'] . ' appointment(s)';
+    }
+    if ($results['civil_records'] > 0) {
+        $detailParts[] = $results['civil_records'] . ' civil record(s)';
+    }
+    if ($results['queue_tickets'] > 0) {
+        $detailParts[] = $results['queue_tickets'] . ' queue ticket(s)';
+    }
+
+    $summary = implode(', ', $clearedLabels);
+    $counts = $detailParts !== [] ? implode(', ', $detailParts) : 'no matching rows';
+    logActivity($staffId, 'Operational Data Cleared', "Cleared $summary ($counts).");
+
+    return $results;
 }
 
 function resolveReportDateRange(string $range, ?string $from = null, ?string $to = null): array

@@ -65,7 +65,7 @@
             if (waitCount === 0) {
                 badge.textContent = 'No one in line';
             } else {
-                badge.innerHTML = '<span class="font-bold text-slate-700">' + waitCount + '</span> waiting — next: <span class="queue-next-preview font-mono font-bold">' + escapeHtml(waiting[0].ticket_number) + '</span>';
+                badge.innerHTML = '<span class="font-bold text-slate-800">' + waitCount + '</span> waiting — next: <span class="queue-next-preview font-mono font-bold text-base text-slate-900">' + escapeHtml(waiting[0].ticket_number) + '</span>';
             }
         }
 
@@ -181,9 +181,29 @@
         });
     }
 
+    function renderDisplayServing(servingEl, serving) {
+        if (!servingEl) return;
+        if (serving) {
+            var purpose = escapeHtml(purposeLabels[serving.purpose] || serving.purpose);
+            var tableNum = escapeHtml(String(serving.window_number || 1));
+            servingEl.innerHTML = '<p class="text-8xl font-black text-white mb-2">' + escapeHtml(serving.ticket_number) + '</p>' +
+                '<p class="text-blue-400 text-lg font-bold uppercase">Table ' + tableNum + '</p>' +
+                '<p class="text-gray-500 text-sm mt-2">' + purpose + '</p>';
+        } else {
+            servingEl.innerHTML = '<i data-lucide="users" class="w-16 h-16 text-gray-600 mb-4"></i><p class="text-xs font-bold text-gray-600 uppercase tracking-widest">No Active Tickets</p>';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+    }
+
     function initQueueDisplay() {
-        var voiceReady = false;
         var idlePolls = 0;
+        var announcements = window.AlcrosQueueAnnouncements
+            ? AlcrosQueueAnnouncements.createProcessor()
+            : null;
+
+        if (announcements) {
+            announcements.bindVoiceEvents();
+        }
 
         AlcrosPoll.pollJson('api/queue_status.php', function (revision) {
             return { mode: 'display', since: revision || undefined };
@@ -194,29 +214,9 @@
             if (!servingEl || !waitingEl) return;
 
             var serving = data.display && data.display.serving ? data.display.serving : null;
-
-            if (serving) {
-                var purpose = escapeHtml(purposeLabels[serving.purpose] || serving.purpose);
-                var tableNum = escapeHtml(String(serving.window_number || 1));
-                servingEl.innerHTML = '<p class="text-8xl font-black text-white mb-2">' + escapeHtml(serving.ticket_number) + '</p>' +
-                    '<p class="text-blue-400 text-lg font-bold uppercase">Table ' + tableNum + '</p>' +
-                    '<p class="text-gray-500 text-sm mt-2">' + purpose + '</p>';
-            } else {
-                servingEl.innerHTML = '<i data-lucide="users" class="w-16 h-16 text-gray-600 mb-4"></i><p class="text-xs font-bold text-gray-600 uppercase tracking-widest">No Active Tickets</p>';
-                if (typeof lucide !== 'undefined') lucide.createIcons();
-            }
-
-            if (window.AlcrosVoice) {
-                if (!voiceReady) {
-                    if (serving) {
-                        AlcrosVoice.syncBaseline(serving);
-                    }
-                    voiceReady = true;
-                } else if (serving) {
-                    AlcrosVoice.announceIfNew(serving);
-                } else {
-                    AlcrosVoice.clearBaseline();
-                }
+            renderDisplayServing(servingEl, serving);
+            if (announcements) {
+                announcements.process(data);
             }
 
             if (data.display && data.display.tables) {
@@ -234,11 +234,15 @@
             pollInBackground: true,
             getInterval: function (ctx) {
                 if (ctx.failCount > 0) return queueDisplayPollInterval(ctx);
+                if (document.hidden) return 2000;
                 if (idlePolls > 2) return 12000;
                 return 3000;
             },
             onUnchanged: function () {
                 idlePolls++;
+                if (announcements && window.AlcrosVoice && AlcrosVoice.isEnabled()) {
+                    announcements.startWhenReady();
+                }
             }
         });
     }

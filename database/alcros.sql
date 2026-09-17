@@ -105,6 +105,20 @@ CREATE TABLE IF NOT EXISTS queue_tickets (
     INDEX idx_date (created_at)
 ) ENGINE=InnoDB;
 
+-- Sequential speaker queue: one table announcement at a time, ordered by click time.
+CREATE TABLE IF NOT EXISTS queue_announcements (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    purpose ENUM('walk_in','appointment','document_claim') NOT NULL,
+    ticket_number VARCHAR(10) NOT NULL,
+    window_number INT NOT NULL,
+    status ENUM('pending','playing','completed') NOT NULL DEFAULT 'pending',
+    requested_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    started_at TIMESTAMP(6) NULL DEFAULT NULL,
+    completed_at TIMESTAMP(6) NULL DEFAULT NULL,
+    INDEX idx_status_requested (status, requested_at),
+    INDEX idx_purpose_status (purpose, status)
+) ENGINE=InnoDB;
+
 -- Shared civil registry row (all record types).
 CREATE TABLE IF NOT EXISTS civil_records (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -337,7 +351,7 @@ CREATE TABLE IF NOT EXISTS staff_password_otps (
 
 -- Default administrator (change password after first login in System Settings).
 INSERT INTO staff (staff_id, first_name, middle_name, last_name, password_hash, role, email) VALUES
-('ALORAN-001', 'Glen Mark', NULL, 'Gonzaga', '$2y$10$Cx6KHQWZUxmyrz.7v3s.UeGNWmwmyncSad1FhNh8N.YPqoUwL5zbO', 'Administrator', 'glenmarkgonzaga57@gmail.com')
+('ALORAN-001', 'Glen Mark', NUL, 'Gonzaga', '$2y$10$Cx6KHQWZUxmyrz.7v3s.UeGNWmwmyncSad1FhNh8N.YPqoUwL5zbO', 'Administrator', 'glenmarkgonzaga57@gmail.com')
 ON DUPLICATE KEY UPDATE first_name = VALUES(first_name), middle_name = VALUES(middle_name), last_name = VALUES(last_name), role = VALUES(role), email = VALUES(email);
 
 -- Default office settings (no other sample records).
@@ -345,7 +359,7 @@ INSERT INTO system_settings (setting_key, setting_value) VALUES
 ('site_name', 'ALCROS'),
 ('office_name', 'Local Civil Registrar Office (LCRO) of Aloran'),
 ('office_address', 'Municipal Hall, Aloran, Misamis Occidental, Philippines'),
-('office_phone', '+639473212350'),
+('office_phone', '+69067334380'),
 ('office_email', 'aloran@gov.ph'),
 ('office_hours', '8:00 AM - 5:00 PM (Monday to Friday)'),
 ('office_head', 'ATTY. Euri Buladaco'),

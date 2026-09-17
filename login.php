@@ -146,12 +146,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <?= alcrosFaviconImg(48, 'auth-portal-brand-logo') ?>
 
-                <div class="min-w-0 hidden sm:block">
-
+                <div class="min-w-0">
                     <div class="auth-portal-brand-title">ALCROS</div>
-
                     <div class="auth-portal-brand-subtitle">Aloran Local Civil Registry Online System</div>
-
                 </div>
 
             </a>

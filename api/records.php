@@ -87,7 +87,7 @@ function handleRefreshRecordLock(PDO $pdo): void
         apiError('Invalid record.', 422);
     }
 
-    $result = refreshCivilRecordEditLock($pdo, $recordId, staffId());
+    $result = refreshCivilRecordEditLock($pdo, $recordId, staffId(), staffName());
     if (!$result['ok']) {
         apiJsonResponse(['ok' => false, 'error' => $result['error'] ?? 'Lock lost.'], 409);
     }

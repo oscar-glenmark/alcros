@@ -56,9 +56,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
         $nameParts    = personNamePartsFromInput($_POST);
         $dateOfBirth    = $_POST['date_of_birth'] ?? '';
         $dateOfMarriage = trim($_POST['date_of_marriage'] ?? '');
-        $sex            = $_POST['sex'] ?? '';
         $documentType   = $_POST['document_type'] ?? '';
         $citizenName    = formatPersonName($nameParts['first_name'], $nameParts['middle_name'], $nameParts['last_name']);
+        $sex            = verifiedCivilRecordSexFromSession();
 
         if (($nameError = validatePersonNameParts($nameParts)) !== null || !in_array($documentType, $validTypes, true)) {
             $error = $nameError ?? 'Please enter your name and select a service type.';
@@ -66,8 +66,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
             $error = 'Please enter a valid date of birth.';
         } elseif ($documentType === 'marriage' && ($dateOfMarriage === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfMarriage))) {
             $error = 'Please enter a valid date of marriage.';
-        } elseif (!in_array($sex, ['male', 'female'], true)) {
-            $error = 'Please select your sex.';
         } elseif (!isCivilRecordVerifiedInSession($citizenName, $dateOfBirth, $documentType, $dateOfMarriage !== '' ? $dateOfMarriage : null)) {
             $error = 'Please check your civil registry record before continuing. If you are not registered, visit the LCRO office in person.';
             $recordVerified = false;
@@ -285,9 +283,9 @@ $requestDocumentLabel = !empty($draft['document_type'])
             <div class="flex items-center justify-between gap-4 py-3">
                 <a href="index.php" class="flex items-center gap-3 min-w-0">
                     <?= alcrosFaviconImg(48, 'citizen-brand-logo shrink-0') ?>
-                    <div class="min-w-0 hidden sm:block">
-                        <div class="text-white font-extrabold text-lg leading-tight tracking-tight">ALCROS</div>
-                        <div class="text-white/70 text-[11px] italic leading-snug">Aloran Local Civil Registry Online System</div>
+                    <div class="site-brand-text">
+                        <div class="site-brand-title">ALCROS</div>
+                        <div class="site-brand-subtitle">Aloran Local Civil Registry Online System</div>
                     </div>
                 </a>
 
@@ -458,7 +456,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
                     <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
                         <i data-lucide="user" class="w-3.5 h-3.5 text-blue-500"></i> Name on Record *
                     </label>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-2">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <input type="text" id="firstNameInput" name="first_name" required placeholder="First name"
                                value="<?= htmlspecialchars($draft['first_name'] ?? '') ?>"
                                class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
@@ -469,13 +467,6 @@ $requestDocumentLabel = !empty($draft['document_type'])
                                value="<?= htmlspecialchars($draft['last_name'] ?? '') ?>"
                                class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
                     </div>
-                    <div class="flex justify-end">
-                        <button type="button" id="checkRecordBtn" class="citizen-btn-navy px-4 py-2.5 rounded-xl text-xs whitespace-nowrap shrink-0">
-                            Check Record
-                        </button>
-                    </div>
-                    <p class="text-[10px] text-gray-500 mt-1">We verify that your name and date of birth are registered in LCRO civil records before you can continue.</p>
-                    <p id="recordStatus" class="text-xs mt-2 <?= $recordVerified ? 'font-semibold text-green-600' : 'hidden' ?>"><?= $recordVerified ? 'Record found — you are registered with the Local Civil Registry Office.' : '' ?></p>
                 </div>
                 <div>
                     <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
@@ -492,17 +483,13 @@ $requestDocumentLabel = !empty($draft['document_type'])
                            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
                 </div>
                 <div>
-                    <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                        <i data-lucide="users" class="w-3.5 h-3.5 text-blue-500"></i> Sex *
-                    </label>
-                    <div class="flex gap-3">
-                        <?php foreach (['male' => 'Male', 'female' => 'Female'] as $val => $label): ?>
-                        <label class="flex-1 cursor-pointer">
-                            <input type="radio" name="sex" value="<?= $val ?>" class="sr-only peer" <?= ($draft['sex'] ?? '') === $val ? 'checked' : '' ?> required>
-                            <span class="block text-center py-3 rounded-xl border text-sm font-semibold peer-checked:bg-[#f4b400] peer-checked:text-[#071428] peer-checked:border-[#f4b400] border-gray-200 text-gray-600 hover:border-[#f4b400]/60 transition"><?= $label ?></span>
-                        </label>
-                        <?php endforeach; ?>
+                    <div class="flex justify-end">
+                        <button type="button" id="checkRecordBtn" class="citizen-btn-navy px-4 py-2.5 rounded-xl text-xs whitespace-nowrap shrink-0">
+                            Check Record
+                        </button>
                     </div>
+                    <p class="text-[10px] text-gray-500 mt-2">We verify that your name and date of birth are registered in LCRO civil records before you can continue.</p>
+                    <p id="recordStatus" class="text-xs mt-2 <?= $recordVerified ? 'font-semibold text-green-600' : 'hidden' ?>"><?= $recordVerified ? 'Record found — you are registered with the Local Civil Registry Office.' : '' ?></p>
                 </div>
                 <div class="citizen-form-actions">
                     <a href="index.php" class="back-home back-home--step">
@@ -510,7 +497,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
                         <span>Back</span>
                     </a>
                     <div class="citizen-form-actions__forward">
-                        <p id="step1ContinueHint" class="citizen-continue-hint">Fill in all required fields, then click <strong>Check Record</strong> to unlock Continue.</p>
+                        <p id="step1ContinueHint" class="citizen-continue-hint">Enter your name and date of birth, then click <strong>Check Record</strong> to unlock Continue.</p>
                         <button type="submit" name="action" value="next" id="step1ContinueBtn" class="citizen-btn-gold disabled:opacity-40 disabled:cursor-not-allowed px-8 py-3 rounded-full text-sm inline-flex items-center gap-2 ml-auto" data-loading-text="Saving…" <?= $recordVerified ? '' : 'disabled' ?>>Continue <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
                     </div>
                 </div>

@@ -64,6 +64,41 @@ body.citizen-site {
     box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15);
 }
 
+.site-brand-text {
+    min-width: 0;
+    line-height: 1.15;
+}
+
+.site-brand-title {
+    color: #fff;
+    font-weight: 800;
+    font-size: 0.875rem;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+}
+
+.site-brand-subtitle {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.5625rem;
+    font-style: italic;
+    line-height: 1.3;
+    margin-top: 0.125rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+@media (min-width: 640px) {
+    .site-brand-title {
+        font-size: 1.125rem;
+    }
+
+    .site-brand-subtitle {
+        font-size: 0.6875rem;
+    }
+}
+
 .citizen-nav-link {
     color: #fff;
     font-size: 0.72rem;
@@ -234,6 +269,10 @@ body.citizen-site {
     .citizen-brand-logo {
         width: 2.5rem;
         height: 2.5rem;
+    }
+
+    .citizen-site-header a.flex.items-center.gap-3 {
+        gap: 0.625rem;
     }
 
     #citizenMobileNav .citizen-nav-link {

@@ -2489,9 +2489,11 @@ function findMarriageCivilRecordMatch(PDO $pdo, string $citizenName, string $dat
         $wifeDob = (string) ($row['wife_birth_date'] ?? '');
 
         if ($normalized === $husbandName && $dateOfBirth === $husbandDob) {
+            $row['matched_sex'] = 'male';
             return $row;
         }
         if ($normalized === $wifeName && $dateOfBirth === $wifeDob) {
+            $row['matched_sex'] = 'female';
             return $row;
         }
     }
@@ -2510,7 +2512,7 @@ function findCivilRecordMatch(PDO $pdo, string $citizenName, string $dateOfBirth
         return null;
     }
 
-    $sql = 'SELECT id, record_type, first_name, middle_name, last_name, birth_date, registry_number
+    $sql = 'SELECT id, record_type, first_name, middle_name, last_name, birth_date, sex, registry_number
          FROM civil_records
          WHERE deleted_at IS NULL AND birth_date = ?';
     $params = [$dateOfBirth];
@@ -2539,8 +2541,38 @@ function findCivilRecordMatch(PDO $pdo, string $citizenName, string $dateOfBirth
     return null;
 }
 
-function markCivilRecordVerified(string $citizenName, string $dateOfBirth, string $documentType = '', ?string $dateOfMarriage = null): void
+function civilRecordSexForRequest(?array $row): ?string
 {
+    if (!$row) {
+        return null;
+    }
+
+    $matched = strtolower(trim((string) ($row['matched_sex'] ?? '')));
+    if (in_array($matched, ['male', 'female'], true)) {
+        return $matched;
+    }
+
+    $raw = strtolower(trim((string) ($row['sex'] ?? '')));
+    if (in_array($raw, ['male', 'female'], true)) {
+        return $raw;
+    }
+    if ($raw === 'm') {
+        return 'male';
+    }
+    if ($raw === 'f') {
+        return 'female';
+    }
+
+    return null;
+}
+
+function markCivilRecordVerified(
+    string $citizenName,
+    string $dateOfBirth,
+    string $documentType = '',
+    ?string $dateOfMarriage = null,
+    ?string $sex = null
+): void {
     if (session_status() === PHP_SESSION_NONE) {
         session_start();
     }
@@ -2549,8 +2581,20 @@ function markCivilRecordVerified(string $citizenName, string $dateOfBirth, strin
         'dob'               => $dateOfBirth,
         'document_type'     => $documentType,
         'date_of_marriage'  => $dateOfMarriage ?? '',
+        'sex'               => in_array($sex, ['male', 'female'], true) ? $sex : null,
         'expires'           => time() + 7200,
     ];
+}
+
+function verifiedCivilRecordSexFromSession(): ?string
+{
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+
+    $sex = $_SESSION['alcros_civil_record_verified']['sex'] ?? null;
+
+    return in_array($sex, ['male', 'female'], true) ? $sex : null;
 }
 
 function isCivilRecordVerifiedInSession(string $citizenName, string $dateOfBirth, string $documentType = '', ?string $dateOfMarriage = null): bool
@@ -2605,7 +2649,13 @@ function verifyCitizenCivilRecord(PDO $pdo, string $citizenName, string $dateOfB
 
     $row = findCivilRecordMatch($pdo, $citizenName, $dateOfBirth, $documentType, $dateOfMarriage);
     if ($row) {
-        markCivilRecordVerified($citizenName, $dateOfBirth, $documentType, $dateOfMarriage);
+        markCivilRecordVerified(
+            $citizenName,
+            $dateOfBirth,
+            $documentType,
+            $dateOfMarriage,
+            civilRecordSexForRequest($row)
+        );
         return [
             'ok'          => true,
             'message'     => 'Record found — you are registered with the Local Civil Registry Office.',

@@ -5,6 +5,7 @@
     var recordsAuthUrl = 'records.php';
     var recordLockTimer = null;
     var activeEditRecordId = null;
+    var entryFormSubmitting = false;
 
     function readPageConfig() {
         if (window.AlcrosPage && typeof AlcrosPage.readConfig === 'function') {
@@ -20,12 +21,29 @@
         return el ? el.value : '';
     }
 
+    function authInputValue() {
+        var el = document.querySelector('#entryForm input[name="alcros_auth"]')
+            || document.querySelector('input[name="alcros_auth"]');
+        if (el && el.value) {
+            return el.value;
+        }
+        try {
+            return sessionStorage.getItem('alcros_auth') || '';
+        } catch (err) {
+            return '';
+        }
+    }
+
     function postRecordLock(action, recordId) {
         var apiUrl = cfg.recordsLockApiUrl || 'api/records.php';
         var form = new FormData();
         form.append('action', action);
         form.append('csrf_token', csrfInputValue());
         form.append('record_id', String(recordId));
+        var authToken = authInputValue();
+        if (authToken) {
+            form.append('alcros_auth', authToken);
+        }
         return fetch(apiUrl, { method: 'POST', body: form, credentials: 'same-origin' })
             .then(function (res) {
                 return res.json().then(function (data) {
@@ -49,6 +67,10 @@
             body.append('action', 'release_lock');
             body.append('csrf_token', csrfInputValue());
             body.append('record_id', String(recordId));
+            var authToken = authInputValue();
+            if (authToken) {
+                body.append('alcros_auth', authToken);
+            }
             navigator.sendBeacon(apiUrl, body);
             return Promise.resolve();
         }
@@ -92,11 +114,15 @@
                     }
                     return;
                 }
-                if (!result.ok || !result.data || !result.data.ok) {
-                    handleRecordLockLost('Your edit lock expired or was taken by another staff member. Close this form and try again.');
+                if (result.status === 409) {
+                    handleRecordLockLost('Another staff member is editing this record. Close this form and try again.');
+                    return;
+                }
+                if (!result.ok || !result.data || result.data.ok === false) {
+                    return;
                 }
             }).catch(function () {
-                handleRecordLockLost('Could not refresh your edit lock. Close this form and try again.');
+                // Ignore transient network errors; the lock will expire on its own if the tab is abandoned.
             });
         }, 60000);
     }
@@ -377,6 +403,10 @@
     }
 
     function bindRecordTypeTabs() {
+        if (cfg.lockRecordType || cfg.editRecordId) {
+            return;
+        }
+
         document.querySelectorAll('.record-type-tab').forEach(function (tab) {
             tab.addEventListener('click', function () {
                 var nextType = tab.dataset.recordType;
@@ -397,6 +427,8 @@
         var entryForm = document.getElementById('entryForm');
         if (entryForm) {
             entryForm.addEventListener('submit', function () {
+                entryFormSubmitting = true;
+                clearRecordLockTimer();
                 var type = document.getElementById('recordTypeInput');
                 if (type && type.value) setRecordType(type.value);
             });
@@ -848,9 +880,8 @@
             window.AlcrosCascadingLocation.init({ apiUrl: cfg.locationsApiUrl });
         }
 
-        window.addEventListener('beforeunload', function () {
-            releaseActiveRecordLock(true);
-        });
+        // Do not release edit locks on beforeunload — that raced with Update Record and
+        // falsely blocked the same staff member as "another staff" on submit.
     }
 
     if (document.readyState === 'loading') {

@@ -13,6 +13,15 @@
     border-radius: 6px;
 }
 
+.record-type-tabs--locked .record-type-tab {
+    cursor: not-allowed;
+    opacity: 0.72;
+}
+
+.record-type-tabs--locked .record-type-tab:not(.border-blue-500):not(.border-slate-400):not(.border-pink-400) {
+    opacity: 0.45;
+}
+
 .entry-dropdown {
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
     z-index: 60;

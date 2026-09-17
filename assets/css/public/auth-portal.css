@@ -247,11 +247,15 @@ body.auth-reset-page {
     }
 
     .auth-portal-brand-title {
-        font-size: 1rem;
+        font-size: 0.875rem;
     }
 
     .auth-portal-brand-subtitle {
-        display: none;
+        font-size: 0.5625rem;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
     }
 
     .auth-portal-header-link {

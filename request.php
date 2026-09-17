@@ -434,7 +434,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
             <p class="text-gray-400 text-sm mb-6"><?= htmlspecialchars($stepTitles[$step]['subtitle'] ?? '') ?></p>
 
             <?php if ($step === 1): ?>
-            <form method="POST" class="space-y-5" id="identificationForm" data-continue-hint="step1ContinueHint">
+            <form method="POST" class="space-y-5" id="identificationForm">
                 <?= publicCsrfField() ?>
                 <input type="hidden" name="step" value="1">
                 <input type="hidden" name="record_verified" id="recordVerified" value="<?= $recordVerified ? '1' : '0' ?>">
@@ -494,14 +494,13 @@ $requestDocumentLabel = !empty($draft['document_type'])
                         <span>Back</span>
                     </a>
                     <div class="citizen-form-actions__forward">
-                        <p id="step1ContinueHint" class="citizen-continue-hint">Enter your name and date of birth, then click <strong>Check Record</strong> to unlock Continue.</p>
-                        <button type="submit" name="action" value="next" id="step1ContinueBtn" class="citizen-btn-gold disabled:opacity-40 disabled:cursor-not-allowed px-8 py-3 rounded-full text-sm inline-flex items-center gap-2 ml-auto" data-loading-text="Saving…" <?= $recordVerified ? '' : 'disabled' ?>>Continue <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                        <button type="submit" name="action" value="next" id="step1ContinueBtn" class="citizen-btn-gold px-8 py-3 rounded-full text-sm inline-flex items-center gap-2 ml-auto" data-loading-text="Saving…">Continue <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
                     </div>
                 </div>
             </form>
 
             <?php elseif ($step === 2): ?>
-            <form method="POST" enctype="multipart/form-data" class="space-y-5" id="requirementsForm" data-continue-hint="step2ContinueHint">
+            <form method="POST" enctype="multipart/form-data" class="space-y-5" id="requirementsForm">
                 <?= publicCsrfField() ?>
                 <input type="hidden" name="step" value="2">
                 <input type="hidden" name="email_verified" id="emailVerified" value="<?= isGmailVerifiedInSession($draft['email'] ?? '') ? '1' : '0' ?>">
@@ -587,14 +586,13 @@ $requestDocumentLabel = !empty($draft['document_type'])
                         <span>Back</span>
                     </a>
                     <div class="citizen-form-actions__forward">
-                        <p id="step2ContinueHint" class="citizen-continue-hint">Complete all required fields, then click <strong>Verify Gmail</strong> to unlock Continue.</p>
-                        <button type="submit" name="action" value="next" id="step2ContinueBtn" class="citizen-btn-gold disabled:opacity-40 disabled:cursor-not-allowed px-8 py-3 rounded-full text-sm inline-flex items-center gap-2 ml-auto" data-loading-text="Saving…" <?= isGmailVerifiedInSession($draft['email'] ?? '') ? '' : 'disabled' ?>>Continue <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                        <button type="submit" name="action" value="next" id="step2ContinueBtn" class="citizen-btn-gold px-8 py-3 rounded-full text-sm inline-flex items-center gap-2 ml-auto" data-loading-text="Saving…">Continue <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
                     </div>
                 </div>
             </form>
 
             <?php elseif ($step === 3): ?>
-            <form method="POST" class="space-y-5" id="requestScheduleForm" data-continue-hint="step3ContinueHint" data-slot-type="certificate">
+            <form method="POST" class="space-y-5" id="requestScheduleForm" data-slot-type="certificate">
                 <?= publicCsrfField() ?>
                 <input type="hidden" name="step" value="3">
                 <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-2">
@@ -632,8 +630,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
                         <span>Back</span>
                     </a>
                     <div class="citizen-form-actions__forward">
-                        <p id="step3ContinueHint" class="citizen-continue-hint">Choose a weekday date, then pick an open pickup time slot.</p>
-                        <button type="submit" name="action" value="next" id="step3SubmitBtn" data-appointment-submit class="citizen-btn-gold px-8 py-3 rounded-full text-sm inline-flex items-center gap-2 ml-auto" data-loading-text="Submitting…" disabled>Submit Request <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                        <button type="submit" name="action" value="next" id="step3SubmitBtn" data-appointment-submit class="citizen-btn-gold px-8 py-3 rounded-full text-sm inline-flex items-center gap-2 ml-auto" data-loading-text="Submitting…">Submit Request <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
                     </div>
                 </div>
             </form>

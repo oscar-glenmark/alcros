@@ -26,8 +26,8 @@ $phone       = trim($_POST['phone'] ?? '');
 $serviceType = appointmentServiceLabel(trim($_POST['service_type'] ?? $service));
 $date        = $_POST['appointment_date'] ?? '';
 $time        = $_POST['appointment_time'] ?? '';
-$notifyEmail = isset($_POST['notify_email']);
-$notifySms   = isset($_POST['notify_sms']);
+$notifyEmail = isset($_POST['notify_email']) && (string) $_POST['notify_email'] === '1';
+$notifySms   = isset($_POST['notify_sms']) && (string) $_POST['notify_sms'] === '1';
 $gmailVerified = isGmailVerifiedInSession($email);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -222,10 +222,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </button>
         </div>
         <?php else: ?>
-        <form method="POST" enctype="multipart/form-data" class="citizen-request-card p-4 sm:p-6 space-y-4" id="bookAppointmentForm" data-continue-hint="bookContinueHint" data-slot-type="standalone">
+        <form method="POST" enctype="multipart/form-data" class="citizen-request-card p-4 sm:p-6 space-y-4" id="bookAppointmentForm" data-slot-type="standalone">
             <?= publicCsrfField() ?>
             <input type="hidden" name="service" value="<?= htmlspecialchars($service) ?>">
             <input type="hidden" name="email_verified" id="emailVerified" value="<?= $gmailVerified ? '1' : '0' ?>">
+            <input type="hidden" name="notify_email" id="notifyEmailHidden" value="<?= $notifyEmail ? '1' : '0' ?>">
+            <input type="hidden" name="notify_sms" id="notifySmsHidden" value="<?= $notifySms ? '1' : '0' ?>">
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                     <label class="block text-[11px] font-bold mb-1">First Name *</label>
@@ -276,7 +278,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         Verify Gmail
                     </button>
                 </div>
-                <p class="text-[10px] text-gray-500 mt-1">We check that your @gmail.com account is active. If you opt in, Gmail updates are sent when staff confirm your visit or change your appointment status — not while it is still awaiting confirmation.</p>
+                <p class="text-[10px] text-gray-500 mt-1">We check that your @gmail.com account is active. If you agree to notifications, status updates are sent to this Gmail.</p>
                 <p id="gmailStatus" class="text-xs mt-2 <?= $gmailVerified ? 'font-semibold text-green-600' : 'hidden' ?>"><?= $gmailVerified ? 'Gmail verified — this is an active Google account.' : '' ?></p>
             </div>
             <div>
@@ -322,22 +324,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </label>
                 </div>
             </div>
-            <label class="flex items-start gap-2 cursor-pointer">
-                <input type="checkbox" name="notify_email" value="1" id="notifyEmailCheckbox" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" <?= $notifyEmail ? 'checked' : '' ?>>
-                <span class="text-xs font-semibold text-slate-700">Send Gmail updates when staff confirm my visit or change my appointment status — and reminders at 5 hours, 3 hours, and 1 hour before my appointment</span>
-            </label>
-            <label class="flex items-start gap-2 cursor-pointer">
-                <input type="checkbox" name="notify_sms" value="1" id="notifySmsCheckbox" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" <?= $notifySms ? 'checked' : '' ?>>
-                <span class="text-xs font-semibold text-slate-700">Send SMS reminder to my cellphone 3 hours before my appointment</span>
-            </label>
             <div class="citizen-form-actions pt-2">
                 <a href="services.php" class="back-home back-home--step">
                     <i data-lucide="chevron-left" class="back-home__icon w-4 h-4"></i>
                     <span>Back</span>
                 </a>
                 <div class="citizen-form-actions__forward w-full sm:w-auto">
-                    <p id="bookContinueHint" class="citizen-continue-hint">Complete all required fields, then click <strong>Verify Gmail</strong> to unlock booking.</p>
-                    <button type="submit" id="bookSubmitBtn" class="citizen-btn-gold w-full sm:w-auto sm:min-w-[12rem] rounded-xl py-3 text-sm disabled:opacity-40 disabled:cursor-not-allowed" data-loading-text="Booking…" <?= $gmailVerified ? '' : 'disabled' ?>>Book Appointment</button>
+                    <button type="submit" id="bookSubmitBtn" class="citizen-btn-gold w-full sm:w-auto sm:min-w-[12rem] rounded-xl py-3 text-sm" data-loading-text="Booking…">Book Appointment</button>
                 </div>
             </div>
         </form>

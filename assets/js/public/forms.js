@@ -1,6 +1,73 @@
 (function () {
     'use strict';
 
+    function fieldContainer(el) {
+        if (!el) return null;
+        if (el.closest('[data-id-upload]')) {
+            return el.closest('[data-id-upload]').parentElement;
+        }
+        if (el.closest('.grid')) {
+            return el.closest('.grid').parentElement;
+        }
+        return el.parentElement;
+    }
+
+    function ensureFieldErrorEl(container) {
+        if (!container) return null;
+        var err = container.querySelector('.citizen-field-error');
+        if (!err) {
+            err = document.createElement('p');
+            err.className = 'citizen-field-error hidden';
+            err.setAttribute('role', 'alert');
+            container.appendChild(err);
+        }
+        return err;
+    }
+
+    function clearFormValidation(form) {
+        if (!form) return;
+        form.querySelectorAll('.is-invalid').forEach(function (el) {
+            el.classList.remove('is-invalid');
+            el.removeAttribute('aria-invalid');
+        });
+        form.querySelectorAll('.citizen-field-error').forEach(function (el) {
+            el.textContent = '';
+            el.classList.add('hidden');
+        });
+    }
+
+    function setFieldError(el, message) {
+        if (!el || !message) return;
+        el.classList.add('is-invalid');
+        el.setAttribute('aria-invalid', 'true');
+        var container = fieldContainer(el);
+        var err = ensureFieldErrorEl(container);
+        if (err) {
+            err.textContent = message;
+            err.classList.remove('hidden');
+        }
+    }
+
+    function setGroupError(container, message) {
+        if (!container || !message) return;
+        var err = ensureFieldErrorEl(container);
+        if (err) {
+            err.textContent = message;
+            err.classList.remove('hidden');
+        }
+        container.querySelectorAll('input, select, textarea').forEach(function (el) {
+            el.classList.add('is-invalid');
+            el.setAttribute('aria-invalid', 'true');
+        });
+    }
+
+    function scrollToFirstError(form) {
+        var target = form.querySelector('.is-invalid, .citizen-field-error:not(.hidden)');
+        if (target) {
+            (target.closest('[data-id-upload]') || target).scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
+
     function fieldMeetsRequirement(el) {
         if (!el || el.disabled) return true;
         if (el.type === 'checkbox') {
@@ -34,42 +101,33 @@
         return true;
     }
 
-    function formFieldsReady(form) {
-        if (!form) return false;
-        var seenRadio = {};
+    function validateRequiredFields(form, labels) {
+        labels = labels || {};
         var ok = true;
+        var seenRadio = {};
+
         form.querySelectorAll('[required]').forEach(function (el) {
+            if (el.disabled) return;
             if (el.type === 'radio') {
                 if (seenRadio[el.name]) return;
                 seenRadio[el.name] = true;
             }
-            if (!fieldMeetsRequirement(el)) ok = false;
+            if (fieldMeetsRequirement(el)) return;
+
+            ok = false;
+            var label = labels[el.name] || labels[el.id] || 'This field';
+            if (el.type === 'file') {
+                setFieldError(el, label + ' is required.');
+            } else if (el.tagName === 'SELECT') {
+                setFieldError(el, 'Select ' + label.toLowerCase() + '.');
+            } else if (el.pattern && String(el.value || '').trim() !== '') {
+                setFieldError(el, label + ' format is invalid.');
+            } else {
+                setFieldError(el, 'Enter ' + label.toLowerCase() + '.');
+            }
         });
+
         return ok;
-    }
-
-    function bindFormContinueGate(form, btn, extraReady) {
-        if (!form || !btn) return function () {};
-
-        function refresh() {
-            var ready = formFieldsReady(form);
-            if (typeof extraReady === 'function') {
-                ready = ready && extraReady();
-            }
-            btn.disabled = !ready;
-            btn.classList.toggle('is-locked', !ready);
-            btn.setAttribute('aria-disabled', ready ? 'false' : 'true');
-            var hintId = form.dataset.continueHint;
-            if (hintId) {
-                var hint = document.getElementById(hintId);
-                if (hint) hint.classList.toggle('hidden', ready);
-            }
-        }
-
-        form.addEventListener('input', refresh);
-        form.addEventListener('change', refresh);
-        refresh();
-        return refresh;
     }
 
     function initGmailVerify(options) {
@@ -78,11 +136,7 @@
         var gmailInput = document.getElementById(options.inputId || 'gmailInput');
         var emailVerified = document.getElementById(options.verifiedId || 'emailVerified');
         var gmailStatus = document.getElementById(options.statusId || 'gmailStatus');
-        var continueBtn = document.getElementById(options.continueBtnId || 'step2ContinueBtn');
-        var submitBtn = document.getElementById(options.submitBtnId || 'bookSubmitBtn');
         var form = document.getElementById(options.formId || 'requirementsForm');
-        var blockTarget = continueBtn || submitBtn;
-        var refreshGate = null;
 
         function setStatus(text, type) {
             if (!gmailStatus) return;
@@ -93,25 +147,16 @@
             );
         }
 
-        function isEmailVerified() {
-            return emailVerified && emailVerified.value === '1';
-        }
-
         function setVerified(ok, email) {
             if (emailVerified) emailVerified.value = ok ? '1' : '0';
             if (ok && email && gmailInput) gmailInput.value = email;
-            if (refreshGate) refreshGate();
-            else if (blockTarget) blockTarget.disabled = !ok;
-        }
-
-        if (form && blockTarget) {
-            refreshGate = bindFormContinueGate(form, blockTarget, isEmailVerified);
         }
 
         if (verifyBtn && gmailInput) {
             verifyBtn.addEventListener('click', function () {
                 var email = gmailInput.value.trim();
                 if (!email) {
+                    setFieldError(gmailInput, 'Enter your Gmail address first.');
                     setStatus('Enter your Gmail address first.', 'err');
                     return;
                 }
@@ -128,14 +173,17 @@
                         if (data.ok) {
                             setVerified(true, data.email);
                             setStatus(data.message || 'Gmail verified.', 'ok');
+                            gmailInput.classList.remove('is-invalid');
                         } else {
                             setVerified(false);
                             setStatus(data.error || 'Verification failed.', 'err');
+                            setFieldError(gmailInput, data.error || 'This Gmail could not be verified.');
                         }
                     })
                     .catch(function () {
                         setVerified(false);
                         setStatus('Network error. Try again.', 'err');
+                        setFieldError(gmailInput, 'Network error while verifying Gmail. Try again.');
                     })
                     .finally(function () {
                         verifyBtn.disabled = false;
@@ -148,18 +196,35 @@
             gmailInput.addEventListener('input', function () {
                 setVerified(false);
                 if (gmailStatus) gmailStatus.classList.add('hidden');
+                gmailInput.classList.remove('is-invalid');
             });
         }
 
         if (form) {
             form.addEventListener('submit', function (e) {
-                if (emailVerified && emailVerified.value !== '1') {
-                    e.preventDefault();
-                    setStatus('Click Verify Gmail before continuing.', 'err');
-                    return;
+                clearFormValidation(form);
+                var ok = validateRequiredFields(form, options.fieldLabels || {});
+
+                if (gmailInput) {
+                    var email = gmailInput.value.trim();
+                    if (!email) {
+                        setFieldError(gmailInput, 'Enter your Gmail address.');
+                        setStatus('Enter your Gmail address.', 'err');
+                        ok = false;
+                    } else if (emailVerified && emailVerified.value !== '1') {
+                        setFieldError(gmailInput, 'Click Verify Gmail before continuing.');
+                        setStatus('Click Verify Gmail before continuing.', 'err');
+                        ok = false;
+                    }
                 }
-                if (blockTarget && blockTarget.disabled) {
+
+                if (form.id === 'bookAppointmentForm') {
+                    ok = validateScheduleFields(form) && ok;
+                }
+
+                if (!ok) {
                     e.preventDefault();
+                    scrollToFirstError(form);
                 }
             });
         }
@@ -176,9 +241,7 @@
         var documentTypeSelect = document.querySelector('#identificationForm select[name="document_type"]');
         var recordVerified = document.getElementById('recordVerified');
         var recordStatus = document.getElementById('recordStatus');
-        var continueBtn = document.getElementById('step1ContinueBtn');
         var form = document.getElementById('identificationForm');
-        var refreshGate = null;
 
         function syncMarriageField() {
             var isMarriage = documentTypeSelect && documentTypeSelect.value === 'marriage';
@@ -206,14 +269,8 @@
             );
         }
 
-        function isRecordVerified() {
-            return recordVerified && recordVerified.value === '1';
-        }
-
         function setRecordVerified(ok) {
             if (recordVerified) recordVerified.value = ok ? '1' : '0';
-            if (refreshGate) refreshGate();
-            else if (continueBtn) continueBtn.disabled = !ok;
         }
 
         function resetRecordCheck() {
@@ -221,30 +278,38 @@
             if (recordStatus) recordStatus.classList.add('hidden');
         }
 
-        if (form && continueBtn) {
-            refreshGate = bindFormContinueGate(form, continueBtn, isRecordVerified);
-        }
-
         if (checkBtn && firstNameInput && lastNameInput && dobInput) {
             checkBtn.addEventListener('click', function () {
+                clearFormValidation(form);
                 var firstName = firstNameInput.value.trim();
                 var middleName = middleNameInput ? middleNameInput.value.trim() : '';
                 var lastName = lastNameInput.value.trim();
                 var dob = dobInput.value.trim();
                 var documentType = documentTypeSelect ? documentTypeSelect.value : '';
                 var dom = domInput ? domInput.value.trim() : '';
+                var ok = true;
+
+                if (!documentType) {
+                    setFieldError(documentTypeSelect, 'Select the document type you need.');
+                    ok = false;
+                }
                 if (!firstName || !lastName) {
-                    setRecordStatus('Enter your first name and last name on record first.', 'err');
-                    return;
+                    setGroupError(firstNameInput.closest('.grid').parentElement, 'Enter your first name and last name on record.');
+                    ok = false;
                 }
                 if (!dob) {
-                    setRecordStatus('Enter your date of birth first.', 'err');
-                    return;
+                    setFieldError(dobInput, 'Enter your date of birth.');
+                    ok = false;
                 }
                 if (documentType === 'marriage' && !dom) {
-                    setRecordStatus('Enter your date of marriage first.', 'err');
+                    setFieldError(domInput, 'Enter your date of marriage.');
+                    ok = false;
+                }
+                if (!ok) {
+                    scrollToFirstError(form);
                     return;
                 }
+
                 setRecordVerified(false);
                 checkBtn.disabled = true;
                 checkBtn.textContent = 'Checking…';
@@ -287,27 +352,88 @@
 
         if (form) {
             form.addEventListener('submit', function (e) {
-                if (recordVerified && recordVerified.value !== '1') {
-                    e.preventDefault();
-                    setRecordStatus('Click Check Record before continuing.', 'err');
-                    return;
+                clearFormValidation(form);
+                var ok = true;
+                var documentType = documentTypeSelect ? documentTypeSelect.value : '';
+
+                if (!documentType) {
+                    setFieldError(documentTypeSelect, 'Select the document type you need.');
+                    ok = false;
                 }
-                if (continueBtn && continueBtn.disabled) {
+                if (!firstNameInput.value.trim() || !lastNameInput.value.trim()) {
+                    setGroupError(firstNameInput.closest('.grid').parentElement, 'Enter your first name and last name on record.');
+                    ok = false;
+                }
+                if (!dobInput.value.trim()) {
+                    setFieldError(dobInput, 'Enter your date of birth.');
+                    ok = false;
+                }
+                if (documentType === 'marriage' && domInput && !domInput.value.trim()) {
+                    setFieldError(domInput, 'Enter your date of marriage.');
+                    ok = false;
+                }
+
+                if (recordVerified && recordVerified.value !== '1') {
+                    if (recordStatus && recordStatus.textContent && !recordStatus.classList.contains('hidden')) {
+                        setRecordStatus(recordStatus.textContent, 'err');
+                    } else {
+                        setRecordStatus('Click Check Record to verify your LCRO registration before continuing.', 'err');
+                    }
+                    ok = false;
+                }
+
+                if (!ok) {
                     e.preventDefault();
+                    scrollToFirstError(form);
                 }
             });
         }
     }
 
+    function validateScheduleFields(form) {
+        var ok = true;
+        var dateInput = form.querySelector('#appointmentDateInput');
+        var timeInput = form.querySelector('#appointmentTimeInput');
+        var statusEl = document.getElementById('slotAvailabilityStatus');
+        var availability = form._alcrosSlotAvailability;
+
+        if (dateInput && !dateInput.value.trim()) {
+            setFieldError(dateInput, 'Choose a preferred date.');
+            ok = false;
+        }
+
+        if (timeInput) {
+            if (availability && !availability.bookable) {
+                if (statusEl) {
+                    statusEl.classList.remove('hidden');
+                    statusEl.className = 'text-xs mt-2 font-semibold text-red-600';
+                }
+                ok = false;
+            } else if (timeInput.disabled || !timeInput.value.trim()) {
+                setFieldError(timeInput, 'Choose an available time slot.');
+                if (statusEl && (!statusEl.textContent || statusEl.classList.contains('hidden'))) {
+                    statusEl.textContent = 'Choose an available time slot.';
+                    statusEl.className = 'text-xs mt-2 font-semibold text-red-600';
+                    statusEl.classList.remove('hidden');
+                }
+                ok = false;
+            }
+        }
+
+        return ok;
+    }
+
     function initScheduleSubmitGate() {
-        var form = document.getElementById('requestScheduleForm');
-        var submitBtn = document.getElementById('step3SubmitBtn');
-        if (!form || !submitBtn) return;
+        var scheduleForm = document.getElementById('requestScheduleForm');
+        if (!scheduleForm) return;
 
-        bindFormContinueGate(form, submitBtn);
-
-        form.addEventListener('submit', function (e) {
-            if (submitBtn.disabled) e.preventDefault();
+        scheduleForm.addEventListener('submit', function (e) {
+            clearFormValidation(scheduleForm);
+            var ok = validateScheduleFields(scheduleForm);
+            if (!ok) {
+                e.preventDefault();
+                scrollToFirstError(scheduleForm);
+            }
         });
     }
 
@@ -324,13 +450,6 @@
             var img = label.querySelector('[data-id-upload-image]');
             var pdfNote = label.querySelector('[data-id-upload-pdf]');
             var caption = label.querySelector('[data-id-upload-caption]');
-            var form = input.form;
-
-            function notifyFormChange() {
-                if (form) {
-                    form.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-            }
 
             function showEmpty() {
                 label.classList.remove('has-preview');
@@ -342,7 +461,6 @@
                 }
                 if (pdfNote) pdfNote.classList.add('hidden');
                 if (caption) caption.textContent = '';
-                notifyFormChange();
             }
 
             function showPreview(file) {
@@ -350,28 +468,24 @@
                 if (empty) empty.classList.add('hidden');
                 if (preview) preview.classList.remove('hidden');
                 if (caption) caption.textContent = file.name;
+                input.classList.remove('is-invalid');
 
                 var isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
                 if (isPdf) {
                     if (img) img.classList.add('hidden');
                     if (pdfNote) pdfNote.classList.remove('hidden');
-                    notifyFormChange();
                     return;
                 }
 
                 if (pdfNote) pdfNote.classList.add('hidden');
-                if (!img) {
-                    notifyFormChange();
-                    return;
-                }
+                if (!img) return;
 
                 img.classList.remove('hidden');
                 var reader = new FileReader();
-                reader.onload = function (e) {
-                    img.src = e.target.result;
+                reader.onload = function (ev) {
+                    img.src = ev.target.result;
                 };
                 reader.readAsDataURL(file);
-                notifyFormChange();
             }
 
             input.addEventListener('change', function () {
@@ -393,20 +507,29 @@
         initCivilRecordCheck: initCivilRecordCheck,
         initScheduleSubmitGate: initScheduleSubmitGate,
         initFileInputLabels: initFileInputLabels,
-        initIdUploadPreview: initIdUploadPreview,
-        bindFormContinueGate: bindFormContinueGate
+        initIdUploadPreview: initIdUploadPreview
     };
 
     document.addEventListener('DOMContentLoaded', function () {
         if (document.getElementById('checkRecordBtn')) initCivilRecordCheck();
         if (document.getElementById('verifyGmailBtn')) {
             initGmailVerify({
-                formId: document.body.dataset.gmailForm || 'requirementsForm',
-                continueBtnId: document.body.dataset.gmailContinue || 'step2ContinueBtn',
-                submitBtnId: document.body.dataset.gmailSubmit || 'bookSubmitBtn'
+                formId: document.body.dataset.gmailForm || (document.getElementById('requirementsForm') ? 'requirementsForm' : 'bookAppointmentForm'),
+                fieldLabels: {
+                    purpose: 'Purpose of request',
+                    phone: 'Cellphone number',
+                    id_front: 'Front side of your valid ID',
+                    first_name: 'First name',
+                    last_name: 'Last name',
+                    service_type: 'Service type',
+                    appointment_date: 'Preferred date',
+                    appointment_time: 'Preferred time'
+                }
             });
         }
-        if (document.getElementById('requestScheduleForm')) initScheduleSubmitGate();
+        if (document.getElementById('requestScheduleForm')) {
+            initScheduleSubmitGate();
+        }
         if (document.getElementById('idFront') || document.getElementById('idBack')) {
             initFileInputLabels((document.body.dataset.fileInputLabels || 'idFront,idBack').split(','));
         }

@@ -4,7 +4,6 @@
     var dateInput = document.getElementById('appointmentDateInput');
     var timeInput = document.getElementById('appointmentTimeInput');
     var statusEl = document.getElementById('slotAvailabilityStatus');
-    var submitBtn = document.getElementById('bookSubmitBtn') || document.querySelector('[data-appointment-submit]');
     var scheduleForm = document.getElementById('requestScheduleForm') || document.getElementById('bookAppointmentForm');
 
     if (!dateInput || !timeInput) {
@@ -21,15 +20,10 @@
     var selectedTime = timeInput.value || '';
     var availability = null;
 
-    function gmailVerified() {
-        var field = document.getElementById('emailVerified');
-        return !field || field.value === '1';
-    }
-
-    function notifyFormChange() {
-        if (scheduleForm) {
-            scheduleForm.dispatchEvent(new Event('change', { bubbles: true }));
-        }
+    function syncAvailabilityState() {
+        if (!scheduleForm) return;
+        scheduleForm._alcrosSlotAvailability = availability;
+        scheduleForm._alcrosSlotBookable = !!(availability && availability.bookable);
     }
 
     function blockMessage(reason) {
@@ -101,32 +95,15 @@
         }
     }
 
-    function updateSubmitState() {
-        if (!submitBtn) return;
-
-        var blocked = !dateInput.value
-            || !timeInput.value
-            || timeInput.disabled
-            || !(availability && availability.bookable);
-
-        if (submitBtn.id === 'bookSubmitBtn') {
-            submitBtn.disabled = blocked || !gmailVerified();
-            return;
-        }
-
-        submitBtn.disabled = blocked;
-        notifyFormChange();
-    }
-
     function updateStatus() {
+        syncAvailabilityState();
+
         if (!statusEl) {
-            updateSubmitState();
             return;
         }
 
         if (!dateInput.value) {
             statusEl.classList.add('hidden');
-            updateSubmitState();
             return;
         }
 
@@ -135,7 +112,6 @@
         if (!availability) {
             statusEl.textContent = 'Loading available time slots…';
             statusEl.className = 'text-xs mt-2 text-gray-500';
-            updateSubmitState();
             return;
         }
 
@@ -154,8 +130,6 @@
                 : 'Choose an appointment slot every ' + interval + ' minutes (8:00 AM–12:00 NN, 1:00–5:00 PM).';
             statusEl.className = 'text-xs mt-2 text-gray-500';
         }
-
-        updateSubmitState();
     }
 
     function showSlotLoadError() {
@@ -166,7 +140,7 @@
             statusEl.textContent = 'Could not load time slots. Check your connection and try again.';
             statusEl.className = 'text-xs mt-2 font-semibold text-amber-700';
         }
-        updateSubmitState();
+        updateStatus();
     }
 
     function loadAvailability() {
@@ -185,7 +159,7 @@
             statusEl.className = 'text-xs mt-2 text-gray-500';
         }
         renderTimeOptions(null);
-        updateSubmitState();
+        syncAvailabilityState();
 
         fetch('api/appointment_availability.php?date=' + encodeURIComponent(date) + '&type=' + encodeURIComponent(bookingType), {
             credentials: 'same-origin',

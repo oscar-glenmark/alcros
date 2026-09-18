@@ -38,20 +38,6 @@ $pageHeaderMeta = $pageHeaderMeta ?? '';
 
     <div class="admin-header__toolbar flex items-center min-w-0">
         <div class="admin-header__actions flex items-center shrink-0">
-            <div class="admin-header__theme-wrap">
-                <button
-                    type="button"
-                    id="alcrosThemeToggle"
-                    class="admin-header__theme-btn"
-                    aria-label="Switch to dark mode"
-                    aria-pressed="false"
-                    title="Dark mode"
-                >
-                    <?= lucideSvg('moon', 'alcros-theme-icon alcros-theme-icon--dark pointer-events-none') ?>
-                    <?= lucideSvg('sun', 'alcros-theme-icon alcros-theme-icon--light pointer-events-none') ?>
-                </button>
-            </div>
-
             <div class="relative admin-header__notif" id="notif-wrapper" data-staff-id="<?= htmlspecialchars(staffId()) ?>">
                 <button
                 type="button"

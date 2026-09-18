@@ -54,7 +54,7 @@ function buildRecordsUrl(array $overrides = []): string
         elseif ($key === 'q' && ($params['q'] ?? '') === '') unset($params['q']);
         elseif ($key === 'edit' && empty($params['edit'])) unset($params['edit']);
     }
-    return 'records.php' . ($params ? '?' . http_build_query($params) : '');
+    return buildAuthUrl('records.php', $params);
 }
 
 function currentRecordsFilters(): array
@@ -72,7 +72,7 @@ function recordsExportTypeFromRequest(): string
 {
     global $validTypes;
 
-    $exportType = $_GET['export_type'] ?? $_GET['type'] ?? 'all';
+    $exportType = (string) ($_GET['export_type'] ?? 'all');
     if (!in_array($exportType, ['all', ...$validTypes], true)) {
         return 'all';
     }
@@ -84,14 +84,10 @@ function recordsExportFilters(): array
 {
     return [
         'type' => recordsExportTypeFromRequest(),
-        'q'    => $_GET['q'] ?? '',
-        'sort' => $_GET['sort'] ?? 'name',
-        'dir'  => strtolower($_GET['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc',
-        'page' => max(1, (int) ($_GET['page'] ?? 1)),
     ];
 }
 
-function recordsExportUrl(string $exportType, string $search = ''): string
+function recordsExportUrl(string $exportType): string
 {
     global $validTypes;
 
@@ -99,20 +95,75 @@ function recordsExportUrl(string $exportType, string $search = ''): string
         $exportType = 'all';
     }
 
-    $query = [
+    return buildAuthUrl('records.php', [
         'action'      => 'export',
-        'format'      => 'xlsx',
+        'format'      => 'csv',
         'export_type' => $exportType,
-    ];
-    if ($search !== '') {
-        $query['q'] = $search;
+    ]);
+}
+
+/** Export scope: all non-deleted records, optionally limited to one record type. Search is never applied. */
+function buildRecordsExportWhere(string $exportType): array
+{
+    $where  = 'cr.deleted_at IS NULL';
+    $params = [];
+
+    if ($exportType !== 'all' && in_array($exportType, ['birth', 'death', 'marriage'], true)) {
+        $where .= ' AND cr.record_type = ?';
+        $params[] = $exportType;
     }
 
-    return buildAuthUrl('records.php', $query);
+    return [$where, $params];
+}
+
+function recordsExportCsvChunkSize(): int
+{
+    return 2500;
+}
+
+function recordsExportPrepareStreamingResponse(): void
+{
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    @ini_set('zlib.output_compression', '0');
+    header('Cache-Control: no-store, no-cache, must-revalidate');
+    header('Pragma: no-cache');
+    header('X-Accel-Buffering: no');
+}
+
+/** @return array<string, int> */
+function exportCivilRecordsTypeCounts(PDO $pdo, string $where, array $params, array $types): array
+{
+    $counts = array_fill_keys($types, 0);
+    if ($types === []) {
+        return $counts;
+    }
+
+    if (preg_match('/\bcr\.record_type\s*=\s*\?/', $where) === 1) {
+        $type = $types[0];
+        $counts[$type] = exportCivilRecordsTypeCount($pdo, $where, $params, $type);
+
+        return $counts;
+    }
+
+    $stmt = $pdo->prepare("SELECT cr.record_type, COUNT(*) AS cnt FROM civil_records cr WHERE $where GROUP BY cr.record_type");
+    $stmt->execute($params);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $type = (string) ($row['record_type'] ?? '');
+        if (isset($counts[$type])) {
+            $counts[$type] = (int) ($row['cnt'] ?? 0);
+        }
+    }
+
+    return $counts;
 }
 
 function buildRecordsWhere(array $filters): array
 {
+    ensureAdminSearchIndexes(getDB());
+
     $where  = 'cr.deleted_at IS NULL';
     $params = [];
 
@@ -120,36 +171,33 @@ function buildRecordsWhere(array $filters): array
         $where .= ' AND cr.record_type = ?';
         $params[] = $filters['type'];
     }
-    if ($filters['q'] !== '') {
-        $term = '%' . $filters['q'] . '%';
-        $clauses = [
-            'cr.first_name LIKE ?',
-            'cr.middle_name LIKE ?',
-            'cr.last_name LIKE ?',
-            'cr.registry_number LIKE ?',
-            'cr.book_number LIKE ?',
-            'cr.page_number LIKE ?',
-            'cr.father_name LIKE ?',
-            'cr.mother_name LIKE ?',
-            'cr.place LIKE ?',
-            'cr.notes LIKE ?',
-            'CAST(cr.id AS CHAR) LIKE ?',
-            "DATE_FORMAT(cr.birth_date, '%Y-%m-%d') LIKE ?",
-            "DATE_FORMAT(cr.event_date, '%Y-%m-%d') LIKE ?",
-            "EXISTS (
-                SELECT 1 FROM death_record_details drd
-                WHERE drd.civil_record_id = cr.id
-                AND (drd.code_number LIKE ? OR DATE_FORMAT(drd.registration_date, '%Y-%m-%d') LIKE ?)
-            )",
-            "EXISTS (
-                SELECT 1 FROM birth_record_details brd
-                WHERE brd.civil_record_id = cr.id
-                AND (
-                    DATE_FORMAT(brd.registration_date, '%Y-%m-%d') LIKE ?
-                    OR DATE_FORMAT(brd.parents_marriage_date, '%Y-%m-%d') LIKE ?
-                )
-            )",
-            "EXISTS (
+
+    $search = adminSearchNormalizeWhitespace($filters['q'] ?? '');
+    if ($search === '') {
+        return [$where, $params];
+    }
+
+    [$nameSearch, $dateSearch] = adminSearchSplitNameAndDate($search);
+    if ($nameSearch === '' && $dateSearch === '') {
+        $nameSearch = $search;
+    }
+
+    $term = '%' . $search . '%';
+    $clauses = [];
+    $searchParams = [];
+
+    if ($nameSearch !== '') {
+        [$nameClauses, $nameParams] = adminSearchNameLikeClauses(
+            $nameSearch,
+            'cr.first_name',
+            'cr.middle_name',
+            'cr.last_name'
+        );
+        $clauses = array_merge($clauses, $nameClauses);
+        $searchParams = array_merge($searchParams, $nameParams);
+
+        $nameTerm = '%' . $nameSearch . '%';
+        $clauses[] = "EXISTS (
                 SELECT 1 FROM marriage_record_details mrd
                 WHERE mrd.civil_record_id = cr.id
                 AND (
@@ -162,17 +210,69 @@ function buildRecordsWhere(array $filters): array
                     OR mrd.solemnized_by LIKE ?
                     OR mrd.witnesses LIKE ?
                 )
-            )",
-        ];
-        $where .= ' AND (' . implode(' OR ', $clauses) . ')';
-        $params = array_merge(
-            $params,
-            array_fill(0, 13, $term),
-            [$term, $term],
-            [$term, $term],
-            array_fill(0, 8, $term)
-        );
+            )";
+        $searchParams = array_merge($searchParams, array_fill(0, 8, $nameTerm));
     }
+
+    foreach ([
+        'cr.registry_number LIKE ?',
+        'cr.book_number LIKE ?',
+        'cr.page_number LIKE ?',
+        'cr.father_name LIKE ?',
+        'cr.mother_name LIKE ?',
+        'cr.place LIKE ?',
+        'cr.notes LIKE ?',
+        'CAST(cr.id AS CHAR) LIKE ?',
+    ] as $clause) {
+        $clauses[] = $clause;
+        $searchParams[] = $term;
+    }
+
+    $clauses[] = "EXISTS (
+            SELECT 1 FROM death_record_details drd
+            WHERE drd.civil_record_id = cr.id
+            AND drd.code_number LIKE ?
+        )";
+    $searchParams[] = $term;
+
+    $dateQuery = $dateSearch !== '' ? $dateSearch : (adminSearchLooksLikeDate($search) ? $search : '');
+    if ($dateQuery !== '') {
+        [$dateClauses, $dateParams] = adminSearchDateClausesForColumns($dateQuery, [
+            'cr.birth_date',
+            'cr.event_date',
+        ]);
+        $clauses = array_merge($clauses, $dateClauses);
+        $searchParams = array_merge($searchParams, $dateParams);
+
+        [$deathRegSql, $deathRegParams] = adminSearchDateMatchExpr('drd.registration_date', $dateQuery);
+        $clauses[] = "EXISTS (
+                SELECT 1 FROM death_record_details drd
+                WHERE drd.civil_record_id = cr.id
+                AND $deathRegSql
+            )";
+        $searchParams = array_merge($searchParams, $deathRegParams);
+
+        [$birthRegSql, $birthRegParams] = adminSearchDateMatchExpr('brd.registration_date', $dateQuery);
+        [$parentsDomSql, $parentsDomParams] = adminSearchDateMatchExpr('brd.parents_marriage_date', $dateQuery);
+        $clauses[] = "EXISTS (
+                SELECT 1 FROM birth_record_details brd
+                WHERE brd.civil_record_id = cr.id
+                AND ($birthRegSql OR $parentsDomSql)
+            )";
+        $searchParams = array_merge($searchParams, $birthRegParams, $parentsDomParams);
+
+        [$husbandDobSql, $husbandDobParams] = adminSearchDateMatchExpr('mrd.husband_birth_date', $dateQuery);
+        [$wifeDobSql, $wifeDobParams] = adminSearchDateMatchExpr('mrd.wife_birth_date', $dateQuery);
+        $clauses[] = "EXISTS (
+                SELECT 1 FROM marriage_record_details mrd
+                WHERE mrd.civil_record_id = cr.id
+                AND ($husbandDobSql OR $wifeDobSql)
+            )";
+        $searchParams = array_merge($searchParams, $husbandDobParams, $wifeDobParams);
+    }
+
+    $where .= ' AND (' . implode(' OR ', $clauses) . ')';
+    $params = array_merge($params, $searchParams);
 
     return [$where, $params];
 }
@@ -202,10 +302,12 @@ function civilRecordSearchBlob(array $r): string
         (string) ($r['id'] ?? ''),
     ];
 
-    foreach (['birth_date', 'event_date', 'registration_date', 'parents_marriage_date'] as $dateCol) {
+    foreach ([
+        'birth_date', 'event_date', 'registration_date', 'parents_marriage_date',
+        'death_date', 'marriage_date', 'husband_birth_date', 'wife_birth_date',
+    ] as $dateCol) {
         if (!empty($r[$dateCol])) {
-            $parts[] = (string) $r[$dateCol];
-            $parts[] = formatRecordDate((string) $r[$dateCol]);
+            $parts = array_merge($parts, adminSearchDateBlobVariants((string) $r[$dateCol]));
         }
     }
 
@@ -802,23 +904,16 @@ function exportCivilRecordsCsv(PDO $pdo, array $filters): void
 {
     global $validTypes;
 
-    [$where, $params] = buildRecordsWhere($filters);
+    recordsExportPrepareStreamingResponse();
+
     $exportType = $filters['type'] ?? 'all';
+    [$where, $params] = buildRecordsExportWhere($exportType);
     $types = ($exportType !== 'all' && in_array($exportType, $validTypes, true))
         ? [$exportType]
         : $validTypes;
-
-    $stmt = $pdo->prepare("SELECT cr.* FROM civil_records cr WHERE $where ORDER BY cr.record_type ASC, cr.last_name ASC, cr.first_name ASC");
-    $stmt->execute($params);
-    $rows = hydrateCivilRecordRows($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC));
-
-    $grouped = array_fill_keys($validTypes, []);
-    foreach ($rows as $row) {
-        $recordType = (string) ($row['record_type'] ?? '');
-        if (isset($grouped[$recordType])) {
-            $grouped[$recordType][] = $row;
-        }
-    }
+    $chunkSize = recordsExportCsvChunkSize();
+    $typeCounts = exportCivilRecordsTypeCounts($pdo, $where, $params, $types);
+    $totalRecords = array_sum($typeCounts);
 
     $filename = 'alcros_civil_records_'
         . ($exportType !== 'all' ? $exportType . '_' : 'all_')
@@ -833,110 +928,89 @@ function exportCivilRecordsCsv(PDO $pdo, array $filters): void
 
     fprintf($out, "\xEF\xBB\xBF");
 
-    if (count($types) === 1) {
-        $type = $types[0];
-        fputcsv($out, civilRecordCsvColumns($type));
-        foreach ($grouped[$type] as $row) {
-            fputcsv($out, civilRecordExportRowValues($row, $type));
-        }
-    } else {
+    if (count($types) > 1) {
         fputcsv($out, ['ALCROS Civil Records Export']);
         fputcsv($out, ['Generated on', date('Y-m-d g:i A')]);
-        if (($filters['q'] ?? '') !== '') {
-            fputcsv($out, ['Search filter', $filters['q']]);
-        }
-        fputcsv($out, ['Total records', (string) count($rows)]);
+        fputcsv($out, ['Total records', (string) $totalRecords]);
         fputcsv($out, []);
+    }
 
-        foreach ($types as $type) {
-            $sectionRows = $grouped[$type];
-            fputcsv($out, ['--- ' . strtoupper(civilRecordTypeLabel($type)) . ' RECORDS (' . count($sectionRows) . ') ---']);
-            fputcsv($out, civilRecordCsvColumns($type));
-            foreach ($sectionRows as $row) {
-                fputcsv($out, civilRecordExportRowValues($row, $type));
+    foreach ($types as $type) {
+        $typeCount = $typeCounts[$type] ?? 0;
+
+        if (count($types) > 1) {
+            fputcsv($out, ['--- ' . strtoupper(civilRecordTypeLabel($type)) . ' RECORDS (' . $typeCount . ') ---']);
+        }
+
+        fputcsv($out, civilRecordCsvColumns($type));
+
+        if ($typeCount === 0) {
+            if (count($types) > 1) {
+                fputcsv($out, []);
             }
+            continue;
+        }
+
+        [$typeWhere, $typeParams] = exportCivilRecordsTypeWhere($where, $params, $type);
+        $afterId = 0;
+
+        while (true) {
+            $chunk = exportCivilRecordsFetchChunk($pdo, $typeWhere, $typeParams, $afterId, $chunkSize);
+            if ($chunk === []) {
+                break;
+            }
+
+            $chunk = hydrateCivilRecordRows($pdo, $chunk);
+            foreach ($chunk as $record) {
+                fputcsv($out, civilRecordExportRowValues($record, $type));
+            }
+
+            $afterId = (int) ($chunk[array_key_last($chunk)]['id'] ?? $afterId);
+            unset($chunk);
+            fflush($out);
+        }
+
+        if (count($types) > 1) {
             fputcsv($out, []);
         }
+    }
 
+    if (count($types) > 1) {
         fputcsv($out, ['End of export']);
     }
 
+    fflush($out);
     fclose($out);
 }
 
-function exportCivilRecordsXlsx(PDO $pdo, array $filters): void
+function exportCivilRecordsTypeWhere(string $where, array $params, string $type): array
 {
-    global $validTypes;
-
-    require_once __DIR__ . '/includes/excel_export.php';
-
-    [$where, $params] = buildRecordsWhere($filters);
-    $exportType = $filters['type'] ?? 'all';
-    $types = ($exportType !== 'all' && in_array($exportType, $validTypes, true))
-        ? [$exportType]
-        : $validTypes;
-
-    $stmt = $pdo->prepare("SELECT cr.* FROM civil_records cr WHERE $where ORDER BY cr.record_type ASC, cr.last_name ASC, cr.first_name ASC");
-    $stmt->execute($params);
-    $rows = hydrateCivilRecordRows($pdo, $stmt->fetchAll(PDO::FETCH_ASSOC));
-
-    $grouped = array_fill_keys($validTypes, []);
-    foreach ($rows as $row) {
-        $recordType = (string) ($row['record_type'] ?? '');
-        if (isset($grouped[$recordType])) {
-            $grouped[$recordType][] = $row;
-        }
+    if (preg_match('/\bcr\.record_type\s*=\s*\?/', $where) !== 1) {
+        $where .= ' AND cr.record_type = ?';
+        $params[] = $type;
     }
 
-    $filename = 'alcros_civil_records_'
-        . ($exportType !== 'all' ? $exportType . '_' : 'all_')
-        . date('Y-m-d') . '.xlsx';
+    return [$where, $params];
+}
 
-    $spreadsheet = alcrosExcelNewSpreadsheet('ALCROS Civil Records Export');
-    $sheetIndex = 0;
+function exportCivilRecordsTypeCount(PDO $pdo, string $where, array $params, string $type): int
+{
+    [$typeWhere, $typeParams] = exportCivilRecordsTypeWhere($where, $params, $type);
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM civil_records cr WHERE $typeWhere");
+    $stmt->execute($typeParams);
 
-    foreach ($types as $type) {
-        $sheet = $sheetIndex === 0
-            ? $spreadsheet->getActiveSheet()
-            : $spreadsheet->createSheet($sheetIndex);
-        $sheet->setTitle(ucfirst($type));
-        $sheetIndex++;
+    return (int) $stmt->fetchColumn();
+}
 
-        $row = 1;
-        $metaLines = [
-            'ALCROS Civil Records Export',
-            ['Record type', civilRecordTypeLabel($type)],
-            ['Generated on', date('Y-m-d g:i A')],
-            ['Total records', (string) count($grouped[$type])],
-        ];
-        if (($filters['q'] ?? '') !== '') {
-            $metaLines[] = ['Search filter', (string) $filters['q']];
-        }
-        alcrosExcelWriteMetaBlock($sheet, $metaLines, $row);
+/** @return list<array<string, mixed>> */
+function exportCivilRecordsFetchChunk(PDO $pdo, string $where, array $params, int $afterId, int $limit): array
+{
+    $sql = "SELECT cr.* FROM civil_records cr WHERE $where AND cr.id > ?"
+        . ' ORDER BY cr.id ASC LIMIT ' . max(1, $limit);
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute(array_merge($params, [$afterId]));
 
-        $headers = civilRecordCsvColumns($type);
-        $dataRows = array_map(
-            static fn ($record) => civilRecordExportRowValues($record, $type),
-            $grouped[$type]
-        );
-
-        alcrosExcelWriteTable(
-            $sheet,
-            $headers,
-            $dataRows,
-            $row,
-            [
-                'section_title' => civilRecordTypeLabel($type) . ' records',
-                'empty_message' => 'No records found for this filter.',
-            ]
-        );
-    }
-
-    if ($spreadsheet->getSheetCount() > 0) {
-        $spreadsheet->setActiveSheetIndex(0);
-    }
-
-    alcrosExcelSendDownload($spreadsheet, $filename);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
 function exportCivilRecordTemplateXlsx(string $type): void
@@ -1166,16 +1240,18 @@ if (isset($_GET['action']) && $_GET['action'] === 'template') {
     exit;
 }
 
-// Export filtered records
 if (isset($_GET['action']) && $_GET['action'] === 'export') {
-    @set_time_limit(300);
-    $filters = recordsExportFilters();
-    $format = strtolower((string) ($_GET['format'] ?? 'xlsx'));
-    if ($format === 'xlsx') {
-        logActivity(staffId(), 'Excel Export', 'Exported civil records (' . ($filters['type'] ?? 'all') . ')');
-        exportCivilRecordsXlsx($pdo, $filters);
-        exit;
+    @ini_set('memory_limit', '1024M');
+    @set_time_limit(0);
+    ignore_user_abort(true);
+
+    $format = strtolower((string) ($_GET['format'] ?? 'csv'));
+    if ($format !== 'csv') {
+        http_response_code(400);
+        exit('Only CSV export is available.');
     }
+
+    $filters = recordsExportFilters();
     logActivity(staffId(), 'CSV Export', 'Exported civil records (' . ($filters['type'] ?? 'all') . ')');
     exportCivilRecordsCsv($pdo, $filters);
     exit;
@@ -1405,11 +1481,10 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                     <div class="relative" id="recordsExportMenu">
                         <button type="button" id="recordsExportBtn"
                                 class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-[11px] font-bold uppercase flex items-center shadow-sm">
-                            <i data-lucide="file-spreadsheet" class="w-4 h-4 mr-2"></i> Download Excel
+                            <i data-lucide="download" class="w-4 h-4 mr-2"></i> Export CSV
                             <i data-lucide="chevron-down" class="w-3.5 h-3.5 ml-1.5 opacity-80"></i>
                         </button>
-                        <div id="recordsExportPanel" class="hidden absolute right-0 mt-2 w-56 bg-white border border-gray-100 rounded-xl shadow-lg z-50 py-1 text-xs">
-                            <p class="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider text-gray-400">Export as Excel</p>
+                        <div id="recordsExportPanel" class="hidden absolute right-0 mt-2 w-64 bg-white border border-gray-100 rounded-xl shadow-lg z-50 py-1 text-xs">
                             <?php
                             $exportOptions = [
                                 'all'      => 'All records',
@@ -1417,16 +1492,15 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                 'death'    => 'Death records',
                                 'marriage' => 'Marriage records',
                             ];
-                            foreach ($exportOptions as $exportKey => $exportLabel):
                             ?>
-                            <a href="<?= htmlspecialchars(recordsExportUrl($exportKey, $search)) ?>"
+                            <p class="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider text-gray-400">CSV (.csv)</p>
+                            <?php foreach ($exportOptions as $exportKey => $exportLabel): ?>
+                            <a href="<?= htmlspecialchars(recordsExportUrl($exportKey)) ?>"
                                class="block px-3 py-2.5 font-semibold text-slate-700 hover:bg-gray-50">
                                 <?= htmlspecialchars($exportLabel) ?>
                             </a>
                             <?php endforeach; ?>
-                            <?php if ($search !== ''): ?>
-                            <p class="px-3 py-2 border-t border-gray-100 text-[10px] text-gray-400 leading-snug">Current search filter applies to all options above.</p>
-                            <?php endif; ?>
+                            <p class="px-3 py-2 border-t border-gray-100 text-[10px] text-gray-400 leading-snug">Exports every record for the option you choose. Search does not affect downloads.</p>
                         </div>
                     </div>
                     <div class="relative" id="newEntryWrapper">
@@ -1464,14 +1538,15 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                 <?php endforeach; ?>
             </div>
 
-            <form method="GET" class="admin-toolbar">
+            <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('records.php')) ?>" class="admin-toolbar">
+                <?= authFormField() ?>
                 <?php if ($type !== 'all'): ?><input type="hidden" name="type" value="<?= htmlspecialchars($type) ?>"><?php endif; ?>
                 <?php if ($sort !== 'name'): ?><input type="hidden" name="sort" value="<?= htmlspecialchars($sort) ?>"><?php endif; ?>
                 <?php if ($dir !== 'asc'): ?><input type="hidden" name="dir" value="<?= htmlspecialchars($dir) ?>"><?php endif; ?>
                 <div class="relative flex-1 admin-toolbar-search">
                     <i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-gray-400"></i>
-                    <input type="text" name="q" id="recordsSearchInput" value="<?= htmlspecialchars($search) ?>" placeholder="Search name, registry, DOM, DOB, parents, place..."
-                        class="records-search-input w-full pl-10 pr-4 py-2 text-sm bg-gray-50 border-none rounded-lg focus:ring-0 text-slate-600 placeholder-gray-400">
+                    <input type="text" name="q" id="recordsSearchInput" value="<?= htmlspecialchars($search) ?>" placeholder="First, middle, last, full name, DOB, DOM, registry…"
+                        class="records-search-input w-full pl-10 pr-4 py-2 text-sm bg-gray-50 border-none rounded-lg focus:ring-0 text-slate-600 placeholder-gray-400" autocomplete="off">
                 </div>
                 <div class="admin-toolbar-filters">
                     <?php foreach (['all' => 'All', 'birth' => 'Birth', 'death' => 'Death', 'marriage' => 'Marriage'] as $key => $label): ?>
@@ -1479,7 +1554,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                        class="filter-chip whitespace-nowrap shrink-0 <?= $type === $key ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600' ?>"><?= $label ?></a>
                     <?php endforeach; ?>
                 </div>
-                <button type="submit" class="w-full lg:w-auto bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold shrink-0">Search</button>
+                <button type="submit" class="w-full lg:w-auto bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold shrink-0" data-loading-text="Searching…">Search</button>
             </form>
 
             <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
@@ -1509,9 +1584,8 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                 $keyDate = $r['birth_date'] ?: $r['event_date'];
                             }
                             $parents = array_filter([$r['father_name'] ? 'Father: ' . $r['father_name'] : '', $r['mother_name'] ? 'Mother: ' . $r['mother_name'] : '']);
-                            $searchBlob = civilRecordSearchBlob($r);
                         ?>
-                        <tr class="hover:bg-gray-50/50 transition-colors records-table-row" data-search="<?= htmlspecialchars($searchBlob, ENT_QUOTES, 'UTF-8') ?>">
+                        <tr class="hover:bg-gray-50/50 transition-colors records-table-row">
                             <td class="p-4">
                                 <button type="button" class="view-record-btn text-left w-full" data-record="<?= htmlspecialchars(json_encode($r, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), ENT_QUOTES, 'UTF-8') ?>">
                                     <div class="flex items-center space-x-3">
@@ -1566,9 +1640,6 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                             </td>
                         </tr>
                         <?php endforeach; ?>
-                        <tr id="recordsSearchEmpty" class="hidden">
-                            <td colspan="5" class="p-10 text-center text-sm text-gray-400 font-medium">No records on this page match your search.</td>
-                        </tr>
                     </tbody>
                 </table>
                 </div>
@@ -2227,7 +2298,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                 <h2 class="text-lg font-black text-slate-900" id="importModalTitle">Import Records</h2>
                 <button type="button" class="text-gray-400 hover:text-gray-600 close-modal"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
-            <form method="POST" enctype="multipart/form-data" class="space-y-4" id="importForm" action="<?= htmlspecialchars(buildAuthUrl('records.php')) ?>">
+            <form method="POST" enctype="multipart/form-data" class="space-y-4" id="importForm" data-no-confirm action="<?= htmlspecialchars(buildAuthUrl('records.php')) ?>">
                 <?= authFormField() ?>
                 <input type="hidden" name="action" value="import_csv">
                 <input type="hidden" name="import_type" id="importType" value="">
@@ -2279,6 +2350,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
         'locationsApiUrl' => buildAuthUrl('api/locations.php'),
     ], 'records-config') ?>
     <?= scriptTag('core/page-config.js') ?>
+    <?= scriptTag('core/admin-search.js') ?>
     <?= scriptTag('core/cascading-location.js') ?>
     <?= scriptTag('admin/records.js') ?>
     <?= lucideInitScript() ?>

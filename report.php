@@ -3,7 +3,6 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/analytics_dashboard.php';
-require_once __DIR__ . '/includes/excel_report_exports.php';
 require_once __DIR__ . '/includes/scripts.php';
 requireStaffLogin();
 requirePageAccess('report.php');
@@ -18,48 +17,11 @@ $toInput = $_GET['to'] ?? '';
 [$fromDate, $toDate] = resolveReportDateRange($range, $fromInput, $toInput);
 $rangeLabel = reportRangeLabel($range, $fromDate, $toDate);
 
-$downloadType = $_GET['download'] ?? '';
-$validDownloads = ['full', 'summary', 'requests', 'appointments', 'queue', 'activity', 'records_quarterly'];
 $reportYear = resolveReportYear($_GET['year'] ?? null);
-
-if (isset($_GET['action']) && $_GET['action'] === 'download' && in_array($downloadType, $validDownloads, true)) {
-    $downloadFormat = strtolower((string) ($_GET['format'] ?? 'xlsx'));
-
-    if ($downloadType === 'records_quarterly') {
-        $recordsReport = buildQuarterlyCivilRecordsReport($pdo, $reportYear);
-        logActivity(staffId(), 'Report Downloaded', 'Quarterly civil records report for ' . $reportYear);
-        if ($downloadFormat === 'xlsx') {
-            exportQuarterlyCivilRecordsXlsx($recordsReport);
-        }
-        exportQuarterlyCivilRecordsCsv($recordsReport);
-        exit;
-    }
-
-    $exportReport = buildOperationalReport($pdo, $fromDate, $toDate);
-    logActivity(staffId(), 'Report Downloaded', 'Operational report (' . $downloadType . ') for ' . $rangeLabel);
-    if ($downloadFormat === 'xlsx') {
-        exportOperationalReportXlsx($exportReport, $downloadType);
-    }
-    exportOperationalReportCsv($exportReport, $downloadType);
-    exit;
-}
 
 $report = buildOperationalReport($pdo, $fromDate, $toDate);
 $recordsReport = buildQuarterlyCivilRecordsReport($pdo, $reportYear);
 $summary = $report['summary'];
-
-function reportDownloadUrl(string $type, string $range, string $from, string $to, ?int $year = null, string $format = 'xlsx'): string
-{
-    return buildAuthUrl('report.php', array_filter([
-        'action' => 'download',
-        'download' => $type,
-        'format' => $format !== 'xlsx' ? $format : null,
-        'range' => $range,
-        'from' => $range === 'custom' ? $from : null,
-        'to' => $range === 'custom' ? $to : null,
-        'year' => $year,
-    ]));
-}
 
 function reportPageUrl(string $range, string $from, string $to, string $section = 'overview', ?int $year = null): string
 {
@@ -85,7 +47,7 @@ $analytics = $section === 'analytics' ? fetchAnalyticsDashboard($pdo) : null;
 $pageTitle = 'Reports';
 $pageSubtitle = $section === 'analytics'
     ? 'Live charts for online and walk-in requests, certifications, appointments, queue, and civil records.'
-    : 'Export and print summaries for requests, appointments, queue, and civil records.';
+    : 'Print summaries for requests, appointments, queue, and civil records.';
 $pageHeaderMeta = $section === 'analytics'
     ? '<p class="admin-header__meta">' . htmlspecialchars($report['office_name']) . ' · Live charts and statistics</p>'
     : '<p class="admin-header__meta">' . htmlspecialchars($report['office_name']) . ' · Showing <strong>'
@@ -183,29 +145,6 @@ $rangeOptions = [
                                 <button type="button" id="reportPrintSubmit" class="w-full bg-slate-800 hover:bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-bold">
                                     Print selected
                                 </button>
-                            </div>
-                        </div>
-                        <div class="relative" id="reportDownloadMenu">
-                            <button type="button" id="reportDownloadBtn" class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg text-xs font-bold">
-                                <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> Download Excel
-                                <i data-lucide="chevron-down" class="w-3.5 h-3.5 opacity-80"></i>
-                            </button>
-                            <div id="reportDownloadPanel" class="hidden absolute right-0 mt-2 w-56 bg-white border border-gray-100 rounded-xl shadow-lg z-20 py-1 text-xs">
-                                <p class="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider text-gray-400">Excel (.xlsx)</p>
-                                <a href="<?= htmlspecialchars(reportDownloadUrl('full', $range, $fromDate, $toDate)) ?>" class="block px-3 py-2 font-semibold text-slate-700 hover:bg-gray-50">Full report</a>
-                                <a href="<?= htmlspecialchars(reportDownloadUrl('summary', $range, $fromDate, $toDate)) ?>" class="block px-3 py-2 font-semibold text-slate-700 hover:bg-gray-50">Summary only</a>
-                                <div class="border-t border-gray-100 my-1"></div>
-                                <p class="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider text-gray-400">By section</p>
-                                <a href="<?= htmlspecialchars(reportDownloadUrl('requests', $range, $fromDate, $toDate)) ?>" class="block px-3 py-2 font-semibold text-slate-700 hover:bg-gray-50">Document requests</a>
-                                <a href="<?= htmlspecialchars(reportDownloadUrl('appointments', $range, $fromDate, $toDate)) ?>" class="block px-3 py-2 font-semibold text-slate-700 hover:bg-gray-50">Appointments</a>
-                                <a href="<?= htmlspecialchars(reportDownloadUrl('queue', $range, $fromDate, $toDate)) ?>" class="block px-3 py-2 font-semibold text-slate-700 hover:bg-gray-50">Queue tickets</a>
-                                <a href="<?= htmlspecialchars(reportDownloadUrl('activity', $range, $fromDate, $toDate)) ?>" class="block px-3 py-2 font-semibold text-slate-700 hover:bg-gray-50">Staff activity</a>
-                                <div class="border-t border-gray-100 my-1"></div>
-                                <p class="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider text-gray-400">Civil registry</p>
-                                <a href="<?= htmlspecialchars(reportDownloadUrl('records_quarterly', $range, $fromDate, $toDate, $reportYear)) ?>" class="block px-3 py-2 font-semibold text-slate-700 hover:bg-gray-50">Quarterly records (<?= (int) $reportYear ?>)</a>
-                                <div class="border-t border-gray-100 my-1"></div>
-                                <p class="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider text-gray-400">Legacy CSV</p>
-                                <a href="<?= htmlspecialchars(reportDownloadUrl('full', $range, $fromDate, $toDate, null, 'csv')) ?>" class="block px-3 py-2 font-semibold text-slate-500 hover:bg-gray-50">Full report (CSV)</a>
                             </div>
                         </div>
             </div>
@@ -521,9 +460,6 @@ $rangeOptions = [
                             <h2 class="text-base font-black text-slate-900">Document Requests</h2>
                             <p class="text-xs text-gray-400 mt-0.5"><?= count($report['requests']) ?> record(s) in <?= htmlspecialchars(strtolower($rangeLabel)) ?></p>
                         </div>
-                        <a href="<?= htmlspecialchars(reportDownloadUrl('requests', $range, $fromDate, $toDate)) ?>" class="no-print shrink-0 inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 hover:underline">
-                            <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> Download Excel
-                        </a>
                     </div>
                     <?php if (!empty($report['requests_by_status']) || !empty($report['requests_by_type'])): ?>
                     <div class="px-5 py-4 grid sm:grid-cols-2 gap-6 border-b border-gray-50 bg-gray-50/40">
@@ -582,9 +518,6 @@ $rangeOptions = [
                             <h2 class="text-base font-black text-slate-900">Appointments</h2>
                             <p class="text-xs text-gray-400 mt-0.5"><?= count($report['appointments']) ?> visit(s) in <?= htmlspecialchars(strtolower($rangeLabel)) ?></p>
                         </div>
-                        <a href="<?= htmlspecialchars(reportDownloadUrl('appointments', $range, $fromDate, $toDate)) ?>" class="no-print shrink-0 inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline">
-                            <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> Download Excel
-                        </a>
                     </div>
                     <?php if (!empty($report['appointments_by_status'])): ?>
                     <div class="px-5 py-4 border-b border-gray-50 bg-gray-50/40">
@@ -638,9 +571,6 @@ $rangeOptions = [
                                 <?= (int) $summary['queue_served'] ?> served · <?= (int) $summary['queue_waiting'] ?> waiting · <?= (int) $summary['queue_skipped'] ?> no-show
                             </p>
                         </div>
-                        <a href="<?= htmlspecialchars(reportDownloadUrl('queue', $range, $fromDate, $toDate)) ?>" class="no-print shrink-0 inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline">
-                            <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> Download Excel
-                        </a>
                     </div>
                     <?php if (!empty($report['queue_by_purpose'])): ?>
                     <div class="px-5 py-4 border-b border-gray-50 bg-gray-50/40">
@@ -686,9 +616,6 @@ $rangeOptions = [
                                 <h2 class="text-base font-black text-slate-900">Civil Records — Quarterly Registration</h2>
                                 <p class="text-xs text-gray-400 mt-0.5">How many birth, death, and marriage records were registered each quarter.</p>
                             </div>
-                            <a href="<?= htmlspecialchars(reportDownloadUrl('records_quarterly', $range, $fromDate, $toDate, $reportYear)) ?>" class="no-print shrink-0 inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline">
-                                <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> Download Excel (<?= (int) $reportYear ?>)
-                            </a>
                         </div>
                         <div class="no-print flex flex-wrap gap-1.5 mt-4">
                             <?php foreach ($yearOptions as $yearOption): ?>
@@ -771,9 +698,6 @@ $rangeOptions = [
                             <h2 class="text-base font-black text-slate-900">Staff Activity Log</h2>
                             <p class="text-xs text-gray-400 mt-0.5">Actions recorded in this period (up to 500 entries)</p>
                         </div>
-                        <a href="<?= htmlspecialchars(reportDownloadUrl('activity', $range, $fromDate, $toDate)) ?>" class="no-print shrink-0 inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline">
-                            <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> Download Excel
-                        </a>
                     </div>
                     <div class="overflow-x-auto print-table-wrap print-landscape">
                         <table class="w-full text-sm text-left print-table">

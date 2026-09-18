@@ -1,28 +1,6 @@
 (function () {
     'use strict';
 
-    function setupDropdown(menuId, btnId, panelId) {
-        var menu = document.getElementById(menuId);
-        var btn = document.getElementById(btnId);
-        var panel = document.getElementById(panelId);
-        if (!menu || !btn || !panel) return null;
-
-        btn.addEventListener('click', function (e) {
-            e.stopPropagation();
-            panel.classList.toggle('hidden');
-        });
-
-        document.addEventListener('click', function (e) {
-            if (!menu.contains(e.target)) {
-                panel.classList.add('hidden');
-            }
-        });
-
-        return { menu: menu, btn: btn, panel: panel };
-    }
-
-    setupDropdown('reportDownloadMenu', 'reportDownloadBtn', 'reportDownloadPanel');
-
     var printChecks = document.querySelectorAll('.report-print-check');
     var printSubmit = document.getElementById('reportPrintSubmit');
     var printSelectAll = document.getElementById('reportPrintSelectAll');

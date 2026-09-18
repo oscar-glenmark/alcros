@@ -6,14 +6,8 @@
 
     var charts = [];
 
-    function isDarkTheme() {
-        return document.documentElement.classList.contains('alcros-dark');
-    }
-
     function chartPalette() {
-        return isDarkTheme()
-            ? { text: '#94a3b8', grid: '#334155', tooltip: '#111827' }
-            : { text: '#94a3b8', grid: '#f1f5f9', tooltip: '#0f172a' };
+        return { text: '#94a3b8', grid: '#f1f5f9', tooltip: '#0f172a' };
     }
 
     function applyChartTheme() {
@@ -378,5 +372,4 @@
         }));
     }
 
-    window.addEventListener('alcros:theme-change', applyChartTheme);
 })();

@@ -17,19 +17,34 @@ function alcrosExcelSendDownload(AlcrosXlsxWorkbook $spreadsheet, string $filena
         $filename .= '.xlsx';
     }
 
-    $binary = $spreadsheet->toBinary();
-
-    while (ob_get_level() > 0) {
-        ob_end_clean();
+    $tempFile = tempnam(sys_get_temp_dir(), 'alcros_xlsx_dl_');
+    if ($tempFile === false) {
+        throw new RuntimeException('Could not create a temporary Excel download file.');
     }
 
-    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    header('Content-Length: ' . strlen($binary));
-    header('Cache-Control: max-age=0');
-    header('Pragma: public');
+    try {
+        $spreadsheet->writeToFile($tempFile);
+        $size = filesize($tempFile);
 
-    echo $binary;
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        if ($size !== false) {
+            header('Content-Length: ' . $size);
+        }
+        header('Cache-Control: max-age=0');
+        header('Pragma: public');
+
+        readfile($tempFile);
+    } finally {
+        if (is_file($tempFile)) {
+            @unlink($tempFile);
+        }
+    }
+
     exit;
 }
 

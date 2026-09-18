@@ -5,10 +5,9 @@
  *
  * Builds Office Open XML workbooks without a third-party spreadsheet library.
  * Uses ZipArchive when available; otherwise packs the archive in pure PHP.
- * Only the features
- * ALCROS exports need are implemented: text and number cells, fonts, solid
- * fills, thin borders, alignment, column widths, row heights, merged ranges,
- * and one frozen pane plus one autofilter per sheet.
+ * Only the features ALCROS import templates need are implemented: text and
+ * number cells, fonts, solid fills, thin borders, alignment, column widths,
+ * row heights, merged ranges, and one frozen pane plus one autofilter per sheet.
  *
  * Style arrays accept: bold, italic, size, color, fill, wrap, halign, valign,
  * border, format ('general' | 'text' | 'number' | 'date' | 'datetime').
@@ -158,15 +157,42 @@ final class AlcrosXlsxSheet
 
     public function buildXml(AlcrosXlsxStyleTable $styles): string
     {
+        $path = tempnam(sys_get_temp_dir(), 'alcros_xlsx_sheet_');
+        if ($path === false) {
+            throw new RuntimeException('Could not create a temporary worksheet file.');
+        }
+
+        try {
+            $this->buildXmlToFile($path, $styles);
+            $xml = file_get_contents($path);
+
+            return $xml === false ? '' : $xml;
+        } finally {
+            if (is_file($path)) {
+                @unlink($path);
+            }
+        }
+    }
+
+    public function buildXmlToFile(string $path, AlcrosXlsxStyleTable $styles): void
+    {
+        $handle = fopen($path, 'wb');
+        if ($handle === false) {
+            throw new RuntimeException('Could not write the worksheet file.');
+        }
+
         $lastRef = AlcrosXlsxWorkbook::columnLetter(max(1, $this->maxCol)) . max(1, $this->maxRow);
 
-        $xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        fwrite(
+            $handle,
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
             . '<dimension ref="A1:' . $lastRef . '"/>'
             . $this->buildSheetViewsXml()
             . '<sheetFormatPr defaultRowHeight="15"/>'
             . $this->buildColsXml()
-            . '<sheetData>';
+            . '<sheetData>'
+        );
 
         $rowNumbers = array_unique(array_merge(
             array_keys($this->cells),
@@ -176,25 +202,26 @@ final class AlcrosXlsxSheet
         sort($rowNumbers);
 
         foreach ($rowNumbers as $row) {
-            $xml .= $this->buildRowXml((int) $row, $styles);
+            fwrite($handle, $this->buildRowXml((int) $row, $styles));
         }
 
-        $xml .= '</sheetData>';
+        fwrite($handle, '</sheetData>');
 
         if ($this->autoFilter !== null) {
-            $xml .= '<autoFilter ref="' . $this->autoFilter . '"/>';
+            fwrite($handle, '<autoFilter ref="' . $this->autoFilter . '"/>');
         }
 
         if ($this->merges !== []) {
             $merges = array_values(array_unique($this->merges));
-            $xml .= '<mergeCells count="' . count($merges) . '">';
+            fwrite($handle, '<mergeCells count="' . count($merges) . '">');
             foreach ($merges as $ref) {
-                $xml .= '<mergeCell ref="' . $ref . '"/>';
+                fwrite($handle, '<mergeCell ref="' . $ref . '"/>');
             }
-            $xml .= '</mergeCells>';
+            fwrite($handle, '</mergeCells>');
         }
 
-        return $xml . '</worksheet>';
+        fwrite($handle, '</worksheet>');
+        fclose($handle);
     }
 
     private function buildSheetViewsXml(): string
@@ -564,32 +591,6 @@ final class AlcrosXlsxWorkbook
         return $this->sheets[$this->activeSheet] ?? $this->sheets[0];
     }
 
-    public function createSheet(?int $index = null): AlcrosXlsxSheet
-    {
-        $sheet = new AlcrosXlsxSheet('Sheet' . (count($this->sheets) + 1));
-        if ($index === null || $index >= count($this->sheets)) {
-            $this->sheets[] = $sheet;
-        } else {
-            array_splice($this->sheets, max(0, $index), 0, [$sheet]);
-        }
-
-        return $sheet;
-    }
-
-    public function getSheetCount(): int
-    {
-        return count($this->sheets);
-    }
-
-    public function setActiveSheetIndex(int $index): self
-    {
-        if (isset($this->sheets[$index])) {
-            $this->activeSheet = $index;
-        }
-
-        return $this;
-    }
-
     public static function columnLetter(int $index): string
     {
         $index = max(1, $index);
@@ -623,33 +624,84 @@ final class AlcrosXlsxWorkbook
         return rtrim(rtrim(sprintf('%.10F', $value), '0'), '.') ?: '0';
     }
 
-    /** Render the workbook as raw .xlsx bytes. */
-    public function toBinary(): string
+    public function writeToFile(string $path): void
     {
         $this->ensureUniqueSheetNames();
 
-        $styles = new AlcrosXlsxStyleTable();
-        $sheetXml = [];
-        foreach ($this->sheets as $sheet) {
-            $sheetXml[] = $sheet->buildXml($styles);
+        if (!class_exists('ZipArchive')) {
+            $this->writeToFileWithPacker($path);
+
+            return;
         }
 
+        $styles = new AlcrosXlsxStyleTable();
+        $sheetPaths = [];
+        $tempFiles = [];
+
+        try {
+            foreach ($this->sheets as $index => $sheet) {
+                $sheetPath = tempnam(sys_get_temp_dir(), 'alcros_xlsx_sheet_');
+                if ($sheetPath === false) {
+                    throw new RuntimeException('Could not create a temporary worksheet file.');
+                }
+                $tempFiles[] = $sheetPath;
+                $sheet->buildXmlToFile($sheetPath, $styles);
+                $sheetPaths[$index] = $sheetPath;
+            }
+
+            $stylesPath = tempnam(sys_get_temp_dir(), 'alcros_xlsx_styles_');
+            if ($stylesPath === false) {
+                throw new RuntimeException('Could not create a temporary styles file.');
+            }
+            $tempFiles[] = $stylesPath;
+            file_put_contents($stylesPath, $styles->buildXml());
+
+            $zip = new ZipArchive();
+            if ($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+                throw new RuntimeException('Could not create the Excel archive.');
+            }
+
+            $zip->addFromString('[Content_Types].xml', $this->contentTypesXml());
+            $zip->addFromString('_rels/.rels', $this->rootRelsXml());
+            $zip->addFromString('docProps/core.xml', $this->corePropsXml());
+            $zip->addFromString('docProps/app.xml', $this->appPropsXml());
+            $zip->addFromString('xl/workbook.xml', $this->workbookXml());
+            $zip->addFromString('xl/_rels/workbook.xml.rels', $this->workbookRelsXml());
+            $zip->addFile($stylesPath, 'xl/styles.xml');
+
+            foreach ($sheetPaths as $index => $sheetPath) {
+                $zip->addFile($sheetPath, 'xl/worksheets/sheet' . ($index + 1) . '.xml');
+            }
+
+            $zip->close();
+        } finally {
+            foreach ($tempFiles as $tempFile) {
+                if (is_file($tempFile)) {
+                    @unlink($tempFile);
+                }
+            }
+        }
+    }
+
+    /** @param array<string, string> $parts */
+    private function writeToFileWithPacker(string $path): void
+    {
+        $styles = new AlcrosXlsxStyleTable();
         $parts = [
-            '[Content_Types].xml'      => $this->contentTypesXml(),
-            '_rels/.rels'              => $this->rootRelsXml(),
-            'docProps/core.xml'        => $this->corePropsXml(),
-            'docProps/app.xml'         => $this->appPropsXml(),
-            'xl/workbook.xml'          => $this->workbookXml(),
+            '[Content_Types].xml'        => $this->contentTypesXml(),
+            '_rels/.rels'                => $this->rootRelsXml(),
+            'docProps/core.xml'          => $this->corePropsXml(),
+            'docProps/app.xml'           => $this->appPropsXml(),
+            'xl/workbook.xml'            => $this->workbookXml(),
             'xl/_rels/workbook.xml.rels' => $this->workbookRelsXml(),
-            // styles.xml must be built after every sheet has registered its formats.
-            'xl/styles.xml'            => $styles->buildXml(),
+            'xl/styles.xml'              => $styles->buildXml(),
         ];
 
-        foreach ($sheetXml as $index => $xml) {
-            $parts['xl/worksheets/sheet' . ($index + 1) . '.xml'] = $xml;
+        foreach ($this->sheets as $index => $sheet) {
+            $parts['xl/worksheets/sheet' . ($index + 1) . '.xml'] = $sheet->buildXml($styles);
         }
 
-        return $this->zipParts($parts);
+        file_put_contents($path, $this->zipParts($parts));
     }
 
     private function ensureUniqueSheetNames(): void

@@ -75,68 +75,6 @@ function activityLogPageUrl(array $overrides = []): string
     return buildAuthUrl('activity-log.php', $params);
 }
 
-if (isset($_GET['action']) && $_GET['action'] === 'export') {
-    require_once __DIR__ . '/includes/excel_export.php';
-
-    [$whereSql, $params] = activityLogWhereClause();
-    $stmt = $pdo->prepare("SELECT staff_id, action, details, created_at FROM activity_logs $whereSql ORDER BY created_at DESC");
-    $stmt->execute($params);
-    $exportRows = $stmt->fetchAll();
-    $format = strtolower((string) ($_GET['format'] ?? 'xlsx'));
-
-    if ($format === 'xlsx') {
-        $spreadsheet = alcrosExcelNewSpreadsheet('ALCROS Activity Log');
-        $sheet = $spreadsheet->getActiveSheet();
-        $sheet->setTitle('Activity Log');
-
-        $row = 1;
-        alcrosExcelWriteMetaBlock($sheet, [
-            'ALCROS Staff Activity Log',
-            ['Office', getSetting('office_name', 'Local Civil Registrar Office')],
-            ['Generated on', date('Y-m-d g:i A')],
-            ['Total entries', (string) count($exportRows)],
-            ['Filters applied', trim(($search !== '' ? 'Search: ' . $search . ' · ' : '') . ($staffFilter !== '' ? 'Staff: ' . $staffFilter . ' · ' : '') . 'Range: ' . match ($range) {
-                'today' => 'Today',
-                '7d' => 'Last 7 days',
-                '30d' => 'Last 30 days',
-                '90d' => 'Last 90 days',
-                default => 'All time',
-            })],
-        ], $row);
-
-        $dataRows = array_map(static fn ($item) => [
-            $item['staff_id'] ?: 'System',
-            $item['action'],
-            $item['details'] ?: '',
-            formatReportDateTime($item['created_at']),
-        ], $exportRows);
-
-        alcrosExcelWriteTable(
-            $sheet,
-            ['Staff account ID', 'Action performed', 'Additional details', 'Date and time'],
-            $dataRows,
-            $row,
-            [
-                'section_title' => 'Activity entries',
-                'empty_message' => 'No activity matches the current filters.',
-                'column_formats' => [4 => 'datetime'],
-            ]
-        );
-
-        alcrosExcelSendDownload($spreadsheet, 'alcros_activity_logs_' . date('Y-m-d') . '.xlsx');
-    }
-
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="alcros_activity_logs_' . date('Y-m-d') . '.csv"');
-    $out = fopen('php://output', 'w');
-    fputcsv($out, ['staff_id', 'action', 'details', 'created_at']);
-    foreach ($exportRows as $row) {
-        fputcsv($out, [$row['staff_id'], $row['action'], $row['details'], $row['created_at']]);
-    }
-    fclose($out);
-    exit;
-}
-
 [$whereSql, $params] = activityLogWhereClause();
 
 $countStmt = $pdo->prepare("SELECT COUNT(*) FROM activity_logs $whereSql");
@@ -204,10 +142,6 @@ $showingTo = min($offset + $perPage, $totalCount);
                                 class="inline-flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold shrink-0">
                             <i data-lucide="printer" class="w-4 h-4"></i> Print Report
                         </button>
-                        <a href="<?= htmlspecialchars(activityLogPageUrl(['action' => 'export', 'format' => 'xlsx', 'page' => null])) ?>"
-                           class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold shrink-0">
-                            <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Download Excel
-                        </a>
                     </div>
                 </div>
             </div>
@@ -221,7 +155,7 @@ $showingTo = min($offset + $perPage, $totalCount);
                     <?= $staffFilter !== '' ? ' · Staff: ' . htmlspecialchars($staffFilter) : '' ?>
                     · Generated <?= date('M j, Y g:i A') ?>
                 </p>
-                <p class="print-report-header__meta">Showing page <?= (int) $page ?> of <?= (int) $totalPages ?> (<?= number_format($totalCount) ?> matching entries). Use Download Excel for the full filtered export.</p>
+                <p class="print-report-header__meta">Showing page <?= (int) $page ?> of <?= (int) $totalPages ?> (<?= number_format($totalCount) ?> matching entries).</p>
             </div>
 
             <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden mb-5 print-report-body">

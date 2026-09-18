@@ -352,7 +352,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                             <?php endif; ?>
                             <div class="manage-requests-toolbar__search">
                                 <i data-lucide="search" class="w-3.5 h-3.5 text-gray-400"></i>
-                                <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search code, name, phone, request ID…" class="manage-requests-toolbar__input">
+                                <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="First, middle, last, full name, DOB, DOM…" class="manage-requests-toolbar__input" autocomplete="off">
                             </div>
                             <button type="submit" class="manage-requests-toolbar__btn manage-requests-toolbar__btn--primary" data-loading-text="Searching…">
                                 Search
@@ -631,6 +631,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
     <?= actionResultScript($flash) ?>
     <?= scriptTag('admin/id-preview.js') ?>
     <?= scriptTag('core/page-config.js') ?>
+    <?= scriptTag('core/admin-search.js') ?>
     <?= scriptTag('admin/manage-bulk.js') ?>
     <?= scriptTag('admin/appointment.js') ?>
     <?= lucideInitScript() ?>

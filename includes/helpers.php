@@ -3213,19 +3213,286 @@ function manageRequestsListFilters(array $input): array
     ];
 }
 
+function adminSearchNormalizeWhitespace(string $search): string
+{
+    return trim(preg_replace('/\s+/u', ' ', $search));
+}
+
+function adminSearchNameExpr(string $firstCol, string $middleCol, string $lastCol): string
+{
+    return "TRIM(CONCAT_WS(' ', $firstCol, NULLIF($middleCol, ''), $lastCol))";
+}
+
+function adminSearchParseDate(string $search): ?string
+{
+    $search = adminSearchNormalizeWhitespace($search);
+    if ($search === '') {
+        return null;
+    }
+    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $search, $m)) {
+        return checkdate((int) $m[2], (int) $m[3], (int) $m[1]) ? $search : null;
+    }
+    if (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/', $search, $m)) {
+        $year = (int) $m[3];
+        $month = (int) $m[1];
+        $day = (int) $m[2];
+
+        return checkdate($month, $day, $year)
+            ? sprintf('%04d-%02d-%02d', $year, $month, $day)
+            : null;
+    }
+
+    return null;
+}
+
+function adminSearchLooksLikeDate(string $search): bool
+{
+    $search = adminSearchNormalizeWhitespace($search);
+    if ($search === '') {
+        return false;
+    }
+    if (adminSearchParseDate($search) !== null) {
+        return true;
+    }
+    if (preg_match('/^\d{4}$/', $search)) {
+        return true;
+    }
+
+    return (bool) preg_match('/^\d[\d\/\-\.\s]*$/', $search);
+}
+
+/** @return array{0:string, 1:string} */
+function adminSearchSplitNameAndDate(string $search): array
+{
+    $search = adminSearchNormalizeWhitespace($search);
+    if ($search === '') {
+        return ['', ''];
+    }
+    if (adminSearchParseDate($search) !== null || adminSearchLooksLikeDate($search)) {
+        return ['', $search];
+    }
+
+    $nameTokens = [];
+    $dateTokens = [];
+    foreach (explode(' ', $search) as $token) {
+        if ($token === '') {
+            continue;
+        }
+        if (adminSearchParseDate($token) !== null || adminSearchLooksLikeDate($token)) {
+            $dateTokens[] = $token;
+        } else {
+            $nameTokens[] = $token;
+        }
+    }
+
+    if ($dateTokens === []) {
+        return [$search, ''];
+    }
+
+    return [implode(' ', $nameTokens), implode(' ', $dateTokens)];
+}
+
+/** @return array{0:list<string>, 1:list<string>} */
+function adminSearchNameLikeClauses(string $search, string $firstCol, string $middleCol, string $lastCol): array
+{
+    $search = adminSearchNormalizeWhitespace($search);
+    if ($search === '') {
+        return [[], []];
+    }
+
+    $fullExpr = adminSearchNameExpr($firstCol, $middleCol, $lastCol);
+    $fullTerm = '%' . $search . '%';
+    $tokens = explode(' ', $search);
+    $clauses = [
+        "$firstCol LIKE ?",
+        "$middleCol LIKE ?",
+        "$lastCol LIKE ?",
+        "$fullExpr LIKE ?",
+    ];
+    $params = [$fullTerm, $fullTerm, $fullTerm, $fullTerm];
+
+    if (count($tokens) > 1) {
+        $tokenGroups = [];
+        foreach ($tokens as $token) {
+            if ($token === '') {
+                continue;
+            }
+            $term = '%' . $token . '%';
+            $tokenGroups[] = "($firstCol LIKE ? OR $middleCol LIKE ? OR $lastCol LIKE ? OR $fullExpr LIKE ?)";
+            array_push($params, $term, $term, $term, $term);
+        }
+        if ($tokenGroups !== []) {
+            $clauses[] = '(' . implode(' AND ', $tokenGroups) . ')';
+        }
+    }
+
+    return [$clauses, $params];
+}
+
+function adminSearchDateColumnGroup(string $column): string
+{
+    return '('
+        . "DATE_FORMAT($column, '%Y-%m-%d') LIKE ?"
+        . " OR DATE_FORMAT($column, '%m/%d/%Y') LIKE ?"
+        . " OR DATE_FORMAT($column, '%c/%e/%Y') LIKE ?"
+        . ')';
+}
+
+/** @return array{0:list<string>, 1:list<string>} */
+function adminSearchDateClausesForColumns(string $search, array $columns): array
+{
+    $search = adminSearchNormalizeWhitespace($search);
+    if ($search === '' || $columns === []) {
+        return [[], []];
+    }
+
+    $iso = adminSearchParseDate($search);
+    if ($iso !== null) {
+        $clauses = [];
+        $params = [];
+        foreach ($columns as $column) {
+            $clauses[] = "$column = ?";
+            $params[] = $iso;
+        }
+
+        return [$clauses, $params];
+    }
+
+    if (preg_match('/^\d{4}$/', $search)) {
+        $year = (int) $search;
+        $clauses = [];
+        $params = [];
+        foreach ($columns as $column) {
+            $clauses[] = "YEAR($column) = ?";
+            $params[] = $year;
+        }
+
+        return [$clauses, $params];
+    }
+
+    $term = '%' . $search . '%';
+    $clauses = [];
+    $params = [];
+    foreach ($columns as $column) {
+        $clauses[] = adminSearchDateColumnGroup($column);
+        array_push($params, $term, $term, $term);
+    }
+
+    return [$clauses, $params];
+}
+
+/** @return array{0:string, 1:list<mixed>} */
+function adminSearchDateMatchExpr(string $column, string $search): array
+{
+    [$clauses, $params] = adminSearchDateClausesForColumns($search, [$column]);
+    if ($clauses === []) {
+        return ['1=0', []];
+    }
+
+    return [$clauses[0], $params];
+}
+
+function ensureAdminSearchIndexes(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+
+    $definitions = [
+        'document_requests' => [
+            'idx_dob'        => 'date_of_birth',
+            'idx_dom'        => 'date_of_marriage',
+        ],
+        'civil_records' => [
+            'idx_birth_date' => 'birth_date',
+            'idx_event_date' => 'event_date',
+        ],
+    ];
+
+    foreach ($definitions as $table => $indexes) {
+        foreach ($indexes as $indexName => $column) {
+            try {
+                $pdo->query("SELECT 1 FROM `$table` USE INDEX ($indexName) LIMIT 1");
+            } catch (Throwable $e) {
+                try {
+                    $pdo->exec("ALTER TABLE `$table` ADD INDEX $indexName (`$column`)");
+                } catch (Throwable $ignored) {
+                }
+            }
+        }
+    }
+}
+
+/** @return list<string> */
+function adminSearchDateBlobVariants(?string $date): array
+{
+    if ($date === null || trim($date) === '') {
+        return [];
+    }
+
+    $date = trim($date);
+    $variants = [$date];
+    $ts = strtotime($date);
+    if ($ts) {
+        $variants[] = date('Y-m-d', $ts);
+        $variants[] = date('m/d/Y', $ts);
+        $variants[] = date('n/j/Y', $ts);
+        $variants[] = formatRecordDate($date);
+        $variants[] = formatDateDisplay($date);
+    }
+
+    return array_values(array_unique(array_filter(
+        $variants,
+        static fn ($value) => trim((string) $value) !== '' && $value !== '—'
+    )));
+}
+
 function documentRequestSearchClause(string $search): array
 {
-    $search = trim($search);
+    ensureAdminSearchIndexes(getDB());
+
+    $search = adminSearchNormalizeWhitespace($search);
     if ($search === '') {
         return ['', []];
     }
 
+    [$nameSearch, $dateSearch] = adminSearchSplitNameAndDate($search);
+    if ($nameSearch === '' && $dateSearch === '') {
+        $nameSearch = $search;
+    }
+
     $term = '%' . $search . '%';
+    $clauses = [];
+    $params = [];
+
+    if ($nameSearch !== '') {
+        [$nameClauses, $nameParams] = adminSearchNameLikeClauses($nameSearch, 'first_name', 'middle_name', 'last_name');
+        $clauses = array_merge($clauses, $nameClauses);
+        $params = array_merge($params, $nameParams);
+    }
+
+    foreach (['tracking_code', 'email', 'phone', 'purpose', 'notes', 'document_type'] as $field) {
+        $clauses[] = "$field LIKE ?";
+        $params[] = $term;
+    }
+    $clauses[] = 'CAST(id AS CHAR) LIKE ?';
+    $params[] = $term;
+
+    $dateQuery = $dateSearch !== '' ? $dateSearch : (adminSearchLooksLikeDate($search) ? $search : '');
+    if ($dateQuery !== '') {
+        [$dateClauses, $dateParams] = adminSearchDateClausesForColumns($dateQuery, [
+            'date_of_birth',
+            'date_of_marriage',
+        ]);
+        $clauses = array_merge($clauses, $dateClauses);
+        $params = array_merge($params, $dateParams);
+    }
 
     return [
-        ' AND (first_name LIKE ? OR middle_name LIKE ? OR last_name LIKE ? OR tracking_code LIKE ?'
-            . ' OR email LIKE ? OR phone LIKE ? OR purpose LIKE ? OR notes LIKE ? OR document_type LIKE ?)',
-        array_fill(0, 9, $term),
+        ' AND (' . implode(' OR ', $clauses) . ')',
+        $params,
     ];
 }
 
@@ -3426,21 +3693,62 @@ function appointmentViewData(array $row): array
     ];
 }
 
-function appointmentSearchClause(string $search, string $alias = 'a'): array
+function appointmentSearchClause(string $search, string $alias = 'a', ?string $requestAlias = 'dr'): array
 {
-    $search = trim($search);
+    ensureAdminSearchIndexes(getDB());
+
+    $search = adminSearchNormalizeWhitespace($search);
     if ($search === '') {
         return ['', []];
     }
 
+    [$nameSearch, $dateSearch] = adminSearchSplitNameAndDate($search);
+    if ($nameSearch === '' && $dateSearch === '') {
+        $nameSearch = $search;
+    }
+
     $term = '%' . $search . '%';
     $col = static fn (string $field) => $alias . '.' . $field;
+    $clauses = [];
+    $params = [];
+
+    if ($nameSearch !== '') {
+        [$nameClauses, $nameParams] = adminSearchNameLikeClauses(
+            $nameSearch,
+            $col('first_name'),
+            $col('middle_name'),
+            $col('last_name')
+        );
+        $clauses = array_merge($clauses, $nameClauses);
+        $params = array_merge($params, $nameParams);
+    }
+
+    foreach (['appointment_code', 'tracking_code', 'phone', 'email', 'service_type'] as $field) {
+        $clauses[] = $col($field) . ' LIKE ?';
+        $params[] = $term;
+    }
+    $clauses[] = 'CAST(' . $col('id') . ' AS CHAR) LIKE ?';
+    $params[] = $term;
+
+    if ($requestAlias !== null && $requestAlias !== '') {
+        $reqCol = static fn (string $field) => $requestAlias . '.' . $field;
+        $clauses[] = $reqCol('document_type') . ' LIKE ?';
+        $params[] = $term;
+
+        $dateQuery = $dateSearch !== '' ? $dateSearch : (adminSearchLooksLikeDate($search) ? $search : '');
+        if ($dateQuery !== '') {
+            [$dateClauses, $dateParams] = adminSearchDateClausesForColumns($dateQuery, [
+                $reqCol('date_of_birth'),
+                $reqCol('date_of_marriage'),
+            ]);
+            $clauses = array_merge($clauses, $dateClauses);
+            $params = array_merge($params, $dateParams);
+        }
+    }
 
     return [
-        ' AND (' . $col('first_name') . ' LIKE ? OR ' . $col('middle_name') . ' LIKE ? OR ' . $col('last_name') . ' LIKE ?'
-            . ' OR ' . $col('appointment_code') . ' LIKE ? OR ' . $col('tracking_code') . ' LIKE ?'
-            . ' OR ' . $col('phone') . ' LIKE ? OR ' . $col('email') . ' LIKE ? OR ' . $col('service_type') . ' LIKE ?)',
-        array_fill(0, 8, $term),
+        ' AND (' . implode(' OR ', $clauses) . ')',
+        $params,
     ];
 }
 
@@ -5092,44 +5400,6 @@ function buildQuarterlyCivilRecordsReport(PDO $pdo, int $year): array
     ];
 }
 
-function exportQuarterlyCivilRecordsCsv(array $report): void
-{
-    $year = $report['year'];
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="ALCROS_Civil_Records_Quarterly_' . $year . '.csv"');
-
-    $out = fopen('php://output', 'w');
-    fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
-
-    fputcsv($out, ['ALCROS Civil Records — Quarterly Registration Report']);
-    fputcsv($out, ['Office', $report['office_name']]);
-    fputcsv($out, ['Calendar year', $year]);
-    fputcsv($out, ['Generated on', $report['generated_at']]);
-    fputcsv($out, ['Note', 'Counts use registration date, or event/entry date when registration date is not set.']);
-    fputcsv($out, []);
-    fputcsv($out, ['Quarter', 'Birth', 'Death', 'Marriage', 'Quarter total']);
-
-    foreach ($report['quarters'] as $quarter) {
-        fputcsv($out, [
-            $quarter['label'],
-            $quarter['birth'],
-            $quarter['death'],
-            $quarter['marriage'],
-            $quarter['total'],
-        ]);
-    }
-
-    fputcsv($out, [
-        'Year total',
-        $report['year_totals']['birth'],
-        $report['year_totals']['death'],
-        $report['year_totals']['marriage'],
-        $report['year_totals']['total'],
-    ]);
-
-    fclose($out);
-}
-
 function buildOperationalReport(PDO $pdo, string $from, string $to): array
 {
     $summaryStmt = $pdo->prepare(
@@ -5266,22 +5536,6 @@ function buildOperationalReport(PDO $pdo, string $from, string $to): array
     ];
 }
 
-function reportSummaryMetricLabels(): array
-{
-    return [
-        'requests_submitted'     => 'New document requests received',
-        'requests_completed'     => 'Document requests marked completed',
-        'appointments_scheduled' => 'Appointments scheduled',
-        'appointments_completed' => 'Appointments completed',
-        'queue_served'           => 'Citizens served from queue',
-        'queue_waiting'          => 'Queue tickets still waiting',
-        'queue_skipped'          => 'Queue no-shows (skipped)',
-        'pending_requests'       => 'Pending requests right now',
-        'ready_for_pickup'       => 'Documents ready for pickup right now',
-        'total_records'          => 'Civil registry records on file',
-    ];
-}
-
 function formatReportDateTime(?string $value): string
 {
     if ($value === null || trim($value) === '') {
@@ -5291,252 +5545,6 @@ function formatReportDateTime(?string $value): string
     $ts = strtotime($value);
 
     return $ts ? date('M j, Y g:i A', $ts) : $value;
-}
-
-function formatReportTime(?string $time): string
-{
-    if ($time === null || trim($time) === '') {
-        return 'Not set';
-    }
-
-    $ts = strtotime($time);
-
-    return $ts ? date('g:i A', $ts) : $time;
-}
-
-function queuePurposeLabel(string $purpose): string
-{
-    return match ($purpose) {
-        'walk_in'         => 'Walk-in visit',
-        'appointment'     => 'Appointment check-in',
-        'document_claim'  => 'Document pickup / claim',
-        default           => ucwords(str_replace('_', ' ', $purpose)),
-    };
-}
-
-function queueStatusLabel(string $status): string
-{
-    return match ($status) {
-        'waiting'   => 'Waiting in line',
-        'serving'   => 'Currently being served',
-        'completed' => 'Served / completed',
-        'skipped'   => 'No-show (skipped)',
-        default     => ucfirst($status),
-    };
-}
-
-function appointmentSourceLabel(string $source): string
-{
-    return $source === 'document_request'
-        ? 'Document request visit'
-        : 'Special service appointment';
-}
-
-function exportOperationalReportCsv(array $report, string $type): void
-{
-    $from = $report['from'];
-    $to = $report['to'];
-    $periodLabel = reportRangeLabel('custom', $from, $to);
-    $filename = 'ALCROS_Operational_Report_' . $from . ($from !== $to ? '_to_' . $to : '') . '.csv';
-
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-
-    $out = fopen('php://output', 'w');
-    fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
-
-    $writeSection = static function (string $title, ?string $description = null) use ($out): void {
-        fputcsv($out, []);
-        fputcsv($out, ['--- ' . strtoupper($title) . ' ---']);
-        if ($description !== null && $description !== '') {
-            fputcsv($out, [$description]);
-        }
-    };
-
-    $writeEmpty = static function (string $message) use ($out): void {
-        fputcsv($out, [$message]);
-    };
-
-    if ($type === 'full' || $type === 'summary') {
-        fputcsv($out, ['ALCROS Operational Report']);
-        fputcsv($out, ['Report title', 'Daily operations summary for the Local Civil Registry office']);
-        fputcsv($out, ['System name', $report['site_name']]);
-        fputcsv($out, ['Office', $report['office_name']]);
-        fputcsv($out, ['Reporting period', $periodLabel]);
-        fputcsv($out, ['Report generated on', formatReportDateTime($report['generated_at'])]);
-
-        if ($type === 'full') {
-            $writeSection('Report guide', 'This file is organized by section. Each section starts with a heading row, followed by column names, then the data rows.');
-            fputcsv($out, ['Section order']);
-            fputcsv($out, ['1', 'Summary — key counts for the selected period']);
-            fputcsv($out, ['2', 'Document requests — status summary, type summary, and full request list']);
-            fputcsv($out, ['3', 'Appointments — status summary and full appointment list']);
-            fputcsv($out, ['4', 'Queue — purpose summary and ticket list']);
-            fputcsv($out, ['5', 'Staff activity — actions logged by staff accounts']);
-        }
-
-        $writeSection('Summary', 'Headline numbers for the reporting period. Items marked “right now” show the current live count, not just the selected dates.');
-        fputcsv($out, ['Description', 'Count']);
-        foreach (reportSummaryMetricLabels() as $key => $label) {
-            if (!array_key_exists($key, $report['summary'])) {
-                continue;
-            }
-            fputcsv($out, [$label, $report['summary'][$key]]);
-        }
-    }
-
-    if ($type === 'full' || $type === 'requests') {
-        $writeSection('Document requests — status summary', 'How many requests fall under each processing status during the reporting period.');
-        fputcsv($out, ['Request status', 'Number of requests']);
-        if (empty($report['requests_by_status'])) {
-            $writeEmpty('No document requests were submitted during this period.');
-        } else {
-            foreach ($report['requests_by_status'] as $status => $count) {
-                fputcsv($out, [requestStatusLabel($status), $count]);
-            }
-        }
-
-        $writeSection('Document requests — document type summary', 'Breakdown of certificate types requested during the reporting period.');
-        fputcsv($out, ['Document type', 'Number of requests']);
-        if (empty($report['requests_by_type'])) {
-            $writeEmpty('No document types to show for this period.');
-        } else {
-            foreach ($report['requests_by_type'] as $docType => $count) {
-                fputcsv($out, [documentTypeLabel($docType), $count]);
-            }
-        }
-
-        $writeSection('Document requests — full list', 'One row per online document request submitted in the reporting period.');
-        fputcsv($out, [
-            'Tracking code',
-            'Citizen full name',
-            'Document requested',
-            'Current status',
-            'Date submitted',
-            'Last status update',
-        ]);
-        if (empty($report['requests'])) {
-            $writeEmpty('No document requests were submitted during this period.');
-        } else {
-            foreach ($report['requests'] as $row) {
-                fputcsv($out, [
-                    $row['tracking_code'],
-                    personNameFromRow($row),
-                    documentTypeLabel($row['document_type']),
-                    requestStatusLabel($row['status']),
-                    formatReportDateTime($row['submitted_at']),
-                    formatReportDateTime($row['updated_at']),
-                ]);
-            }
-        }
-    }
-
-    if ($type === 'full' || $type === 'appointments') {
-        $writeSection('Appointments — status summary', 'How many visits are scheduled, confirmed, completed, or rejected in the reporting period.');
-        fputcsv($out, ['Appointment status', 'Number of appointments']);
-        if (empty($report['appointments_by_status'])) {
-            $writeEmpty('No appointments were scheduled during this period.');
-        } else {
-            foreach ($report['appointments_by_status'] as $status => $count) {
-                fputcsv($out, [appointmentStatusLabel($status), $count]);
-            }
-        }
-
-        $writeSection('Appointments — full list', 'One row per appointment scheduled within the reporting period.');
-        fputcsv($out, [
-            'Appointment code',
-            'Citizen full name',
-            'Service or document',
-            'Visit date',
-            'Visit time',
-            'Status',
-            'Appointment type',
-            'Date booked online',
-        ]);
-        if (empty($report['appointments'])) {
-            $writeEmpty('No appointments were scheduled during this period.');
-        } else {
-            foreach ($report['appointments'] as $row) {
-                fputcsv($out, [
-                    $row['appointment_code'],
-                    personNameFromRow($row),
-                    appointmentServiceLabel($row['service_type']),
-                    formatRecordDate($row['appointment_date']),
-                    formatReportTime($row['appointment_time']),
-                    appointmentStatusLabel($row['status']),
-                    appointmentSourceLabel((string) ($row['source'] ?? '')),
-                    formatReportDateTime($row['created_at']),
-                ]);
-            }
-        }
-    }
-
-    if ($type === 'full' || $type === 'queue') {
-        $writeSection('Queue — purpose summary', 'Why citizens took a queue number during the reporting period.');
-        fputcsv($out, ['Queue purpose', 'Number of tickets']);
-        if (empty($report['queue_by_purpose'])) {
-            $writeEmpty('No queue tickets were created during this period.');
-        } else {
-            foreach ($report['queue_by_purpose'] as $purpose => $count) {
-                fputcsv($out, [queuePurposeLabel($purpose), $count]);
-            }
-        }
-
-        $writeSection('Queue tickets — full list', 'One row per queue ticket issued during the reporting period.');
-        fputcsv($out, [
-            'Ticket number',
-            'Purpose of visit',
-            'Ticket status',
-            'Citizen name (if provided)',
-            'Reference code (tracking / appointment)',
-            'Service window / table',
-            'Ticket issued on',
-            'Called to window on',
-        ]);
-        if (empty($report['queue_tickets'])) {
-            $writeEmpty('No queue tickets were created during this period.');
-        } else {
-            foreach ($report['queue_tickets'] as $row) {
-                fputcsv($out, [
-                    $row['ticket_number'],
-                    queuePurposeLabel((string) $row['purpose']),
-                    queueStatusLabel((string) $row['status']),
-                    personNameFromRow($row) ?: 'Not provided',
-                    $row['reference_code'] ?: 'None',
-                    $row['window_number'] ? 'Window ' . $row['window_number'] : 'Not assigned',
-                    formatReportDateTime($row['created_at']),
-                    formatReportDateTime($row['called_at'] ?? null),
-                ]);
-            }
-        }
-    }
-
-    if ($type === 'full' || $type === 'activity') {
-        $writeSection('Staff activity log', 'Actions recorded from staff accounts during the reporting period (latest 500 entries).');
-        fputcsv($out, [
-            'Staff account ID',
-            'Action performed',
-            'Additional details',
-            'Date and time',
-        ]);
-        if (empty($report['activities'])) {
-            $writeEmpty('No staff activity was logged during this period.');
-        } else {
-            foreach ($report['activities'] as $row) {
-                fputcsv($out, [
-                    $row['staff_id'] ?: 'System',
-                    $row['action'],
-                    $row['details'] ?: 'No extra details',
-                    formatReportDateTime($row['created_at']),
-                ]);
-            }
-        }
-    }
-
-    fputcsv($out, []);
-    fputcsv($out, ['End of report']);
-
-    fclose($out);
 }
 
 require_once __DIR__ . '/system_errors.php';

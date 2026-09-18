@@ -16,7 +16,8 @@
     }
 
     function csrfInputValue() {
-        var el = document.querySelector('#entryForm input[name="csrf_token"]')
+        var el = document.querySelector('#importForm input[name="csrf_token"]')
+            || document.querySelector('#entryForm input[name="csrf_token"]')
             || document.querySelector('input[name="csrf_token"]');
         return el ? el.value : '';
     }
@@ -436,6 +437,7 @@
     }
 
     function stripCsvBom(text) {
+        if (!text) return '';
         if (text.charCodeAt(0) === 0xFEFF) {
             return text.slice(1);
         }
@@ -523,9 +525,17 @@
             },
             body: JSON.stringify(payload)
         }).then(function (res) {
-            return res.json().then(function (data) {
+            return res.text().then(function (body) {
+                var data = null;
+                try {
+                    data = body ? JSON.parse(body) : null;
+                } catch (parseErr) {
+                    data = null;
+                }
                 if (!res.ok || !data || data.ok === false) {
-                    var err = (data && (data.error || data.message)) || 'Import batch failed.';
+                    var err = (data && (data.error || data.message))
+                        || (body && body.length < 280 ? body.trim() : '')
+                        || ('Import batch failed (HTTP ' + res.status + ').');
                     throw new Error(err);
                 }
                 return data;
@@ -668,14 +678,31 @@
     function bindImportForm() {
         var importForm = document.getElementById('importForm');
         if (!importForm) return;
+
         importForm.addEventListener('submit', function (e) {
             e.preventDefault();
-            if (importForm.dataset.alcrosConfirmed !== '1') {
+            e.stopImmediatePropagation();
+
+            if (importForm.dataset.alcrosImportGo === '1') {
+                delete importForm.dataset.alcrosImportGo;
+                runChunkedCsvImport(importForm);
                 return;
             }
-            delete importForm.dataset.alcrosConfirmed;
-            runChunkedCsvImport(importForm);
-        });
+
+            var confirmPromise = window.AlcrosConfirm && typeof window.AlcrosConfirm.ask === 'function'
+                ? window.AlcrosConfirm.ask('Import records from this CSV file?')
+                : Promise.resolve(window.confirm('Import records from this CSV file?'));
+
+            confirmPromise.then(function (ok) {
+                if (!ok) return;
+                importForm.dataset.alcrosImportGo = '1';
+                if (typeof importForm.requestSubmit === 'function') {
+                    importForm.requestSubmit();
+                } else {
+                    importForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                }
+            });
+        }, true);
     }
 
     function bindModalClose() {
@@ -1055,26 +1082,6 @@
         });
     }
 
-    function bindRecordsSearch() {
-        var input = document.getElementById('recordsSearchInput');
-        var form = input && input.closest('form');
-        if (!input || !form) return;
-
-        var debounceTimer = null;
-        var serverQuery = (input.value || '').trim();
-
-        input.addEventListener('input', function () {
-            if (debounceTimer) clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(function () {
-                var query = input.value.trim();
-                if (query === serverQuery) return;
-                var pageInput = form.querySelector('input[name="page"]');
-                if (pageInput) pageInput.remove();
-                form.submit();
-            }, 450);
-        });
-    }
-
     function initRecordsPage() {
         readPageConfig();
         refreshIcons();
@@ -1086,7 +1093,6 @@
         bindModalClose();
         bindViewRecordButtons();
         bindRecordsPrintMenus();
-        bindRecordsSearch();
 
         var recordTypeInput = document.getElementById('recordTypeInput');
         if (recordTypeInput) {

@@ -27,16 +27,9 @@ function stylesheetTag(string $path): string
     return '<link rel="stylesheet" href="' . htmlspecialchars($href) . '">';
 }
 
-function themeBootstrapScript(): string
-{
-    return '<script>(function(){try{var t=localStorage.getItem("alcros_theme");if(t==="dark"){document.documentElement.classList.add("alcros-dark");}}catch(e){}})();</script>';
-}
-
 function adminCoreStyles(): string
 {
-    return themeBootstrapScript() . "\n    "
-        . stylesheetTag('admin/shell.css') . "\n    "
-        . stylesheetTag('core/dark-mode.css') . "\n    "
+    return stylesheetTag('admin/shell.css') . "\n    "
         . stylesheetTag('admin/print-layout.css');
 }
 
@@ -206,7 +199,6 @@ function adminCoreScripts(): string
 
     $scripts = [
         'admin/sidebar.js',
-        'core/dark-mode.js',
         'core/admin-auth.js',
         'core/confirm.js',
         'core/loading.js',

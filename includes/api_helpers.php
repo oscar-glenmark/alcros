@@ -469,17 +469,26 @@ function documentTypeLabelsMap(): array
 
 function fetchNotifications(PDO $pdo, int $limit = 20): array
 {
+    ensureSoftDeleteColumns($pdo);
+    ensureCitizenNotifyColumns($pdo);
+
     $items = [];
 
     if (function_exists('systemErrorsAsNotifications')) {
-        $items = array_merge($items, systemErrorsAsNotifications($pdo));
+        try {
+            $items = array_merge($items, systemErrorsAsNotifications($pdo));
+        } catch (Throwable $e) {
+            // Keep citizen alerts available even if system error sync fails.
+        }
     }
 
     $docLabels = documentTypeLabelsMap();
+    $activeSql = documentRequestActiveSql();
 
     $pending = enrichCitizenNameRows($pdo->query(
         "SELECT tracking_code, first_name, middle_name, last_name, document_type, submitted_at
-         FROM document_requests WHERE status = 'pending'
+         FROM document_requests
+         WHERE {$activeSql} AND status = 'pending'
          ORDER BY submitted_at DESC LIMIT 5"
     )->fetchAll());
     foreach ($pending as $row) {
@@ -549,4 +558,12 @@ function fetchNotifications(PDO $pdo, int $limit = 20): array
     });
 
     return array_slice($items, 0, $limit);
+}
+
+function fetchSidebarActionCounts(PDO $pdo): array
+{
+    return [
+        'pending_requests'     => countPendingDocumentRequests($pdo),
+        'pending_appointments' => countPendingAppointments($pdo),
+    ];
 }

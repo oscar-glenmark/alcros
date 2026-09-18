@@ -18,6 +18,7 @@ try {
     apiJsonResponse([
         'notifications' => $notifications,
         'count'         => count($notifications),
+        'counts'        => fetchSidebarActionCounts($pdo),
     ]);
 } catch (Throwable $e) {
     apiError('Unable to load notifications.', 500);

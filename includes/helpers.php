@@ -3539,12 +3539,36 @@ function fetchManageRequestStats(PDO $pdo): array
 
     return [
         'total'            => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$activeSql}")->fetchColumn(),
-        'pending'          => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$activeSql} AND status = 'pending'")->fetchColumn(),
+        'pending'          => countPendingDocumentRequests($pdo),
         'ready'            => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$activeSql} AND status = 'ready'")->fetchColumn(),
         'completed'        => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$activeSql} AND status = 'completed'")->fetchColumn(),
         'rejected'         => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$activeSql} AND status = 'rejected'")->fetchColumn(),
         'recently_deleted' => (int) $pdo->query('SELECT COUNT(*) FROM document_requests WHERE deleted_at IS NOT NULL')->fetchColumn(),
     ];
+}
+
+function countPendingDocumentRequests(PDO $pdo): int
+{
+    ensureSoftDeleteColumns($pdo);
+    $activeSql = documentRequestActiveSql();
+
+    return (int) $pdo->query(
+        "SELECT COUNT(*) FROM document_requests WHERE {$activeSql} AND status = 'pending'"
+    )->fetchColumn();
+}
+
+function countPendingAppointments(PDO $pdo): int
+{
+    ensureCitizenNotifyColumns($pdo);
+    ensureSoftDeleteColumns($pdo);
+    $standaloneSql = appointmentStandaloneSql('a');
+
+    return (int) $pdo->query(
+        "SELECT COUNT(*) FROM appointments a
+         WHERE a.status = 'scheduled'
+           AND {$standaloneSql}
+           AND a.deleted_at IS NULL"
+    )->fetchColumn();
 }
 
 /** @return array<int, array<string, mixed>> */
@@ -4080,36 +4104,23 @@ function buildEmailMime(string $fromName, string $fromEmail, string $body, ?stri
     return [$headers, $mime];
 }
 
-function sendSmtpEmail(string $to, string $subject, string $body, ?string $html = null): bool
-{
-    $host = trim(getSetting('smtp_host', 'smtp.gmail.com')) ?: 'smtp.gmail.com';
-    $port = (int) getSetting('smtp_port', '587');
-    if ($port <= 0) {
-        $port = 587;
-    }
-    $user = trim(getSetting('smtp_user', getSetting('notification_email', '')));
-    $pass = (string) getSetting('smtp_pass', '');
-    if ($user === '' || $pass === '') {
-        return false;
-    }
-
-    $fromName = getSetting('site_name', 'ALCROS') . ' - ' . getSetting('office_name', 'Local Civil Registrar Office');
-    $encodedSubject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
-    [$headers, $mimeBody] = buildEmailMime($fromName, $user, $body, $html);
-    $payload = $headers
-        . 'To: <' . $to . ">\r\n"
-        . 'Subject: ' . $encodedSubject . "\r\n\r\n"
-        . str_replace("\n", "\r\n", $mimeBody) . "\r\n";
-    $payload = preg_replace('/^\./m', '..', $payload);
-
+function sendSmtpEmailAttempt(
+    string $to,
+    string $subject,
+    string $payload,
+    string $host,
+    int $port,
+    string $user,
+    string $pass
+): bool {
     $errno = 0;
     $errstr = '';
     $remote = ($port === 465 ? 'ssl://' : 'tcp://') . $host . ':' . $port;
-    $fp = @stream_socket_client($remote, $errno, $errstr, 15, STREAM_CLIENT_CONNECT);
+    $fp = @stream_socket_client($remote, $errno, $errstr, 20, STREAM_CLIENT_CONNECT);
     if (!$fp) {
         return false;
     }
-    stream_set_timeout($fp, 15);
+    stream_set_timeout($fp, 20);
 
     if (!str_starts_with(smtpRead($fp), '220')) {
         fclose($fp);
@@ -4154,6 +4165,38 @@ function sendSmtpEmail(string $to, string $subject, string $body, ?string $html 
     fclose($fp);
 
     return $dataOk;
+}
+
+function sendSmtpEmail(string $to, string $subject, string $body, ?string $html = null): bool
+{
+    $host = trim(getSetting('smtp_host', 'smtp.gmail.com')) ?: 'smtp.gmail.com';
+    $configuredPort = (int) getSetting('smtp_port', '587');
+    if ($configuredPort <= 0) {
+        $configuredPort = 587;
+    }
+    $user = trim(getSetting('smtp_user', getSetting('notification_email', '')));
+    $pass = (string) getSetting('smtp_pass', '');
+    if ($user === '' || $pass === '') {
+        return false;
+    }
+
+    $fromName = getSetting('site_name', 'ALCROS') . ' - ' . getSetting('office_name', 'Local Civil Registrar Office');
+    $encodedSubject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
+    [$headers, $mimeBody] = buildEmailMime($fromName, $user, $body, $html);
+    $payload = $headers
+        . 'To: <' . $to . ">\r\n"
+        . 'Subject: ' . $encodedSubject . "\r\n\r\n"
+        . str_replace("\n", "\r\n", $mimeBody) . "\r\n";
+    $payload = preg_replace('/^\./m', '..', $payload);
+
+    $ports = array_values(array_unique([$configuredPort, 465, 587]));
+    foreach ($ports as $port) {
+        if (sendSmtpEmailAttempt($to, $subject, $payload, $host, (int) $port, $user, $pass)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function isEmailConfigured(): bool

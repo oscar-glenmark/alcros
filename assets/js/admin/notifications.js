@@ -116,9 +116,21 @@
         }
     }
 
-    function updateBadges(unreadCount, suppressHeader) {
-        updateBadgeEl(document.getElementById('notif-badge'), suppressHeader ? 0 : unreadCount);
-        updateBadgeEl(document.getElementById('sidebar-notif-badge'), unreadCount);
+    function serverActionCount(data) {
+        var counts = (data && data.counts) || {};
+        var pendingRequests = parseInt(counts.pending_requests, 10) || 0;
+        var pendingAppointments = parseInt(counts.pending_appointments, 10) || 0;
+        return Math.max(pendingRequests, pendingAppointments);
+    }
+
+    function displayBadgeCount(unreadCount, actionCount) {
+        return Math.max(unreadCount, actionCount);
+    }
+
+    function updateBadges(unreadCount, suppressHeader, actionCount) {
+        var count = displayBadgeCount(unreadCount, actionCount || 0);
+        updateBadgeEl(document.getElementById('notif-badge'), suppressHeader ? 0 : count);
+        updateBadgeEl(document.getElementById('sidebar-notif-badge'), count);
     }
 
     function renderListEl(listEl, all, options) {
@@ -266,7 +278,7 @@
                 isOpen = false;
                 dropdown.classList.add('hidden');
                 bellBtn.setAttribute('aria-expanded', 'false');
-                updateBadges(countUnread(latestGetter()), false);
+                refresh();
             }
         });
 
@@ -288,12 +300,14 @@
         showInitialSkeletons();
 
         var latest = [];
+        var latestCounts = { pending_requests: 0, pending_appointments: 0 };
         var headerOpen = initHeaderDropdown(refresh, function () { return latest; });
 
         function refresh() {
             renderAllLists(latest);
             var unread = countUnread(latest);
-            updateBadges(unread, headerOpen && headerOpen());
+            var actionCount = serverActionCount({ counts: latestCounts });
+            updateBadges(unread, headerOpen && headerOpen(), actionCount);
         }
 
         bindPanelActions(refresh, function () { return latest; });
@@ -307,6 +321,7 @@
 
         AlcrosPoll.pollJson('api/notifications.php', pollParams, 60000, function (data) {
             latest = data.notifications || [];
+            latestCounts = data.counts || latestCounts;
             refresh();
             AlcrosPoll.markLiveIndicator();
         });

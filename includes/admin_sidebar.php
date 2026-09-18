@@ -65,7 +65,7 @@ function sidebarSectionLabel(string $label): string
         <?= sidebarSectionLabel('Operations') ?>
         <?= sidebarLink('dashboard.php', 'Dashboard', 'layout-dashboard', $activePage) ?>
         <?= sidebarLink('notifications.php', 'Notifications', 'bell', $activePage, false, 'sidebar-notif-badge') ?>
-        <?= sidebarLink('manage_request.php', 'Manage Requests', 'file-text', $activePage) ?>
+        <?= sidebarLink('manage_request.php', 'Manage Requests', 'file-text', $activePage, false, 'sidebar-request-badge') ?>
         <?= sidebarLink('appointment.php', 'Manage Appointments', 'calendar', $activePage, false, 'sidebar-appt-badge', ['date' => alcrosTodayDate()]) ?>
         <?= sidebarLink('records.php', 'Records', 'book-open', $activePage) ?>
         <?= sidebarLink('report.php', 'Reports', 'bar-chart-2', $activePage) ?>

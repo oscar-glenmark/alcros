@@ -10,12 +10,9 @@ try {
     $pdo = getDB();
     ensureSoftDeleteColumns($pdo);
 
-    ensureCitizenNotifyColumns($pdo);
-
     apiJsonResponse([
-        'pending_count' => countPendingAppointments($pdo),
-        'today_count'   => countTodaySpecialAppointments($pdo),
+        'pending_count' => countPendingDocumentRequests($pdo),
     ]);
 } catch (Throwable $e) {
-    apiError('Unable to load appointment summary.', 500);
+    apiError('Unable to load request summary.', 500);
 }

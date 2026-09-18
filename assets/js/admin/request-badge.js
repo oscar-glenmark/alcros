@@ -14,10 +14,10 @@
     function init() {
         if (!window.AlcrosPoll) return;
 
-        var badge = document.getElementById('sidebar-appt-badge');
+        var badge = document.getElementById('sidebar-request-badge');
         if (!badge) return;
 
-        AlcrosPoll.pollJson('api/appointment_summary.php', {}, 60000, function (data) {
+        AlcrosPoll.pollJson('api/request_summary.php', {}, 60000, function (data) {
             updateBadgeEl(badge, parseInt(data.pending_count, 10) || 0);
         });
     }

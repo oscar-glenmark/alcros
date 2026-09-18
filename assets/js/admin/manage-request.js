@@ -862,6 +862,10 @@
         if (data.focus) {
             refreshOpenDetail(data.focus);
         }
+
+        if (window.AlcrosAdminLive && typeof window.AlcrosAdminLive.refresh === 'function') {
+            window.AlcrosAdminLive.refresh();
+        }
     }
 
     var lastListSignature = listSignature(

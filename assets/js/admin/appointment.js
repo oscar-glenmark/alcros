@@ -575,4 +575,144 @@
             openDetail(firstData, firstRow);
         }
     }
+
+    var statFieldMap = {
+        all_appointments: 'total',
+        scheduled: 'scheduled',
+        confirmed: 'confirmed',
+        completed: 'completed',
+        no_show: 'no_show'
+    };
+
+    function listSignature(appointments) {
+        return (appointments || []).map(function (a) {
+            return String(a.id) + ':' + String(a.revision);
+        }).join('|');
+    }
+
+    function updateStatCards(stats) {
+        if (!stats) return;
+        document.querySelectorAll('[data-stat-key]').forEach(function (card) {
+            var key = card.getAttribute('data-stat-key') || '';
+            var field = statFieldMap[key];
+            if (!field || stats[field] === undefined) return;
+            var valueEl = card.querySelector('.manage-stat-card__value');
+            if (valueEl) valueEl.textContent = Number(stats[field]).toLocaleString();
+        });
+    }
+
+    function refreshOpenDetail(focus) {
+        if (!focus || !focus.id) return;
+
+        var selected = document.querySelector('.manage-requests-row.is-selected');
+        var selectedId = selected ? parseInt(selected.getAttribute('data-appointment-row'), 10) : 0;
+        if (!selectedId || selectedId !== focus.id) return;
+
+        var current = parseAppointmentData(selected);
+        if (current && current.revision === focus.revision) return;
+
+        if (useSidePanel && bodyWrap && bodyWrap.classList.contains('has-detail')) {
+            populateDetailView(panelView, focus);
+        }
+        if (modal && !modal.classList.contains('hidden')) {
+            populateDetailView(modalView, focus);
+        }
+
+        selected.setAttribute('data-appointment', JSON.stringify(focus));
+        var viewBtn = selected.querySelector('.view-appointment-btn');
+        if (viewBtn) viewBtn.setAttribute('data-appointment', JSON.stringify(focus));
+    }
+
+    function applyListUpdate(data) {
+        var appointments = data.appointments || [];
+        var signature = listSignature(appointments);
+        if (signature !== lastListSignature) {
+            lastListSignature = signature;
+            updateStatCards(data.stats);
+
+            var apiById = {};
+            appointments.forEach(function (item) {
+                apiById[item.id] = item;
+            });
+
+            var revisionMismatch = false;
+
+            document.querySelectorAll('[data-appointment-row]').forEach(function (row) {
+                var rowId = parseInt(row.getAttribute('data-appointment-row'), 10);
+                var item = apiById[rowId];
+                if (!item) {
+                    if (row.classList.contains('is-selected')) {
+                        if (useSidePanel) closeDetail();
+                        closeModal();
+                    }
+                    row.remove();
+                    return;
+                }
+
+                var statusCell = row.querySelector('.manage-cell-status');
+                if (statusCell && item.status_badge_html) {
+                    statusCell.innerHTML = item.status_badge_html;
+                }
+
+                var existing = parseAppointmentData(row);
+                if (existing && item.revision && item.revision !== existing.revision) {
+                    revisionMismatch = true;
+                }
+            });
+
+            if (revisionMismatch) {
+                window.location.reload();
+                return;
+            }
+
+            var domCount = document.querySelectorAll('[data-appointment-row]').length;
+            if (domCount !== appointments.length) {
+                window.location.reload();
+                return;
+            }
+        } else {
+            updateStatCards(data.stats);
+        }
+
+        if (data.focus) {
+            refreshOpenDetail(data.focus);
+        }
+
+        if (window.AlcrosAdminLive && typeof window.AlcrosAdminLive.refresh === 'function') {
+            window.AlcrosAdminLive.refresh();
+        }
+    }
+
+    var lastListSignature = listSignature(
+        Array.prototype.map.call(
+            document.querySelectorAll('[data-appointment-row]'),
+            function (row) {
+                var parsed = parseAppointmentData(row);
+                return {
+                    id: parseInt(row.getAttribute('data-appointment-row'), 10),
+                    revision: parsed && parsed.revision ? parsed.revision : ''
+                };
+            }
+        )
+    );
+
+    if (window.AlcrosPoll && pageConfig.pollUrl) {
+        AlcrosPoll.pollJson(
+            pageConfig.pollUrl,
+            function () {
+                var params = {
+                    date: pageConfig.redirectDate || undefined,
+                    status: pageConfig.redirectStatus || 'all',
+                    q: pageConfig.redirectQ || undefined
+                };
+                var selected = document.querySelector('.manage-requests-row.is-selected');
+                if (selected) {
+                    params.focus_id = selected.getAttribute('data-appointment-row');
+                }
+                return params;
+            },
+            30000,
+            applyListUpdate
+        );
+    }
 })();

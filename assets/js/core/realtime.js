@@ -444,53 +444,6 @@
         return p[1] + '/' + p[2] + '/' + p[0];
     }
 
-    function initAppointments() {
-        var viewDate = document.body.dataset.appointmentDate;
-        if (!viewDate) return;
-
-        var filterStatus = document.body.dataset.appointmentStatus || 'all';
-        var searchQuery = document.body.dataset.appointmentSearch || '';
-
-        AlcrosPoll.pollJson('api/appointments.php', function () {
-            return {
-                date: viewDate,
-                status: filterStatus,
-                q: searchQuery || undefined
-            };
-        }, 30000, function (data) {
-            var appts = data.appointments || [];
-            var domIds = new Set();
-            document.querySelectorAll('[data-appointment-row]').forEach(function (row) {
-                domIds.add(String(row.getAttribute('data-appointment-row')));
-            });
-
-            var apiIds = new Set(appts.map(function (ap) { return String(ap.id); }));
-
-            var hasNew = appts.some(function (ap) {
-                return !domIds.has(String(ap.id));
-            });
-            var hasRemoved = Array.from(domIds).some(function (id) {
-                return !apiIds.has(id);
-            });
-
-            if (!hasNew && !hasRemoved) {
-                AlcrosPoll.markLiveIndicator();
-                return;
-            }
-
-            var panelOpen = document.getElementById('appointmentsBody')?.classList.contains('has-detail');
-            var modalOpen = document.getElementById('appointmentReviewModal') && !document.getElementById('appointmentReviewModal').classList.contains('hidden');
-            var editing = document.activeElement && document.activeElement.closest('[data-appointment-row], #appointmentDetailPanel, #appointmentReviewModal');
-
-            if (!panelOpen && !modalOpen && !editing) {
-                window.location.reload();
-                return;
-            }
-
-            AlcrosPoll.markLiveIndicator();
-        });
-    }
-
     function initHeaderStats() {
         if (!document.getElementById('header-queue-count')) return;
         AlcrosPoll.pollJson('api/dashboard_stats.php', {}, 60000, function (data) {
@@ -509,6 +462,5 @@
         if (mode === 'queue-display') initQueueDisplay();
         if (mode === 'dashboard') initDashboard();
         if (mode === 'track' || mode === 'track-appointment') initTrack();
-        if (mode === 'appointments') initAppointments();
     });
 })();

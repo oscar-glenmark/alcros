@@ -11,16 +11,13 @@
         }
     }
 
-    function init() {
-        if (!window.AlcrosPoll) return;
-
+    function applyCounts(counts) {
         var badge = document.getElementById('sidebar-appt-badge');
         if (!badge) return;
-
-        AlcrosPoll.pollJson('api/appointment_summary.php', {}, 60000, function (data) {
-            updateBadgeEl(badge, parseInt(data.pending_count, 10) || 0);
-        });
+        updateBadgeEl(badge, parseInt((counts || {}).pending_appointments, 10) || 0);
     }
 
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('alcros:admin-live', function (e) {
+        applyCounts((e.detail || {}).counts);
+    });
 })();

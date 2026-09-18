@@ -1019,6 +1019,14 @@ body.admin-sidebar-minimized .admin-sidebar button {
     white-space: nowrap;
 }
 
+.admin-header__sync {
+    margin-right: 0.5rem;
+    padding: 0.2rem 0.45rem;
+    border-radius: 9999px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+}
+
 .live-sync-indicator.is-stale {
     color: #b45309;
 }

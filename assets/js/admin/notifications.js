@@ -312,19 +312,24 @@
 
         bindPanelActions(refresh, function () { return latest; });
 
-        var isPage = !!document.getElementById('notif-page-list');
-        var pollParams = isPage ? { limit: 50 } : {};
-
-        if (isPage) {
+        if (document.getElementById('notif-page-list')) {
             setSeenAt(Date.now());
         }
 
-        AlcrosPoll.pollJson('api/notifications.php', pollParams, 60000, function (data) {
-            latest = data.notifications || [];
-            latestCounts = data.counts || latestCounts;
+        function applyPayload(data) {
+            latest = (data && data.notifications) || [];
+            latestCounts = (data && data.counts) || latestCounts;
             refresh();
-            AlcrosPoll.markLiveIndicator();
+        }
+
+        document.addEventListener('alcros:admin-live', function (e) {
+            applyPayload(e.detail || {});
         });
+
+        window.AlcrosNotifications = {
+            applyPayload: applyPayload,
+            refresh: refresh
+        };
     }
 
     document.addEventListener('DOMContentLoaded', init);

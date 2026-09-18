@@ -301,7 +301,8 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                         || ($cardFilter === 'scheduled' && $filterStatus === 'all');
                 ?>
                 <a href="<?= htmlspecialchars($cardHref) ?>"
-                   class="manage-stat-card manage-stat-card--<?= htmlspecialchars($card['tone']) ?><?= $cardActive ? ' is-active' : '' ?>">
+                   class="manage-stat-card manage-stat-card--<?= htmlspecialchars($card['tone']) ?><?= $cardActive ? ' is-active' : '' ?>"
+                   data-stat-key="<?= htmlspecialchars($cardFilter) ?>">
                     <div class="manage-stat-card__icon">
                         <i data-lucide="<?= htmlspecialchars($card['icon']) ?>" class="w-4 h-4"></i>
                     </div>
@@ -393,6 +394,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                             <?php elseif ($isRecentlyDeletedView): ?>
                             · <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $viewDate, 'status' => 'all_appointments'])) ?>" class="manage-bulk-meta-link">Back to all appointments</a>
                             <?php endif; ?>
+                            · <span class="live-sync-indicator" aria-live="polite">Live</span>
                         </p>
                     </div>
                     <p class="manage-table-head__tip"><?= $isRecentlyDeletedView ? 'Select items to restore or permanently delete them' : ($showSidePanel ? 'Click Verify to review details, then confirm or reject the appointment in the popup' : 'Click Complete to open the visit popup and mark it served') ?></p>
@@ -461,7 +463,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                             <?php if ($isRecentlyDeletedView): ?>
                             <td><span class="manage-date"><?= !empty($ap['deleted_at']) ? htmlspecialchars(formatReportDateTime($ap['deleted_at'])) : '—' ?></span></td>
                             <?php endif; ?>
-                            <td><?= appointmentStatusBadge($ap['status']) ?></td>
+                            <td class="manage-cell-status"><?= appointmentStatusBadge($ap['status']) ?></td>
                             <td class="manage-cell-actions">
                                 <div class="manage-row-actions" onclick="event.stopPropagation()">
                                     <?php if (!$isRecentlyDeletedView): ?>

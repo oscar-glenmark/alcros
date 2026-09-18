@@ -195,8 +195,6 @@ function actionCoreScripts(): string
 
 function adminCoreScripts(): string
 {
-    $includeRealtime = !empty($GLOBALS['alcros_admin_realtime']);
-
     $scripts = [
         'admin/sidebar.js',
         'core/admin-auth.js',
@@ -204,14 +202,12 @@ function adminCoreScripts(): string
         'core/loading.js',
         'core/action-result.js',
         'core/poll.js',
+        'admin/admin-live.js',
         'admin/notifications.js',
         'admin/request-badge.js',
         'admin/appointment-badge.js',
+        'core/realtime.js',
     ];
-
-    if ($includeRealtime) {
-        $scripts[] = 'core/realtime.js';
-    }
 
     return scriptTags($scripts);
 }

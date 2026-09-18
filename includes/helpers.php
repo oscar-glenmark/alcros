@@ -3571,6 +3571,134 @@ function countPendingAppointments(PDO $pdo): int
     )->fetchColumn();
 }
 
+function appointmentRevision(array $row): string
+{
+    return sha1(
+        (string) ($row['id'] ?? '')
+        . '|' . (string) ($row['status'] ?? '')
+        . '|' . (string) ($row['updated_at'] ?? '')
+        . '|' . (string) ($row['deleted_at'] ?? '')
+    );
+}
+
+function appointmentsListFilters(array $input): array
+{
+    $status = (string) ($input['status'] ?? 'all');
+    if (!in_array($status, ['all', 'scheduled', 'confirmed', 'completed', 'no_show', 'all_appointments', 'recently_deleted'], true)) {
+        $status = 'all';
+    }
+
+    $date = (string) ($input['date'] ?? alcrosTodayDate());
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        $date = alcrosTodayDate();
+    }
+
+    return [
+        'status' => $status,
+        'date'   => $date,
+        'q'      => trim((string) ($input['q'] ?? '')),
+    ];
+}
+
+function fetchAppointmentDayStats(PDO $pdo, string $viewDate): array
+{
+    ensureCitizenNotifyColumns($pdo);
+    ensureSoftDeleteColumns($pdo);
+    ensureAppointmentUpdatedColumn($pdo);
+    $standaloneSql = appointmentStandaloneSql('a');
+
+    $statsStmt = $pdo->prepare(
+        "SELECT status, COUNT(*) AS cnt FROM appointments a
+         WHERE a.appointment_date = ? AND {$standaloneSql} AND a.deleted_at IS NULL
+         GROUP BY status"
+    );
+    $statsStmt->execute([$viewDate]);
+    $statusCounts = [];
+    foreach ($statsStmt->fetchAll(PDO::FETCH_ASSOC) as $statRow) {
+        $statusCounts[(string) $statRow['status']] = (int) $statRow['cnt'];
+    }
+
+    $recentlyDeletedStmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM appointments a
+         WHERE a.appointment_date = ? AND {$standaloneSql} AND a.deleted_at IS NOT NULL"
+    );
+    $recentlyDeletedStmt->execute([$viewDate]);
+
+    return [
+        'total'            => array_sum($statusCounts),
+        'scheduled'        => (int) ($statusCounts['scheduled'] ?? 0),
+        'confirmed'        => (int) ($statusCounts['confirmed'] ?? 0),
+        'completed'        => (int) ($statusCounts['completed'] ?? 0),
+        'no_show'          => (int) ($statusCounts['no_show'] ?? 0),
+        'recently_deleted' => (int) $recentlyDeletedStmt->fetchColumn(),
+    ];
+}
+
+/** @return array<int, array<string, mixed>> */
+function fetchAppointmentsManageList(PDO $pdo, array $filters): array
+{
+    ensureCitizenNotifyColumns($pdo);
+    ensureSoftDeleteColumns($pdo);
+    ensureAppointmentUpdatedColumn($pdo);
+
+    $viewDate = $filters['date'];
+    $filterStatus = $filters['status'];
+    $search = $filters['q'];
+    $isSearchMode = $search !== '';
+    $standaloneSql = appointmentStandaloneSql('a');
+
+    $sql = "SELECT a.*, dr.date_of_birth, dr.date_of_marriage, dr.sex, dr.document_type AS request_document_type
+            FROM appointments a
+            LEFT JOIN document_requests dr ON dr.tracking_code = a.tracking_code AND dr.deleted_at IS NULL
+            WHERE {$standaloneSql}";
+    $params = [];
+
+    if ($isSearchMode) {
+        if ($filterStatus === 'recently_deleted') {
+            $sql .= ' AND a.deleted_at IS NOT NULL';
+        } else {
+            $sql .= ' AND a.deleted_at IS NULL';
+        }
+    } elseif ($filterStatus === 'recently_deleted') {
+        $sql .= ' AND a.appointment_date = ? AND a.deleted_at IS NOT NULL';
+        $params[] = $viewDate;
+    } else {
+        $sql .= ' AND a.appointment_date = ? AND a.deleted_at IS NULL';
+        $params[] = $viewDate;
+    }
+
+    if ($search !== '') {
+        if ($filterStatus !== 'all' && $filterStatus !== '' && $filterStatus !== 'all_appointments') {
+            $sql .= ' AND a.status = ?';
+            $params[] = $filterStatus;
+        }
+    } elseif ($filterStatus === 'all_appointments') {
+        // All active statuses for this date.
+    } elseif ($filterStatus === 'recently_deleted') {
+        // Deleted items only for this date.
+    } elseif ($filterStatus === 'all' || $filterStatus === '') {
+        $sql .= " AND a.status = 'scheduled'";
+    } else {
+        $sql .= ' AND a.status = ?';
+        $params[] = $filterStatus;
+    }
+
+    [$searchSql, $searchParams] = appointmentSearchClause($search, 'a');
+    $sql .= $searchSql;
+    $params = array_merge($params, $searchParams);
+
+    if ($isSearchMode) {
+        $sql .= ' ORDER BY a.appointment_date DESC, a.appointment_time ASC LIMIT 100';
+    } else {
+        $sql .= $filterStatus === 'recently_deleted' ? ' ORDER BY a.deleted_at DESC' : ' ORDER BY a.appointment_time ASC';
+    }
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+
+    return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+}
+
 /** @return array<int, array<string, mixed>> */
 function fetchManageRequestsList(PDO $pdo, array $filters): array
 {
@@ -3711,6 +3839,7 @@ function appointmentViewData(array $row): array
         'id_front_path'    => protectedUploadUrl(!empty($row['id_front_path']) ? (string) $row['id_front_path'] : null),
         'id_back_path'     => protectedUploadUrl(!empty($row['id_back_path']) ? (string) $row['id_back_path'] : null),
         'created_at'       => !empty($row['created_at']) ? formatReportDateTime($row['created_at']) : '—',
+        'revision'         => appointmentRevision($row),
         'can_delete'       => false,
         'actions'          => $actionOptions,
         'notes'            => !empty($row['notes']) ? (string) $row['notes'] : null,

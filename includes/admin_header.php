@@ -37,6 +37,7 @@ $pageHeaderMeta = $pageHeaderMeta ?? '';
     </div>
 
     <div class="admin-header__toolbar flex items-center min-w-0">
+        <span id="live-sync-indicator" class="live-sync-indicator admin-header__sync hidden sm:inline-flex" aria-live="polite">Live</span>
         <div class="admin-header__actions flex items-center shrink-0">
             <div class="relative admin-header__notif" id="notif-wrapper" data-staff-id="<?= htmlspecialchars(staffId()) ?>">
                 <button

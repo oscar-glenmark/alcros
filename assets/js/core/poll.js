@@ -54,23 +54,33 @@
             timer = setInterval(tick, resolveInterval());
         }
 
+        function syncIndicators() {
+            var nodes = document.querySelectorAll('.live-sync-indicator');
+            if (!nodes.length && document.getElementById('live-sync-indicator')) {
+                nodes = [document.getElementById('live-sync-indicator')];
+            }
+            return nodes;
+        }
+
         function setSyncState(state) {
-            var el = document.getElementById('live-sync-indicator');
-            if (!el) return;
-            if (state === 'live') {
-                el.textContent = 'Live · ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                el.classList.remove('opacity-50', 'is-stale', 'is-reconnecting');
-                return;
-            }
-            if (state === 'stale') {
-                el.textContent = 'Offline · showing last update';
-                el.classList.add('is-stale');
-                el.classList.remove('is-reconnecting');
-                return;
-            }
-            el.textContent = 'Reconnecting…';
-            el.classList.add('is-reconnecting');
-            el.classList.remove('is-stale');
+            var nodes = syncIndicators();
+            if (!nodes.length) return;
+            nodes.forEach(function (el) {
+                if (state === 'live') {
+                    el.textContent = 'Live · ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    el.classList.remove('opacity-50', 'is-stale', 'is-reconnecting');
+                    return;
+                }
+                if (state === 'stale') {
+                    el.textContent = 'Offline · showing last update';
+                    el.classList.add('is-stale');
+                    el.classList.remove('is-reconnecting');
+                    return;
+                }
+                el.textContent = 'Reconnecting…';
+                el.classList.add('is-reconnecting');
+                el.classList.remove('is-stale');
+            });
         }
 
         function tick() {
@@ -168,10 +178,17 @@
     }
 
     function markLiveIndicator() {
-        var el = document.getElementById('live-sync-indicator');
-        if (!el) return;
-        el.textContent = 'Live · ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        el.classList.remove('opacity-50', 'is-stale', 'is-reconnecting');
+        var nodes = document.querySelectorAll('.live-sync-indicator');
+        if (!nodes.length) {
+            var fallback = document.getElementById('live-sync-indicator');
+            if (fallback) nodes = [fallback];
+        }
+        if (!nodes.length) return;
+        var label = 'Live · ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        nodes.forEach(function (el) {
+            el.textContent = label;
+            el.classList.remove('opacity-50', 'is-stale', 'is-reconnecting');
+        });
     }
 
     global.AlcrosPoll = {

@@ -435,21 +435,246 @@
         }
     }
 
+    function stripCsvBom(text) {
+        if (text.charCodeAt(0) === 0xFEFF) {
+            return text.slice(1);
+        }
+        return text;
+    }
+
+    function parseCsvText(text) {
+        var rows = [];
+        var row = [];
+        var field = '';
+        var inQuotes = false;
+
+        for (var i = 0; i < text.length; i++) {
+            var ch = text.charAt(i);
+            if (inQuotes) {
+                if (ch === '"') {
+                    if (text.charAt(i + 1) === '"') {
+                        field += '"';
+                        i++;
+                    } else {
+                        inQuotes = false;
+                    }
+                } else {
+                    field += ch;
+                }
+                continue;
+            }
+
+            if (ch === '"') {
+                inQuotes = true;
+            } else if (ch === ',') {
+                row.push(field);
+                field = '';
+            } else if (ch === '\r') {
+                continue;
+            } else if (ch === '\n') {
+                row.push(field);
+                rows.push(row);
+                row = [];
+                field = '';
+            } else {
+                field += ch;
+            }
+        }
+
+        if (field !== '' || row.length > 0) {
+            row.push(field);
+            rows.push(row);
+        }
+
+        return rows;
+    }
+
+    function csvRowLooksLikeHeader(row) {
+        var joined = row.join(' ').toLowerCase();
+        return /record_type|first_name|child_first|deceased_first|husband_first|registry_number|registry_no/.test(joined);
+    }
+
+    function setImportProgress(percent, message) {
+        var wrap = document.getElementById('importProgressWrap');
+        var text = document.getElementById('importProgressText');
+        var bar = document.getElementById('importProgressBar');
+        if (wrap) wrap.classList.remove('hidden');
+        if (text) text.textContent = message;
+        if (bar) bar.style.width = Math.max(0, Math.min(100, percent)) + '%';
+    }
+
+    function resetImportProgress() {
+        var wrap = document.getElementById('importProgressWrap');
+        var bar = document.getElementById('importProgressBar');
+        if (wrap) wrap.classList.add('hidden');
+        if (bar) bar.style.width = '0%';
+    }
+
+    function postImportBatch(payload) {
+        var apiUrl = cfg.recordsImportApiUrl || 'api/records_import.php';
+        return fetch(apiUrl, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfInputValue(),
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify(payload)
+        }).then(function (res) {
+            return res.json().then(function (data) {
+                if (!res.ok || !data || data.ok === false) {
+                    var err = (data && (data.error || data.message)) || 'Import batch failed.';
+                    throw new Error(err);
+                }
+                return data;
+            });
+        });
+    }
+
+    function runChunkedCsvImport(importForm) {
+        var importTypeEl = document.getElementById('importType');
+        var fileInput = importForm.querySelector('input[name="csv_file"]');
+        var submitBtn = document.getElementById('importSubmitBtn');
+        var importType = importTypeEl ? importTypeEl.value : '';
+
+        if (!importType) {
+            alert('Please choose an import type from New Entry → Import.');
+            return Promise.resolve();
+        }
+        if (!fileInput || !fileInput.files || !fileInput.files[0]) {
+            alert('Please choose a CSV file to import.');
+            return Promise.resolve();
+        }
+
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Importing…';
+        }
+
+        setImportProgress(0, 'Reading CSV file…');
+
+        return fileInput.files[0].text().then(function (rawText) {
+            var parsedRows = parseCsvText(stripCsvBom(rawText));
+            var headers = [];
+            var dataRows = parsedRows;
+            var startLine = 1;
+
+            if (parsedRows.length > 0 && csvRowLooksLikeHeader(parsedRows[0])) {
+                headers = parsedRows[0].map(function (cell) {
+                    return String(cell || '').trim();
+                });
+                dataRows = parsedRows.slice(1);
+                startLine = 2;
+            }
+
+            if (!dataRows.length) {
+                throw new Error('The CSV file has no data rows to import.');
+            }
+
+            var batchSize = 250;
+            var totals = {
+                imported: 0,
+                skipped: 0,
+                sample_skipped: 0,
+                errors: []
+            };
+            var lineOffset = startLine;
+            var batchIndex = 0;
+            var totalBatches = Math.ceil(dataRows.length / batchSize);
+
+            function sendNextBatch() {
+                if (batchIndex >= totalBatches) {
+                    return Promise.resolve();
+                }
+
+                var slice = dataRows.slice(batchIndex * batchSize, (batchIndex + 1) * batchSize);
+                var percent = Math.round((batchIndex / totalBatches) * 100);
+                setImportProgress(
+                    percent,
+                    'Importing batch ' + (batchIndex + 1) + ' of ' + totalBatches +
+                    ' (' + totals.imported.toLocaleString() + ' saved so far)…'
+                );
+
+                var payload = {
+                    import_type: importType,
+                    headers: batchIndex === 0 ? headers : headers,
+                    rows: slice,
+                    start_line: lineOffset,
+                    finalize: false
+                };
+
+                return postImportBatch(payload).then(function (result) {
+                    totals.imported += Number(result.imported || 0);
+                    totals.skipped += Number(result.skipped || 0);
+                    totals.sample_skipped += Number(result.sample_skipped || 0);
+                    if (Array.isArray(result.errors)) {
+                        totals.errors = totals.errors.concat(result.errors);
+                    }
+                    lineOffset += slice.length;
+                    batchIndex++;
+                    return sendNextBatch();
+                });
+            }
+
+            return sendNextBatch().then(function () {
+                setImportProgress(100, 'Finishing import…');
+                return postImportBatch({
+                    import_type: importType,
+                    headers: [],
+                    rows: [],
+                    finalize: true,
+                    imported_total: totals.imported
+                }).then(function () {
+                    var msg = 'Successfully imported ' + totals.imported.toLocaleString() + ' record(s).';
+                    if (totals.sample_skipped > 0) {
+                        msg += ' Skipped ' + totals.sample_skipped.toLocaleString() + ' template sample row(s).';
+                    }
+                    if (totals.skipped > 0) {
+                        msg += ' Skipped ' + totals.skipped.toLocaleString() + ' invalid row(s).';
+                    }
+                    if (totals.errors.length) {
+                        msg += ' ' + totals.errors.slice(0, 2).join(' ');
+                    }
+
+                    if (window.AlcrosActionResult && typeof AlcrosActionResult.show === 'function') {
+                        AlcrosActionResult.show(totals.imported > 0 ? 'success' : 'error', msg);
+                    } else {
+                        alert(msg);
+                    }
+
+                    window.setTimeout(function () {
+                        window.location.reload();
+                    }, totals.imported > 0 ? 900 : 0);
+                });
+            });
+        }).catch(function (err) {
+            var message = err && err.message ? err.message : 'Import failed. Please try again.';
+            if (window.AlcrosActionResult && typeof AlcrosActionResult.show === 'function') {
+                AlcrosActionResult.show('error', message);
+            } else {
+                alert(message);
+            }
+        }).finally(function () {
+            resetImportProgress();
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Import Records';
+            }
+        });
+    }
+
     function bindImportForm() {
         var importForm = document.getElementById('importForm');
         if (!importForm) return;
         importForm.addEventListener('submit', function (e) {
-            var importType = document.getElementById('importType');
-            if (!importType || !importType.value) {
-                e.preventDefault();
-                alert('Please choose an import type from New Entry → Import.');
+            e.preventDefault();
+            if (importForm.dataset.alcrosConfirmed !== '1') {
                 return;
             }
-            var submitBtn = e.target.querySelector('button[type="submit"]');
-            if (submitBtn) {
-                submitBtn.disabled = true;
-                submitBtn.textContent = 'Importing…';
-            }
+            delete importForm.dataset.alcrosConfirmed;
+            runChunkedCsvImport(importForm);
         });
     }
 

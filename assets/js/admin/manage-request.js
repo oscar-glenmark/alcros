@@ -689,7 +689,7 @@
                 e.preventDefault();
                 e.stopPropagation();
                 dismissBlockingUi();
-                handleViewRequestClick(btn, { modal: !useSidePanel });
+                handleViewRequestClick(btn, { modal: true });
             });
         });
     }

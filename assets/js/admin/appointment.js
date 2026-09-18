@@ -347,12 +347,20 @@
         return useSidePanel && data && data.status_key === 'scheduled';
     }
 
-    function openAppointmentView(data, row) {
-        if (shouldUseSidePanel(data) && panel && content && emptyState) {
-            openDetail(data, row);
+    function openAppointmentView(data, row, options) {
+        options = options || {};
+        var openInModal = options.modal === true
+            || !shouldUseSidePanel(data)
+            || !panel
+            || !content
+            || !emptyState;
+
+        if (openInModal) {
+            openModal(data, row);
             return;
         }
-        openModal(data, row);
+
+        openDetail(data, row);
     }
 
     function openDetail(data, row) {
@@ -384,6 +392,7 @@
     function openModal(data, row) {
         if (!modal) return;
 
+        closeDetail();
         populateDetailView(modalView, data);
         modal.classList.remove('hidden');
         modal.setAttribute('aria-hidden', 'false');
@@ -449,12 +458,14 @@
             });
     }
 
-    function handleViewAppointmentClick(btn) {
+    function handleViewAppointmentClick(btn, options) {
         if (!btn) return;
+        options = options || { modal: true };
+
         var row = btn.closest('.manage-requests-row');
         var viewData = parseAppointmentData(btn) || parseAppointmentData(row);
         if (viewData) {
-            openAppointmentView(viewData, row);
+            openAppointmentView(viewData, row, options);
             return;
         }
 
@@ -488,7 +499,7 @@
                 row.setAttribute('data-appointment', JSON.stringify(focus));
             }
             btn.setAttribute('data-appointment', JSON.stringify(focus));
-            openAppointmentView(focus, row);
+            openAppointmentView(focus, row, options);
         });
     }
 
@@ -522,7 +533,7 @@
         e.preventDefault();
         e.stopImmediatePropagation();
         dismissBlockingUi();
-        handleViewAppointmentClick(viewBtn);
+        handleViewAppointmentClick(viewBtn, { modal: true });
     }, true);
 
     document.addEventListener('click', function (e) {
@@ -537,7 +548,7 @@
         var row = e.target.closest('.manage-requests-row');
         if (row) {
             var rowData = parseAppointmentData(row);
-            if (rowData) openAppointmentView(rowData, row);
+            if (rowData) openAppointmentView(rowData, row, { modal: false });
             return;
         }
 

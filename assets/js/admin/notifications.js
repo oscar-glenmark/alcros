@@ -41,6 +41,14 @@
         localStorage.setItem(staffKey('seen'), String(ts || Date.now()));
     }
 
+    function getBadgesAckAt() {
+        return parseInt(localStorage.getItem(staffKey('badges_ack')) || '0', 10) || 0;
+    }
+
+    function setBadgesAckAt(ts) {
+        localStorage.setItem(staffKey('badges_ack'), String(ts || Date.now()));
+    }
+
     function getClearedAt() {
         return parseInt(localStorage.getItem(staffKey('cleared')) || '0', 10) || 0;
     }
@@ -113,10 +121,52 @@
         }
     }
 
-    function updateBadges(unreadCount, hideWhileOpen) {
-        var count = hideWhileOpen ? 0 : unreadCount;
-        updateBadgeEl(document.getElementById('notif-badge'), count);
-        updateBadgeEl(document.getElementById('sidebar-notif-badge'), count);
+    function hasNewActivity(all) {
+        var ackAt = getBadgesAckAt();
+        if (!ackAt) {
+            return true;
+        }
+        return visibleList(all).some(function (n) {
+            return notifTime(n) > ackAt;
+        });
+    }
+
+    function actionCounts(counts) {
+        return {
+            requests: parseInt((counts || {}).pending_requests, 10) || 0,
+            appointments: parseInt((counts || {}).pending_appointments, 10) || 0
+        };
+    }
+
+    function computeBadgeCounts(all, counts, hideBellWhileOpen) {
+        if (!hasNewActivity(all)) {
+            return { bell: 0, requests: 0, appointments: 0 };
+        }
+
+        var actions = actionCounts(counts);
+        var unread = countUnread(all);
+        var bellCount = Math.max(unread, actions.requests, actions.appointments);
+
+        return {
+            bell: hideBellWhileOpen ? 0 : bellCount,
+            requests: actions.requests,
+            appointments: actions.appointments
+        };
+    }
+
+    function updateAllBadges(all, counts, hideBellWhileOpen) {
+        var badgeCounts = computeBadgeCounts(all, counts, hideBellWhileOpen);
+        updateBadgeEl(document.getElementById('notif-badge'), badgeCounts.bell);
+        updateBadgeEl(document.getElementById('sidebar-notif-badge'), badgeCounts.bell);
+        updateBadgeEl(document.getElementById('sidebar-request-badge'), badgeCounts.requests);
+        updateBadgeEl(document.getElementById('sidebar-appt-badge'), badgeCounts.appointments);
+    }
+
+    function acknowledgeAllBadges() {
+        var now = Date.now();
+        setBadgesAckAt(now);
+        setSeenAt(now);
+        updateAllBadges([], { pending_requests: 0, pending_appointments: 0 }, false);
     }
 
     function renderListEl(listEl, all, options) {
@@ -206,6 +256,7 @@
                     var now = Date.now();
                     visibleList(latestGetter()).forEach(function (n) { dismissId(n.id); });
                     setClearedAt(now);
+                    setBadgesAckAt(now);
                     setSeenAt(now);
                     refresh();
                     flashButton(btn, 'Cleared');
@@ -223,8 +274,7 @@
             listEl.addEventListener('click', function (e) {
                 var link = e.target.closest('.notif-item a[href]');
                 if (link) {
-                    setSeenAt(Date.now());
-                    refresh();
+                    acknowledgeAllBadges();
                     return;
                 }
 
@@ -259,9 +309,6 @@
             isOpen = !isOpen;
             dropdown.classList.toggle('hidden', !isOpen);
             bellBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-            if (isOpen) {
-                setSeenAt(Date.now());
-            }
             refresh();
         });
 
@@ -292,11 +339,12 @@
         showInitialSkeletons();
 
         var latest = [];
+        var latestCounts = { pending_requests: 0, pending_appointments: 0 };
         var headerOpen = initHeaderDropdown(refresh, function () { return latest; });
 
         function refresh() {
             renderAllLists(latest);
-            updateBadges(countUnread(latest), headerOpen && headerOpen());
+            updateAllBadges(latest, latestCounts, headerOpen && headerOpen());
         }
 
         bindPanelActions(refresh, function () { return latest; });
@@ -307,6 +355,7 @@
 
         function applyPayload(data) {
             latest = (data && data.notifications) || [];
+            latestCounts = (data && data.counts) || latestCounts;
             refresh();
         }
 

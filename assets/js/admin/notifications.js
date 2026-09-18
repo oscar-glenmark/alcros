@@ -74,10 +74,17 @@
         return new Date((n.created_at || '').replace(' ', 'T')).getTime();
     }
 
+    function isPersistentAlert(n) {
+        return n.type === 'pending_request' || n.type === 'appointment';
+    }
+
     function visibleList(all) {
         var clearedAt = getClearedAt();
         var dismissed = getDismissed();
         return (all || []).filter(function (n) {
+            if (isPersistentAlert(n)) {
+                return true;
+            }
             if (dismissed.indexOf(n.id) !== -1) return false;
             if (clearedAt && notifTime(n) <= clearedAt) return false;
             return true;
@@ -122,11 +129,17 @@
     }
 
     function hasNewActivity(all) {
+        var visible = visibleList(all);
+        if (!visible.length) {
+            return false;
+        }
+
         var ackAt = getBadgesAckAt();
         if (!ackAt) {
             return true;
         }
-        return visibleList(all).some(function (n) {
+
+        return visible.some(function (n) {
             return notifTime(n) > ackAt;
         });
     }
@@ -138,35 +151,37 @@
         };
     }
 
-    function computeBadgeCounts(all, counts, hideBellWhileOpen) {
+    function computeBadgeCounts(all, counts) {
+        var visible = visibleList(all);
         if (!hasNewActivity(all)) {
             return { bell: 0, requests: 0, appointments: 0 };
         }
 
+        var unread = visible.filter(isUnread).length;
         var actions = actionCounts(counts);
-        var unread = countUnread(all);
-        var bellCount = Math.max(unread, actions.requests, actions.appointments);
+        var hasPendingReqNotifs = visible.some(function (n) { return n.type === 'pending_request'; });
+        var hasApptNotifs = visible.some(function (n) { return n.type === 'appointment'; });
 
         return {
-            bell: hideBellWhileOpen ? 0 : bellCount,
-            requests: actions.requests,
-            appointments: actions.appointments
+            bell: unread,
+            requests: hasPendingReqNotifs ? actions.requests : 0,
+            appointments: hasApptNotifs ? actions.appointments : 0
         };
     }
 
-    function updateAllBadges(all, counts, hideBellWhileOpen) {
-        var badgeCounts = computeBadgeCounts(all, counts, hideBellWhileOpen);
+    function updateAllBadges(all, counts) {
+        var badgeCounts = computeBadgeCounts(all, counts);
         updateBadgeEl(document.getElementById('notif-badge'), badgeCounts.bell);
         updateBadgeEl(document.getElementById('sidebar-notif-badge'), badgeCounts.bell);
         updateBadgeEl(document.getElementById('sidebar-request-badge'), badgeCounts.requests);
         updateBadgeEl(document.getElementById('sidebar-appt-badge'), badgeCounts.appointments);
     }
 
-    function acknowledgeAllBadges() {
+    function acknowledgeAllBadges(all, counts) {
         var now = Date.now();
         setBadgesAckAt(now);
         setSeenAt(now);
-        updateAllBadges([], { pending_requests: 0, pending_appointments: 0 }, false);
+        updateAllBadges(all || [], counts || { pending_requests: 0, pending_appointments: 0 });
     }
 
     function renderListEl(listEl, all, options) {
@@ -194,7 +209,7 @@
                 ? '<p class="text-[10px] text-gray-400 font-mono truncate mt-0.5">' + escapeHtml(n.detail) + '</p>'
                 : '';
 
-            var deleteBtn = n.type === 'system'
+            var deleteBtn = (n.type === 'system' || isPersistentAlert(n))
                 ? ''
                 : '<button type="button" class="notif-delete p-1.5 rounded-lg text-gray-300 hover:text-red-500 self-start" data-id="' + escapeHtml(n.id) + '" title="Remove">' +
                     '<i data-lucide="x" class="w-3.5 h-3.5"></i></button>';
@@ -237,7 +252,7 @@
         }, 600);
     }
 
-    function bindPanelActions(refresh, latestGetter) {
+    function bindPanelActions(refresh, latestGetter, countsGetter) {
         document.querySelectorAll('.alcros-notif-mark-read').forEach(function (btn) {
             btn.addEventListener('click', function (e) {
                 e.preventDefault();
@@ -254,7 +269,11 @@
                 e.stopPropagation();
                 function proceed() {
                     var now = Date.now();
-                    visibleList(latestGetter()).forEach(function (n) { dismissId(n.id); });
+                    visibleList(latestGetter()).forEach(function (n) {
+                        if (!isPersistentAlert(n)) {
+                            dismissId(n.id);
+                        }
+                    });
                     setClearedAt(now);
                     setBadgesAckAt(now);
                     setSeenAt(now);
@@ -274,7 +293,7 @@
             listEl.addEventListener('click', function (e) {
                 var link = e.target.closest('.notif-item a[href]');
                 if (link) {
-                    acknowledgeAllBadges();
+                    acknowledgeAllBadges(latestGetter(), countsGetter ? countsGetter() : null);
                     return;
                 }
 
@@ -283,7 +302,12 @@
                 e.preventDefault();
                 e.stopPropagation();
                 function proceed() {
-                    dismissId(btn.getAttribute('data-id'));
+                    var id = btn.getAttribute('data-id');
+                    var item = (latestGetter() || []).filter(function (n) { return n.id === id; })[0];
+                    if (item && isPersistentAlert(item)) {
+                        return;
+                    }
+                    dismissId(id);
                     refresh();
                 }
                 if (window.AlcrosConfirm) {
@@ -309,6 +333,9 @@
             isOpen = !isOpen;
             dropdown.classList.toggle('hidden', !isOpen);
             bellBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            if (isOpen) {
+                setSeenAt(Date.now());
+            }
             refresh();
         });
 
@@ -340,18 +367,15 @@
 
         var latest = [];
         var latestCounts = { pending_requests: 0, pending_appointments: 0 };
-        var headerOpen = initHeaderDropdown(refresh, function () { return latest; });
+
+        initHeaderDropdown(refresh, function () { return latest; });
 
         function refresh() {
             renderAllLists(latest);
-            updateAllBadges(latest, latestCounts, headerOpen && headerOpen());
+            updateAllBadges(latest, latestCounts);
         }
 
-        bindPanelActions(refresh, function () { return latest; });
-
-        if (document.getElementById('notif-page-list')) {
-            setSeenAt(Date.now());
-        }
+        bindPanelActions(refresh, function () { return latest; }, function () { return latestCounts; });
 
         function applyPayload(data) {
             latest = (data && data.notifications) || [];

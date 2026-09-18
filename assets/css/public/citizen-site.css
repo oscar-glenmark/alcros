@@ -44,6 +44,18 @@ body.citizen-site {
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+#alcros-notify-overlay {
+    pointer-events: none;
+}
+
+#alcros-notify-overlay:not(.hidden) {
+    pointer-events: auto;
+}
+
+#alcros-notify-overlay.hidden {
+    pointer-events: none;
+}
+
 .citizen-site-main {
     position: relative;
     z-index: 1;

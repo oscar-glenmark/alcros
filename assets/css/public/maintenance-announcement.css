@@ -1,9 +1,11 @@
 #alcros-maintenance-overlay {
     transition: opacity 0.25s ease;
+    pointer-events: none;
 }
 
 #alcros-maintenance-overlay.is-open {
     opacity: 1;
+    pointer-events: auto;
 }
 
 #alcros-maintenance-panel {

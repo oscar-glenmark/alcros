@@ -394,6 +394,8 @@ a.manage-stat-card.is-active {
 .manage-cell-actions {
     width: 1%;
     white-space: nowrap;
+    position: relative;
+    z-index: 3;
 }
 
 .manage-row-actions {
@@ -416,7 +418,8 @@ a.manage-stat-card.is-active {
     cursor: pointer;
     padding: 0;
     position: relative;
-    z-index: 1;
+    z-index: 2;
+    pointer-events: auto;
 }
 
 .manage-row-action svg,
@@ -434,6 +437,10 @@ a.manage-stat-card.is-active {
     min-height: 1.75rem;
     padding: 0.3125rem 0.5rem;
     gap: 0.3125rem;
+    position: relative;
+    z-index: 4;
+    pointer-events: auto;
+    touch-action: manipulation;
 }
 
 .view-request-btn:hover,
@@ -1009,10 +1016,14 @@ body.alcros-confirm-open .manage-requests-body.has-detail::before {
         transform: translateY(100%);
         transition: transform 0.25s ease;
         box-shadow: 0 -12px 40px rgba(15, 23, 42, 0.12);
+        pointer-events: none;
+        visibility: hidden;
     }
 
     .manage-request-detail.is-open {
         transform: translateY(0);
+        pointer-events: auto;
+        visibility: visible;
     }
 
     .manage-requests-body.has-detail::before {
@@ -1021,6 +1032,12 @@ body.alcros-confirm-open .manage-requests-body.has-detail::before {
         inset: 0;
         background: rgba(15, 23, 42, 0.35);
         z-index: 70;
+        pointer-events: none;
+    }
+
+    .manage-request-detail.is-open {
+        pointer-events: auto;
+        z-index: 80;
     }
 
     .manage-controls {

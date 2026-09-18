@@ -1,3 +1,7 @@
+#track-floating-root.hidden {
+    pointer-events: none !important;
+}
+
 @media (max-width: 639px) {
     #track-floating-panel {
         top: auto;

@@ -240,6 +240,7 @@
     function init() {
         if (global.__alcrosLoadingInit) return;
         global.__alcrosLoadingInit = true;
+        page(false);
         initForms();
         initClickActions();
     }

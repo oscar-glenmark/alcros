@@ -12,7 +12,17 @@
     var pageConfig = window.AlcrosPage && typeof window.AlcrosPage.readConfig === 'function'
         ? window.AlcrosPage.readConfig('page-config')
         : {};
-    var useSidePanel = pageConfig.useSidePanel !== false;
+    var useSidePanel = pageConfig.useSidePanel === true;
+
+    function dismissBlockingUi() {
+        if (window.AlcrosConfirm && typeof window.AlcrosConfirm.dismissBlockingLayers === 'function') {
+            window.AlcrosConfirm.dismissBlockingLayers();
+        }
+        if (window.AlcrosLoading && typeof window.AlcrosLoading.page === 'function') {
+            window.AlcrosLoading.page(false);
+        }
+        document.body.classList.remove('alcros-loading-open', 'overflow-hidden');
+    }
 
     if (!panel || !emptyState || !content || !bodyWrap) {
         if (!bodyWrap) return;
@@ -515,12 +525,16 @@
         }
     }
 
-    function openRequestView(data, row) {
-        if (useSidePanel && panel && content && emptyState) {
-            openDetail(data, row);
+    function openRequestView(data, row, options) {
+        options = options || {};
+        var openInModal = options.modal === true || !useSidePanel || !panel || !content || !emptyState;
+
+        if (openInModal) {
+            openModal(data, row);
             return;
         }
-        openModal(data, row);
+
+        openDetail(data, row);
     }
 
     function openDetail(data, row) {
@@ -552,6 +566,7 @@
     function openModal(data, row) {
         if (!modal) return;
 
+        closeDetail();
         populateDetailView(modalView, data);
         modal.classList.remove('hidden');
         modal.setAttribute('aria-hidden', 'false');
@@ -588,13 +603,93 @@
         return !!target.closest('form, button, select, option, a, input, textarea, label, .manage-bulk-col');
     }
 
-    function bindViewButtons() {
-        document.querySelectorAll('.view-request-btn').forEach(function (btn) {
+    function fetchRequestFocus(rowId) {
+        if (!rowId || !pageConfig.pollUrl) {
+            return Promise.resolve(null);
+        }
+
+        var params = new URLSearchParams();
+        params.set('status', pageConfig.redirectStatus || 'all');
+        params.set('focus_id', String(rowId));
+        if (pageConfig.redirectQ) {
+            params.set('q', pageConfig.redirectQ);
+        }
+
+        return fetch(pageConfig.pollUrl + '?' + params.toString(), {
+            credentials: 'same-origin',
+            cache: 'no-store'
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error('http_' + response.status);
+                }
+                return response.json();
+            })
+            .then(function (data) {
+                return data && data.focus ? data.focus : null;
+            })
+            .catch(function () {
+                return null;
+            });
+    }
+
+    function handleViewRequestClick(btn, options) {
+        if (!btn) return;
+        options = options || { modal: true };
+
+        var row = btn.closest('.manage-requests-row');
+        var viewData = parseRequestData(btn) || parseRequestData(row);
+        if (viewData) {
+            openRequestView(viewData, row, options);
+            return;
+        }
+
+        var rowId = row
+            ? parseInt(row.getAttribute('data-request-row') || btn.getAttribute('data-request-row'), 10)
+            : parseInt(btn.getAttribute('data-request-row'), 10);
+        if (!rowId) {
+            if (window.AlcrosActionResult) {
+                AlcrosActionResult.show('error', 'Unable to open this request. Refresh the page and try again.');
+            }
+            return;
+        }
+
+        dismissBlockingUi();
+        if (window.AlcrosLoading) {
+            AlcrosLoading.page(true, 'Loading request…');
+        }
+
+        fetchRequestFocus(rowId).then(function (focus) {
+            if (window.AlcrosLoading) {
+                AlcrosLoading.page(false);
+            }
+            if (!focus) {
+                if (window.AlcrosActionResult) {
+                    AlcrosActionResult.show('error', 'Unable to load request details. Refresh the page and try again.');
+                }
+                return;
+            }
+
+            if (row) {
+                row.setAttribute('data-request', JSON.stringify(focus));
+            }
+            btn.setAttribute('data-request', JSON.stringify(focus));
+            openRequestView(focus, row, options);
+        });
+    }
+
+    function bindViewRequestButtons(root) {
+        var scope = root || document;
+        scope.querySelectorAll('.view-request-btn').forEach(function (btn) {
+            if (btn.dataset.verifyBound === '1') {
+                return;
+            }
+            btn.dataset.verifyBound = '1';
             btn.addEventListener('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
-                var viewData = parseRequestData(btn) || parseRequestData(btn.closest('.manage-requests-row'));
-                if (viewData) openRequestView(viewData, btn.closest('.manage-requests-row'));
+                dismissBlockingUi();
+                handleViewRequestClick(btn, { modal: true });
             });
         });
     }
@@ -611,6 +706,10 @@
     }
 
     document.addEventListener('click', function (e) {
+        if (e.target.closest('.view-request-btn')) {
+            return;
+        }
+
         if (isInteractiveTarget(e.target)) {
             return;
         }
@@ -618,7 +717,7 @@
         var row = e.target.closest('.manage-requests-row');
         if (row) {
             var rowData = parseRequestData(row);
-            if (rowData) openRequestView(rowData, row);
+            if (rowData) openRequestView(rowData, row, { modal: false });
             return;
         }
 
@@ -626,6 +725,8 @@
             closeDetail();
         }
     });
+
+    bindViewRequestButtons();
 
     if (useSidePanel) {
         document.getElementById('requestDetailClose')?.addEventListener('click', closeDetail);
@@ -645,7 +746,6 @@
         }
     });
 
-    bindViewButtons();
     bindModalClose();
     bindManageActionTriggers();
     bindPrintMenus();
@@ -744,6 +844,8 @@
                 }
             });
 
+            bindViewRequestButtons();
+
             if (revisionMismatch) {
                 window.location.reload();
                 return;
@@ -798,4 +900,12 @@
             }
         );
     }
+
+    window.AlcrosManageRequest = {
+        verify: function (btn) {
+            dismissBlockingUi();
+            handleViewRequestClick(btn, { modal: true });
+        },
+        bindButtons: bindViewRequestButtons
+    };
 })();

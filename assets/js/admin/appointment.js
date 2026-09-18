@@ -12,7 +12,17 @@
     var pageConfig = window.AlcrosPage && typeof window.AlcrosPage.readConfig === 'function'
         ? window.AlcrosPage.readConfig('page-config')
         : {};
-    var useSidePanel = pageConfig.useSidePanel !== false;
+    var useSidePanel = pageConfig.useSidePanel === true;
+
+    function dismissBlockingUi() {
+        if (window.AlcrosConfirm && typeof window.AlcrosConfirm.dismissBlockingLayers === 'function') {
+            window.AlcrosConfirm.dismissBlockingLayers();
+        }
+        if (window.AlcrosLoading && typeof window.AlcrosLoading.page === 'function') {
+            window.AlcrosLoading.page(false);
+        }
+        document.body.classList.remove('alcros-loading-open', 'overflow-hidden');
+    }
 
     if (!bodyWrap) return;
 
@@ -410,14 +420,75 @@
         return !!target.closest('form, button, select, option, a, input, textarea, label, .manage-bulk-col');
     }
 
-    function bindViewButtons() {
-        document.querySelectorAll('.view-appointment-btn').forEach(function (btn) {
-            btn.addEventListener('click', function (e) {
-                e.preventDefault();
-                e.stopPropagation();
-                var viewData = parseAppointmentData(btn) || parseAppointmentData(btn.closest('.manage-requests-row'));
-                if (viewData) openAppointmentView(viewData, btn.closest('.manage-requests-row'));
+    function fetchAppointmentFocus(rowId) {
+        if (!rowId || !pageConfig.pollUrl) {
+            return Promise.resolve(null);
+        }
+
+        var params = new URLSearchParams();
+        params.set('focus_id', String(rowId));
+        if (pageConfig.redirectDate) {
+            params.set('date', pageConfig.redirectDate);
+        }
+
+        return fetch(pageConfig.pollUrl + '?' + params.toString(), {
+            credentials: 'same-origin',
+            cache: 'no-store'
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error('http_' + response.status);
+                }
+                return response.json();
+            })
+            .then(function (data) {
+                return data && data.focus ? data.focus : null;
+            })
+            .catch(function () {
+                return null;
             });
+    }
+
+    function handleViewAppointmentClick(btn) {
+        if (!btn) return;
+        var row = btn.closest('.manage-requests-row');
+        var viewData = parseAppointmentData(btn) || parseAppointmentData(row);
+        if (viewData) {
+            openAppointmentView(viewData, row);
+            return;
+        }
+
+        var rowId = row
+            ? parseInt(row.getAttribute('data-appointment-row') || btn.getAttribute('data-appointment-row'), 10)
+            : parseInt(btn.getAttribute('data-appointment-row'), 10);
+        if (!rowId) {
+            if (window.AlcrosActionResult) {
+                AlcrosActionResult.show('error', 'Unable to open this appointment. Refresh the page and try again.');
+            }
+            return;
+        }
+
+        dismissBlockingUi();
+        if (window.AlcrosLoading) {
+            AlcrosLoading.page(true, 'Loading appointment…');
+        }
+
+        fetchAppointmentFocus(rowId).then(function (focus) {
+            if (window.AlcrosLoading) {
+                AlcrosLoading.page(false);
+            }
+            if (!focus) {
+                if (window.AlcrosActionResult) {
+                    AlcrosActionResult.show('error', 'Unable to load appointment details. Refresh the page and try again.');
+                }
+                return;
+            }
+
+            if (row) {
+                row.setAttribute('data-appointment', JSON.stringify(focus));
+            }
+            btn.setAttribute('data-appointment', JSON.stringify(focus));
+            openAppointmentView(focus, row);
         });
     }
 
@@ -446,6 +517,19 @@
     }
 
     document.addEventListener('click', function (e) {
+        var viewBtn = e.target.closest('.view-appointment-btn');
+        if (!viewBtn) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        dismissBlockingUi();
+        handleViewAppointmentClick(viewBtn);
+    }, true);
+
+    document.addEventListener('click', function (e) {
+        if (e.target.closest('.view-appointment-btn')) {
+            return;
+        }
+
         if (isInteractiveTarget(e.target)) {
             return;
         }
@@ -480,7 +564,6 @@
         }
     });
 
-    bindViewButtons();
     bindModalClose();
     bindActionTriggers();
     bindDatePicker();

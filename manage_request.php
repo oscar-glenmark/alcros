@@ -395,6 +395,7 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                                             class="view-request-btn manage-row-action manage-row-action--labeled<?= $isReadyAction ? ' manage-row-action--complete' : '' ?>"
                                             title="<?= htmlspecialchars($viewLabel . ' request') ?>"
                                             aria-label="<?= htmlspecialchars($viewLabel . ' request') ?>"
+                                            data-request-row="<?= (int) $req['id'] ?>"
                                             data-request="<?= htmlspecialchars(json_encode($viewData, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP), ENT_QUOTES, 'UTF-8') ?>">
                                         <?php if (!$isReadyAction): ?>
                                         <i data-lucide="eye" class="w-3.5 h-3.5"></i>

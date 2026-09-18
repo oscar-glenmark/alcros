@@ -479,6 +479,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                                             class="view-appointment-btn manage-row-action manage-row-action--labeled<?= $isCompleteAction ? ' manage-row-action--complete' : '' ?>"
                                             title="<?= htmlspecialchars($viewLabel . ' appointment') ?>"
                                             aria-label="<?= htmlspecialchars($viewLabel . ' appointment') ?>"
+                                            data-appointment-row="<?= (int) $ap['id'] ?>"
                                             data-appointment="<?= htmlspecialchars(json_encode($viewData, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP), ENT_QUOTES, 'UTF-8') ?>">
                                         <?php if ($showVerifyEye): ?>
                                         <i data-lucide="eye" class="w-3.5 h-3.5"></i>
@@ -624,6 +625,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
         'redirectQ'      => $search,
         'useSidePanel'   => $showSidePanel,
         'bulkActions'    => $showBulkActions,
+        'pollUrl'        => buildAuthUrl('api/appointments.php'),
     ]) ?>
     <div id="appointmentActionAuthFields" class="hidden" aria-hidden="true"><?= authFormField() ?></div>
     <?= actionResultScript($flash) ?>

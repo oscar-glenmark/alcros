@@ -4,6 +4,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/api_helpers.php';
 require_once __DIR__ . '/../includes/printing.php';
+require_once __DIR__ . '/../includes/certification_print.php';
 
 @set_time_limit(120);
 
@@ -60,8 +61,14 @@ function handleLogPrint(PDO $pdo): void
     $recordId = (int) ($_POST['record_id'] ?? 0);
     $pageSide = ($_POST['page'] ?? 'front') === 'back' ? 'back' : 'front';
     $testMode = !empty($_POST['test']);
+    $documentKind = normalizePrintDocumentKind($_POST['kind'] ?? 'certificate');
 
-    $context = printRequestContext($pdo, $requestId ?: null, $recordId ?: null);
+    if ($documentKind === 'certification') {
+        $context = printCertificationContext($pdo, $recordId, $requestId);
+        $pageSide = 'front';
+    } else {
+        $context = printRequestContext($pdo, $requestId ?: null, $recordId ?: null);
+    }
     if (!$context['ok']) {
         apiError($context['error'], 404);
     }
@@ -72,7 +79,10 @@ function handleLogPrint(PDO $pdo): void
         $context['certificate_type'],
         $pageSide,
         $context['record'],
-        array_merge($printOptions, ['test_mode' => $testMode])
+        array_merge($printOptions, [
+            'test_mode'     => $testMode,
+            'document_kind' => $documentKind,
+        ])
     );
     if (!$printData) {
         apiError('Template not found.', 404);
@@ -84,6 +94,7 @@ function handleLogPrint(PDO $pdo): void
         'template_id'      => (int) $printData['template']['id'],
         'page_side'        => $pageSide,
         'certificate_type' => $context['certificate_type'],
+        'document_kind'    => $documentKind,
         'registry_number'  => $context['record']['registry_number'] ?? null,
         'print_mode'       => $testMode ? 'test' : 'production',
         'copies'           => max(1, (int) ($_POST['copies'] ?? 1)),

@@ -416,7 +416,7 @@
                 e.preventDefault();
                 e.stopPropagation();
                 var viewData = parseAppointmentData(btn) || parseAppointmentData(btn.closest('.manage-requests-row'));
-                if (viewData) openModal(viewData, btn.closest('.manage-requests-row'));
+                if (viewData) openAppointmentView(viewData, btn.closest('.manage-requests-row'));
             });
         });
     }
@@ -438,9 +438,10 @@
 
         picker.addEventListener('change', function () {
             if (!picker.value) return;
-            var params = new URLSearchParams(window.location.search);
-            params.set('date', picker.value);
-            window.location.href = 'appointment.php?' + params.toString();
+            var href = window.AlcrosPoll
+                ? AlcrosPoll.buildUrl('appointment.php', { date: picker.value })
+                : 'appointment.php?date=' + encodeURIComponent(picker.value);
+            window.location.href = href;
         });
     }
 

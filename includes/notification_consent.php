@@ -23,7 +23,7 @@ $notifySite = $site ?? getSiteSettings();
             <p>Choose how you would like to receive updates about your civil registry request or appointment. You can still use ALCROS if you opt out.</p>
             <ul class="list-disc pl-5 space-y-1.5">
                 <li>Gmail updates when you submit a request, when staff confirm your visit, and when your status changes.</li>
-                <li>Email reminders at 5 hours, 3 hours, and 1 hour before a confirmed visit or appointment.</li>
+                <li>Email reminders at 5 hours, 3 hours, and 1 hour before a confirmed visit or appointment, plus an extra heads-up if your visit is within the next hour.</li>
                 <li>Optional SMS text updates to your cellphone when a request is accepted, ready for pickup, or 3 hours before a visit.</li>
             </ul>
             <p class="text-[11px] text-gray-500">Please visit the LGU office during business hours once notified. Bring your tracking code and a valid ID.</p>
@@ -31,11 +31,11 @@ $notifySite = $site ?? getSiteSettings();
         <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 space-y-3">
             <label class="flex items-start gap-2.5 cursor-pointer">
                 <input type="checkbox" id="alcros-notify-checkbox" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                <span class="text-xs font-semibold text-slate-800">Send Gmail updates about my request or appointment</span>
+                <span class="text-xs font-semibold text-slate-800">Send Gmail confirmation, status updates, visit reminders (5h, 3h, and 1h before your visit), and a heads-up if your visit is within the next hour.</span>
             </label>
             <label class="flex items-start gap-2.5 cursor-pointer">
                 <input type="checkbox" id="alcros-notify-sms-checkbox" class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                <span class="text-xs font-semibold text-slate-800">Send SMS text updates to my cellphone</span>
+                <span class="text-xs font-semibold text-slate-800">Send SMS text updates to my cellphone (requires office Semaphore setup).</span>
             </label>
             <div class="flex flex-col sm:flex-row gap-2">
                 <button type="button" id="alcros-notify-decline" class="flex-1 border border-gray-200 hover:bg-gray-50 text-slate-600 rounded-xl py-3 text-sm font-bold transition">

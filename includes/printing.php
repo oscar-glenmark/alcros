@@ -1964,8 +1964,11 @@ function logPrintJob(PDO $pdo, array $data): int
     ]);
 
     $jobId = (int) $pdo->lastInsertId();
+    $documentKind = normalizePrintDocumentKind((string) ($data['document_kind'] ?? 'certificate'));
+    $kindLabel = $documentKind === 'certification' ? 'Certification' : 'Certificate';
     $details = sprintf(
-        'Certificate %s %s · Registry %s · Job #%d · Mode %s',
+        '%s %s %s · Registry %s · Job #%d · Mode %s',
+        $kindLabel,
         strtoupper((string) $data['certificate_type']),
         strtoupper((string) $data['page_side']),
         (string) ($data['registry_number'] ?? '—'),
@@ -1975,7 +1978,7 @@ function logPrintJob(PDO $pdo, array $data): int
     if (!empty($data['request_id'])) {
         $details .= ' · Request #' . (int) $data['request_id'];
     }
-    logActivity(staffId(), 'Certificate Printed', $details);
+    logActivity(staffId(), $kindLabel . ' Printed', $details);
 
     return $jobId;
 }

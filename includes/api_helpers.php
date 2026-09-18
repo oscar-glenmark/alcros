@@ -470,6 +470,11 @@ function documentTypeLabelsMap(): array
 function fetchNotifications(PDO $pdo, int $limit = 20): array
 {
     $items = [];
+
+    if (function_exists('systemErrorsAsNotifications')) {
+        $items = array_merge($items, systemErrorsAsNotifications($pdo));
+    }
+
     $docLabels = documentTypeLabelsMap();
 
     $pending = enrichCitizenNameRows($pdo->query(

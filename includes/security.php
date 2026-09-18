@@ -402,6 +402,40 @@ function requireCronSecret(): void
     }
 }
 
+function queueDisplayTokenKey(): string
+{
+    $path = securityStoragePath('queue_display_token.txt');
+    if (is_readable($path)) {
+        $stored = trim((string) file_get_contents($path));
+        if ($stored !== '') {
+            return $stored;
+        }
+    }
+
+    $secret = bin2hex(random_bytes(24));
+    file_put_contents($path, $secret, LOCK_EX);
+
+    return $secret;
+}
+
+function requireQueueAnnouncementAccess(): void
+{
+    if (function_exists('getAuthenticatedStaff') && getAuthenticatedStaff()) {
+        return;
+    }
+
+    $expected = queueDisplayTokenKey();
+    $provided = (string) ($_POST['display_token'] ?? $_GET['display_token'] ?? '');
+    if ($provided !== '' && hash_equals($expected, $provided)) {
+        return;
+    }
+
+    http_response_code(403);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['ok' => false, 'error' => 'Forbidden']);
+    exit;
+}
+
 function isSensitiveUploadPath(string $path): bool
 {
     $path = str_replace('\\', '/', $path);

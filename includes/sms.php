@@ -135,6 +135,30 @@ function sendSemaphoreSms(string $phone, string $message): array
 
 function sendCitizenSms(string $phone, string $message, string $smsType = 'general', ?string $referenceCode = null): bool
 {
+    if (!isSmsEnabled()) {
+        logSmsDelivery(
+            normalizeSmsPhone($phone) ?: $phone,
+            $message,
+            $smsType,
+            $referenceCode,
+            false,
+            'SMS is disabled in Settings.'
+        );
+        return false;
+    }
+
+    if (!isSmsConfigured()) {
+        logSmsDelivery(
+            normalizeSmsPhone($phone) ?: $phone,
+            $message,
+            $smsType,
+            $referenceCode,
+            false,
+            'Semaphore API key is not configured.'
+        );
+        return false;
+    }
+
     $result = sendSemaphoreSms($phone, $message);
     logSmsDelivery(
         normalizeSmsPhone($phone) ?: $phone,
@@ -224,6 +248,47 @@ function notifyAppointmentSmsReminder(array $row): bool
         . ' Please arrive on time with valid ID.';
 
     return sendCitizenSms((string) $row['phone'], $message, 'appointment_reminder_3h', $code);
+}
+
+function notifyAppointmentStatusSms(PDO $pdo, int $appointmentId, string $newStatus): bool
+{
+    if (!isSmsConfigured()) {
+        return false;
+    }
+
+    ensureCitizenNotifyColumns($pdo);
+    $stmt = $pdo->prepare(
+        'SELECT appointment_code, phone, service_type, appointment_date, appointment_time, notify_sms
+         FROM appointments WHERE id = ? LIMIT 1'
+    );
+    $stmt->execute([$appointmentId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!citizenWantsSmsNotify($row)) {
+        return false;
+    }
+
+    $code = (string) ($row['appointment_code'] ?? '');
+    $service = appointmentServiceLabel((string) ($row['service_type'] ?? ''));
+    $visit = formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
+    $site = smsSiteShortName();
+
+    $message = match ($newStatus) {
+        'confirmed' => $site . ': Your ' . $service . ' appointment ' . $code . ' is confirmed.'
+            . ($visit !== '' && $visit !== '—' ? ' Schedule: ' . $visit . '.' : '')
+            . ' Please arrive on time with valid ID.',
+        'cancelled' => $site . ': Your ' . $service . ' appointment ' . $code . ' was cancelled.'
+            . ' Contact the LCRO if you need to rebook.',
+        'completed' => $site . ': Your ' . $service . ' appointment ' . $code . ' is marked completed. Thank you.',
+        'no_show' => $site . ': You were marked no-show for appointment ' . $code . '.'
+            . ' Contact the LCRO to reschedule.',
+        default => null,
+    };
+
+    if ($message === null) {
+        return false;
+    }
+
+    return sendCitizenSms((string) $row['phone'], $message, 'appointment_' . $newStatus, $code);
 }
 
 function sendDueSmsVisitReminders(PDO $pdo): int

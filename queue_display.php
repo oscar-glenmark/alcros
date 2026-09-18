@@ -3,6 +3,7 @@ require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 require_once __DIR__ . '/includes/api_helpers.php';
+require_once __DIR__ . '/includes/security.php';
 
 $pdo = getDB();
 $display = fetchPublicQueueDisplay($pdo);
@@ -112,6 +113,7 @@ $purposeLabels = queuePurposeLabels();
         </div>
     </div>
 
+    <?= pageConfigJson(['displayToken' => queueDisplayTokenKey()], 'queue-display-config') ?>
     <?= scriptTag('public/queue-display.js') ?>
     <?= scriptTag('core/poll.js') ?>
     <?= scriptTag('public/queue-voice.js') ?>

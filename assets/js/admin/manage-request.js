@@ -594,7 +594,7 @@
                 e.preventDefault();
                 e.stopPropagation();
                 var viewData = parseRequestData(btn) || parseRequestData(btn.closest('.manage-requests-row'));
-                if (viewData) openModal(viewData, btn.closest('.manage-requests-row'));
+                if (viewData) openRequestView(viewData, btn.closest('.manage-requests-row'));
             });
         });
     }
@@ -719,6 +719,8 @@
                 apiById[item.id] = item;
             });
 
+            var revisionMismatch = false;
+
             document.querySelectorAll('.manage-requests-row').forEach(function (row) {
                 var rowId = parseInt(row.getAttribute('data-request-row'), 10);
                 var item = apiById[rowId];
@@ -738,15 +740,14 @@
 
                 var existing = parseRequestData(row);
                 if (existing && item.revision && item.revision !== existing.revision) {
-                    existing.status_key = item.status_key;
-                    existing.status_badge_html = item.status_badge_html;
-                    existing.revision = item.revision;
-                    existing.updated_at = item.updated_at;
-                    row.setAttribute('data-request', JSON.stringify(existing));
-                    var btn = row.querySelector('.view-request-btn');
-                    if (btn) btn.setAttribute('data-request', JSON.stringify(existing));
+                    revisionMismatch = true;
                 }
             });
+
+            if (revisionMismatch) {
+                window.location.reload();
+                return;
+            }
 
             var domCount = document.querySelectorAll('.manage-requests-row').length;
             if (domCount !== requests.length) {

@@ -8,9 +8,26 @@
         return 'api/queue_announcement.php';
     }
 
+    function readDisplayToken() {
+        var el = document.getElementById('queue-display-config');
+        if (!el) {
+            return '';
+        }
+        try {
+            var data = JSON.parse(el.textContent || '{}');
+            return data.displayToken || '';
+        } catch (err) {
+            return '';
+        }
+    }
+
     function postAnnouncementAction(action, payload) {
         var body = new FormData();
         body.append('action', action);
+        var displayToken = readDisplayToken();
+        if (displayToken) {
+            body.append('display_token', displayToken);
+        }
         if (payload && payload.id) {
             body.append('id', String(payload.id));
         }

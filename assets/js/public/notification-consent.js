@@ -45,6 +45,15 @@
                 input.value = smsAllowed ? '1' : '0';
             }
         });
+
+        var emailCheckbox = document.getElementById('alcrosNotifyEmailCheckbox');
+        var smsCheckbox = document.getElementById('alcrosNotifySmsCheckbox');
+        if (emailCheckbox) {
+            emailCheckbox.checked = !!emailAllowed;
+        }
+        if (smsCheckbox) {
+            smsCheckbox.checked = !!smsAllowed;
+        }
     }
 
     function saveDecision(emailAllowed, smsAllowed) {

@@ -7,6 +7,11 @@ require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 
 $site = getSiteSettings();
+try {
+    runReminderSchedulerIfDue(getDB());
+} catch (Throwable $e) {
+    // Non-fatal when MySQL is unavailable.
+}
 $maintenanceMode = isMaintenanceMode();
 $publicRequestsAllowed = arePublicRequestsAllowed();
 

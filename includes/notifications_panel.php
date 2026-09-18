@@ -27,7 +27,7 @@ $listClass = trim('alcros-notif-list ' . $notifPanel['listClass']);
         <?php if ($isPage): ?>
         <div>
             <p class="text-xs font-bold uppercase tracking-wider text-slate-800">All alerts</p>
-            <p class="text-[11px] text-slate-500 mt-0.5">Pending requests, queue, and appointments</p>
+            <p class="text-[11px] text-slate-500 mt-0.5">Pending requests, queue, appointments, and system errors</p>
         </div>
         <?php else: ?>
         <p class="text-xs font-bold uppercase tracking-wider text-slate-800">Notifications</p>

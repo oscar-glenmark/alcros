@@ -1,6 +1,10 @@
 <?php
+require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/api_helpers.php';
+require_once __DIR__ . '/../includes/security.php';
+
+requireQueueAnnouncementAccess();
 
 $pdo = getDB();
 

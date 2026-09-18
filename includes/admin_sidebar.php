@@ -5,6 +5,12 @@ require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/scripts.php';
 require_once __DIR__ . '/lucide_icons.php';
 
+try {
+    runReminderSchedulerIfDue(getDB());
+} catch (Throwable $e) {
+    // Non-fatal when reminders cannot run.
+}
+
 $activePage = $activePage ?? basename($_SERVER['PHP_SELF']);
 
 function sidebarLink(string $page, string $label, string $icon, string $active, bool $liveBadge = false, ?string $countBadgeId = null, array $query = []): string
@@ -60,7 +66,7 @@ function sidebarSectionLabel(string $label): string
         <?= sidebarLink('dashboard.php', 'Dashboard', 'layout-dashboard', $activePage) ?>
         <?= sidebarLink('notifications.php', 'Notifications', 'bell', $activePage, false, 'sidebar-notif-badge') ?>
         <?= sidebarLink('manage_request.php', 'Manage Requests', 'file-text', $activePage) ?>
-        <?= sidebarLink('appointment.php', 'Manage Appointments', 'calendar', $activePage, false, null, ['date' => alcrosTodayDate()]) ?>
+        <?= sidebarLink('appointment.php', 'Manage Appointments', 'calendar', $activePage, false, 'sidebar-appt-badge', ['date' => alcrosTodayDate()]) ?>
         <?= sidebarLink('records.php', 'Records', 'book-open', $activePage) ?>
         <?= sidebarLink('report.php', 'Reports', 'bar-chart-2', $activePage) ?>
         <?= sidebarLink('live-queue.php', 'Manage live queue', 'users', $activePage, true) ?>

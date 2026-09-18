@@ -23,6 +23,13 @@
         return null;
     }
 
+    function consumeConfigElement() {
+        var el = document.getElementById('alcros-action-result');
+        if (el && el.parentNode) {
+            el.parentNode.removeChild(el);
+        }
+    }
+
     function ensureModal() {
         if (modal) return modal;
 
@@ -112,11 +119,10 @@
     }
 
     function initFromConfig() {
-        if (global.__alcrosActionResultInit) return;
-        global.__alcrosActionResultInit = true;
-
         var cfg = readConfig();
-        if (cfg) show(cfg.type, cfg.message);
+        consumeConfigElement();
+        if (!cfg) return;
+        show(cfg.type, cfg.message);
     }
 
     global.AlcrosActionResult = {
@@ -129,4 +135,11 @@
     } else {
         initFromConfig();
     }
+
+    window.addEventListener('pageshow', function (event) {
+        if (event.persisted) {
+            consumeConfigElement();
+            closeModal();
+        }
+    });
 })(window);

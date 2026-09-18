@@ -15,6 +15,7 @@ $serviceLabel = appointmentServiceLabel($service);
 $success = null;
 $error = null;
 $appointmentCode = null;
+$emailSent = false;
 
 $nameParts = personNamePartsFromInput($_POST);
 $firstName = $nameParts['first_name'];
@@ -101,10 +102,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $frontPath,
                             $backPath,
                         ]);
+                        $appointmentId = (int) $pdo->lastInsertId();
                         $pdo->commit();
 
                         if ($notifyEmail) {
-                            notifyAppointmentBooked([
+                            $emailSent = notifyAppointmentBooked([
                                 'appointment_code'  => $appointmentCode,
                                 'first_name'        => $firstName,
                                 'middle_name'       => $middleName,
@@ -115,7 +117,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 'appointment_time'  => $time,
                                 'notify_email'      => 1,
                             ]);
+                            maybeSendVisitSoonEmail($pdo, 'appointments', $appointmentId);
                         }
+                        runReminderSchedulerIfDue($pdo, 60);
                         $success = true;
                     }
                 }
@@ -216,7 +220,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <h2 class="text-xl font-black text-slate-900 mb-2">Appointment Booked</h2>
             <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Your Appointment Code</p>
             <p class="text-blue-600 text-2xl font-black tracking-widest mb-4" id="booked-appt-code"><?= htmlspecialchars($appointmentCode) ?></p>
-            <p class="text-gray-500 text-sm mb-6">Save this code to track your appointment status anytime.</p>
+            <p class="text-gray-500 text-sm mb-4">Save this code to track your appointment status anytime.</p>
+            <?php if ($notifyEmail && $emailSent): ?>
+            <p class="citizen-request-notice citizen-request-notice--success text-left mb-4">
+                A Gmail confirmation was sent. You will also receive email reminders 5 hours, 3 hours, and 1 hour before your appointment.
+            </p>
+            <?php elseif ($notifyEmail): ?>
+            <p class="citizen-request-notice citizen-request-notice--warn text-left mb-4">
+                We could not send the Gmail confirmation right now. Please save your appointment code. Ask staff to verify Gmail SMTP in Settings if this keeps happening.
+            </p>
+            <?php else: ?>
+            <p class="citizen-request-notice citizen-request-notice--warn text-left mb-4">
+                Gmail notifications were not enabled for this booking. You can still track your appointment online using your code.
+            </p>
+            <?php endif; ?>
             <button type="button" data-open-track data-track-code="<?= htmlspecialchars($appointmentCode, ENT_QUOTES) ?>" class="citizen-btn-gold inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm">
                 Track Appointment <i data-lucide="arrow-right" class="w-4 h-4"></i>
             </button>

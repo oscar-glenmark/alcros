@@ -197,6 +197,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                             'pending',
                         ]);
 
+                        $requestId = (int) $pdo->lastInsertId();
                         $pdo->commit();
 
                         $emailSent = notifyRequestSubmitted(array_merge($draft, [
@@ -206,6 +207,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                             'appointment_time' => $draft['appointment_time'],
                             'notify_email'     => (int) ($draft['notify_email'] ?? 0),
                         ]));
+                        maybeSendVisitSoonEmail($pdo, 'document_requests', $requestId);
+
+                        runReminderSchedulerIfDue($pdo, 60);
 
                         $_SESSION['request_success'] = [
                             'tracking_code'    => $trackingCode,
@@ -384,7 +388,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 <?php else: ?>
                 <p class="citizen-request-notice citizen-request-notice--warn">
                     <i data-lucide="alert-circle" class="w-4 h-4 shrink-0 mt-0.5"></i>
-                    <span>Please save your tracking code. You can check status anytime using the <strong>Track</strong> button in the header.</span>
+                    <span>Gmail notifications were not enabled for this request, so confirmation and visit reminders will not be emailed. Please save your tracking code and use <strong>Track</strong> to follow your status.</span>
                 </p>
                 <?php endif; ?>
             </div>

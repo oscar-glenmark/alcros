@@ -5,7 +5,8 @@
         pending_request: { icon: 'file-text', bg: 'bg-yellow-100', text: 'text-yellow-600' },
         ready_pickup:    { icon: 'circle-check', bg: 'bg-green-100', text: 'text-green-600' },
         queue:           { icon: 'users', bg: 'bg-blue-100', text: 'text-blue-600' },
-        appointment:     { icon: 'calendar', bg: 'bg-purple-100', text: 'text-purple-600' }
+        appointment:     { icon: 'calendar', bg: 'bg-purple-100', text: 'text-purple-600' },
+        system:          { icon: 'alert-triangle', bg: 'bg-red-100', text: 'text-red-600' }
     };
 
     function staffRoot() {
@@ -76,6 +77,9 @@
     }
 
     function isUnread(n) {
+        if (n.type === 'system') {
+            return true;
+        }
         return notifTime(n) > getSeenAt();
     }
 
@@ -142,19 +146,23 @@
                 ? '<p class="text-[10px] text-gray-400 font-mono truncate mt-0.5">' + escapeHtml(n.detail) + '</p>'
                 : '';
 
+            var deleteBtn = n.type === 'system'
+                ? ''
+                : '<button type="button" class="notif-delete p-1.5 rounded-lg text-gray-300 hover:text-red-500 self-start" data-id="' + escapeHtml(n.id) + '" title="Remove">' +
+                    '<i data-lucide="x" class="w-3.5 h-3.5"></i></button>';
+
             return '<div class="notif-item group flex gap-2 px-3 py-3 border-b border-gray-50' + faded + '">' +
                 '<a href="' + href + '" class="flex gap-3 min-w-0 flex-1">' +
                 '<div class="w-9 h-9 rounded-full ' + s.bg + ' ' + s.text + ' flex items-center justify-center shrink-0">' +
                 '<i data-lucide="' + s.icon + '" class="w-4 h-4"></i></div>' +
                 '<div class="min-w-0 flex-1">' +
                 '<p class="text-xs font-bold text-slate-800 truncate">' + escapeHtml(n.title) + '</p>' +
-                '<p class="text-[11px] text-gray-500 truncate">' + escapeHtml(n.message) + '</p>' +
+                '<p class="text-[11px] text-gray-500 line-clamp-2">' + escapeHtml(n.message) + '</p>' +
                 detail +
                 '</div>' +
                 '<span class="text-[9px] text-gray-400 shrink-0 self-start pt-0.5">' + formatTime(n.created_at) + '</span>' +
                 '</a>' +
-                '<button type="button" class="notif-delete p-1.5 rounded-lg text-gray-300 hover:text-red-500 self-start" data-id="' + escapeHtml(n.id) + '" title="Remove">' +
-                '<i data-lucide="x" class="w-3.5 h-3.5"></i></button></div>';
+                deleteBtn + '</div>';
         }).join('');
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -168,13 +176,6 @@
             }
             renderListEl(listEl, all, { showDetail: isPage });
         });
-    }
-
-    function notifyResult(type, message) {
-        if (window.AlcrosActionResult) {
-            window.AlcrosActionResult.show(type, message);
-            return;
-        }
     }
 
     function flashButton(btn, text) {
@@ -195,7 +196,6 @@
                 e.stopPropagation();
                 setSeenAt(Date.now());
                 refresh();
-                notifyResult('success', 'All notifications marked as read.');
                 flashButton(btn, 'Done');
             });
         });
@@ -210,7 +210,6 @@
                     setClearedAt(now);
                     setSeenAt(now);
                     refresh();
-                    notifyResult('success', 'All notifications cleared from this list.');
                     flashButton(btn, 'Cleared');
                 }
                 if (window.AlcrosConfirm) {
@@ -231,7 +230,6 @@
                 function proceed() {
                     dismissId(btn.getAttribute('data-id'));
                     refresh();
-                    notifyResult('success', 'Notification removed.');
                 }
                 if (window.AlcrosConfirm) {
                     window.AlcrosConfirm.ask('Remove this notification?')

@@ -213,6 +213,7 @@ function adminCoreScripts(): string
         'core/action-result.js',
         'core/poll.js',
         'admin/notifications.js',
+        'admin/appointment-badge.js',
     ];
 
     if ($includeRealtime) {

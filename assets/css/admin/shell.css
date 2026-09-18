@@ -389,7 +389,8 @@ body.admin-sidebar-minimized .admin-sidebar button {
     color: #ffffff !important;
 }
 
-.active-nav #sidebar-notif-badge {
+.active-nav #sidebar-notif-badge,
+.active-nav #sidebar-appt-badge {
     background-color: #ffffff;
     color: #dc2626;
 }

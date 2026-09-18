@@ -439,6 +439,9 @@
         body.append('action', 'log_print');
         body.append('csrf_token', csrfToken);
         body.append('page', page);
+        if (cfg.documentKind) {
+            body.append('kind', cfg.documentKind);
+        }
         var requestId = numericId(cfg.requestId);
         var recordId = numericId(cfg.recordId);
         if (requestId > 0) body.append('request_id', String(requestId));

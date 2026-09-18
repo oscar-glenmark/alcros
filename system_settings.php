@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
+require_once __DIR__ . '/includes/system_errors.php';
 require_once __DIR__ . '/includes/scripts.php';
 requireStaffLogin();
 requirePageAccess('system_settings.php');
@@ -77,6 +78,7 @@ if ($isAdmin && isset($_GET['action']) && $_GET['action'] === 'export_logs') {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['settings_action'] ?? '';
+    $handled = false;
 
     try {
         if ($action === 'update_profile') {
@@ -103,6 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['staff_name'] = formatPersonName($nameParts['first_name'], $nameParts['middle_name'], $nameParts['last_name']);
             logActivity($currentStaffId, 'Profile Updated', 'Updated display name and recovery Gmail');
             settingsFlashSet('success', 'Your profile has been updated.');
+            $handled = true;
         } elseif ($action === 'change_password') {
             $current = $_POST['current_password'] ?? '';
             $newPass = $_POST['new_password'] ?? '';
@@ -122,6 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('UPDATE staff SET password_hash = ? WHERE staff_id = ?')->execute([password_hash($newPass, PASSWORD_DEFAULT), $currentStaffId]);
             logActivity($currentStaffId, 'Password Changed', 'Updated account password');
             settingsFlashSet('success', 'Password changed successfully.');
+            $handled = true;
         } elseif ($action === 'save_settings' && $isAdmin) {
             foreach ($adminSettingKeys as $key) {
                 if (in_array($key, ['maintenance_mode', 'allow_public_requests', 'sms_enabled'], true)) {
@@ -149,6 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             logActivity($currentStaffId, 'Settings Updated', 'System configuration saved');
             settingsFlashSet('success', 'System settings saved successfully.');
+            $handled = true;
         } elseif ($action === 'add_staff' && $isAdmin) {
             $nameParts = personNamePartsFromInput($_POST, 'staff_');
             $newStaffId = strtoupper(trim($_POST['staff_id_new'] ?? ''));
@@ -187,6 +192,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $displayName = formatPersonName($nameParts['first_name'], $nameParts['middle_name'], $nameParts['last_name']);
             logActivity($currentStaffId, 'Staff Added', "Created staff account $newStaffId ($displayName)");
             settingsFlashSet('success', "Staff member $displayName ($newStaffId) added successfully.");
+            $handled = true;
         } elseif ($action === 'update_staff' && $isAdmin) {
             $targetId = strtoupper(trim($_POST['target_staff_id'] ?? ''));
             $nameParts = personNamePartsFromInput($_POST, 'edit_staff_');
@@ -222,6 +228,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             logActivity($currentStaffId, 'Staff Updated', "Updated account $targetId");
             settingsFlashSet('success', "Staff account $targetId updated.");
+            $handled = true;
         } elseif ($action === 'reset_staff_password' && $isAdmin) {
             $targetId = strtoupper(trim($_POST['target_staff_id'] ?? ''));
             $newPass = $_POST['reset_password'] ?? '';
@@ -234,6 +241,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('UPDATE staff SET password_hash = ? WHERE staff_id = ?')->execute([password_hash($newPass, PASSWORD_DEFAULT), $targetId]);
             logActivity($currentStaffId, 'Password Reset', "Reset password for $targetId");
             settingsFlashSet('success', "Password reset for $targetId.");
+            $handled = true;
         } elseif ($action === 'upload_staff_photo' && $isAdmin) {
             $targetId = strtoupper(trim($_POST['target_staff_id'] ?? ''));
             if ($targetId === '') {
@@ -253,6 +261,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('UPDATE staff SET profile_photo_path = ? WHERE staff_id = ?')->execute([$newPath, $targetId]);
             logActivity($currentStaffId, 'Staff Photo Updated', "Updated profile photo for $targetId");
             settingsFlashSet('success', "Profile photo updated for $targetId.");
+            $handled = true;
         } elseif ($action === 'remove_staff_photo' && $isAdmin) {
             $targetId = strtoupper(trim($_POST['target_staff_id'] ?? ''));
             if ($targetId === '') {
@@ -268,6 +277,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('UPDATE staff SET profile_photo_path = NULL WHERE staff_id = ?')->execute([$targetId]);
             logActivity($currentStaffId, 'Staff Photo Removed', "Removed profile photo for $targetId");
             settingsFlashSet('success', "Profile photo removed for $targetId.");
+            $handled = true;
         } elseif ($action === 'remove_staff' && $isAdmin) {
             $targetId = strtoupper(trim($_POST['target_staff_id'] ?? ''));
             if ($targetId === '') {
@@ -291,6 +301,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare('DELETE FROM staff WHERE staff_id = ?')->execute([$targetId]);
             logActivity($currentStaffId, 'Staff Removed', "Removed staff account $targetId");
             settingsFlashSet('success', "Staff account $targetId removed.");
+            $handled = true;
         } elseif ($action === 'clear_old_logs' && $isAdmin) {
             $days = max(7, (int) ($_POST['log_retention_days'] ?? 30));
             $stmt = $pdo->prepare('DELETE FROM activity_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)');
@@ -298,6 +309,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $deleted = $stmt->rowCount();
             logActivity($currentStaffId, 'Logs Cleared', "Removed $deleted activity log entries older than $days days");
             settingsFlashSet('success', "Cleared $deleted old activity log entries.");
+            $handled = true;
+        } elseif ($action === 'fix_system_error' && $isAdmin) {
+            $errorKey = trim((string) ($_POST['error_key'] ?? ''));
+            if ($errorKey === '' || !preg_match('/^[a-z0-9\-]+$/', $errorKey)) {
+                throw new InvalidArgumentException('Invalid system error.');
+            }
+            $result = runSystemErrorFix($pdo, $errorKey, $currentStaffId);
+            if (empty($result['already_resolved'])) {
+                settingsFlashSet($result['ok'] ? 'success' : 'error', $result['message']);
+            }
+            $handled = true;
         } elseif ($action === 'clear_data' && $isAdmin) {
             $types = is_array($_POST['clear_data_types'] ?? null) ? $_POST['clear_data_types'] : [];
             $results = clearOperationalData($pdo, $types, $currentStaffId);
@@ -322,19 +344,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ? 'Cleared ' . implode(', ', $parts) . '.'
                     : 'No records found for the selected data types.'
             );
+            $handled = true;
         }
     } catch (InvalidArgumentException $e) {
         settingsFlashSet('error', $e->getMessage());
+        $handled = true;
     } catch (PDOException $e) {
         settingsFlashSet('error', 'Could not complete the action. Please try again.');
+        $handled = true;
     }
 
-    $tab = $_POST['active_tab'] ?? 'my-account';
-    $redirectParams = array_filter(['tab' => $tab !== 'my-account' ? $tab : null]);
-    if ($tab === 'admin-tools' && !empty($_POST['admin_sub'])) {
-        $redirectParams['admin_sub'] = $_POST['admin_sub'];
+    if ($handled) {
+        $tab = $_POST['active_tab'] ?? 'my-account';
+        $redirectParams = array_filter(['tab' => $tab !== 'my-account' ? $tab : null]);
+        if ($tab === 'admin-tools' && !empty($_POST['admin_sub'])) {
+            $redirectParams['admin_sub'] = $_POST['admin_sub'];
+        }
+        redirectWithAuth('system_settings.php', $redirectParams);
     }
-    redirectWithAuth('system_settings.php', $redirectParams);
 }
 
 $settings = [];
@@ -381,6 +408,11 @@ function settingsPageUrl(string $tab, ?string $adminSub = null): string
 }
 
 $flash = settingsFlashGet();
+$activeSystemErrors = [];
+if ($isAdmin) {
+    syncSystemErrors($pdo);
+    $activeSystemErrors = fetchActiveSystemErrors($pdo);
+}
 $currentStaffPhoto = $currentStaff['profile_photo_path'] ?? null;
 
 $pageTitle = $isAdmin ? 'System Settings' : 'My Settings';
@@ -846,7 +878,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                 $adminToolTabs = [
                                     'overview'    => ['label' => 'Overview', 'icon' => 'layout-dashboard'],
                                     'activity'    => ['label' => 'Activity', 'icon' => 'activity', 'count' => count($recentLogs)],
-                                    'maintenance' => ['label' => 'Maintenance', 'icon' => 'wrench'],
+                                    'maintenance' => ['label' => 'Maintenance', 'icon' => 'wrench', 'count' => count($activeSystemErrors)],
                                 ];
                                 foreach ($adminToolTabs as $subKey => $subTab):
                                 ?>
@@ -937,6 +969,52 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
 
                             <!-- Maintenance -->
                             <div class="p-5 sm:p-6 <?= $adminToolsSection !== 'maintenance' ? 'hidden' : '' ?>">
+                                <div id="system-errors" class="rounded-xl border border-red-200 bg-red-50/60 p-5 mb-8">
+                                    <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+                                        <div>
+                                            <h3 class="text-sm font-bold text-red-900 flex items-center gap-2">
+                                                <i data-lucide="alert-triangle" class="w-4 h-4"></i> System errors
+                                            </h3>
+                                            <p class="text-xs text-red-800/80 mt-1">Issues detected across email, SMS, and scheduled reminders. These also appear in the notification bell.</p>
+                                        </div>
+                                        <?php if (!empty($activeSystemErrors)): ?>
+                                        <span class="inline-flex items-center min-w-[1.5rem] h-6 px-2 rounded-full bg-red-600 text-white text-[10px] font-black"><?= count($activeSystemErrors) ?></span>
+                                        <?php endif; ?>
+                                    </div>
+
+                                    <?php if (empty($activeSystemErrors)): ?>
+                                    <div class="rounded-lg border border-emerald-200 bg-emerald-50/80 px-4 py-3 flex items-center gap-3">
+                                        <i data-lucide="circle-check" class="w-5 h-5 text-emerald-600 shrink-0"></i>
+                                        <p class="text-sm font-semibold text-emerald-900">No active system errors detected.</p>
+                                    </div>
+                                    <?php else: ?>
+                                    <div class="space-y-3">
+                                        <?php foreach ($activeSystemErrors as $sysError): ?>
+                                        <div class="rounded-xl border border-red-100 bg-white/90 p-4 flex flex-col sm:flex-row sm:items-start gap-4">
+                                            <div class="min-w-0 flex-1">
+                                                <div class="flex flex-wrap items-center gap-2 mb-1">
+                                                    <p class="text-sm font-bold text-red-950"><?= htmlspecialchars($sysError['title']) ?></p>
+                                                    <span class="text-[10px] font-bold uppercase tracking-wide text-red-700/70 bg-red-100 px-2 py-0.5 rounded"><?= htmlspecialchars($sysError['category']) ?></span>
+                                                </div>
+                                                <p class="text-xs text-red-900/85 leading-relaxed"><?= htmlspecialchars($sysError['reason']) ?></p>
+                                                <p class="text-[10px] text-red-800/60 mt-2">Detected <?= htmlspecialchars(formatDateDisplay($sysError['updated_at'] ?: $sysError['created_at'])) ?></p>
+                                            </div>
+                                            <form method="POST" class="shrink-0">
+                                                <?= authFormField() ?>
+                                                <input type="hidden" name="settings_action" value="fix_system_error">
+                                                <input type="hidden" name="error_key" value="<?= htmlspecialchars($sysError['error_key']) ?>">
+                                                <input type="hidden" name="active_tab" value="admin-tools">
+                                                <input type="hidden" name="admin_sub" value="maintenance">
+                                                <button type="submit" class="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap">
+                                                    <i data-lucide="wrench" class="w-3.5 h-3.5"></i> Fix error
+                                                </button>
+                                            </form>
+                                        </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                    <?php endif; ?>
+                                </div>
+
                                 <h3 class="text-sm font-bold text-slate-900 mb-1">Exports & utilities</h3>
                                 <p class="text-xs text-slate-500 mb-4">Download data or open setup tools. These do not delete live records.</p>
                                 <div class="flex flex-wrap gap-3 mb-8">

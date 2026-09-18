@@ -3113,64 +3113,81 @@ function formatRecordDate(?string $date): string
     return $ts ? date('M j, Y', $ts) : $date;
 }
 
+function consumeSessionFlash(string $key): ?array
+{
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
+
+    $flash = $_SESSION[$key] ?? null;
+    unset($_SESSION[$key]);
+
+    return is_array($flash) ? $flash : null;
+}
+
 function recordsFlashSet(string $type, string $message): void
 {
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
     $_SESSION['records_flash'] = [$type, $message];
 }
 
 function recordsFlashGet(): ?array
 {
-    $flash = $_SESSION['records_flash'] ?? null;
-    unset($_SESSION['records_flash']);
-    return $flash;
+    return consumeSessionFlash('records_flash');
 }
 
 function settingsFlashSet(string $type, string $message): void
 {
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
     $_SESSION['settings_flash'] = [$type, $message];
 }
 
 function settingsFlashGet(): ?array
 {
-    $flash = $_SESSION['settings_flash'] ?? null;
-    unset($_SESSION['settings_flash']);
-    return $flash;
+    return consumeSessionFlash('settings_flash');
 }
 
 function manageRequestsFlashSet(string $type, string $message): void
 {
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
     $_SESSION['manage_requests_flash'] = [$type, $message];
 }
 
 function manageRequestsFlashGet(): ?array
 {
-    $flash = $_SESSION['manage_requests_flash'] ?? null;
-    unset($_SESSION['manage_requests_flash']);
-    return $flash;
+    return consumeSessionFlash('manage_requests_flash');
 }
 
 function appointmentFlashSet(string $type, string $message): void
 {
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
     $_SESSION['appointment_flash'] = [$type, $message];
 }
 
 function appointmentFlashGet(): ?array
 {
-    $flash = $_SESSION['appointment_flash'] ?? null;
-    unset($_SESSION['appointment_flash']);
-    return $flash;
+    return consumeSessionFlash('appointment_flash');
 }
 
 function queueFlashSet(string $type, string $message): void
 {
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
     $_SESSION['queue_flash'] = [$type, $message];
 }
 
 function queueFlashGet(): ?array
 {
-    $flash = $_SESSION['queue_flash'] ?? null;
-    unset($_SESSION['queue_flash']);
-    return $flash;
+    return consumeSessionFlash('queue_flash');
 }
 
 function documentRequestRevision(array $row): string
@@ -3714,7 +3731,14 @@ function citizenEmailHtml(array $mail): string
 function sendCitizenNotice(string $to, string $subject, array $mail, string $emailType = 'general'): bool
 {
     $ok = sendCitizenEmail($to, $subject, citizenEmailPlain($mail), citizenEmailHtml($mail));
-    logEmailDelivery($to, $subject, $emailType, isset($mail['code']) ? (string) $mail['code'] : null, $ok);
+    logEmailDelivery(
+        $to,
+        $subject,
+        $emailType,
+        isset($mail['code']) ? (string) $mail['code'] : null,
+        $ok,
+        $ok ? null : citizenEmailFailureReason()
+    );
     return $ok;
 }
 
@@ -3824,6 +3848,23 @@ function sendSmtpEmail(string $to, string $subject, string $body, ?string $html 
     return $dataOk;
 }
 
+function isEmailConfigured(): bool
+{
+    $user = trim(getSetting('smtp_user', getSetting('notification_email', '')));
+    $pass = (string) getSetting('smtp_pass', '');
+
+    return $user !== '' && $pass !== '';
+}
+
+function citizenEmailFailureReason(): string
+{
+    if (!isEmailConfigured()) {
+        return 'Gmail SMTP is not configured. Set Gmail address and App Password in Settings → Operations.';
+    }
+
+    return 'Email delivery failed. Check Gmail SMTP credentials and App Password.';
+}
+
 function sendCitizenEmail(string $to, string $subject, string $body, ?string $html = null): bool
 {
     if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
@@ -3832,6 +3873,10 @@ function sendCitizenEmail(string $to, string $subject, string $body, ?string $ht
 
     if (sendSmtpEmail($to, $subject, $body, $html)) {
         return true;
+    }
+
+    if (!isEmailConfigured()) {
+        return false;
     }
 
     $from    = getSetting('smtp_user', getSetting('notification_email', getSetting('office_email', 'aloran@gov.ph')));
@@ -3881,7 +3926,7 @@ function syncDocumentRequestAppointment(PDO $pdo, int $requestId, string $reques
     $status = normalizeRequestStatus($requestStatus);
 
     $stmt = $pdo->prepare(
-        'SELECT tracking_code, first_name, middle_name, last_name, email, phone, notify_email,
+        'SELECT tracking_code, first_name, middle_name, last_name, email, phone, notify_email, notify_sms,
                 document_type, appointment_date, appointment_time, id_front_path, id_back_path
          FROM document_requests WHERE id = ? AND deleted_at IS NULL LIMIT 1'
     );
@@ -3914,9 +3959,17 @@ function syncDocumentRequestAppointment(PDO $pdo, int $requestId, string $reques
         if ($existing) {
             $pdo->prepare(
                 "UPDATE appointments
-                 SET status = 'confirmed', appointment_date = ?, appointment_time = ?, service_type = ?, updated_at = NOW()
+                 SET status = 'confirmed', appointment_date = ?, appointment_time = ?, service_type = ?,
+                     notify_email = ?, notify_sms = ?, updated_at = NOW()
                  WHERE id = ?"
-            )->execute([$apptDate, $normalizedTime, $serviceType, $existing['id']]);
+            )->execute([
+                $apptDate,
+                $normalizedTime,
+                $serviceType,
+                (int) ($row['notify_email'] ?? 0),
+                (int) ($row['notify_sms'] ?? 0),
+                $existing['id'],
+            ]);
 
             return;
         }
@@ -3924,10 +3977,10 @@ function syncDocumentRequestAppointment(PDO $pdo, int $requestId, string $reques
         $apptCode = generateAppointmentCode();
         $pdo->prepare(
             'INSERT INTO appointments
-             (appointment_code, first_name, middle_name, last_name, email, phone, notify_email,
+             (appointment_code, first_name, middle_name, last_name, email, phone, notify_email, notify_sms,
               service_type, appointment_date, appointment_time, status, source, tracking_code,
               id_front_path, id_back_path)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         )->execute([
             $apptCode,
             $row['first_name'],
@@ -3936,6 +3989,7 @@ function syncDocumentRequestAppointment(PDO $pdo, int $requestId, string $reques
             $row['email'],
             $row['phone'],
             (int) ($row['notify_email'] ?? 0),
+            (int) ($row['notify_sms'] ?? 0),
             $serviceType,
             $apptDate,
             $normalizedTime,
@@ -4140,6 +4194,13 @@ function updateAppointmentStatus(PDO $pdo, int $id, string $status, bool $deferN
             notifyAppointmentStatusChange($pdo, $id, $status);
         } catch (Throwable $e) {
             // Status is already saved; email failure should not block staff.
+        }
+
+        try {
+            require_once __DIR__ . '/sms.php';
+            notifyAppointmentStatusSms($pdo, $id, $status);
+        } catch (Throwable $e) {
+            // Status is already saved; SMS failure should not block staff.
         }
     };
 
@@ -4405,6 +4466,317 @@ function notifyRequestVisitReminder(array $row, int $hoursBefore): bool
     );
 }
 
+function appointmentMinutesUntil(?string $date, ?string $time): ?int
+{
+    if (!$date || !$time) {
+        return null;
+    }
+
+    $ts = strtotime($date . ' ' . $time);
+    if ($ts === false) {
+        return null;
+    }
+
+    return (int) floor(($ts - time()) / 60);
+}
+
+function visitSoonWindowMinutes(): int
+{
+    return 60;
+}
+
+function formatVisitSoonLabel(int $minutesUntil): string
+{
+    if ($minutesUntil < 1) {
+        return 'very soon';
+    }
+    if ($minutesUntil === 1) {
+        return '1 minute';
+    }
+    if ($minutesUntil < 60) {
+        return $minutesUntil . ' minutes';
+    }
+
+    return '1 hour';
+}
+
+function visitIsWithinSoonWindow(?string $date, ?string $time, ?int $withinMinutes = null): bool
+{
+    $withinMinutes = $withinMinutes ?? visitSoonWindowMinutes();
+    $minutesUntil = appointmentMinutesUntil($date, $time);
+
+    return $minutesUntil !== null && $minutesUntil > 0 && $minutesUntil <= $withinMinutes;
+}
+
+function markAllVisitEmailRemindersSent(PDO $pdo, string $table, int $id): void
+{
+    if (!in_array($table, ['document_requests', 'appointments'], true)) {
+        return;
+    }
+
+    foreach (reminderLeadTimes() as $hours) {
+        $column = reminderSentColumn($hours);
+        $pdo->prepare(
+            "UPDATE `$table` SET `$column` = COALESCE(`$column`, NOW()) WHERE id = ?"
+        )->execute([$id]);
+    }
+}
+
+function notifyRequestVisitSoon(array $row): bool
+{
+    if (!citizenWantsEmailNotify($row)) {
+        return false;
+    }
+
+    $minutesUntil = appointmentMinutesUntil($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
+    if ($minutesUntil === null || $minutesUntil <= 0 || $minutesUntil > visitSoonWindowMinutes()) {
+        return false;
+    }
+
+    $soonLabel = formatVisitSoonLabel($minutesUntil);
+
+    return sendCitizenNotice(
+        (string) $row['email'],
+        'ALCROS — Visit today in ' . $soonLabel . ' (' . $row['tracking_code'] . ')',
+        [
+            'heading'      => 'Your visit is coming up soon',
+            'name'         => personNameFromRow($row),
+            'intro'        => 'Your preferred LCRO visit is in about ' . $soonLabel . '. Please head to the office if you are not already on your way.',
+            'code_label'   => 'Tracking code',
+            'code'         => $row['tracking_code'],
+            'details'      => [
+                'Document'        => documentTypeLabel((string) ($row['document_type'] ?? '')),
+                'Current status'  => requestStatusLabel((string) ($row['status'] ?? 'pending')),
+                'Preferred visit' => formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
+            ],
+            'note'         => 'Bring your tracking code and a valid ID. Staff may still need a short time to review your request when you arrive.',
+            'button_label' => 'Track your request',
+            'button_url'   => trackRequestUrl((string) $row['tracking_code']),
+            'accent'       => '#d97706',
+        ],
+        'visit_soon'
+    );
+}
+
+function notifyAppointmentVisitSoon(array $row): bool
+{
+    if (!citizenWantsEmailNotify($row)) {
+        return false;
+    }
+
+    $minutesUntil = appointmentMinutesUntil($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
+    if ($minutesUntil === null || $minutesUntil <= 0 || $minutesUntil > visitSoonWindowMinutes()) {
+        return false;
+    }
+
+    $soonLabel = formatVisitSoonLabel($minutesUntil);
+
+    return sendCitizenNotice(
+        (string) $row['email'],
+        'ALCROS — Appointment today in ' . $soonLabel . ' (' . $row['appointment_code'] . ')',
+        [
+            'heading'      => 'Your appointment is coming up soon',
+            'name'         => personNameFromRow($row),
+            'intro'        => 'Your LCRO appointment is in about ' . $soonLabel . '. Please head to the office if you are not already on your way.',
+            'code_label'   => 'Appointment code',
+            'code'         => $row['appointment_code'],
+            'details'      => [
+                'Service'  => appointmentServiceLabel((string) ($row['service_type'] ?? '')),
+                'Schedule' => formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
+                'Status'   => appointmentStatusLabel((string) ($row['status'] ?? 'scheduled')),
+            ],
+            'note'         => 'Please arrive on time and bring a valid ID.',
+            'button_label' => 'View appointment',
+            'button_url'   => trackRequestUrl((string) $row['appointment_code']),
+            'accent'       => '#d97706',
+        ],
+        'visit_soon'
+    );
+}
+
+function maybeSendVisitSoonEmail(PDO $pdo, string $table, int $id): bool
+{
+    ensureCitizenNotifyColumns($pdo);
+
+    if ($table === 'document_requests') {
+        $stmt = $pdo->prepare(
+            'SELECT id, tracking_code, first_name, middle_name, last_name, email, document_type, status,
+                    appointment_date, appointment_time, notify_email, reminder_1h_sent_at
+             FROM document_requests WHERE id = ? LIMIT 1'
+        );
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row || !visitIsWithinSoonWindow($row['appointment_date'] ?? null, $row['appointment_time'] ?? null)) {
+            return false;
+        }
+        if (!empty($row['reminder_1h_sent_at'])) {
+            return false;
+        }
+        if (!notifyRequestVisitSoon($row)) {
+            return false;
+        }
+        markAllVisitEmailRemindersSent($pdo, 'document_requests', $id);
+        return true;
+    }
+
+    if ($table === 'appointments') {
+        $stmt = $pdo->prepare(
+            'SELECT id, appointment_code, first_name, middle_name, last_name, email, service_type, status,
+                    appointment_date, appointment_time, notify_email, reminder_1h_sent_at
+             FROM appointments WHERE id = ? LIMIT 1'
+        );
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row || !visitIsWithinSoonWindow($row['appointment_date'] ?? null, $row['appointment_time'] ?? null)) {
+            return false;
+        }
+        if (!empty($row['reminder_1h_sent_at'])) {
+            return false;
+        }
+        if (!notifyAppointmentVisitSoon($row)) {
+            return false;
+        }
+        markAllVisitEmailRemindersSent($pdo, 'appointments', $id);
+        return true;
+    }
+
+    return false;
+}
+
+function nextDueReminderLeadTime(int $minutesUntil): ?int
+{
+    if ($minutesUntil <= 0) {
+        return null;
+    }
+    if ($minutesUntil <= 60) {
+        return 1;
+    }
+    if ($minutesUntil <= 180) {
+        return 3;
+    }
+    if ($minutesUntil <= 300) {
+        return 5;
+    }
+
+    return null;
+}
+
+function markEarlierRemindersSkipped(PDO $pdo, string $table, int $id, int $sentHours): void
+{
+    if (!in_array($table, ['document_requests', 'appointments'], true)) {
+        return;
+    }
+
+    foreach (reminderLeadTimes() as $hours) {
+        if ($hours <= $sentHours) {
+            continue;
+        }
+        $column = reminderSentColumn($hours);
+        $stmt = $pdo->prepare(
+            "UPDATE `$table` SET `$column` = COALESCE(`$column`, NOW()) WHERE id = ? AND `$column` IS NULL"
+        );
+        $stmt->execute([$id]);
+    }
+}
+
+function sendDueEmailReminderRow(PDO $pdo, array $row, string $table, callable $notifyFn): bool
+{
+    $minutesUntil = appointmentMinutesUntil($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
+    if ($minutesUntil === null) {
+        return false;
+    }
+
+    $leadTime = nextDueReminderLeadTime($minutesUntil);
+    if ($leadTime === null) {
+        return false;
+    }
+
+    $column = reminderSentColumn($leadTime);
+    if (!empty($row[$column])) {
+        return false;
+    }
+
+    $claim = $pdo->prepare("UPDATE `$table` SET `$column` = NOW() WHERE id = ? AND `$column` IS NULL");
+    $undo = $pdo->prepare("UPDATE `$table` SET `$column` = NULL WHERE id = ?");
+    $claim->execute([(int) $row['id']]);
+    if ($claim->rowCount() === 0) {
+        return false;
+    }
+
+    if ($notifyFn($row, $leadTime)) {
+        markEarlierRemindersSkipped($pdo, $table, (int) $row['id'], $leadTime);
+        return true;
+    }
+
+    $undo->execute([(int) $row['id']]);
+    return false;
+}
+
+function sendDueDocumentRequestEmailReminders(PDO $pdo): int
+{
+    $stmt = $pdo->query(
+        "SELECT id, tracking_code, first_name, middle_name, last_name, email, document_type, status,
+                appointment_date, appointment_time, notify_email,
+                reminder_5h_sent_at, reminder_3h_sent_at, reminder_1h_sent_at
+         FROM document_requests
+         WHERE notify_email = 1
+           AND email IS NOT NULL AND email != ''
+           AND status IN ('pending', 'verified', 'ready')
+           AND appointment_date IS NOT NULL
+           AND appointment_time IS NOT NULL
+           AND TIMESTAMP(appointment_date, appointment_time) > NOW()
+           AND TIMESTAMP(appointment_date, appointment_time) <= DATE_ADD(NOW(), INTERVAL 5 HOUR)
+           AND (reminder_5h_sent_at IS NULL OR reminder_3h_sent_at IS NULL OR reminder_1h_sent_at IS NULL)"
+    );
+    $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+    $sent = 0;
+
+    foreach ($rows as $row) {
+        $minutesUntil = appointmentMinutesUntil($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
+        $leadTime = $minutesUntil === null ? null : nextDueReminderLeadTime($minutesUntil);
+        if ($leadTime === null) {
+            continue;
+        }
+
+        $column = reminderSentColumn($leadTime);
+        if (sendDueEmailReminderRow($pdo, $row, 'document_requests', 'notifyRequestVisitReminder')) {
+            $sent++;
+            $pdo->prepare(
+                "UPDATE appointments SET `$column` = NOW()
+                 WHERE email = ? AND appointment_date = ? AND appointment_time = ? AND `$column` IS NULL"
+            )->execute([$row['email'], $row['appointment_date'], $row['appointment_time']]);
+        }
+    }
+
+    return $sent;
+}
+
+function sendDueStandaloneAppointmentEmailReminders(PDO $pdo): int
+{
+    $stmt = $pdo->query(
+        "SELECT id, appointment_code, first_name, middle_name, last_name, email, service_type,
+                appointment_date, appointment_time, notify_email,
+                reminder_5h_sent_at, reminder_3h_sent_at, reminder_1h_sent_at
+         FROM appointments
+         WHERE notify_email = 1
+           AND email IS NOT NULL AND email != ''
+           AND status IN ('scheduled', 'confirmed')
+           AND TIMESTAMP(appointment_date, appointment_time) > NOW()
+           AND TIMESTAMP(appointment_date, appointment_time) <= DATE_ADD(NOW(), INTERVAL 5 HOUR)
+           AND (reminder_5h_sent_at IS NULL OR reminder_3h_sent_at IS NULL OR reminder_1h_sent_at IS NULL)"
+    );
+    $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+    $sent = 0;
+
+    foreach ($rows as $row) {
+        if (sendDueEmailReminderRow($pdo, $row, 'appointments', 'notifyAppointmentReminder')) {
+            $sent++;
+        }
+    }
+
+    return $sent;
+}
+
 function sendDueAppointmentReminders(PDO $pdo): int
 {
     ensureCitizenNotifyColumns($pdo);
@@ -4421,14 +4793,18 @@ function sendDueAppointmentReminders(PDO $pdo): int
     }
 
     $sent = 0;
+    $failed = false;
     try {
-        foreach (reminderLeadTimes() as $hours) {
-            $sent += sendDueAppointmentRemindersForLeadTime($pdo, $hours);
-        }
+        $sent += sendDueDocumentRequestEmailReminders($pdo);
+        $sent += sendDueStandaloneAppointmentEmailReminders($pdo);
         require_once __DIR__ . '/sms.php';
         $sent += sendDueSmsVisitReminders($pdo);
     } catch (Throwable $e) {
-        $sent = 0;
+        $failed = true;
+        error_log('ALCROS appointment reminders failed: ' . $e->getMessage());
+        if (function_exists('recordReminderSchedulerFailure')) {
+            recordReminderSchedulerFailure($pdo, $e->getMessage());
+        }
     }
 
     if ($lock) {
@@ -4436,76 +4812,29 @@ function sendDueAppointmentReminders(PDO $pdo): int
         fclose($lock);
     }
 
+    if (!$failed && function_exists('recordReminderSchedulerSuccess')) {
+        recordReminderSchedulerSuccess($pdo);
+    }
+
     return $sent;
 }
 
-function sendDueAppointmentRemindersForLeadTime(PDO $pdo, int $hours): int
+function runReminderSchedulerIfDue(?PDO $pdo = null, int $intervalSeconds = 300): int
 {
-    $column = reminderSentColumn($hours);
-    $sent = 0;
-
-    $reqStmt = $pdo->query(
-        "SELECT id, tracking_code, first_name, middle_name, last_name, email, document_type, status, appointment_date, appointment_time, notify_email
-         FROM document_requests
-         WHERE notify_email = 1
-           AND email IS NOT NULL AND email != ''
-           AND `$column` IS NULL
-           AND status IN ('pending', 'verified', 'ready')
-           AND appointment_date IS NOT NULL
-           AND appointment_time IS NOT NULL
-           AND TIMESTAMP(appointment_date, appointment_time) > NOW()
-           AND TIMESTAMP(appointment_date, appointment_time) <= DATE_ADD(NOW(), INTERVAL $hours HOUR)"
-    );
-    $requests = $reqStmt ? $reqStmt->fetchAll() : [];
-
-    $claimReq = $pdo->prepare("UPDATE document_requests SET `$column` = NOW() WHERE id = ? AND `$column` IS NULL");
-    $undoReq  = $pdo->prepare("UPDATE document_requests SET `$column` = NULL WHERE id = ?");
-    $markLinkedAppt = $pdo->prepare(
-        "UPDATE appointments SET `$column` = NOW()
-         WHERE email = ? AND appointment_date = ? AND appointment_time = ? AND `$column` IS NULL"
-    );
-
-    foreach ($requests as $row) {
-        $claimReq->execute([(int) $row['id']]);
-        if ($claimReq->rowCount() === 0) {
-            continue;
-        }
-        if (notifyRequestVisitReminder($row, $hours)) {
-            $sent++;
-            $markLinkedAppt->execute([$row['email'], $row['appointment_date'], $row['appointment_time']]);
-        } else {
-            $undoReq->execute([(int) $row['id']]);
-        }
+    $pdo = $pdo ?? getDB();
+    $tickFile = __DIR__ . '/../storage/last_reminder_tick.txt';
+    $tickDir = dirname($tickFile);
+    if (!is_dir($tickDir)) {
+        @mkdir($tickDir, 0755, true);
     }
 
-    $apptStmt = $pdo->query(
-        "SELECT id, appointment_code, first_name, middle_name, last_name, email, service_type, appointment_date, appointment_time, notify_email
-         FROM appointments
-         WHERE notify_email = 1
-           AND email IS NOT NULL AND email != ''
-           AND `$column` IS NULL
-           AND status IN ('scheduled', 'confirmed')
-           AND TIMESTAMP(appointment_date, appointment_time) > NOW()
-           AND TIMESTAMP(appointment_date, appointment_time) <= DATE_ADD(NOW(), INTERVAL $hours HOUR)"
-    );
-    $appointments = $apptStmt ? $apptStmt->fetchAll() : [];
-
-    $claimAppt = $pdo->prepare("UPDATE appointments SET `$column` = NOW() WHERE id = ? AND `$column` IS NULL");
-    $undoAppt  = $pdo->prepare("UPDATE appointments SET `$column` = NULL WHERE id = ?");
-
-    foreach ($appointments as $row) {
-        $claimAppt->execute([(int) $row['id']]);
-        if ($claimAppt->rowCount() === 0) {
-            continue;
-        }
-        if (notifyAppointmentReminder($row, $hours)) {
-            $sent++;
-        } else {
-            $undoAppt->execute([(int) $row['id']]);
-        }
+    $now = time();
+    $last = is_file($tickFile) ? (int) trim((string) file_get_contents($tickFile)) : 0;
+    if ($last > 0 && ($now - $last) < max(60, $intervalSeconds)) {
+        return 0;
     }
 
-    return $sent;
+    return sendDueAppointmentReminders($pdo);
 }
 
 function formatAppointmentDisplay(?string $date, ?string $time): string
@@ -5205,3 +5534,5 @@ function exportOperationalReportCsv(array $report, string $type): void
 
     fclose($out);
 }
+
+require_once __DIR__ . '/system_errors.php';

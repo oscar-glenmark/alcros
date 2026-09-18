@@ -235,8 +235,16 @@ a.manage-stat-card.is-active {
 }
 
 @media (min-width: 1280px) {
+    .manage-request-detail {
+        display: none;
+    }
+
     .manage-requests-body.has-detail {
         grid-template-columns: minmax(0, 1fr) 280px;
+    }
+
+    .manage-requests-body.has-detail .manage-request-detail {
+        display: flex;
     }
 }
 

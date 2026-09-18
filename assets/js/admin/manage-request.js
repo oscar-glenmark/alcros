@@ -689,7 +689,7 @@
                 e.preventDefault();
                 e.stopPropagation();
                 dismissBlockingUi();
-                handleViewRequestClick(btn, { modal: true });
+                handleViewRequestClick(btn, { modal: !useSidePanel });
             });
         });
     }
@@ -753,12 +753,6 @@
     document.addEventListener('click', closePrintMenus);
     window.addEventListener('resize', closePrintMenus);
     window.addEventListener('scroll', closePrintMenus, true);
-
-    var firstRow = document.querySelector('.manage-requests-row');
-    if (useSidePanel && !pageConfig.bulkActions && firstRow && window.matchMedia('(min-width: 1280px)').matches) {
-        var firstData = parseRequestData(firstRow);
-        if (firstData) openDetail(firstData, firstRow);
-    }
 
     var statFieldMap = {
         all_requests: 'total',
@@ -895,7 +889,7 @@
                 }
                 return params;
             },
-            30000,
+            15000,
             applyListUpdate,
             function () {
                 if (window.AlcrosPoll && typeof AlcrosPoll.markLiveIndicator === 'function') {

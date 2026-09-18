@@ -3,7 +3,7 @@
 
     if (!window.AlcrosPoll) return;
 
-    var INTERVAL_MS = 30000;
+    var INTERVAL_MS = 15000;
 
     function pollParams() {
         var params = {};

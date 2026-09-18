@@ -568,14 +568,6 @@
     bindActionTriggers();
     bindDatePicker();
 
-    var firstRow = document.querySelector('.manage-requests-row');
-    if (useSidePanel && !pageConfig.bulkActions && firstRow && window.matchMedia('(min-width: 1280px)').matches) {
-        var firstData = parseAppointmentData(firstRow);
-        if (firstData && firstData.status_key === 'scheduled') {
-            openDetail(firstData, firstRow);
-        }
-    }
-
     var statFieldMap = {
         all_appointments: 'total',
         scheduled: 'scheduled',
@@ -711,7 +703,7 @@
                 }
                 return params;
             },
-            30000,
+            15000,
             applyListUpdate
         );
     }

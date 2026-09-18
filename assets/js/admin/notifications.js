@@ -77,9 +77,6 @@
     }
 
     function isUnread(n) {
-        if (n.type === 'system') {
-            return true;
-        }
         return notifTime(n) > getSeenAt();
     }
 
@@ -116,20 +113,9 @@
         }
     }
 
-    function serverActionCount(data) {
-        var counts = (data && data.counts) || {};
-        var pendingRequests = parseInt(counts.pending_requests, 10) || 0;
-        var pendingAppointments = parseInt(counts.pending_appointments, 10) || 0;
-        return Math.max(pendingRequests, pendingAppointments);
-    }
-
-    function displayBadgeCount(unreadCount, actionCount) {
-        return Math.max(unreadCount, actionCount);
-    }
-
-    function updateBadges(unreadCount, suppressHeader, actionCount) {
-        var count = displayBadgeCount(unreadCount, actionCount || 0);
-        updateBadgeEl(document.getElementById('notif-badge'), suppressHeader ? 0 : count);
+    function updateBadges(unreadCount, hideWhileOpen) {
+        var count = hideWhileOpen ? 0 : unreadCount;
+        updateBadgeEl(document.getElementById('notif-badge'), count);
         updateBadgeEl(document.getElementById('sidebar-notif-badge'), count);
     }
 
@@ -235,6 +221,13 @@
 
         document.querySelectorAll('.alcros-notif-list').forEach(function (listEl) {
             listEl.addEventListener('click', function (e) {
+                var link = e.target.closest('.notif-item a[href]');
+                if (link) {
+                    setSeenAt(Date.now());
+                    refresh();
+                    return;
+                }
+
                 var btn = e.target.closest('.notif-delete');
                 if (!btn) return;
                 e.preventDefault();
@@ -268,7 +261,6 @@
             bellBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
             if (isOpen) {
                 setSeenAt(Date.now());
-                updateBadges(0, true);
             }
             refresh();
         });
@@ -300,14 +292,11 @@
         showInitialSkeletons();
 
         var latest = [];
-        var latestCounts = { pending_requests: 0, pending_appointments: 0 };
         var headerOpen = initHeaderDropdown(refresh, function () { return latest; });
 
         function refresh() {
             renderAllLists(latest);
-            var unread = countUnread(latest);
-            var actionCount = serverActionCount({ counts: latestCounts });
-            updateBadges(unread, headerOpen && headerOpen(), actionCount);
+            updateBadges(countUnread(latest), headerOpen && headerOpen());
         }
 
         bindPanelActions(refresh, function () { return latest; });
@@ -318,7 +307,6 @@
 
         function applyPayload(data) {
             latest = (data && data.notifications) || [];
-            latestCounts = (data && data.counts) || latestCounts;
             refresh();
         }
 

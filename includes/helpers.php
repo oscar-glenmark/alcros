@@ -5370,17 +5370,20 @@ function getSystemStats(PDO $pdo): array
 
 function clearOperationalData(PDO $pdo, array $types, string $staffId): array
 {
-    $allowed = ['appointments', 'document_requests', 'civil_records'];
+    $allowed = ['appointments', 'document_requests', 'civil_records', 'queue_tickets'];
     $types = array_values(array_unique(array_intersect($allowed, $types)));
     if ($types === []) {
         throw new InvalidArgumentException('Select at least one data type to clear.');
     }
+
+    $clearAllQueue = in_array('queue_tickets', $types, true);
 
     $results = [
         'appointments'       => 0,
         'document_requests'  => 0,
         'civil_records'      => 0,
         'queue_tickets'      => 0,
+        'queue_announcements' => 0,
     ];
 
     $pdo->beginTransaction();
@@ -5392,7 +5395,9 @@ function clearOperationalData(PDO $pdo, array $types, string $staffId): array
             }
 
             $results['document_requests'] = (int) $pdo->exec('DELETE FROM document_requests');
-            $results['queue_tickets'] += (int) $pdo->exec("DELETE FROM queue_tickets WHERE purpose = 'document_claim'");
+            if (!$clearAllQueue) {
+                $results['queue_tickets'] += (int) $pdo->exec("DELETE FROM queue_tickets WHERE purpose = 'document_claim'");
+            }
         }
 
         if (in_array('appointments', $types, true)) {
@@ -5402,7 +5407,9 @@ function clearOperationalData(PDO $pdo, array $types, string $staffId): array
             }
 
             $results['appointments'] = (int) $pdo->exec('DELETE FROM appointments');
-            $results['queue_tickets'] += (int) $pdo->exec("DELETE FROM queue_tickets WHERE purpose = 'appointment'");
+            if (!$clearAllQueue) {
+                $results['queue_tickets'] += (int) $pdo->exec("DELETE FROM queue_tickets WHERE purpose = 'appointment'");
+            }
 
             $lockFile = __DIR__ . '/../storage/appointment_reminders.lock';
             if (is_file($lockFile)) {
@@ -5417,6 +5424,13 @@ function clearOperationalData(PDO $pdo, array $types, string $staffId): array
 
             $pdo->exec('DELETE FROM civil_record_edit_locks');
             $results['civil_records'] = (int) $pdo->exec('DELETE FROM civil_records');
+        }
+
+        if ($clearAllQueue) {
+            $results['queue_tickets'] = (int) $pdo->exec('DELETE FROM queue_tickets');
+            require_once __DIR__ . '/queue_announcements.php';
+            ensureQueueAnnouncementTable($pdo);
+            $results['queue_announcements'] = (int) $pdo->exec('DELETE FROM queue_announcements');
         }
 
         $pdo->commit();
@@ -5437,6 +5451,9 @@ function clearOperationalData(PDO $pdo, array $types, string $staffId): array
     if (in_array('civil_records', $types, true)) {
         $clearedLabels[] = 'civil records';
     }
+    if ($clearAllQueue) {
+        $clearedLabels[] = 'queue tickets';
+    }
 
     $detailParts = [];
     if ($results['document_requests'] > 0) {
@@ -5450,6 +5467,9 @@ function clearOperationalData(PDO $pdo, array $types, string $staffId): array
     }
     if ($results['queue_tickets'] > 0) {
         $detailParts[] = $results['queue_tickets'] . ' queue ticket(s)';
+    }
+    if ($results['queue_announcements'] > 0) {
+        $detailParts[] = $results['queue_announcements'] . ' queue announcement(s)';
     }
 
     $summary = implode(', ', $clearedLabels);

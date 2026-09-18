@@ -322,6 +322,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $handled = true;
         } elseif ($action === 'clear_data' && $isAdmin) {
             $types = is_array($_POST['clear_data_types'] ?? null) ? $_POST['clear_data_types'] : [];
+            $clearAllQueue = in_array('queue_tickets', $types, true);
             $results = clearOperationalData($pdo, $types, $currentStaffId);
 
             $parts = [];
@@ -335,7 +336,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $parts[] = $results['civil_records'] . ' civil record(s)';
             }
             if ($results['queue_tickets'] > 0) {
-                $parts[] = $results['queue_tickets'] . ' related queue ticket(s)';
+                $parts[] = $results['queue_tickets'] . ($clearAllQueue ? ' queue ticket(s)' : ' related queue ticket(s)');
+            }
+            if ($results['queue_announcements'] > 0) {
+                $parts[] = $results['queue_announcements'] . ' queue announcement(s)';
             }
 
             settingsFlashSet(
@@ -1070,6 +1074,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                                     'appointments'      => ['label' => 'Appointment data', 'stat' => 'appointments'],
                                                     'document_requests' => ['label' => 'Request document data', 'stat' => 'document_requests'],
                                                     'civil_records'     => ['label' => 'Civil records', 'stat' => 'civil_records'],
+                                                    'queue_tickets'     => ['label' => 'Queue tickets', 'stat' => 'queue_tickets', 'hint' => 'Includes walk-in, appointment, and document claim tickets plus speaker announcements.'],
                                                 ];
                                                 foreach ($clearDataOptions as $typeKey => $option):
                                                     $count = (int) ($systemStats[$option['stat']]['count'] ?? 0);
@@ -1079,6 +1084,9 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                                     <span class="min-w-0">
                                                         <span class="block text-sm font-semibold text-red-950"><?= htmlspecialchars($option['label']) ?></span>
                                                         <span class="block text-[11px] text-red-800/70"><?= number_format($count) ?> record<?= $count === 1 ? '' : 's' ?> in database</span>
+                                                        <?php if (!empty($option['hint'])): ?>
+                                                        <span class="block text-[11px] text-red-800/60 mt-0.5"><?= htmlspecialchars($option['hint']) ?></span>
+                                                        <?php endif; ?>
                                                     </span>
                                                 </label>
                                                 <?php endforeach; ?>

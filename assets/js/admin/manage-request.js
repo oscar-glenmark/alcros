@@ -889,7 +889,7 @@
                 }
                 return params;
             },
-            15000,
+            (window.AlcrosPollConfig && AlcrosPollConfig.adminListMs) || 15000,
             applyListUpdate,
             function () {
                 if (window.AlcrosPoll && typeof AlcrosPoll.markLiveIndicator === 'function') {

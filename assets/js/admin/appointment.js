@@ -714,7 +714,7 @@
                 }
                 return params;
             },
-            15000,
+            (window.AlcrosPollConfig && AlcrosPollConfig.adminListMs) || 15000,
             applyListUpdate
         );
     }

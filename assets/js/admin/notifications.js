@@ -33,20 +33,12 @@
         localStorage.setItem(key, JSON.stringify(value));
     }
 
-    function getSeenAt() {
-        return parseInt(localStorage.getItem(staffKey('seen')) || '0', 10) || 0;
+    function getBellAckAt() {
+        return parseInt(localStorage.getItem(staffKey('bell_ack')) || '0', 10) || 0;
     }
 
-    function setSeenAt(ts) {
-        localStorage.setItem(staffKey('seen'), String(ts || Date.now()));
-    }
-
-    function getBadgesAckAt() {
-        return parseInt(localStorage.getItem(staffKey('badges_ack')) || '0', 10) || 0;
-    }
-
-    function setBadgesAckAt(ts) {
-        localStorage.setItem(staffKey('badges_ack'), String(ts || Date.now()));
+    function setBellAckAt(ts) {
+        localStorage.setItem(staffKey('bell_ack'), String(ts || Date.now()));
     }
 
     function getClearedAt() {
@@ -91,12 +83,12 @@
         });
     }
 
-    function isUnread(n) {
-        return notifTime(n) > getSeenAt();
+    function isBellUnread(n) {
+        return notifTime(n) > getBellAckAt();
     }
 
-    function countUnread(all) {
-        return visibleList(all).filter(isUnread).length;
+    function bellBadgeCount(all) {
+        return visibleList(all).filter(isBellUnread).length;
     }
 
     function escapeHtml(str) {
@@ -128,22 +120,6 @@
         }
     }
 
-    function hasNewActivity(all) {
-        var visible = visibleList(all);
-        if (!visible.length) {
-            return false;
-        }
-
-        var ackAt = getBadgesAckAt();
-        if (!ackAt) {
-            return true;
-        }
-
-        return visible.some(function (n) {
-            return notifTime(n) > ackAt;
-        });
-    }
-
     function actionCounts(counts) {
         return {
             requests: parseInt((counts || {}).pending_requests, 10) || 0,
@@ -151,37 +127,29 @@
         };
     }
 
-    function computeBadgeCounts(all, counts) {
-        var visible = visibleList(all);
-        if (!hasNewActivity(all)) {
-            return { bell: 0, requests: 0, appointments: 0 };
-        }
+    function updateBellBadges(all) {
+        var count = bellBadgeCount(all);
+        updateBadgeEl(document.getElementById('notif-badge'), count);
+        updateBadgeEl(document.getElementById('sidebar-notif-badge'), count);
+    }
 
-        var unread = visible.filter(isUnread).length;
+    function hasUnreadType(all, type) {
+        return visibleList(all).some(function (n) {
+            return n.type === type && isBellUnread(n);
+        });
+    }
+
+    function updateSidebarBadges(all, counts) {
         var actions = actionCounts(counts);
-        var hasPendingReqNotifs = visible.some(function (n) { return n.type === 'pending_request'; });
-        var hasApptNotifs = visible.some(function (n) { return n.type === 'appointment'; });
-
-        return {
-            bell: unread,
-            requests: hasPendingReqNotifs ? actions.requests : 0,
-            appointments: hasApptNotifs ? actions.appointments : 0
-        };
+        var requestCount = hasUnreadType(all, 'pending_request') ? actions.requests : 0;
+        var apptCount = hasUnreadType(all, 'appointment') ? actions.appointments : 0;
+        updateBadgeEl(document.getElementById('sidebar-request-badge'), requestCount);
+        updateBadgeEl(document.getElementById('sidebar-appt-badge'), apptCount);
     }
 
     function updateAllBadges(all, counts) {
-        var badgeCounts = computeBadgeCounts(all, counts);
-        updateBadgeEl(document.getElementById('notif-badge'), badgeCounts.bell);
-        updateBadgeEl(document.getElementById('sidebar-notif-badge'), badgeCounts.bell);
-        updateBadgeEl(document.getElementById('sidebar-request-badge'), badgeCounts.requests);
-        updateBadgeEl(document.getElementById('sidebar-appt-badge'), badgeCounts.appointments);
-    }
-
-    function acknowledgeAllBadges(all, counts) {
-        var now = Date.now();
-        setBadgesAckAt(now);
-        setSeenAt(now);
-        updateAllBadges(all || [], counts || { pending_requests: 0, pending_appointments: 0 });
+        updateBellBadges(all);
+        updateSidebarBadges(all, counts);
     }
 
     function renderListEl(listEl, all, options) {
@@ -204,7 +172,7 @@
         listEl.innerHTML = items.map(function (n) {
             var s = STYLES[n.type] || { icon: 'bell', bg: 'bg-gray-100', text: 'text-gray-500' };
             var href = buildHref(n.href);
-            var faded = isUnread(n) ? '' : ' opacity-60';
+            var faded = isBellUnread(n) ? '' : ' opacity-60';
             var detail = showDetail && n.detail
                 ? '<p class="text-[10px] text-gray-400 font-mono truncate mt-0.5">' + escapeHtml(n.detail) + '</p>'
                 : '';
@@ -214,8 +182,8 @@
                 : '<button type="button" class="notif-delete p-1.5 rounded-lg text-gray-300 hover:text-red-500 self-start" data-id="' + escapeHtml(n.id) + '" title="Remove">' +
                     '<i data-lucide="x" class="w-3.5 h-3.5"></i></button>';
 
-            return '<div class="notif-item group flex gap-2 px-3 py-3 border-b border-gray-50' + faded + '">' +
-                '<a href="' + href + '" class="flex gap-3 min-w-0 flex-1">' +
+            return '<div class="notif-item group flex gap-2 px-3 py-3 border-b border-gray-50' + faded + '" data-notif-id="' + escapeHtml(n.id) + '">' +
+                '<a href="' + href + '" class="flex gap-3 min-w-0 flex-1 notif-item-link">' +
                 '<div class="w-9 h-9 rounded-full ' + s.bg + ' ' + s.text + ' flex items-center justify-center shrink-0">' +
                 '<i data-lucide="' + s.icon + '" class="w-4 h-4"></i></div>' +
                 '<div class="min-w-0 flex-1">' +
@@ -252,12 +220,12 @@
         }, 600);
     }
 
-    function bindPanelActions(refresh, latestGetter, countsGetter) {
+    function bindPanelActions(refresh, latestGetter) {
         document.querySelectorAll('.alcros-notif-mark-read').forEach(function (btn) {
             btn.addEventListener('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
-                setSeenAt(Date.now());
+                setBellAckAt(Date.now());
                 refresh();
                 flashButton(btn, 'Done');
             });
@@ -275,8 +243,7 @@
                         }
                     });
                     setClearedAt(now);
-                    setBadgesAckAt(now);
-                    setSeenAt(now);
+                    setBellAckAt(now);
                     refresh();
                     flashButton(btn, 'Cleared');
                 }
@@ -291,9 +258,10 @@
 
         document.querySelectorAll('.alcros-notif-list').forEach(function (listEl) {
             listEl.addEventListener('click', function (e) {
-                var link = e.target.closest('.notif-item a[href]');
+                var link = e.target.closest('.notif-item-link');
                 if (link) {
-                    acknowledgeAllBadges(latestGetter(), countsGetter ? countsGetter() : null);
+                    setBellAckAt(Date.now());
+                    refresh();
                     return;
                 }
 
@@ -320,11 +288,11 @@
         });
     }
 
-    function initHeaderDropdown(refresh, latestGetter) {
+    function initHeaderDropdown(refresh) {
         var wrapper = document.getElementById('notif-wrapper');
         var bellBtn = document.getElementById('notif-bell-btn');
         var dropdown = document.getElementById('notif-dropdown');
-        if (!wrapper || !bellBtn || !dropdown) return null;
+        if (!wrapper || !bellBtn || !dropdown) return;
 
         var isOpen = false;
 
@@ -333,9 +301,6 @@
             isOpen = !isOpen;
             dropdown.classList.toggle('hidden', !isOpen);
             bellBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-            if (isOpen) {
-                setSeenAt(Date.now());
-            }
             refresh();
         });
 
@@ -344,11 +309,8 @@
                 isOpen = false;
                 dropdown.classList.add('hidden');
                 bellBtn.setAttribute('aria-expanded', 'false');
-                refresh();
             }
         });
-
-        return function () { return isOpen; };
     }
 
     function showInitialSkeletons() {
@@ -368,14 +330,14 @@
         var latest = [];
         var latestCounts = { pending_requests: 0, pending_appointments: 0 };
 
-        initHeaderDropdown(refresh, function () { return latest; });
+        initHeaderDropdown(refresh);
 
         function refresh() {
             renderAllLists(latest);
             updateAllBadges(latest, latestCounts);
         }
 
-        bindPanelActions(refresh, function () { return latest; }, function () { return latestCounts; });
+        bindPanelActions(refresh, function () { return latest; });
 
         function applyPayload(data) {
             latest = (data && data.notifications) || [];

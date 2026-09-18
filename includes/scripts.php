@@ -202,6 +202,7 @@ function adminCoreScripts(): string
         'core/loading.js',
         'core/action-result.js',
         'core/poll.js',
+        'core/poll-config.js',
         'admin/admin-live.js',
         'admin/notifications.js',
         'admin/request-badge.js',

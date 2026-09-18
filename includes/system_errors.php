@@ -136,12 +136,50 @@ function reminderSchedulerIsStale(int $maxAgeSeconds = 1800): bool
     return (time() - $last) > max(300, $maxAgeSeconds);
 }
 
+function normalizeReminderSchedulerLockFile(): void
+{
+    $lockFile = reminderSchedulerLockPath();
+    if (!is_file($lockFile)) {
+        return;
+    }
+
+    $handle = @fopen($lockFile, 'c');
+    if (!$handle) {
+        return;
+    }
+
+    if (flock($handle, LOCK_EX | LOCK_NB)) {
+        flock($handle, LOCK_UN);
+        fclose($handle);
+        @unlink($lockFile);
+        return;
+    }
+
+    fclose($handle);
+}
+
 function reminderSchedulerLockIsStale(int $maxAgeSeconds = 600): bool
 {
+    normalizeReminderSchedulerLockFile();
+
     $lockFile = reminderSchedulerLockPath();
     if (!is_file($lockFile)) {
         return false;
     }
+
+    $handle = @fopen($lockFile, 'c');
+    if (!$handle) {
+        return false;
+    }
+
+    if (flock($handle, LOCK_EX | LOCK_NB)) {
+        flock($handle, LOCK_UN);
+        fclose($handle);
+        @unlink($lockFile);
+        return false;
+    }
+
+    fclose($handle);
 
     $mtime = @filemtime($lockFile);
 
@@ -150,12 +188,27 @@ function reminderSchedulerLockIsStale(int $maxAgeSeconds = 600): bool
 
 function clearReminderSchedulerLock(): bool
 {
+    normalizeReminderSchedulerLockFile();
+
     $lockFile = reminderSchedulerLockPath();
     if (!is_file($lockFile)) {
         return true;
     }
 
-    return @unlink($lockFile);
+    $handle = @fopen($lockFile, 'c');
+    if (!$handle) {
+        return @unlink($lockFile);
+    }
+
+    if (flock($handle, LOCK_EX | LOCK_NB)) {
+        flock($handle, LOCK_UN);
+        fclose($handle);
+        return @unlink($lockFile);
+    }
+
+    fclose($handle);
+
+    return false;
 }
 
 function touchReminderSchedulerTick(): void
@@ -229,6 +282,7 @@ function recentDeliveryFailureSummary(
 function syncSystemErrors(PDO $pdo): void
 {
     ensureSystemErrorsTable($pdo);
+    normalizeReminderSchedulerLockFile();
     require_once __DIR__ . '/sms.php';
 
     if (!isEmailConfigured()) {

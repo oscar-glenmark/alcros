@@ -4787,7 +4787,12 @@ function sendDueAppointmentReminders(PDO $pdo): int
     }
     $lockFile = $lockDir . '/appointment_reminders.lock';
     $lock = @fopen($lockFile, 'c');
-    if ($lock && !flock($lock, LOCK_EX | LOCK_NB)) {
+    if (!$lock) {
+        error_log('ALCROS appointment reminders: could not open lock file.');
+        return 0;
+    }
+
+    if (!flock($lock, LOCK_EX | LOCK_NB)) {
         fclose($lock);
         return 0;
     }
@@ -4805,11 +4810,10 @@ function sendDueAppointmentReminders(PDO $pdo): int
         if (function_exists('recordReminderSchedulerFailure')) {
             recordReminderSchedulerFailure($pdo, $e->getMessage());
         }
-    }
-
-    if ($lock) {
+    } finally {
         flock($lock, LOCK_UN);
         fclose($lock);
+        @unlink($lockFile);
     }
 
     if (!$failed && function_exists('recordReminderSchedulerSuccess')) {

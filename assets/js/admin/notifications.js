@@ -33,12 +33,31 @@
         localStorage.setItem(key, JSON.stringify(value));
     }
 
-    function getBellAckAt() {
-        return parseInt(localStorage.getItem(staffKey('bell_ack')) || '0', 10) || 0;
+    function getBellAckedIds() {
+        var ids = loadJson(staffKey('bell_ack_ids'), null);
+        return Array.isArray(ids) ? ids : [];
     }
 
-    function setBellAckAt(ts) {
-        localStorage.setItem(staffKey('bell_ack'), String(ts || Date.now()));
+    function ackBellId(id) {
+        if (!id) return;
+        var list = getBellAckedIds();
+        if (list.indexOf(id) === -1) {
+            list.push(id);
+            saveJson(staffKey('bell_ack_ids'), list.slice(-500));
+        }
+    }
+
+    function ackBellIds(ids) {
+        var list = getBellAckedIds();
+        var changed = false;
+        (ids || []).forEach(function (id) {
+            if (!id || list.indexOf(id) !== -1) return;
+            list.push(id);
+            changed = true;
+        });
+        if (changed) {
+            saveJson(staffKey('bell_ack_ids'), list.slice(-500));
+        }
     }
 
     function getClearedAt() {
@@ -84,11 +103,23 @@
     }
 
     function isBellUnread(n) {
-        return notifTime(n) > getBellAckAt();
+        if (!n || !n.id) return false;
+        return getBellAckedIds().indexOf(n.id) === -1;
     }
 
-    function bellBadgeCount(all) {
-        return visibleList(all).filter(isBellUnread).length;
+    function bellBadgeCount(all, counts) {
+        var unread = visibleList(all).filter(isBellUnread).length;
+        if (unread > 0) return unread;
+
+        var actions = actionCounts(counts);
+        var visible = visibleList(all);
+        if (actions.requests > 0 && !visible.some(function (n) { return n.type === 'pending_request'; })) {
+            return actions.requests;
+        }
+        if (actions.appointments > 0 && !visible.some(function (n) { return n.type === 'appointment'; })) {
+            return actions.appointments;
+        }
+        return 0;
     }
 
     function escapeHtml(str) {
@@ -127,28 +158,37 @@
         };
     }
 
-    function updateBellBadges(all) {
-        var count = bellBadgeCount(all);
+    function updateBellBadges(all, counts) {
+        var count = bellBadgeCount(all, counts);
         updateBadgeEl(document.getElementById('notif-badge'), count);
         updateBadgeEl(document.getElementById('sidebar-notif-badge'), count);
     }
 
-    function hasUnreadType(all, type) {
-        return visibleList(all).some(function (n) {
-            return n.type === type && isBellUnread(n);
+    function sidebarTypeCount(all, counts, type, pendingKey) {
+        var actions = actionCounts(counts);
+        var total = actions[pendingKey] || 0;
+        if (total <= 0) return 0;
+
+        var typed = visibleList(all).filter(function (n) {
+            return n.type === type;
         });
+        if (!typed.length) return total;
+        return typed.some(isBellUnread) ? total : 0;
     }
 
     function updateSidebarBadges(all, counts) {
-        var actions = actionCounts(counts);
-        var requestCount = hasUnreadType(all, 'pending_request') ? actions.requests : 0;
-        var apptCount = hasUnreadType(all, 'appointment') ? actions.appointments : 0;
-        updateBadgeEl(document.getElementById('sidebar-request-badge'), requestCount);
-        updateBadgeEl(document.getElementById('sidebar-appt-badge'), apptCount);
+        updateBadgeEl(
+            document.getElementById('sidebar-request-badge'),
+            sidebarTypeCount(all, counts, 'pending_request', 'requests')
+        );
+        updateBadgeEl(
+            document.getElementById('sidebar-appt-badge'),
+            sidebarTypeCount(all, counts, 'appointment', 'appointments')
+        );
     }
 
     function updateAllBadges(all, counts) {
-        updateBellBadges(all);
+        updateBellBadges(all, counts);
         updateSidebarBadges(all, counts);
     }
 
@@ -225,7 +265,7 @@
             btn.addEventListener('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
-                setBellAckAt(Date.now());
+                ackBellIds(visibleList(latestGetter()).map(function (n) { return n.id; }));
                 refresh();
                 flashButton(btn, 'Done');
             });
@@ -243,7 +283,7 @@
                         }
                     });
                     setClearedAt(now);
-                    setBellAckAt(now);
+                    ackBellIds(visibleList(latestGetter()).map(function (n) { return n.id; }));
                     refresh();
                     flashButton(btn, 'Cleared');
                 }
@@ -260,7 +300,8 @@
             listEl.addEventListener('click', function (e) {
                 var link = e.target.closest('.notif-item-link');
                 if (link) {
-                    setBellAckAt(Date.now());
+                    var item = link.closest('.notif-item');
+                    ackBellId(item ? item.getAttribute('data-notif-id') : '');
                     refresh();
                     return;
                 }
@@ -353,6 +394,10 @@
             applyPayload: applyPayload,
             refresh: refresh
         };
+
+        if (window.AlcrosAdminLive && typeof window.AlcrosAdminLive.refresh === 'function') {
+            window.AlcrosAdminLive.refresh();
+        }
     }
 
     document.addEventListener('DOMContentLoaded', init);

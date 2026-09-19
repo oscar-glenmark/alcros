@@ -1025,9 +1025,6 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     <a href="<?= htmlspecialchars(buildAuthUrl('system_settings.php', ['action' => 'export_logs'])) ?>" class="inline-flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold">
                                         <i data-lucide="download" class="w-4 h-4"></i> Export activity logs (CSV)
                                     </a>
-                                    <a href="<?= htmlspecialchars(buildAuthUrl('test.php')) ?>" class="inline-flex items-center gap-2 border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-800 px-4 py-2.5 rounded-xl text-xs font-bold">
-                                        <i data-lucide="flask-conical" class="w-4 h-4"></i> Test request generator
-                                    </a>
                                     <a href="install.php" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800 px-4 py-2.5 rounded-xl text-xs font-bold">
                                         <i data-lucide="database" class="w-4 h-4"></i> Database installer
                                     </a>

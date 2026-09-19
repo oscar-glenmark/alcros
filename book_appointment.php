@@ -105,19 +105,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $appointmentId = (int) $pdo->lastInsertId();
                         $pdo->commit();
 
+                        $notifyPayload = [
+                            'appointment_code'  => $appointmentCode,
+                            'first_name'        => $firstName,
+                            'middle_name'       => $middleName,
+                            'last_name'         => $lastName,
+                            'email'             => $email,
+                            'phone'             => $phone,
+                            'service_label'     => $serviceType,
+                            'service_type'      => $serviceType,
+                            'appointment_date'  => $date,
+                            'appointment_time'  => $time,
+                            'notify_email'      => $notifyEmail ? 1 : 0,
+                            'notify_sms'        => $notifySms ? 1 : 0,
+                        ];
                         if ($notifyEmail) {
-                            $emailSent = notifyAppointmentBooked([
-                                'appointment_code'  => $appointmentCode,
-                                'first_name'        => $firstName,
-                                'middle_name'       => $middleName,
-                                'last_name'         => $lastName,
-                                'email'             => $email,
-                                'service_label'     => $serviceType,
-                                'appointment_date'  => $date,
-                                'appointment_time'  => $time,
-                                'notify_email'      => 1,
-                            ]);
+                            $emailSent = notifyAppointmentBooked($notifyPayload);
                             maybeSendVisitSoonEmail($pdo, 'appointments', $appointmentId);
+                        }
+                        if ($notifySms) {
+                            require_once __DIR__ . '/includes/sms.php';
+                            notifyAppointmentBookedSms($notifyPayload);
                         }
                         runReminderSchedulerIfDue($pdo, 60);
                         $success = true;

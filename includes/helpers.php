@@ -22,159 +22,6 @@ function generateTrackingCode(): string
     return generateCode('ALR', 8);
 }
 
-function testRequestMarker(): string
-{
-    return '[ALCROS TEST]';
-}
-
-function generateTestTrackingCode(PDO $pdo): string
-{
-    do {
-        $code = 'ALR-T' . strtoupper(substr(bin2hex(random_bytes(4)), 0, 6));
-        $stmt = $pdo->prepare('SELECT 1 FROM document_requests WHERE tracking_code = ? LIMIT 1');
-        $stmt->execute([$code]);
-    } while ($stmt->fetchColumn());
-
-    return $code;
-}
-
-function countTestDocumentRequests(PDO $pdo): int
-{
-    $marker = testRequestMarker();
-    $stmt = $pdo->prepare(
-        "SELECT COUNT(*) FROM document_requests
-         WHERE tracking_code LIKE 'ALR-T%' OR notes LIKE ?"
-    );
-    $stmt->execute(['%' . $marker . '%']);
-
-    return (int) $stmt->fetchColumn();
-}
-
-/**
- * @return list<array{tracking_code: string, status: string, citizen: string}>
- */
-function seedTestDocumentRequests(PDO $pdo, int $count, string $staffId): array
-{
-    ensureCitizenNotifyColumns($pdo);
-    migrateLegacyProcessingStatus($pdo);
-
-    $count = max(1, min(25, $count));
-    $firstNames = ['Maria', 'Juan', 'Ana', 'Jose', 'Liza', 'Mark', 'Grace', 'Paolo', 'Jenny', 'Carlo'];
-    $lastNames = ['Santos', 'Reyes', 'Cruz', 'Garcia', 'Torres', 'Flores', 'Ramos', 'Mendoza', 'Aquino', 'Bautista'];
-    $purposes = ['Personal records', 'School requirement', 'Employment', 'Travel', 'Insurance claim'];
-    $docTypes = ['birth', 'death', 'marriage', 'cenomar'];
-    $statuses = ['pending', 'pending', 'pending', 'ready', 'completed', 'rejected'];
-    $times = ['09:00:00', '10:00:00', '11:00:00', '13:00:00', '14:00:00', '15:00:00'];
-    $created = [];
-
-    $insert = $pdo->prepare(
-        'INSERT INTO document_requests
-         (tracking_code, first_name, middle_name, last_name, date_of_birth, sex, email, email_verified, phone,
-          document_type, purpose, privacy_agreed, notify_email, notify_sms,
-          appointment_date, appointment_time, status, notes, submitted_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, ?, ?, ?, ?, ?)'
-    );
-
-    for ($i = 0; $i < $count; $i++) {
-        $first = $firstNames[array_rand($firstNames)];
-        $last = $lastNames[array_rand($lastNames)];
-        $middle = chr(65 + ($i % 26)) . '.';
-        $sex = ($i % 2 === 0) ? 'female' : 'male';
-        $docType = $docTypes[$i % count($docTypes)];
-        $status = $statuses[$i % count($statuses)];
-        $trackingCode = generateTestTrackingCode($pdo);
-        $email = 'test.request.' . strtolower($trackingCode) . '@example.test';
-        $phone = '09' . str_pad((string) random_int(100000000, 999999999), 9, '0', STR_PAD_LEFT);
-        $dob = date('Y-m-d', strtotime('-' . random_int(20, 55) . ' years -' . random_int(0, 364) . ' days'));
-        $apptDate = date('Y-m-d', strtotime('+' . random_int(1, 14) . ' days'));
-        $apptTime = $times[$i % count($times)];
-        $submittedAt = date('Y-m-d H:i:s', strtotime('-' . $i . ' hours'));
-        $note = testRequestMarker() . ' Auto-generated for development on ' . date('Y-m-d H:i');
-
-        $insert->execute([
-            $trackingCode,
-            $first,
-            $middle,
-            $last,
-            $dob,
-            $sex,
-            $email,
-            1,
-            $phone,
-            $docType,
-            $purposes[$i % count($purposes)],
-            $apptDate,
-            normalizeAppointmentTime($apptTime),
-            $status,
-            $note,
-            $submittedAt,
-        ]);
-
-        $requestId = (int) $pdo->lastInsertId();
-        if (in_array($status, ['verified', 'ready', 'completed'], true)) {
-            try {
-                syncDocumentRequestAppointment($pdo, $requestId, $status === 'verified' ? 'verified' : $status);
-            } catch (Throwable $e) {
-                // Test seed should continue even if appointment sync fails.
-            }
-        }
-
-        $created[] = [
-            'tracking_code' => $trackingCode,
-            'status'        => $status,
-            'citizen'       => trim("$first $middle $last"),
-        ];
-    }
-
-    logActivity($staffId, 'Test Data Seeded', 'Created ' . count($created) . ' sample document request(s).');
-
-    return $created;
-}
-
-function deleteTestDocumentRequests(PDO $pdo, string $staffId): int
-{
-    $marker = testRequestMarker();
-    $select = $pdo->prepare(
-        "SELECT id, tracking_code FROM document_requests
-         WHERE tracking_code LIKE 'ALR-T%' OR notes LIKE ?"
-    );
-    $select->execute(['%' . $marker . '%']);
-    $rows = $select->fetchAll(PDO::FETCH_ASSOC);
-    if (!$rows) {
-        return 0;
-    }
-
-    $trackingCodes = array_values(array_filter(array_map(
-        static fn (array $row): string => (string) ($row['tracking_code'] ?? ''),
-        $rows
-    )));
-
-    $pdo->beginTransaction();
-    try {
-        if ($trackingCodes) {
-            $placeholders = implode(',', array_fill(0, count($trackingCodes), '?'));
-            $pdo->prepare("DELETE FROM appointments WHERE tracking_code IN ($placeholders)")->execute($trackingCodes);
-        }
-
-        $pdo->prepare(
-            "DELETE FROM document_requests
-             WHERE tracking_code LIKE 'ALR-T%' OR notes LIKE ?"
-        )->execute(['%' . $marker . '%']);
-
-        $pdo->commit();
-    } catch (Throwable $e) {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
-        throw $e;
-    }
-
-    $removed = count($rows);
-    logActivity($staffId, 'Test Data Deleted', 'Removed ' . $removed . ' sample document request(s).');
-
-    return $removed;
-}
-
 function generateAppointmentCode(): string
 {
     return generateCode('APT', 6);
@@ -4394,7 +4241,8 @@ function notifyRequestSubmitted(array $data): bool
             'button_label' => 'Track your request',
             'button_url'   => trackRequestUrl($data['tracking_code']),
             'accent'       => '#2563eb',
-        ]
+        ],
+        'request_submitted'
     );
 }
 
@@ -4545,10 +4393,10 @@ function syncAppointmentToDocumentRequest(PDO $pdo, int $appointmentId, string $
         return;
     }
 
-    updateDocumentRequestStatus($pdo, $requestId, $targetAction, true);
+    updateDocumentRequestStatus($pdo, $requestId, $targetAction, false, true);
 }
 
-function updateDocumentRequestStatus(PDO $pdo, int $id, string $status, bool $deferNotifications = false): bool
+function updateDocumentRequestStatus(PDO $pdo, int $id, string $status, bool $deferNotifications = false, bool $skipNotifications = false): bool
 {
     if ($id <= 0) {
         return false;
@@ -4596,27 +4444,29 @@ function updateDocumentRequestStatus(PDO $pdo, int $id, string $status, bool $de
         // Status is already saved; appointment sync failure should not block staff.
     }
 
-    $runNotifications = static function () use ($pdo, $id, $saveStatus): void {
-        try {
-            notifyRequestStatusChange($pdo, $id, $saveStatus);
-        } catch (Throwable $e) {
-            // Status is already saved; email failure should not block staff.
-        }
+    if (!$skipNotifications) {
+        $runNotifications = static function () use ($pdo, $id, $saveStatus, $staffAction): void {
+            try {
+                notifyRequestStatusChange($pdo, $id, $saveStatus, $staffAction);
+            } catch (Throwable $e) {
+                // Status is already saved; email failure should not block staff.
+            }
 
-        try {
-            require_once __DIR__ . '/sms.php';
-            notifyRequestStatusSms($pdo, $id, $saveStatus);
-        } catch (Throwable $e) {
-            // Status is already saved; SMS failure should not block staff.
-        }
-    };
+            try {
+                require_once __DIR__ . '/sms.php';
+                notifyRequestStatusSms($pdo, $id, $saveStatus, $staffAction);
+            } catch (Throwable $e) {
+                // Status is already saved; SMS failure should not block staff.
+            }
+        };
 
-    if ($deferNotifications) {
-        register_shutdown_function(static function () use ($runNotifications): void {
+        if ($deferNotifications) {
+            register_shutdown_function(static function () use ($runNotifications): void {
+                $runNotifications();
+            });
+        } else {
             $runNotifications();
-        });
-    } else {
-        $runNotifications();
+        }
     }
 
     $actor = function_exists('staffId') ? staffId() : 'system';
@@ -4698,7 +4548,7 @@ function updateAppointmentStatus(PDO $pdo, int $id, string $status, bool $deferN
     return true;
 }
 
-function notifyRequestStatusChange(PDO $pdo, int $requestId, string $newStatus): void
+function notifyRequestStatusChange(PDO $pdo, int $requestId, string $newStatus, ?string $staffAction = null): void
 {
     ensureCitizenNotifyColumns($pdo);
     $stmt = $pdo->prepare(
@@ -4711,7 +4561,7 @@ function notifyRequestStatusChange(PDO $pdo, int $requestId, string $newStatus):
         return;
     }
 
-    $status = normalizeRequestStatus($newStatus);
+    $status = $staffAction === 'verified' ? 'verified' : normalizeRequestStatus($newStatus);
     $appointment = fetchDocumentRequestAppointment($pdo, (string) $row['tracking_code']);
     $visitSchedule = formatAppointmentDisplay(
         $appointment['appointment_date'] ?? $row['appointment_date'] ?? null,
@@ -4765,7 +4615,7 @@ function notifyRequestStatusChange(PDO $pdo, int $requestId, string $newStatus):
         'button_label' => 'View full details',
         'button_url'   => trackRequestUrl($row['tracking_code']),
         'accent'       => $accent,
-    ]);
+    ], 'request_' . $status);
 }
 
 function notifyAppointmentBooked(array $data): bool
@@ -4792,7 +4642,8 @@ function notifyAppointmentBooked(array $data): bool
             'button_label' => 'Track appointment',
             'button_url'   => trackRequestUrl($data['appointment_code']),
             'accent'       => '#2563eb',
-        ]
+        ],
+        'appointment_booked'
     );
 }
 
@@ -4834,7 +4685,8 @@ function notifyAppointmentStatusChange(PDO $pdo, int $appointmentId, string $new
             'button_label' => 'View full details',
             'button_url'   => trackRequestUrl($row['appointment_code']),
             'accent'       => $accent,
-        ]
+        ],
+        'appointment_' . $newStatus
     );
 }
 
@@ -5377,6 +5229,16 @@ function clearOperationalData(PDO $pdo, array $types, string $staffId): array
     }
 
     $clearAllQueue = in_array('queue_tickets', $types, true);
+    $clearCivilRecords = in_array('civil_records', $types, true);
+
+    if ($clearAllQueue) {
+        require_once __DIR__ . '/queue_announcements.php';
+        ensureQueueAnnouncementTable($pdo);
+    }
+    if ($clearCivilRecords) {
+        require_once __DIR__ . '/record_locks.php';
+        ensureCivilRecordEditLocksTable($pdo);
+    }
 
     $results = [
         'appointments'       => 0,
@@ -5428,12 +5290,12 @@ function clearOperationalData(PDO $pdo, array $types, string $staffId): array
 
         if ($clearAllQueue) {
             $results['queue_tickets'] = (int) $pdo->exec('DELETE FROM queue_tickets');
-            require_once __DIR__ . '/queue_announcements.php';
-            ensureQueueAnnouncementTable($pdo);
             $results['queue_announcements'] = (int) $pdo->exec('DELETE FROM queue_announcements');
         }
 
-        $pdo->commit();
+        if ($pdo->inTransaction()) {
+            $pdo->commit();
+        }
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();

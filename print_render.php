@@ -125,15 +125,22 @@ if (!empty($_GET['log']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $template = $printData['template'];
-$paperW = (float) $template['paper_width_mm'];
-$paperH = (float) $template['paper_height_mm'];
+$isCertificationDoc = $documentKind === 'certification';
+if ($isCertificationDoc) {
+    $certPaper = certificationPaperSize($certificateType);
+    $paperW = (float) $certPaper['paper_width_mm'];
+    $paperH = (float) $certPaper['paper_height_mm'];
+} else {
+    $paperW = (float) $template['paper_width_mm'];
+    $paperH = (float) $template['paper_height_mm'];
+}
 $pageCssSize = printPageCssSize($paperW, $paperH);
+$pageSizeFallback = $isCertificationDoc ? 'A4 portrait' : 'legal portrait';
 $printerSetupCss = printPrinterSetupStylesheet();
 $printPaperPrefs = printPaperPreferences();
 $printCsrfToken = csrfToken();
 $isPreview = !empty($_GET['preview']);
 $autoPrint = !empty($_GET['autoprint']);
-$isCertificationDoc = $documentKind === 'certification';
 if ($isCertificationDoc) {
     $showBackground = !empty($_GET['background']);
 } else {
@@ -156,9 +163,8 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
     <title>Print <?= htmlspecialchars(ucfirst($certificateType)) ?> · <?= htmlspecialchars(ucfirst($pageSide)) ?></title>
     <?= $printerSetupCss ?>
     <style>
-        /* Legal / 8.5×14.1 in — browsers recognize this better than raw mm (avoids Postcard default). */
         @page {
-            size: legal portrait;
+            size: <?= htmlspecialchars($pageSizeFallback) ?>;
             size: <?= htmlspecialchars($pageCssSize) ?> portrait;
             margin: 0;
         }

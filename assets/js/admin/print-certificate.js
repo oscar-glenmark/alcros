@@ -124,11 +124,13 @@
     }
 
     function applyLocalPaperCssVars() {
-        var section = localPreviewSection();
+        var section = document.querySelector('.print-cert-previews');
         if (!section) return;
 
-        var paperW = parseFloat(section.getAttribute('data-paper-w') || cfg.paperWidthMm || '215.9');
-        var paperH = parseFloat(section.getAttribute('data-paper-h') || cfg.paperHeightMm || '358.9');
+        var defaultW = cfg.documentKind === 'certification' ? '210' : '215.9';
+        var defaultH = cfg.documentKind === 'certification' ? '297' : '358.9';
+        var paperW = parseFloat(section.getAttribute('data-paper-w') || cfg.paperWidthMm || defaultW);
+        var paperH = parseFloat(section.getAttribute('data-paper-h') || cfg.paperHeightMm || defaultH);
         if (!(paperW > 0 && paperH > 0)) return;
 
         section.style.setProperty('--print-cert-paper-w', paperW + 'mm');

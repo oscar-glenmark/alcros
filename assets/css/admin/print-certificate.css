@@ -335,8 +335,13 @@
 }
 
 .print-page--certification .print-cert-frame {
-    aspect-ratio: auto;
+    width: var(--print-cert-paper-w, 210mm);
+    height: var(--print-cert-paper-h, 297mm);
+    max-width: 100%;
+    aspect-ratio: 210 / 297;
     min-height: 0;
+    margin: 0 auto;
+    display: block;
 }
 
 

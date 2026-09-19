@@ -177,7 +177,41 @@ function smsSiteShortName(): string
     return getSetting('site_name', 'ALCROS');
 }
 
-function notifyRequestStatusSms(PDO $pdo, int $requestId, string $newStatus): bool
+function notifyRequestSubmittedSms(array $data): bool
+{
+    if (!isSmsConfigured() || !citizenWantsSmsNotify($data)) {
+        return false;
+    }
+
+    $code = (string) ($data['tracking_code'] ?? '');
+    $doc = (string) ($data['document_label'] ?? documentTypeLabel((string) ($data['document_type'] ?? '')));
+    $visit = formatAppointmentDisplay($data['appointment_date'] ?? null, $data['appointment_time'] ?? null);
+    $site = smsSiteShortName();
+    $message = $site . ': Request received for ' . $doc . ' (' . $code . '). Status: pending review.'
+        . ($visit !== '' && $visit !== '—' ? ' Preferred visit: ' . $visit . '.' : '')
+        . ' Keep your tracking code.';
+
+    return sendCitizenSms((string) $data['phone'], $message, 'request_submitted', $code);
+}
+
+function notifyAppointmentBookedSms(array $data): bool
+{
+    if (!isSmsConfigured() || !citizenWantsSmsNotify($data)) {
+        return false;
+    }
+
+    $code = (string) ($data['appointment_code'] ?? '');
+    $service = appointmentServiceLabel((string) ($data['service_type'] ?? $data['service_label'] ?? ''));
+    $visit = formatAppointmentDisplay($data['appointment_date'] ?? null, $data['appointment_time'] ?? null);
+    $site = smsSiteShortName();
+    $message = $site . ': Appointment booked for ' . $service . ' (' . $code . ').'
+        . ($visit !== '' && $visit !== '—' ? ' Preferred schedule: ' . $visit . '.' : '')
+        . ' Staff will confirm your visit.';
+
+    return sendCitizenSms((string) $data['phone'], $message, 'appointment_booked', $code);
+}
+
+function notifyRequestStatusSms(PDO $pdo, int $requestId, string $newStatus, ?string $staffAction = null): bool
 {
     if (!isSmsConfigured()) {
         return false;
@@ -195,7 +229,7 @@ function notifyRequestStatusSms(PDO $pdo, int $requestId, string $newStatus): bo
         return false;
     }
 
-    $status = normalizeRequestStatus($newStatus);
+    $status = $staffAction === 'verified' ? 'verified' : normalizeRequestStatus($newStatus);
     $code = (string) $row['tracking_code'];
     $doc = documentTypeLabel((string) $row['document_type']);
     $visit = formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
@@ -319,7 +353,7 @@ function sendDueSmsVisitReminders(PDO $pdo): int
     $undoReq = $pdo->prepare('UPDATE document_requests SET sms_reminder_3h_sent_at = NULL WHERE id = ?');
     $markLinkedAppt = $pdo->prepare(
         'UPDATE appointments SET sms_reminder_3h_sent_at = NOW()
-         WHERE phone = ? AND appointment_date = ? AND appointment_time = ? AND sms_reminder_3h_sent_at IS NULL'
+         WHERE tracking_code = ? AND sms_reminder_3h_sent_at IS NULL'
     );
 
     foreach ($requests as $row) {
@@ -329,7 +363,10 @@ function sendDueSmsVisitReminders(PDO $pdo): int
         }
         if (notifyRequestVisitSmsReminder($row)) {
             $sent++;
-            $markLinkedAppt->execute([$row['phone'], $row['appointment_date'], $row['appointment_time']]);
+            $trackingCode = trim((string) ($row['tracking_code'] ?? ''));
+            if ($trackingCode !== '') {
+                $markLinkedAppt->execute([$trackingCode]);
+            }
         } else {
             $undoReq->execute([(int) $row['id']]);
         }

@@ -213,6 +213,8 @@ function ensurePrintFieldLeftAlignment(PDO $pdo): void
 
 function syncPrintPaperDimensions(PDO $pdo): void
 {
+    ensurePrintDocumentKindColumn($pdo);
+
     $paper = printDefaultPaperSize();
     $width = $paper['paper_width_mm'];
     $height = $paper['paper_height_mm'];
@@ -227,18 +229,22 @@ function syncPrintPaperDimensions(PDO $pdo): void
         setSetting('print_paper_size_version', 'official_municipal_v1');
     }
 
+    // Municipal certificates (Forms 102/97/103) use Legal bond — certifications stay on A4.
     $check = $pdo->prepare(
-        'SELECT COUNT(*) FROM print_templates WHERE paper_width_mm <> ? OR paper_height_mm <> ?'
+        'SELECT COUNT(*) FROM print_templates
+         WHERE document_kind = ?
+           AND (paper_width_mm <> ? OR paper_height_mm <> ?)'
     );
-    $check->execute([$width, $height]);
+    $check->execute(['certificate', $width, $height]);
     if ((int) $check->fetchColumn() === 0) {
         return;
     }
 
     $pdo->prepare(
         'UPDATE print_templates SET paper_width_mm = ?, paper_height_mm = ?, updated_at = NOW()
-         WHERE paper_width_mm <> ? OR paper_height_mm <> ?'
-    )->execute([$width, $height, $width, $height]);
+         WHERE document_kind = ?
+           AND (paper_width_mm <> ? OR paper_height_mm <> ?)'
+    )->execute([$width, $height, 'certificate', $width, $height]);
 }
 
 function ensurePrintRequestColumns(PDO $pdo): void

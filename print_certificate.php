@@ -54,8 +54,14 @@ if (!$context['ok']) {
             ? printCertificationFillEditorFields($certificateType, $record)
             : printFillEditorFields($certificateType, $record, [], $pdo);
         $frontTemplate = getPrintTemplate($pdo, $certificateType, 'front', $documentKind);
-        $paperW = (float) ($frontTemplate['paper_width_mm'] ?? ($isCertification ? certificationPaperSize()['paper_width_mm'] : printOfficialPaperWidthMm()));
-        $paperH = (float) ($frontTemplate['paper_height_mm'] ?? ($isCertification ? certificationPaperSize()['paper_height_mm'] : printOfficialPaperHeightMm()));
+        if ($isCertification) {
+            $certPaper = certificationPaperSize($certificateType);
+            $paperW = (float) $certPaper['paper_width_mm'];
+            $paperH = (float) $certPaper['paper_height_mm'];
+        } else {
+            $paperW = (float) ($frontTemplate['paper_width_mm'] ?? printOfficialPaperWidthMm());
+            $paperH = (float) ($frontTemplate['paper_height_mm'] ?? printOfficialPaperHeightMm());
+        }
         $paperSizeLabel = printPaperSizeLabel($paperW, $paperH, true);
         $paperSizeTitle = printPaperSizeLabel($paperW, $paperH);
     }
@@ -164,7 +170,7 @@ $printModeSetting = printMode();
                         <label><input type="checkbox" id="optShowBackground" checked> Show background</label>
                     </div>
                 </div>
-                <p class="print-cert-hint print-cert-hint--compact">When checked, the form background is included in the preview and print. When unchecked, only the filled-in data is printed — load blank certification bond paper.</p>
+                <p class="print-cert-hint print-cert-hint--compact">When checked, the form background is included in the preview and print. When unchecked, only the filled-in data is printed — load blank A4 certification paper.</p>
             </section>
             <?php endif; ?>
             <?php if (!$isCertification): ?>
@@ -210,7 +216,8 @@ $printModeSetting = printMode();
 
             <section class="print-cert-previews<?= !$isCertification ? ' print-cert-previews--local' : '' ?>"
                      data-preview-view="front"
-                     <?php if (!$isCertification): ?>data-paper-w="<?= htmlspecialchars((string) $paperW) ?>" data-paper-h="<?= htmlspecialchars((string) $paperH) ?>"<?php endif; ?>>
+                     data-paper-w="<?= htmlspecialchars((string) $paperW) ?>"
+                     data-paper-h="<?= htmlspecialchars((string) $paperH) ?>">
                 <div class="print-cert-preview-block" data-preview-side="front">
                     <div class="print-cert-preview-head">
                         <h2>Front Preview</h2>

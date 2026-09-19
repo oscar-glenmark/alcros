@@ -205,8 +205,6 @@ function adminCoreScripts(): string
         'core/poll-config.js',
         'admin/admin-live.js',
         'admin/notifications.js',
-        'admin/request-badge.js',
-        'admin/appointment-badge.js',
         'core/realtime.js',
     ];
 

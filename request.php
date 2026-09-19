@@ -200,13 +200,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                         $requestId = (int) $pdo->lastInsertId();
                         $pdo->commit();
 
-                        $emailSent = notifyRequestSubmitted(array_merge($draft, [
+                        $notifyPayload = array_merge($draft, [
                             'tracking_code'    => $trackingCode,
                             'document_label'   => documentTypeLabel($draft['document_type']),
                             'appointment_date' => $draft['appointment_date'],
                             'appointment_time' => $draft['appointment_time'],
                             'notify_email'     => (int) ($draft['notify_email'] ?? 0),
-                        ]));
+                            'notify_sms'       => (int) ($draft['notify_sms'] ?? 0),
+                        ]);
+                        $emailSent = notifyRequestSubmitted($notifyPayload);
+                        require_once __DIR__ . '/includes/sms.php';
+                        notifyRequestSubmittedSms($notifyPayload);
                         maybeSendVisitSoonEmail($pdo, 'document_requests', $requestId);
 
                         runReminderSchedulerIfDue($pdo, 60);

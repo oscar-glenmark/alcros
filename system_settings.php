@@ -3,6 +3,8 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/system_errors.php';
+require_once __DIR__ . '/includes/duplicati_backup.php';
+require_once __DIR__ . '/includes/cloud_backup.php';
 require_once __DIR__ . '/includes/scripts.php';
 requireStaffLogin();
 requirePageAccess('system_settings.php');
@@ -350,6 +352,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     : 'No records found for the selected data types.'
             );
             $handled = true;
+        } elseif ($action === 'run_duplicati_backup' && $isAdmin) {
+            $result = runAlcrosDuplicatiBackup($pdo);
+            if (!$result['ok']) {
+                throw new InvalidArgumentException($result['message']);
+            }
+            $manifest = $result['manifest'] ?? [];
+            $sqlSize = alcrosFormatBytes((int) ($manifest['sql_bytes'] ?? 0));
+            logActivity(
+                $currentStaffId,
+                'Backup Created',
+                'Duplicati backup bundle updated (' . $sqlSize . ', ' . (int) ($manifest['files_copied'] ?? 0) . ' files)'
+            );
+            settingsFlashSet('success', 'Local backup bundle created. Duplicati can now upload the folder to the cloud.');
+            $handled = true;
+        } elseif ($action === 'save_cloud_backup_settings' && $isAdmin) {
+            setSetting('cloud_backup_enabled', !empty($_POST['cloud_backup_enabled']) ? '1' : '0');
+            setSetting('cloud_backup_gcs_bucket', trim((string) ($_POST['cloud_backup_gcs_bucket'] ?? '')));
+            setSetting('cloud_backup_gcs_prefix', trim((string) ($_POST['cloud_backup_gcs_prefix'] ?? 'alcros-backups')) ?: 'alcros-backups');
+            setSetting('cloud_backup_retention_count', (string) max(5, (int) ($_POST['cloud_backup_retention_count'] ?? 30)));
+            setSetting('cloud_backup_public_url', rtrim(trim((string) ($_POST['cloud_backup_public_url'] ?? '')), '/'));
+            if (trim(getSetting('cloud_backup_cron_token', '')) === '') {
+                alcrosCloudBackupCronToken();
+            }
+            logActivity($currentStaffId, 'Backup Settings Updated', 'Cloud backup configuration saved');
+            settingsFlashSet('success', 'Cloud backup settings saved.');
+            $handled = true;
+        } elseif ($action === 'upload_gcs_service_account' && $isAdmin) {
+            alcrosSaveGcsServiceAccountUpload($_FILES['gcs_service_account_json'] ?? []);
+            logActivity($currentStaffId, 'Backup Credentials Updated', 'Google Cloud service account JSON uploaded');
+            settingsFlashSet('success', 'Google service account file saved securely on the server.');
+            $handled = true;
+        } elseif ($action === 'run_live_cloud_backup' && $isAdmin) {
+            $result = runAlcrosLiveCloudBackup($pdo);
+            if (!$result['ok']) {
+                throw new InvalidArgumentException($result['message']);
+            }
+            logActivity($currentStaffId, 'Cloud Backup Uploaded', $result['message']);
+            settingsFlashSet('success', $result['message']);
+            $handled = true;
+        } elseif ($action === 'test_cloud_backup' && $isAdmin) {
+            $result = alcrosTestCloudBackupConnection($pdo);
+            settingsFlashSet($result['ok'] ? 'success' : 'error', $result['message']);
+            $handled = true;
+        } elseif ($action === 'regenerate_backup_cron_token' && $isAdmin) {
+            alcrosRegenerateCloudBackupCronToken();
+            logActivity($currentStaffId, 'Backup Token Regenerated', 'Cloud backup cron URL token was regenerated');
+            settingsFlashSet('success', 'Cron URL token regenerated. Update your Hostinger cron job with the new URL.');
+            $handled = true;
         }
     } catch (InvalidArgumentException $e) {
         settingsFlashSet('error', $e->getMessage());
@@ -401,10 +451,44 @@ if (!in_array($activeTab, $validTabs, true)) {
 $adminToolsSection = 'overview';
 if ($isAdmin && $activeTab === 'admin-tools') {
     $adminToolsSection = $_GET['admin_sub'] ?? 'overview';
-    if (!in_array($adminToolsSection, ['overview', 'activity', 'maintenance'], true)) {
+    if (!in_array($adminToolsSection, ['overview', 'activity', 'backup', 'maintenance'], true)) {
         $adminToolsSection = 'overview';
     }
 }
+
+$backupManifest = $isAdmin ? alcrosDuplicatiReadManifest() : null;
+$backupDir = $isAdmin ? alcrosDuplicatiBackupDir() : '';
+$backupDirSize = ($isAdmin && is_dir($backupDir)) ? alcrosDuplicatiBackupDirSize($backupDir) : 0;
+$backupLastRun = $isAdmin ? getSetting('backup_last_run_at', '') : '';
+$backupLastStatus = $isAdmin ? getSetting('backup_last_status', '') : '';
+$backupLastMessage = $isAdmin ? getSetting('backup_last_message', '') : '';
+$backupScriptBat = $isAdmin ? realpath(__DIR__ . '/scripts/duplicati-pre-backup.bat') : false;
+$backupRunBat = $isAdmin ? realpath(__DIR__ . '/scripts/backup-run.bat') : false;
+$backupRecordCount = $isAdmin
+    ? (int) ($backupManifest['counts']['civil_records'] ?? ($systemStats['civil_records']['count'] ?? 0))
+    : 0;
+$backupStaffCount = $isAdmin
+    ? (int) ($backupManifest['counts']['staff'] ?? count($staffMembers))
+    : 0;
+$backupIsLocalOffice = $isAdmin && alcrosIsLocalOfficeInstall();
+$cloudBackupEnabled = $isAdmin && alcrosCloudBackupEnabled();
+$cloudBackupBucket = $isAdmin ? getSetting('cloud_backup_gcs_bucket', '') : '';
+$cloudBackupPrefix = $isAdmin ? getSetting('cloud_backup_gcs_prefix', 'alcros-backups') : '';
+$cloudBackupRetention = $isAdmin ? (int) getSetting('cloud_backup_retention_count', '30') : 30;
+$cloudBackupPublicUrl = $isAdmin ? getSetting('cloud_backup_public_url', '') : '';
+$cloudBackupGcsConfigured = $isAdmin && alcrosGcsServiceAccountConfigured();
+$cloudBackupLastUpload = $isAdmin ? getSetting('cloud_backup_last_upload_at', '') : '';
+$cloudBackupLastUploadStatus = $isAdmin ? getSetting('cloud_backup_last_upload_status', '') : '';
+$cloudBackupLastUploadMessage = $isAdmin ? getSetting('cloud_backup_last_upload_message', '') : '';
+$cloudBackupCronUrl = $isAdmin ? alcrosCloudBackupCronUrl() : '';
+$cloudBackupCronToken = $isAdmin ? alcrosCloudBackupCronToken() : '';
+$cloudBackupFileList = ['ok' => true, 'items' => [], 'message' => ''];
+if ($isAdmin) {
+    $cloudBackupFileList = alcrosCloudFetchBackupFileList();
+}
+$cloudBackupFiles = $cloudBackupFileList['items'];
+$cloudBackupFilesError = $cloudBackupFileList['ok'] ? '' : $cloudBackupFileList['message'];
+$cloudBackupGcsBrowserUrl = $isAdmin ? alcrosGcsBucketBrowserUrl() : '';
 
 function settingsPageUrl(string $tab, ?string $adminSub = null): string
 {
@@ -885,6 +969,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                 $adminToolTabs = [
                                     'overview'    => ['label' => 'Overview', 'icon' => 'layout-dashboard'],
                                     'activity'    => ['label' => 'Activity', 'icon' => 'activity', 'count' => count($recentLogs)],
+                                    'backup'      => ['label' => 'Cloud Backup', 'icon' => 'cloud-upload'],
                                     'maintenance' => ['label' => 'Maintenance', 'icon' => 'wrench', 'count' => count($activeSystemErrors)],
                                 ];
                                 foreach ($adminToolTabs as $subKey => $subTab):
@@ -970,6 +1055,594 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                         <span class="text-[11px] text-slate-400 shrink-0"><?= htmlspecialchars(formatDateDisplay($log['created_at'])) ?></span>
                                     </div>
                                     <?php endforeach; ?>
+                                </div>
+                                <?php endif; ?>
+                            </div>
+
+                            <!-- Cloud backup (Duplicati) -->
+                            <div class="p-5 sm:p-6 <?= $adminToolsSection !== 'backup' ? 'hidden' : '' ?>">
+                                <div class="rounded-xl border border-emerald-100 bg-emerald-50/60 p-5 mb-6">
+                                    <h3 class="text-sm font-bold text-emerald-950 flex items-center gap-2">
+                                        <i data-lucide="shield-check" class="w-4 h-4"></i> What gets backed up
+                                    </h3>
+                                    <ul class="mt-3 space-y-1.5 text-xs text-emerald-900/90 list-disc pl-5">
+                                        <li>Civil records (birth, death, marriage) and detail tables</li>
+                                        <li>Staff accounts (login IDs, roles, password hashes, emails)</li>
+                                        <li>Print templates, field positions, and calibrations</li>
+                                        <li>Print settings (global offsets, mode, province/city labels)</li>
+                                        <li>Staff profile photos and print form reference files</li>
+                                    </ul>
+                                    <p class="text-[11px] text-emerald-800/70 mt-3">Requests, appointments, queue tickets, and activity logs are <strong>not</strong> included.</p>
+                                </div>
+
+                                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+                                    <div class="rounded-xl p-4 bg-slate-50 border border-slate-100">
+                                        <p class="text-[10px] font-bold text-slate-400 uppercase">Last export</p>
+                                        <p class="text-sm font-black text-slate-900 mt-1">
+                                            <?= $backupLastRun !== '' ? htmlspecialchars(formatReportDateTime($backupLastRun)) : 'Not run yet' ?>
+                                        </p>
+                                    </div>
+                                    <div class="rounded-xl p-4 bg-slate-50 border border-slate-100">
+                                        <p class="text-[10px] font-bold text-slate-400 uppercase">Last cloud upload</p>
+                                        <p class="text-sm font-black text-slate-900 mt-1">
+                                            <?= $cloudBackupLastUpload !== '' ? htmlspecialchars(formatReportDateTime($cloudBackupLastUpload)) : 'Not uploaded yet' ?>
+                                        </p>
+                                        <?php if ($cloudBackupLastUploadStatus !== ''): ?>
+                                        <p class="text-[11px] mt-1 font-semibold <?= $cloudBackupLastUploadStatus === 'success' ? 'text-emerald-600' : 'text-red-600' ?>">
+                                            <?= htmlspecialchars(ucfirst($cloudBackupLastUploadStatus)) ?>
+                                        </p>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div class="rounded-xl p-4 bg-slate-50 border border-slate-100">
+                                        <p class="text-[10px] font-bold text-slate-400 uppercase">Bundle size</p>
+                                        <p class="text-sm font-black text-slate-900 mt-1"><?= htmlspecialchars(alcrosFormatBytes($backupDirSize)) ?></p>
+                                    </div>
+                                    <div class="rounded-xl p-4 bg-slate-50 border border-slate-100">
+                                        <p class="text-[10px] font-bold text-slate-400 uppercase">Civil records</p>
+                                        <p class="text-sm font-black text-slate-900 mt-1"><?= number_format($backupRecordCount) ?></p>
+                                    </div>
+                                    <div class="rounded-xl p-4 bg-slate-50 border border-slate-100">
+                                        <p class="text-[10px] font-bold text-slate-400 uppercase">Staff accounts</p>
+                                        <p class="text-sm font-black text-slate-900 mt-1"><?= number_format($backupStaffCount) ?></p>
+                                    </div>
+                                </div>
+
+                                <?php if ($backupLastMessage !== '' && $backupLastStatus === 'error'): ?>
+                                <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 mb-4">
+                                    Export error: <?= htmlspecialchars($backupLastMessage) ?>
+                                </div>
+                                <?php endif; ?>
+                                <?php if ($cloudBackupLastUploadMessage !== '' && $cloudBackupLastUploadStatus === 'error'): ?>
+                                <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 mb-6">
+                                    Cloud upload error: <?= htmlspecialchars($cloudBackupLastUploadMessage) ?>
+                                </div>
+                                <?php endif; ?>
+
+                                <div class="rounded-xl border border-indigo-200 bg-indigo-50/40 p-5 mb-8">
+                                    <h3 class="text-base font-black text-slate-900 mb-1 flex items-center gap-2">
+                                        <i data-lucide="cloud" class="w-4 h-4 text-indigo-600"></i> Live site backup (Hostinger / production)
+                                    </h3>
+                                    <p class="text-xs text-slate-600 mb-4 leading-relaxed">Use this when ALCROS is online. Every run exports <strong>all current</strong> civil records, staff, and print settings from the live database, then uploads a zip to <strong>Google Cloud Storage</strong>. New records added on the live site are included the next time backup runs.</p>
+
+                                    <details class="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 mb-5 text-xs text-slate-600 leading-relaxed" open>
+                                        <summary class="font-bold text-slate-900 cursor-pointer text-sm">Full setup guide — Google Cloud + ALCROS + Hostinger (click to collapse)</summary>
+
+                                        <p class="mt-4 mb-2 text-slate-500">Do these steps <strong>once</strong> after ALCROS is live on Hostinger. Total time: about 20–30 minutes. You need a Google account and a credit/debit card for Google Cloud billing (small backups usually cost pennies per month).</p>
+
+                                        <div class="rounded-lg border border-blue-100 bg-blue-50/70 p-4 mb-4 text-slate-700">
+                                            <p class="font-bold text-slate-900 mb-1">What is the Google service account JSON?</p>
+                                            <p class="mb-2">It is a small key file from Google (not created by ALCROS). ALCROS uses it to upload backups to your private cloud bucket <strong>without</strong> your personal Google password — so hourly cron backups work automatically on Hostinger.</p>
+                                            <p class="font-semibold text-slate-800 mb-1">You get it from:</p>
+                                            <p>Google Cloud Console → IAM &amp; Admin → Service Accounts → Keys → Add key → JSON → file downloads to your computer → you upload that file below on this page.</p>
+                                        </div>
+
+                                        <div class="rounded-lg border border-slate-200 bg-slate-50 p-4 mb-4">
+                                            <p class="font-bold text-slate-800 mb-2">Before you download the JSON, complete:</p>
+                                            <ul class="list-disc pl-4 space-y-1 text-slate-600">
+                                                <li>Step 1 — Google Cloud project created</li>
+                                                <li>Step 2 — Billing enabled</li>
+                                                <li>Step 3 — Cloud Storage API enabled</li>
+                                                <li>Step 4 — Storage bucket created (save the bucket name)</li>
+                                                <li>Step 5 — Service account created with Storage Object Admin role</li>
+                                            </ul>
+                                        </div>
+
+                                        <div class="space-y-5">
+                                            <section>
+                                                <h4 class="text-sm font-black text-indigo-900 mb-2">Part 1 — Google Cloud (create bucket + JSON key file)</h4>
+
+                                                <div class="space-y-4">
+                                                    <div class="rounded-lg border border-slate-100 bg-slate-50/80 p-4">
+                                                        <p class="font-bold text-slate-800 mb-1">Step 1 — Sign in and create a project</p>
+                                                        <ol class="list-decimal pl-4 space-y-1">
+                                                            <li>Open <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" class="text-blue-600 font-semibold hover:underline">console.cloud.google.com</a></li>
+                                                            <li>Sign in with a Google account (office account recommended)</li>
+                                                            <li>Top bar → <strong>Select a project</strong> → <strong>New Project</strong></li>
+                                                            <li>Name it e.g. <code class="bg-white px-1 rounded border border-slate-200">alcros-backup</code> → <strong>Create</strong></li>
+                                                            <li>Make sure that project is selected in the top bar</li>
+                                                        </ol>
+                                                    </div>
+
+                                                    <div class="rounded-lg border border-slate-100 bg-slate-50/80 p-4">
+                                                        <p class="font-bold text-slate-800 mb-1">Step 2 — Turn on billing (required for cloud storage)</p>
+                                                        <ol class="list-decimal pl-4 space-y-1">
+                                                            <li>Menu ☰ → <strong>Billing</strong> → link a billing account</li>
+                                                            <li>New accounts often get <strong>$300 free credit</strong> for 90 days</li>
+                                                            <li>ALCROS backups are small — often under <strong>$1/month</strong> after free credit</li>
+                                                        </ol>
+                                                    </div>
+
+                                                    <div class="rounded-lg border border-slate-100 bg-slate-50/80 p-4">
+                                                        <p class="font-bold text-slate-800 mb-1">Step 3 — Enable Cloud Storage API</p>
+                                                        <ol class="list-decimal pl-4 space-y-1">
+                                                            <li>Menu ☰ → <strong>APIs &amp; Services</strong> → <strong>Library</strong></li>
+                                                            <li>Search <strong>Cloud Storage</strong></li>
+                                                            <li>Open <strong>Cloud Storage API</strong> → click <strong>Enable</strong></li>
+                                                        </ol>
+                                                    </div>
+
+                                                    <div class="rounded-lg border border-slate-100 bg-slate-50/80 p-4">
+                                                        <p class="font-bold text-slate-800 mb-1">Step 4 — Create a storage bucket (where backups are stored)</p>
+                                                        <ol class="list-decimal pl-4 space-y-1">
+                                                            <li>Menu ☰ → <strong>Cloud Storage</strong> → <strong>Buckets</strong> → <strong>Create</strong></li>
+                                                            <li><strong>Name:</strong> e.g. <code class="bg-white px-1 rounded border border-slate-200">alcros-backup-youroffice</code> (must be globally unique — copy this name exactly for ALCROS settings)</li>
+                                                            <li><strong>Location:</strong> Region near you (e.g. <em>asia-southeast1</em> Singapore)</li>
+                                                            <li><strong>Storage class:</strong> Standard</li>
+                                                            <li><strong>Access control:</strong> Uniform</li>
+                                                            <li>Turn ON <strong>Enforce public access prevention</strong> (bucket stays private)</li>
+                                                            <li>Click <strong>Create</strong></li>
+                                                        </ol>
+                                                    </div>
+
+                                                    <div class="rounded-lg border border-slate-100 bg-slate-50/80 p-4">
+                                                        <p class="font-bold text-slate-800 mb-1">Step 5 — Create a service account (ALCROS login to Google)</p>
+                                                        <ol class="list-decimal pl-4 space-y-1">
+                                                            <li>Open <a href="https://console.cloud.google.com/iam-admin/serviceaccounts" target="_blank" rel="noopener noreferrer" class="text-blue-600 font-semibold hover:underline">Service Accounts</a> (or Menu ☰ → <strong>IAM &amp; Admin</strong> → <strong>Service Accounts</strong>)</li>
+                                                            <li>Click <strong>+ Create service account</strong></li>
+                                                            <li><strong>Name:</strong> <code class="bg-white px-1 rounded border border-slate-200">alcros-backup-uploader</code></li>
+                                                            <li>Click <strong>Create and continue</strong></li>
+                                                            <li><strong>Role:</strong> choose <strong>Storage Object Admin</strong> → <strong>Continue</strong> → <strong>Done</strong></li>
+                                                        </ol>
+                                                    </div>
+
+                                                    <div class="rounded-lg border border-slate-100 bg-slate-50/80 p-4">
+                                                        <p class="font-bold text-slate-800 mb-1">Step 6 — Download the JSON key file (this is the file you upload in ALCROS)</p>
+                                                        <ol class="list-decimal pl-4 space-y-1">
+                                                            <li>On the <a href="https://console.cloud.google.com/iam-admin/serviceaccounts" target="_blank" rel="noopener noreferrer" class="text-blue-600 font-semibold hover:underline">Service Accounts</a> page, click the account you created (e.g. <code class="bg-white px-1 rounded border border-slate-200">alcros-backup-uploader@....iam.gserviceaccount.com</code>)</li>
+                                                            <li>Open the <strong>Keys</strong> tab</li>
+                                                            <li>Click <strong>Add key</strong> → <strong>Create new key</strong></li>
+                                                            <li>Select <strong>JSON</strong> → click <strong>Create</strong></li>
+                                                            <li>Your browser downloads a file (often to <strong>Downloads</strong>) — name looks like <code class="bg-white px-1 rounded border border-slate-200">your-project-abc123.json</code></li>
+                                                            <li>That downloaded file is what you upload in <strong>Step 7</strong> below</li>
+                                                        </ol>
+                                                        <p class="mt-3 font-semibold text-slate-800">Security:</p>
+                                                        <ul class="list-disc pl-4 space-y-1 mt-1">
+                                                            <li>Treat the JSON like a password — do not email it or post it online</li>
+                                                            <li>Do not put it inside your public website folder (<code class="bg-white px-1 rounded border border-slate-200">public_html</code>)</li>
+                                                            <li>After upload, ALCROS stores it securely in <code class="bg-white px-1 rounded border border-slate-200">storage/secrets/</code> (not web-accessible)</li>
+                                                        </ul>
+                                                        <p class="mt-3 font-semibold text-slate-800">Lost the JSON file?</p>
+                                                        <p class="mt-1">Google does not let you download the same key again. Create a new one: Service Accounts → your account → <strong>Keys</strong> → <strong>Add key</strong> → JSON → upload the new file in ALCROS. You may delete the old key in Google Cloud afterward.</p>
+                                                    </div>
+                                                </div>
+                                            </section>
+
+                                            <section>
+                                                <h4 class="text-sm font-black text-indigo-900 mb-2">Part 2 — ALCROS (connect Google to this page)</h4>
+                                                <div class="space-y-4">
+                                                    <div class="rounded-lg border border-slate-100 bg-slate-50/80 p-4">
+                                                        <p class="font-bold text-slate-800 mb-1">Step 7 — Upload the JSON file below on this page</p>
+                                                        <ol class="list-decimal pl-4 space-y-1">
+                                                            <li>Scroll to <strong>Google service account JSON</strong> (below this guide)</li>
+                                                            <li>Click <strong>Choose file</strong> → select the <code class="bg-white px-1 rounded border border-slate-200">.json</code> file from Step 6 (usually in your <strong>Downloads</strong> folder)</li>
+                                                            <li>Click <strong>Upload JSON</strong></li>
+                                                            <li>You should see: <strong>JSON saved on server</strong> (green check)</li>
+                                                        </ol>
+                                                    </div>
+
+                                                    <div class="rounded-lg border border-slate-100 bg-slate-50/80 p-4">
+                                                        <p class="font-bold text-slate-800 mb-1">Step 8 — Fill in cloud settings (form below)</p>
+                                                        <ol class="list-decimal pl-4 space-y-1">
+                                                            <li>Check <strong>Enable automatic cloud backup on this server</strong></li>
+                                                            <li><strong>Google Cloud Storage bucket:</strong> paste your bucket name from Step 4 (e.g. <code class="bg-white px-1 rounded border border-slate-200">alcros-backup-youroffice</code>)</li>
+                                                            <li><strong>Folder inside bucket:</strong> leave as <code class="bg-white px-1 rounded border border-slate-200">alcros-backups</code> (unless you want another name)</li>
+                                                            <li><strong>Keep how many cloud copies:</strong> <code class="bg-white px-1 rounded border border-slate-200">30</code> is recommended</li>
+                                                            <li><strong>Live site URL:</strong> your real website, e.g. <code class="bg-white px-1 rounded border border-slate-200">https://yourdomain.com</code> (no trailing slash)</li>
+                                                            <li>Click <strong>Save cloud settings</strong></li>
+                                                        </ol>
+                                                    </div>
+
+                                                    <div class="rounded-lg border border-slate-100 bg-slate-50/80 p-4">
+                                                        <p class="font-bold text-slate-800 mb-1">Step 9 — Test that it works</p>
+                                                        <ol class="list-decimal pl-4 space-y-1">
+                                                            <li>Click <strong>Test cloud connection</strong> — should say connected successfully</li>
+                                                            <li>Click <strong>Backup to cloud now</strong> — should show success</li>
+                                                            <li>Check the <strong>Last cloud upload</strong> box at the top of this page — it should show today’s date and <strong>Success</strong></li>
+                                                        </ol>
+                                                    </div>
+
+                                                    <div class="rounded-lg border border-slate-100 bg-slate-50/80 p-4">
+                                                        <p class="font-bold text-slate-800 mb-1">Step 10 — How to see your backed-up files</p>
+                                                        <p class="mb-2 text-slate-600">Backup zip files are stored in Google Cloud, not inside your website folder. You can check them in two places:</p>
+                                                        <p class="font-semibold text-slate-800 mb-1">Option A — In ALCROS (easiest)</p>
+                                                        <ol class="list-decimal pl-4 space-y-1 mb-3">
+                                                            <li>Stay on this page: <strong>System Settings</strong> → <strong>Admin Tools</strong> → <strong>Cloud Backup</strong></li>
+                                                            <li>Scroll to the <strong>Cloud backup files</strong> section (below the backup buttons)</li>
+                                                            <li>You should see a table with file name, upload date, and size — e.g. <code class="bg-white px-1 rounded border border-slate-200">alcros-backup-2026-....zip</code></li>
+                                                            <li>Newest backups appear at the top. Refresh this page after <strong>Backup to cloud now</strong> or after cron runs</li>
+                                                            <li>Click <strong>Open in Google Cloud</strong> in that section if you need to download a zip file</li>
+                                                        </ol>
+                                                        <p class="font-semibold text-slate-800 mb-1">Option B — In Google Cloud Console</p>
+                                                        <ol class="list-decimal pl-4 space-y-1">
+                                                            <li>Go to <a href="https://console.cloud.google.com/storage/browser" target="_blank" rel="noopener noreferrer" class="text-blue-600 font-semibold hover:underline">Cloud Storage → Buckets</a></li>
+                                                            <li>Click your bucket (e.g. <code class="bg-white px-1 rounded border border-slate-200">alcros-backup-youroffice</code>)</li>
+                                                            <li>Open the folder <code class="bg-white px-1 rounded border border-slate-200">alcros-backups</code></li>
+                                                            <li>You should see zip files like <code class="bg-white px-1 rounded border border-slate-200">alcros-backup-2026-....zip</code></li>
+                                                            <li>Click a file → <strong>Download</strong> if you need a copy on your computer</li>
+                                                        </ol>
+                                                        <p class="mt-3 text-slate-500">If <strong>Cloud backup files</strong> says to upload JSON or save bucket name, complete Steps 7–8 first. If the table is empty, run <strong>Backup to cloud now</strong> once to create the first file.</p>
+                                                    </div>
+                                                </div>
+                                            </section>
+
+                                            <section>
+                                                <h4 class="text-sm font-black text-indigo-900 mb-2">Part 3 — Hostinger (automatic hourly backups)</h4>
+                                                <div class="rounded-lg border border-slate-100 bg-slate-50/80 p-4">
+                                                    <p class="font-bold text-slate-800 mb-1">Step 11 — Add a cron job so new live records are backed up automatically</p>
+                                                    <ol class="list-decimal pl-4 space-y-1.5">
+                                                        <li>Log in to <strong>Hostinger hPanel</strong></li>
+                                                        <li>Go to <strong>Advanced</strong> → <strong>Cron Jobs</strong></li>
+                                                        <li>Click <strong>Create cron job</strong></li>
+                                                        <li><strong>Schedule:</strong> every hour (<code class="bg-white px-1 rounded border border-slate-200">0 * * * *</code>) — or every 15 minutes if your plan allows</li>
+                                                        <li><strong>Command:</strong> copy the full <code class="bg-white px-1 rounded border border-slate-200">curl</code> line from the <strong>Hostinger cron job</strong> box below this guide</li>
+                                                        <li>Save the cron job</li>
+                                                        <li>After 1 hour, check <strong>Cloud backup files</strong> on this page (Step 10) — a new zip should appear</li>
+                                                    </ol>
+                                                    <p class="mt-3 text-slate-500">Each cron run exports <strong>all current</strong> civil records and staff from the live database, then uploads to Google Cloud. New records added today will be in the next backup.</p>
+                                                </div>
+                                            </section>
+
+                                            <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-900">
+                                                <p class="font-bold mb-1">You are done when:</p>
+                                                <ul class="list-disc pl-4 space-y-1">
+                                                    <li>Test connection succeeds</li>
+                                                    <li>Backup to cloud now succeeds</li>
+                                                    <li><strong>Cloud backup files</strong> shows at least one zip (or you see it in Google Cloud bucket)</li>
+                                                    <li>Hostinger cron is saved (for automatic backups)</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </details>
+
+                                    <form method="POST" class="space-y-4 mb-5">
+                                        <?= authFormField() ?>
+                                        <input type="hidden" name="settings_action" value="save_cloud_backup_settings">
+                                        <input type="hidden" name="active_tab" value="admin-tools">
+                                        <input type="hidden" name="admin_sub" value="backup">
+                                        <label class="flex items-center gap-3 cursor-pointer text-sm font-semibold text-slate-800">
+                                            <input type="checkbox" name="cloud_backup_enabled" value="1" class="rounded text-indigo-600" <?= $cloudBackupEnabled ? 'checked' : '' ?>>
+                                            Enable automatic cloud backup on this server
+                                        </label>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Google Cloud Storage bucket</label>
+                                                <input type="text" name="cloud_backup_gcs_bucket" value="<?= htmlspecialchars($cloudBackupBucket) ?>" placeholder="alcros-backup-youroffice" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Folder inside bucket</label>
+                                                <input type="text" name="cloud_backup_gcs_prefix" value="<?= htmlspecialchars($cloudBackupPrefix) ?>" placeholder="alcros-backups" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Keep how many cloud copies</label>
+                                                <input type="number" min="5" max="365" name="cloud_backup_retention_count" value="<?= (int) $cloudBackupRetention ?>" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Live site URL (for cron)</label>
+                                                <input type="url" name="cloud_backup_public_url" value="<?= htmlspecialchars($cloudBackupPublicUrl) ?>" placeholder="https://yourdomain.com" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold">
+                                            <i data-lucide="save" class="w-4 h-4"></i> Save cloud settings
+                                        </button>
+                                    </form>
+
+                                    <form method="POST" enctype="multipart/form-data" class="rounded-xl border border-slate-200 bg-white p-4 mb-5">
+                                        <?= authFormField() ?>
+                                        <input type="hidden" name="settings_action" value="upload_gcs_service_account">
+                                        <input type="hidden" name="active_tab" value="admin-tools">
+                                        <input type="hidden" name="admin_sub" value="backup">
+                                        <p class="text-sm font-bold text-slate-900 mb-1">Google service account JSON</p>
+                                        <p class="text-xs text-slate-500 mb-3">Upload the key file from Google Cloud (stored securely in <code class="bg-slate-100 px-1 rounded">storage/secrets/</code>, never in the public web folder).</p>
+                                        <div class="flex flex-wrap items-end gap-3">
+                                            <input type="file" name="gcs_service_account_json" accept=".json,application/json" class="text-xs">
+                                            <button type="submit" class="inline-flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-xl text-xs font-bold">
+                                                <i data-lucide="upload" class="w-4 h-4"></i> Upload JSON
+                                            </button>
+                                            <?php if ($cloudBackupGcsConfigured): ?>
+                                            <span class="text-xs font-semibold text-emerald-600 flex items-center gap-1"><i data-lucide="circle-check" class="w-3.5 h-3.5"></i> JSON saved on server</span>
+                                            <?php endif; ?>
+                                        </div>
+                                    </form>
+
+                                    <div class="flex flex-wrap gap-2 mb-5">
+                                        <form method="POST">
+                                            <?= authFormField() ?>
+                                            <input type="hidden" name="settings_action" value="run_live_cloud_backup">
+                                            <input type="hidden" name="active_tab" value="admin-tools">
+                                            <input type="hidden" name="admin_sub" value="backup">
+                                            <button type="submit" class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold">
+                                                <i data-lucide="cloud-upload" class="w-4 h-4"></i> Backup to cloud now
+                                            </button>
+                                        </form>
+                                        <form method="POST">
+                                            <?= authFormField() ?>
+                                            <input type="hidden" name="settings_action" value="test_cloud_backup">
+                                            <input type="hidden" name="active_tab" value="admin-tools">
+                                            <input type="hidden" name="admin_sub" value="backup">
+                                            <button type="submit" class="inline-flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold">
+                                                <i data-lucide="plug" class="w-4 h-4"></i> Test cloud connection
+                                            </button>
+                                        </form>
+                                    </div>
+
+                                    <div class="rounded-xl border border-slate-200 bg-white p-4 mb-5">
+                                        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-3">
+                                            <div>
+                                                <p class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                                                    <i data-lucide="archive" class="w-4 h-4 text-indigo-600"></i> Cloud backup files
+                                                </p>
+                                                <p class="text-xs text-slate-500 mt-1">
+                                                    <?php if ($cloudBackupBucket !== ''): ?>
+                                                    Stored in Google Cloud bucket <code class="bg-slate-100 px-1 rounded"><?= htmlspecialchars($cloudBackupBucket) ?></code><?= $cloudBackupPrefix !== '' ? ' / <code class="bg-slate-100 px-1 rounded">' . htmlspecialchars($cloudBackupPrefix) . '</code>' : '' ?>
+                                                    <?php else: ?>
+                                                    Set your bucket name and upload the JSON key to see cloud backups here.
+                                                    <?php endif; ?>
+                                                </p>
+                                            </div>
+                                            <?php if ($cloudBackupGcsConfigured && $cloudBackupBucket !== ''): ?>
+                                            <a href="<?= htmlspecialchars($cloudBackupGcsBrowserUrl) ?>" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 text-xs font-bold text-indigo-600 hover:text-indigo-800 shrink-0">
+                                                <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Open in Google Cloud
+                                            </a>
+                                            <?php endif; ?>
+                                        </div>
+
+                                        <?php if ($cloudBackupFilesError !== ''): ?>
+                                        <div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 mb-3">
+                                            Could not load cloud backup list: <?= htmlspecialchars($cloudBackupFilesError) ?>
+                                        </div>
+                                        <?php elseif (!$cloudBackupGcsConfigured || $cloudBackupBucket === ''): ?>
+                                        <p class="text-xs text-slate-500">Upload the service account JSON and save your bucket name to list backups from Google Cloud.</p>
+                                        <?php elseif ($cloudBackupFiles === []): ?>
+                                        <p class="text-xs text-slate-500">No cloud backups yet. Click <strong>Backup to cloud now</strong> to create the first zip file.</p>
+                                        <?php else: ?>
+                                        <?php
+                                        $cloudBackupFilesShown = array_slice($cloudBackupFiles, 0, 30);
+                                        $cloudBackupFilesTotal = count($cloudBackupFiles);
+                                        ?>
+                                        <div class="overflow-x-auto rounded-lg border border-slate-100">
+                                            <table class="min-w-full text-xs">
+                                                <thead class="bg-slate-50 text-slate-500">
+                                                    <tr>
+                                                        <th class="text-left font-bold uppercase tracking-wide px-3 py-2">File</th>
+                                                        <th class="text-left font-bold uppercase tracking-wide px-3 py-2">Uploaded</th>
+                                                        <th class="text-right font-bold uppercase tracking-wide px-3 py-2">Size</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody class="divide-y divide-slate-100">
+                                                    <?php foreach ($cloudBackupFilesShown as $cloudFile): ?>
+                                                    <tr class="hover:bg-slate-50/80">
+                                                        <td class="px-3 py-2 font-mono text-[11px] text-slate-800"><?= htmlspecialchars($cloudFile['filename']) ?></td>
+                                                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars(formatReportDateTime($cloudFile['timeCreated'])) ?></td>
+                                                        <td class="px-3 py-2 text-right text-slate-600"><?= htmlspecialchars(alcrosFormatBytes((int) $cloudFile['size'])) ?></td>
+                                                    </tr>
+                                                    <?php endforeach; ?>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <p class="text-[11px] text-slate-400 mt-2">
+                                            Showing <?= count($cloudBackupFilesShown) ?> of <?= $cloudBackupFilesTotal ?> backup file(s). Newest first. Download files from Google Cloud Console.
+                                            <?php if ($cloudBackupLastUploadStatus === 'success' && $cloudBackupLastUploadMessage !== ''): ?>
+                                            Last upload: <?= htmlspecialchars($cloudBackupLastUploadMessage) ?>.
+                                            <?php endif; ?>
+                                        </p>
+                                        <?php endif; ?>
+                                    </div>
+
+                                    <div class="rounded-xl border border-slate-200 bg-white p-4">
+                                        <p class="text-sm font-bold text-slate-900 mb-2">Hostinger cron job (automatic backups)</p>
+                                        <ol class="text-xs text-slate-600 space-y-2 list-decimal pl-4 mb-3">
+                                            <li>Hostinger hPanel → <strong>Advanced</strong> → <strong>Cron Jobs</strong></li>
+                                            <li>Create a job: <strong>every hour</strong> (or every 15 minutes if allowed)</li>
+                                            <li>Paste this command (replace nothing if URL is already correct):</li>
+                                        </ol>
+                                        <div class="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 font-mono text-[11px] text-slate-800 break-all">
+                                            curl -s "<?= htmlspecialchars($cloudBackupCronUrl) ?>"
+                                        </div>
+                                        <p class="text-[11px] text-slate-400 mt-3">This URL is secret — anyone with the link can trigger a backup. Do not share it publicly.</p>
+                                        <form method="POST" class="mt-3">
+                                            <?= authFormField() ?>
+                                            <input type="hidden" name="settings_action" value="regenerate_backup_cron_token">
+                                            <input type="hidden" name="active_tab" value="admin-tools">
+                                            <input type="hidden" name="admin_sub" value="backup">
+                                            <button type="submit" class="text-xs font-bold text-slate-500 hover:text-red-600">Regenerate cron URL token</button>
+                                        </form>
+                                    </div>
+                                </div>
+
+                                <?php if ($backupIsLocalOffice): ?>
+                                <div class="rounded-xl border border-amber-100 bg-amber-50/60 p-4 mb-6 text-xs text-amber-950">
+                                    <p class="font-bold flex items-center gap-2"><i data-lucide="monitor" class="w-4 h-4"></i> Optional — local XAMPP only (Duplicati)</p>
+                                    <p class="mt-1 text-amber-900/85 leading-relaxed">The section below is only for backing up ALCROS on this Windows PC. When the site is live on Hostinger, use the <strong>Live site backup</strong> section above instead.</p>
+                                </div>
+
+                                <div class="rounded-xl border border-slate-200 bg-white p-5 mb-8">
+                                    <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                                        <div>
+                                            <h3 class="text-sm font-bold text-slate-900">Create local backup folder only</h3>
+                                            <p class="text-xs text-slate-500 mt-1">Does not upload to cloud. Use with Duplicati on this PC.</p>
+                                        </div>
+                                        <form method="POST" class="shrink-0">
+                                            <?= authFormField() ?>
+                                            <input type="hidden" name="settings_action" value="run_duplicati_backup">
+                                            <input type="hidden" name="active_tab" value="admin-tools">
+                                            <input type="hidden" name="admin_sub" value="backup">
+                                            <button type="submit" class="inline-flex items-center gap-2 bg-slate-700 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold w-full sm:w-auto justify-center">
+                                                <i data-lucide="refresh-cw" class="w-4 h-4"></i> Create backup bundle now
+                                            </button>
+                                        </form>
+                                    </div>
+                                    <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 font-mono text-xs text-slate-700 break-all">
+                                        <?= htmlspecialchars(str_replace('\\', '/', $backupDir)) ?>
+                                    </div>
+                                </div>
+
+                                <h3 class="text-base font-black text-slate-900 mb-1">Duplicati setup (local PC only)</h3>
+                                <p class="text-xs text-slate-500 mb-5">Follow these in order. Setup takes about 15–20 minutes.</p>
+
+                                <div class="space-y-4 mb-8">
+                                    <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                                        <div class="flex gap-4 p-5">
+                                            <div class="w-8 h-8 rounded-full bg-emerald-600 text-white text-sm font-black flex items-center justify-center shrink-0">1</div>
+                                            <div class="min-w-0 flex-1 text-sm text-slate-700">
+                                                <p class="font-bold text-slate-900 mb-1">Download and install Duplicati</p>
+                                                <p class="text-xs text-slate-500 mb-2">Free backup app for Windows.</p>
+                                                <ol class="text-xs space-y-1.5 list-decimal pl-4 text-slate-600">
+                                                    <li>Go to <a href="https://www.duplicati.com/download" target="_blank" rel="noopener noreferrer" class="text-blue-600 font-semibold hover:underline">duplicati.com/download</a></li>
+                                                    <li>Download the Windows installer and run it</li>
+                                                    <li>Open Duplicati — it may open in your browser (that is normal)</li>
+                                                </ol>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                                        <div class="flex gap-4 p-5">
+                                            <div class="w-8 h-8 rounded-full bg-emerald-600 text-white text-sm font-black flex items-center justify-center shrink-0">2</div>
+                                            <div class="min-w-0 flex-1 text-sm text-slate-700">
+                                                <p class="font-bold text-slate-900 mb-1">Create a new backup job</p>
+                                                <ol class="text-xs space-y-1.5 list-decimal pl-4 text-slate-600">
+                                                    <li>Click <strong>Add backup</strong></li>
+                                                    <li><strong>General</strong> — name it e.g. <em>ALCROS Cloud Backup</em></li>
+                                                    <li><strong>Destination</strong> — pick <strong>Google Drive</strong> or <strong>Google Cloud Storage</strong></li>
+                                                    <li>Sign in with your Google account when asked</li>
+                                                    <li>Choose a remote folder name, e.g. <code class="bg-slate-100 px-1 rounded">ALCROS Backups</code></li>
+                                                </ol>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                                        <div class="flex gap-4 p-5">
+                                            <div class="w-8 h-8 rounded-full bg-emerald-600 text-white text-sm font-black flex items-center justify-center shrink-0">3</div>
+                                            <div class="min-w-0 flex-1 text-sm text-slate-700">
+                                                <p class="font-bold text-slate-900 mb-1">Choose what to back up (source folder)</p>
+                                                <p class="text-xs text-slate-500 mb-2">Tell Duplicati to upload the ALCROS backup folder — not the whole XAMPP folder.</p>
+                                                <ol class="text-xs space-y-1.5 list-decimal pl-4 text-slate-600 mb-3">
+                                                    <li>On the <strong>Source data</strong> step, click <strong>Configure source</strong></li>
+                                                    <li>Choose <strong>Computer</strong> (local files)</li>
+                                                    <li>Browse to this folder and select it:</li>
+                                                </ol>
+                                                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-[11px] text-slate-700 break-all">
+                                                    <?= htmlspecialchars(str_replace('\\', '/', $backupDir)) ?>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                                        <div class="flex gap-4 p-5">
+                                            <div class="w-8 h-8 rounded-full bg-emerald-600 text-white text-sm font-black flex items-center justify-center shrink-0">4</div>
+                                            <div class="min-w-0 flex-1 text-sm text-slate-700">
+                                                <p class="font-bold text-slate-900 mb-1">Set the schedule</p>
+                                                <ol class="text-xs space-y-1.5 list-decimal pl-4 text-slate-600">
+                                                    <li>On the <strong>Schedule</strong> step, choose how often to upload</li>
+                                                    <li><strong>Recommended:</strong> every <strong>15 minutes</strong> or <strong>1 hour</strong> during office hours</li>
+                                                    <li>The office PC must be <strong>on</strong> and connected to the internet when a backup runs</li>
+                                                </ol>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                                        <div class="flex gap-4 p-5">
+                                            <div class="w-8 h-8 rounded-full bg-emerald-600 text-white text-sm font-black flex items-center justify-center shrink-0">5</div>
+                                            <div class="min-w-0 flex-1 text-sm text-slate-700">
+                                                <p class="font-bold text-slate-900 mb-1">Run ALCROS export before each upload (important)</p>
+                                                <p class="text-xs text-slate-500 mb-2">This refreshes civil records and staff data in the backup folder before Duplicati sends files to the cloud.</p>
+                                                <ol class="text-xs space-y-1.5 list-decimal pl-4 text-slate-600 mb-3">
+                                                    <li>Go to <strong>Options</strong> (or job settings) → find <strong>Run script before</strong></li>
+                                                    <li>Paste this path exactly:</li>
+                                                </ol>
+                                                <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 font-mono text-[11px] text-slate-800 break-all">
+                                                    <?php if ($backupScriptBat): ?>
+                                                    <?= htmlspecialchars(str_replace('\\', '/', $backupScriptBat)) ?>
+                                                    <?php else: ?>
+                                                    <?= htmlspecialchars(str_replace('\\', '/', __DIR__ . '/scripts/duplicati-pre-backup.bat')) ?>
+                                                    <?php endif; ?>
+                                                </div>
+                                                <p class="text-[11px] text-slate-400 mt-2">Duplicati will run this script automatically — you do not need to click “Create backup bundle now” every time after this is set.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                                        <div class="flex gap-4 p-5">
+                                            <div class="w-8 h-8 rounded-full bg-emerald-600 text-white text-sm font-black flex items-center justify-center shrink-0">6</div>
+                                            <div class="min-w-0 flex-1 text-sm text-slate-700">
+                                                <p class="font-bold text-slate-900 mb-1">Turn on encryption</p>
+                                                <ol class="text-xs space-y-1.5 list-decimal pl-4 text-slate-600">
+                                                    <li>In job options, enable <strong>Encryption</strong></li>
+                                                    <li>Create a strong passphrase (20+ characters) and <strong>write it down</strong> in a safe place</li>
+                                                    <li>Without this passphrase, cloud backups cannot be restored</li>
+                                                </ol>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                                        <div class="flex gap-4 p-5">
+                                            <div class="w-8 h-8 rounded-full bg-emerald-600 text-white text-sm font-black flex items-center justify-center shrink-0">7</div>
+                                            <div class="min-w-0 flex-1 text-sm text-slate-700">
+                                                <p class="font-bold text-slate-900 mb-1">Set how long to keep old backups</p>
+                                                <ol class="text-xs space-y-1.5 list-decimal pl-4 text-slate-600">
+                                                    <li>Under <strong>Retention</strong>, choose e.g. <strong>30 days</strong> or <strong>30 versions</strong></li>
+                                                    <li>Save the backup job</li>
+                                                </ol>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                                        <div class="flex gap-4 p-5">
+                                            <div class="w-8 h-8 rounded-full bg-emerald-600 text-white text-sm font-black flex items-center justify-center shrink-0">8</div>
+                                            <div class="min-w-0 flex-1 text-sm text-slate-700">
+                                                <p class="font-bold text-slate-900 mb-1">Test that it works</p>
+                                                <ol class="text-xs space-y-1.5 list-decimal pl-4 text-slate-600">
+                                                    <li>In Duplicati, click <strong>Run now</strong> on your ALCROS job</li>
+                                                    <li>Wait until status shows <strong>Success</strong></li>
+                                                    <li>Open Google Drive (or your cloud bucket) — you should see the backup folder and files</li>
+                                                    <li>Check email alerts in Duplicati settings if you want failure notifications</li>
+                                                </ol>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="rounded-xl border border-slate-200 bg-slate-50 p-5 mb-4">
+                                    <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Optional — test without Duplicati</h4>
+                                    <p class="text-xs text-slate-600 mb-2">Double-click this file in File Explorer (or run in Command Prompt) to create the backup folder manually:</p>
+                                    <?php if ($backupRunBat): ?>
+                                    <div class="rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-[11px] text-slate-700 break-all">
+                                        <?= htmlspecialchars(str_replace('\\', '/', $backupRunBat)) ?>
+                                    </div>
+                                    <?php else: ?>
+                                    <div class="rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-[11px] text-slate-700 break-all">
+                                        <?= htmlspecialchars(str_replace('\\', '/', __DIR__ . '/scripts/backup-run.bat')) ?>
+                                    </div>
+                                    <?php endif; ?>
+                                    <?php if (is_array($backupManifest)): ?>
+                                    <p class="text-[11px] text-slate-400 mt-3">Latest bundle: <?= htmlspecialchars((string) ($backupManifest['generated_at'] ?? '')) ?> · <?= htmlspecialchars(alcrosFormatBytes((int) ($backupManifest['sql_bytes'] ?? 0))) ?> SQL · <?= (int) ($backupManifest['files_copied'] ?? 0) ?> files copied</p>
+                                    <?php endif; ?>
                                 </div>
                                 <?php endif; ?>
                             </div>

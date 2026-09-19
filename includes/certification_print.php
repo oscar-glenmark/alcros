@@ -655,6 +655,15 @@ function reseedCertificationPrintFields(PDO $pdo, int $templateId, string $certi
 /** @return array<string, string> */
 function certificationBuildFieldValues(array $record, string $certificateType, array $options = []): array
 {
+    if (!empty($options['manual_blank'])) {
+        $values = [];
+        foreach (array_keys(certificationFieldCatalog()[$certificateType] ?? []) as $fieldName) {
+            $values[$fieldName] = '';
+        }
+
+        return $values;
+    }
+
     $values = [];
 
     $values['page_number'] = trim((string) ($record['page_number'] ?? ''));
@@ -834,10 +843,12 @@ function printCertification(PDO $pdo, string $certificateType, array $record, ar
     $fields = getPrintFields($pdo, (int) $template['id'], empty($options['include_disabled_fields']));
     $values = certificationBuildFieldValues($record, $certificateType, $options);
     $values = printApplyFillOverrides($values, $options['fill_overrides'] ?? []);
-    if ($certificateType === 'birth') {
-        $values['certification_date'] = printFormatDateField(date('Y-m-d'));
-    } elseif (in_array($certificateType, ['death', 'marriage'], true)) {
-        $values['date_printed'] = printFormatDateField(date('Y-m-d'));
+    if (empty($options['manual_blank'])) {
+        if ($certificateType === 'birth') {
+            $values['certification_date'] = printFormatDateField(date('Y-m-d'));
+        } elseif (in_array($certificateType, ['death', 'marriage'], true)) {
+            $values['date_printed'] = printFormatDateField(date('Y-m-d'));
+        }
     }
 
     return [

@@ -1243,8 +1243,54 @@ function printFillDataForCsvImport(array $record, string $certificateType, array
     return printRebuildRecordFillData($record, $certificateType, $submittedFill);
 }
 
+function printManualBlankRecord(string $certificateType): array
+{
+    return ['record_type' => $certificateType];
+}
+
+/** @return list<array{field_name: string, label: string, page_side: string, value: string}> */
+function printDocumentsFillEditorFields(PDO $pdo, string $certificateType, string $documentKind): array
+{
+    $record = printManualBlankRecord($certificateType);
+    $options = [
+        'manual_blank'        => true,
+        'keep_empty'          => true,
+        'skip_fill_overrides' => true,
+    ];
+
+    if (normalizePrintDocumentKind($documentKind) === 'certification') {
+        require_once __DIR__ . '/certification_print.php';
+        $catalog = certificationFieldCatalog()[$certificateType] ?? [];
+        $fields = [];
+        foreach ($catalog as $fieldName => $label) {
+            $fields[] = [
+                'field_name' => $fieldName,
+                'label'      => $label,
+                'page_side'  => 'front',
+                'value'      => '',
+            ];
+        }
+
+        return $fields;
+    }
+
+    return printFillEditorFields($certificateType, $record, $options, $pdo);
+}
+
 function printBuildFieldValues(array $record, string $certificateType, array $options = []): array
 {
+    if (!empty($options['manual_blank'])) {
+        $values = [];
+        $catalog = printFieldCatalog()[$certificateType] ?? [];
+        foreach (['front', 'back'] as $side) {
+            foreach ($catalog[$side] ?? [] as $name => $_label) {
+                $values[$name] = '';
+            }
+        }
+
+        return $values;
+    }
+
     $values = printOfficeLocationFields();
     $values['registry_number'] = trim((string) ($record['registry_number'] ?? ''));
     $values['book_number'] = trim((string) ($record['book_number'] ?? ''));

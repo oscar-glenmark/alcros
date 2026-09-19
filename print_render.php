@@ -29,6 +29,7 @@ if (!in_array($mode, ['preprinted', 'digital'], true)) {
 }
 
 $calibrationPreview = !empty($_GET['calibration_preview']);
+$manualDocument = !empty($_GET['manual']);
 $requestId = (int) ($_GET['request_id'] ?? 0);
 $recordId = (int) ($_GET['record_id'] ?? 0);
 $documentKind = normalizePrintDocumentKind($_GET['kind'] ?? 'certificate');
@@ -45,6 +46,16 @@ if ($calibrationPreview) {
     } else {
         $record = printCalibrationSampleRecord($certificateType);
     }
+    $request = null;
+} elseif ($manualDocument) {
+    $certificateType = (string) ($_GET['type'] ?? 'birth');
+    if (!in_array($certificateType, printCertificateTypes(), true)) {
+        $certificateType = 'birth';
+    }
+    if ($documentKind === 'certification') {
+        $pageSide = 'front';
+    }
+    $record = printManualBlankRecord($certificateType);
     $request = null;
 } else {
     if ($documentKind === 'certification') {
@@ -77,6 +88,10 @@ $printOptions = [
 if ($calibrationPreview) {
     $printOptions['include_disabled_fields'] = true;
     $printOptions['keep_empty'] = true;
+} elseif ($manualDocument) {
+    $printOptions['manual_blank'] = true;
+    $printOptions['keep_empty'] = true;
+    $printOptions['skip_fill_overrides'] = true;
 }
 
 $printData = printCertificate($pdo, $certificateType, $pageSide, $record, $printOptions);

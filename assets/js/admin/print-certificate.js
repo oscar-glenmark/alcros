@@ -223,10 +223,17 @@
 
     function applyQueryParams(url, extra) {
         var parsed = new URL(url, window.location.href);
-        var requestId = numericId(cfg.requestId);
-        var recordId = numericId(cfg.recordId);
-        if (requestId > 0) parsed.searchParams.set('request_id', String(requestId));
-        if (recordId > 0) parsed.searchParams.set('record_id', String(recordId));
+        if (cfg.manualMode) {
+            parsed.searchParams.set('manual', '1');
+            parsed.searchParams.set('type', cfg.certificateType || 'birth');
+            parsed.searchParams.delete('request_id');
+            parsed.searchParams.delete('record_id');
+        } else {
+            var requestId = numericId(cfg.requestId);
+            var recordId = numericId(cfg.recordId);
+            if (requestId > 0) parsed.searchParams.set('request_id', String(requestId));
+            if (recordId > 0) parsed.searchParams.set('record_id', String(recordId));
+        }
         if (cfg.documentKind === 'certification') {
             parsed.searchParams.set('kind', 'certification');
         } else {
@@ -437,6 +444,11 @@
     }
 
     function logPrint(page, testMode, callback) {
+        if (cfg.manualMode) {
+            if (callback) callback();
+            return;
+        }
+
         var body = new FormData();
         body.append('action', 'log_print');
         body.append('csrf_token', csrfToken);
@@ -521,9 +533,22 @@
             });
         }
 
+        function syncCalibrationLink(pageSide) {
+            var link = document.getElementById('openPrintCalibration');
+            if (!link || !cfg.calibrationUrl) return;
+            try {
+                var parsed = new URL(cfg.calibrationUrl, window.location.href);
+                parsed.searchParams.set('page', pageSide === 'back' ? 'back' : 'front');
+                link.href = parsed.pathname + parsed.search;
+            } catch (err) {
+                // Keep the default calibration link.
+            }
+        }
+
         document.querySelectorAll('[data-fill-tab]').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 var side = btn.getAttribute('data-fill-tab');
+                syncCalibrationLink(side);
                 document.querySelectorAll('[data-fill-tab]').forEach(function (tab) {
                     var active = tab.getAttribute('data-fill-tab') === side;
                     tab.classList.toggle('is-active', active);

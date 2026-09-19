@@ -70,6 +70,7 @@ function sidebarSectionLabel(string $label): string
         <?= sidebarLink('records.php', 'Records', 'book-open', $activePage) ?>
         <?= sidebarLink('report.php', 'Reports', 'bar-chart-2', $activePage) ?>
         <?= sidebarLink('live-queue.php', 'Manage live queue', 'users', $activePage, true) ?>
+        <?= sidebarLink('documents.php', 'Documents', 'files', $activePage) ?>
         <?php if (isAdmin()): ?>
         <?= sidebarSectionLabel('Administration') ?>
         <?= sidebarLink('print_calibration.php', 'Print calibration', 'crosshair', $activePage) ?>

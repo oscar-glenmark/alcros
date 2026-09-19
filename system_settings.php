@@ -132,7 +132,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     setSetting($key, isset($_POST[$key]) ? '1' : '0');
                 } elseif ($key === 'smtp_pass') {
                     $smtpPass = (string) ($_POST['smtp_pass'] ?? '');
-                    if ($smtpPass !== '') {
+                    $smtpPassMask = '••••••••••••••••';
+                    if ($smtpPass !== '' && $smtpPass !== $smtpPassMask) {
                         setSetting($key, $smtpPass);
                     }
                 } elseif ($key === 'semaphore_api_key') {
@@ -372,6 +373,8 @@ $settings = [];
 foreach ($adminSettingKeys as $key) {
     $settings[$key] = getSetting($key, $defaults[$key] ?? '');
 }
+$smtpPassMask = '••••••••••••••••';
+$smtpPassSaved = trim($settings['smtp_pass']) !== '';
 
 $currentStaff = currentStaffRow($pdo, $currentStaffId);
 $profileNeeds2svConfirmation = staffRecoveryGmailNeeds2svConfirmation($currentStaff, (string) ($currentStaff['email'] ?? ''));
@@ -801,7 +804,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Gmail SMTP Host</label><input type="text" name="smtp_host" value="<?= htmlspecialchars($settings['smtp_host'] ?: 'smtp.gmail.com') ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Gmail SMTP Port</label><input type="number" name="smtp_port" value="<?= htmlspecialchars($settings['smtp_port'] ?: '587') ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">587 for STARTTLS, or 465 for SSL.</p></div>
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Gmail Address (SMTP user)</label><input type="email" name="smtp_user" value="<?= htmlspecialchars($settings['smtp_user']) ?>" placeholder="youroffice@gmail.com" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
-                                    <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Gmail App Password</label><input type="password" name="smtp_pass" value="" autocomplete="new-password" placeholder="<?= $settings['smtp_pass'] !== '' ? 'Leave blank to keep the saved password' : 'App password from Google Account' ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Create an App Password in Google Account → Security.</p></div>
+                                    <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Gmail App Password</label><input type="password" name="smtp_pass" id="smtpPassInput" value="<?= $smtpPassSaved ? htmlspecialchars($smtpPassMask) : '' ?>" autocomplete="new-password" data-saved-mask="<?= $smtpPassSaved ? htmlspecialchars($smtpPassMask) : '' ?>" data-saved-value="<?= $smtpPassSaved ? htmlspecialchars($settings['smtp_pass']) : '' ?>" placeholder="<?= $smtpPassSaved ? '' : 'App password from Google Account' ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Create an App Password in Google Account → Security.<?= $smtpPassSaved ? ' Click the field, then the eye icon, to view the saved password.' : '' ?></p></div>
                                 </div>
                             </details>
 
@@ -1174,8 +1177,8 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
     </div>
 
     <?= actionResultScript($flash) ?>
-    <?= scriptTag('admin/system-settings.js') ?>
     <?= scriptTag('core/password-toggle.js') ?>
+    <?= scriptTag('admin/system-settings.js') ?>
     <?= lucideInitScript() ?>
 </body>
 </html>

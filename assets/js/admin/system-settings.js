@@ -156,6 +156,111 @@
         });
     }
 
+    var smtpPassInput = document.getElementById('smtpPassInput');
+    if (smtpPassInput) {
+        var savedMask = smtpPassInput.dataset.savedMask || '';
+        var savedValue = smtpPassInput.dataset.savedValue || '';
+
+        function smtpPassWrap() {
+            return smtpPassInput.closest('.alcros-password-wrap');
+        }
+
+        function smtpPassToggleBtn() {
+            var wrap = smtpPassWrap();
+            return wrap ? wrap.querySelector('.alcros-password-toggle') : null;
+        }
+
+        function smtpPassShowsSavedMask() {
+            return savedMask !== '' && smtpPassInput.value === savedMask;
+        }
+
+        function setSmtpPassRevealed(toggleBtn, revealed) {
+            toggleBtn.classList.toggle('is-revealed', revealed);
+            toggleBtn.setAttribute('aria-pressed', revealed ? 'true' : 'false');
+            toggleBtn.setAttribute('aria-label', revealed ? 'Hide password' : 'Show password');
+        }
+
+        function syncSmtpPassToggle() {
+            var toggleBtn = smtpPassToggleBtn();
+            if (!toggleBtn) {
+                return;
+            }
+
+            var focused = document.activeElement === smtpPassInput;
+            var revealed = toggleBtn.classList.contains('is-revealed');
+            var hideToggle = savedMask !== '' && smtpPassShowsSavedMask() && !focused && !revealed;
+            toggleBtn.hidden = hideToggle;
+            toggleBtn.classList.toggle('hidden', hideToggle);
+        }
+
+        function bindSmtpPassToggle(toggleBtn) {
+            toggleBtn.addEventListener('mousedown', function (e) {
+                e.preventDefault();
+            });
+
+            toggleBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                var revealed = toggleBtn.classList.contains('is-revealed');
+
+                if (revealed) {
+                    if (savedValue && smtpPassInput.value === savedValue) {
+                        smtpPassInput.value = savedMask;
+                        smtpPassInput.setAttribute('type', 'password');
+                    } else {
+                        smtpPassInput.setAttribute('type', 'password');
+                    }
+                    setSmtpPassRevealed(toggleBtn, false);
+                    syncSmtpPassToggle();
+                    return;
+                }
+
+                if (savedValue && smtpPassShowsSavedMask()) {
+                    smtpPassInput.value = savedValue;
+                    smtpPassInput.setAttribute('type', 'text');
+                    setSmtpPassRevealed(toggleBtn, true);
+                    syncSmtpPassToggle();
+                    return;
+                }
+
+                smtpPassInput.setAttribute('type', 'text');
+                setSmtpPassRevealed(toggleBtn, true);
+                syncSmtpPassToggle();
+            });
+        }
+
+        var initialToggleBtn = smtpPassToggleBtn();
+        if (initialToggleBtn) {
+            var smtpToggleBtn = initialToggleBtn.cloneNode(true);
+            initialToggleBtn.parentNode.replaceChild(smtpToggleBtn, initialToggleBtn);
+            bindSmtpPassToggle(smtpToggleBtn);
+        }
+
+        smtpPassInput.addEventListener('focus', syncSmtpPassToggle);
+        smtpPassInput.addEventListener('blur', function (e) {
+            var toggleBtn = smtpPassToggleBtn();
+            if (toggleBtn && e.relatedTarget === toggleBtn) {
+                return;
+            }
+
+            window.setTimeout(function () {
+                if (toggleBtn && toggleBtn.classList.contains('is-revealed')) {
+                    syncSmtpPassToggle();
+                    return;
+                }
+
+                if (savedValue && smtpPassInput.value === savedValue) {
+                    smtpPassInput.value = savedMask;
+                    smtpPassInput.setAttribute('type', 'password');
+                    if (toggleBtn) {
+                        setSmtpPassRevealed(toggleBtn, false);
+                    }
+                }
+                syncSmtpPassToggle();
+            }, 0);
+        });
+        syncSmtpPassToggle();
+    }
+
     if (allowRequestsToggle && maintenanceToggle) {
         allowRequestsToggle.addEventListener('change', function () {
             if (allowRequestsToggle.checked) {

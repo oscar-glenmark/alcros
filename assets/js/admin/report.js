@@ -1,87 +1,102 @@
 (function () {
     'use strict';
 
-    var printChecks = document.querySelectorAll('.report-print-check');
-    var printSubmit = document.getElementById('reportPrintSubmit');
-    var printSelectAll = document.getElementById('reportPrintSelectAll');
-    var printClearAll = document.getElementById('reportPrintClearAll');
-    var printPanel = document.getElementById('reportPrintPanel');
+    function bindDropdown(menuId, btnId, panelId) {
+        var menu = document.getElementById(menuId);
+        var btn = document.getElementById(btnId);
+        var panel = document.getElementById(panelId);
+        if (!menu || !btn || !panel) return;
 
-    if (printSelectAll) {
-        printSelectAll.addEventListener('click', function () {
-            printChecks.forEach(function (input) { input.checked = true; });
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            panel.classList.toggle('hidden');
+        });
+
+        document.addEventListener('click', function (e) {
+            if (!menu.contains(e.target)) {
+                panel.classList.add('hidden');
+            }
         });
     }
 
-    if (printClearAll) {
-        printClearAll.addEventListener('click', function () {
-            printChecks.forEach(function (input) { input.checked = false; });
+    var exportChecks = document.querySelectorAll('.report-export-check');
+    var exportSubmit = document.getElementById('reportExportSubmit');
+    var exportSelectAll = document.getElementById('reportExportSelectAll');
+    var exportClearAll = document.getElementById('reportExportClearAll');
+    var exportPanel = document.getElementById('reportExportPanel');
+    var exportForm = document.getElementById('reportExportForm');
+    var exportSectionsField = document.getElementById('reportExportSectionsField');
+    var exportRecordsTypeField = document.getElementById('reportExportRecordsTypeField');
+    var exportRecordsFilter = document.getElementById('reportExportRecordsFilter');
+
+    function syncRecordsTypeFilterVisibility() {
+        if (!exportRecordsFilter) return;
+
+        var recordsSelected = false;
+        exportChecks.forEach(function (input) {
+            if (input.checked && input.value === 'records') {
+                recordsSelected = true;
+            }
+        });
+
+        exportRecordsFilter.classList.toggle('hidden', !recordsSelected);
+    }
+
+    if (exportSelectAll) {
+        exportSelectAll.addEventListener('click', function () {
+            exportChecks.forEach(function (input) { input.checked = true; });
+            syncRecordsTypeFilterVisibility();
         });
     }
 
-    function getSelectedPrintSections() {
+    if (exportClearAll) {
+        exportClearAll.addEventListener('click', function () {
+            exportChecks.forEach(function (input) { input.checked = false; });
+            syncRecordsTypeFilterVisibility();
+        });
+    }
+
+    exportChecks.forEach(function (input) {
+        input.addEventListener('change', syncRecordsTypeFilterVisibility);
+    });
+
+    function getSelectedExportSections() {
         var selected = [];
-        printChecks.forEach(function (input) {
+        exportChecks.forEach(function (input) {
             if (input.checked) selected.push(input.value);
         });
         return selected;
     }
 
-    function restorePanels(states) {
-        states.forEach(function (state) {
-            state.panel.classList.remove('print-selected');
-            if (state.hadHidden) {
-                state.panel.classList.add('hidden');
-            } else {
-                state.panel.classList.remove('hidden');
-            }
-        });
+    function getSelectedRecordsType() {
+        var selected = document.querySelector('input[name="reportExportRecordsType"]:checked');
+        return selected ? selected.value : 'all';
     }
 
-    function printSelectedSections() {
-        var selected = getSelectedPrintSections();
+    function exportSelectedSections() {
+        var selected = getSelectedExportSections();
         if (selected.length === 0) {
-            window.alert('Select at least one report section to print.');
+            window.alert('Select at least one report section to export.');
             return;
         }
 
-        var panels = document.querySelectorAll('.report-panel[data-print-section]');
-        var previous = [];
-
-        panels.forEach(function (panel) {
-            var key = panel.getAttribute('data-print-section');
-            previous.push({ panel: panel, hadHidden: panel.classList.contains('hidden') });
-
-            if (selected.indexOf(key) !== -1) {
-                panel.classList.remove('hidden');
-                panel.classList.add('print-selected');
-            } else {
-                panel.classList.add('hidden');
-                panel.classList.remove('print-selected');
-            }
-        });
-
-        if (printPanel) printPanel.classList.add('hidden');
-
-        function onAfterPrint() {
-            restorePanels(previous);
-            window.removeEventListener('afterprint', onAfterPrint);
+        if (!exportForm || !exportSectionsField || !exportRecordsTypeField) {
+            return;
         }
 
-        window.addEventListener('afterprint', onAfterPrint);
-        window.print();
+        exportSectionsField.value = selected.join(',');
+        exportRecordsTypeField.value = selected.indexOf('records') !== -1
+            ? getSelectedRecordsType()
+            : 'all';
 
-        // Fallback for browsers without afterprint
-        setTimeout(function () {
-            if (document.querySelector('.report-panel.print-selected')) {
-                restorePanels(previous);
-            }
-        }, 1000);
+        if (exportPanel) exportPanel.classList.add('hidden');
+        exportForm.submit();
     }
 
-    if (printSubmit) {
-        printSubmit.addEventListener('click', printSelectedSections);
+    if (exportSubmit) {
+        exportSubmit.addEventListener('click', exportSelectedSections);
     }
 
-    setupDropdown('reportPrintMenu', 'reportPrintBtn', 'reportPrintPanel');
+    syncRecordsTypeFilterVisibility();
+    bindDropdown('reportExportMenu', 'reportExportBtn', 'reportExportPanel');
 })();

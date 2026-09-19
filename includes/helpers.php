@@ -5619,4 +5619,304 @@ function formatReportDateTime(?string $value): string
     return $ts ? date('M j, Y g:i A', $ts) : $value;
 }
 
+/** @return list<string> */
+function reportExportSectionKeys(): array
+{
+    return ['overview', 'requests', 'appointments', 'queue', 'records', 'activity'];
+}
+
+/** @return list<string> */
+function parseReportExportSections(?string $raw): array
+{
+    $valid = reportExportSectionKeys();
+    $sections = [];
+
+    foreach (explode(',', (string) $raw) as $part) {
+        $part = trim($part);
+        if (in_array($part, $valid, true)) {
+            $sections[] = $part;
+        }
+    }
+
+    return array_values(array_unique($sections));
+}
+
+function reportExportRecordsType(?string $raw): string
+{
+    $type = strtolower(trim((string) $raw));
+
+    return in_array($type, ['all', 'birth', 'death', 'marriage'], true) ? $type : 'all';
+}
+
+function reportExportPrepareStreamingResponse(string $filename): void
+{
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    @ini_set('zlib.output_compression', '0');
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: no-store, no-cache, must-revalidate');
+    header('Pragma: no-cache');
+    header('X-Accel-Buffering: no');
+}
+
+function reportRecordsExportFromClause(): string
+{
+    return 'civil_records cr'
+        . ' LEFT JOIN birth_record_details brd ON brd.civil_record_id = cr.id'
+        . ' LEFT JOIN death_record_details drd ON drd.civil_record_id = cr.id';
+}
+
+/** @return array{0: string, 1: list<mixed>} */
+function reportRecordsExportWhere(int $year, string $type): array
+{
+    $dateExpr = civilRecordRegisteredDateExpr('cr');
+    $where = "cr.deleted_at IS NULL AND YEAR($dateExpr) = ?";
+    $params = [$year];
+
+    if ($type !== 'all') {
+        $where .= ' AND cr.record_type = ?';
+        $params[] = $type;
+    }
+
+    return [$where, $params];
+}
+
+/** @return list<array<string, mixed>> */
+function reportExportRecordsFetchChunk(PDO $pdo, string $where, array $params, int $afterId, int $limit): array
+{
+    $from = reportRecordsExportFromClause();
+    $sql = "SELECT cr.* FROM $from WHERE $where AND cr.id > ?"
+        . ' ORDER BY cr.id ASC LIMIT ' . max(1, $limit);
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute(array_merge($params, [$afterId]));
+
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+/** @return list<string|null> */
+function reportCivilRecordExportRowValues(array $row, string $type): array
+{
+    require_once __DIR__ . '/printing.php';
+
+    $values = printBuildFieldValues($row, $type, ['keep_empty' => true]);
+
+    return array_map(
+        static function (string $column) use ($values) {
+            $value = $values[$column] ?? null;
+            if ($value === null || trim((string) $value) === '') {
+                return null;
+            }
+
+            return (string) $value;
+        },
+        civilRecordCsvColumns($type)
+    );
+}
+
+function reportExportCivilRecordsDetailSection(
+    PDO $pdo,
+    $out,
+    int $year,
+    string $recordsType
+): void {
+    require_once __DIR__ . '/civil_record_schema.php';
+    require_once __DIR__ . '/printing.php';
+
+    $validTypes = ['birth', 'death', 'marriage'];
+    $types = $recordsType === 'all'
+        ? $validTypes
+        : (in_array($recordsType, $validTypes, true) ? [$recordsType] : $validTypes);
+    [$where, $params] = reportRecordsExportWhere($year, $recordsType);
+    $chunkSize = 2500;
+
+    fputcsv($out, []);
+    fputcsv($out, ['CIVIL RECORDS DETAIL (' . $year . ')']);
+    fputcsv($out, ['Record filter', $recordsType === 'all' ? 'All types' : civilRecordTypeLabel($recordsType)]);
+
+    foreach ($types as $type) {
+        $typeWhere = $where;
+        $typeParams = $params;
+
+        if ($recordsType === 'all') {
+            [$typeWhere, $typeParams] = reportRecordsExportWhere($year, $type);
+        }
+
+        $countStmt = $pdo->prepare('SELECT COUNT(*) FROM ' . reportRecordsExportFromClause() . " WHERE $typeWhere");
+        $countStmt->execute($typeParams);
+        $typeCount = (int) $countStmt->fetchColumn();
+
+        fputcsv($out, []);
+        fputcsv($out, ['--- ' . strtoupper(civilRecordTypeLabel($type)) . ' RECORDS (' . $typeCount . ') ---']);
+        fputcsv($out, civilRecordCsvColumns($type));
+
+        if ($typeCount === 0) {
+            continue;
+        }
+
+        $afterId = 0;
+        while (true) {
+            $chunk = reportExportRecordsFetchChunk($pdo, $typeWhere, $typeParams, $afterId, $chunkSize);
+            if ($chunk === []) {
+                break;
+            }
+
+            $chunk = hydrateCivilRecordRows($pdo, $chunk);
+            foreach ($chunk as $record) {
+                fputcsv($out, reportCivilRecordExportRowValues($record, $type));
+            }
+
+            $afterId = (int) ($chunk[array_key_last($chunk)]['id'] ?? $afterId);
+            unset($chunk);
+            fflush($out);
+        }
+    }
+}
+
+function exportOperationalReportCsv(
+    PDO $pdo,
+    array $report,
+    array $recordsReport,
+    int $reportYear,
+    array $sections,
+    string $recordsType,
+    string $rangeLabel
+): void {
+    $purposeLabels = ['walk_in' => 'Walk-in', 'appointment' => 'Appointment', 'document_claim' => 'Document claim'];
+    $summary = $report['summary'];
+    $filename = 'alcros_report_' . date('Y-m-d') . '.csv';
+
+    reportExportPrepareStreamingResponse($filename);
+
+    $out = fopen('php://output', 'w');
+    if ($out === false) {
+        throw new RuntimeException('Could not create export file.');
+    }
+
+    fprintf($out, "\xEF\xBB\xBF");
+    fputcsv($out, ['ALCROS Operational Report']);
+    fputcsv($out, ['Office', $report['office_name'] ?? '']);
+    fputcsv($out, ['Site', $report['site_name'] ?? '']);
+    fputcsv($out, ['Period', $rangeLabel]);
+    fputcsv($out, ['Generated', formatReportDateTime($report['generated_at'] ?? null)]);
+
+    if (in_array('overview', $sections, true)) {
+        fputcsv($out, []);
+        fputcsv($out, ['OVERVIEW']);
+        fputcsv($out, ['Metric', 'Value']);
+        fputcsv($out, ['Requests Submitted', (int) ($summary['requests_submitted'] ?? 0)]);
+        fputcsv($out, ['Requests Completed', (int) ($summary['requests_completed'] ?? 0)]);
+        fputcsv($out, ['Appointments Scheduled', (int) ($summary['appointments_scheduled'] ?? 0)]);
+        fputcsv($out, ['Appointments Completed', (int) ($summary['appointments_completed'] ?? 0)]);
+        fputcsv($out, ['Queue Served', (int) ($summary['queue_served'] ?? 0)]);
+        fputcsv($out, ['Queue Waiting', (int) ($summary['queue_waiting'] ?? 0)]);
+        fputcsv($out, ['Queue No-show', (int) ($summary['queue_skipped'] ?? 0)]);
+        fputcsv($out, ['Pending Requests (live)', (int) ($summary['pending_requests'] ?? 0)]);
+        fputcsv($out, ['Ready for Pickup (live)', (int) ($summary['ready_for_pickup'] ?? 0)]);
+        fputcsv($out, ['Total Civil Records (live)', (int) ($summary['total_records'] ?? 0)]);
+        fputcsv($out, ['Registered in ' . $reportYear, (int) ($recordsReport['year_totals']['total'] ?? 0)]);
+    }
+
+    if (in_array('requests', $sections, true)) {
+        fputcsv($out, []);
+        fputcsv($out, ['DOCUMENT REQUESTS']);
+        fputcsv($out, ['Tracking Code', 'Citizen', 'Document Type', 'Status', 'Submitted']);
+
+        foreach ($report['requests'] as $row) {
+            fputcsv($out, [
+                $row['tracking_code'] ?? '',
+                personNameFromRow($row),
+                documentTypeLabel($row['document_type'] ?? ''),
+                requestStatusLabel($row['status'] ?? ''),
+                formatDateDisplay(substr((string) ($row['submitted_at'] ?? ''), 0, 10)),
+            ]);
+        }
+    }
+
+    if (in_array('appointments', $sections, true)) {
+        fputcsv($out, []);
+        fputcsv($out, ['APPOINTMENTS']);
+        fputcsv($out, ['Code', 'Citizen', 'Service', 'Date', 'Time', 'Status']);
+
+        foreach ($report['appointments'] as $row) {
+            $time = $row['appointment_time'] ?? '';
+            $timeLabel = $time !== '' ? date('g:i A', strtotime((string) $time)) : '';
+
+            fputcsv($out, [
+                $row['appointment_code'] ?? '',
+                personNameFromRow($row),
+                appointmentServiceLabel($row['service_type'] ?? ''),
+                formatDateDisplay($row['appointment_date'] ?? ''),
+                $timeLabel,
+                appointmentStatusLabel($row['status'] ?? ''),
+            ]);
+        }
+    }
+
+    if (in_array('queue', $sections, true)) {
+        fputcsv($out, []);
+        fputcsv($out, ['QUEUE TICKETS']);
+        fputcsv($out, ['Ticket', 'Purpose', 'Status', 'Citizen', 'Created']);
+
+        foreach ($report['queue_tickets'] as $row) {
+            $purpose = (string) ($row['purpose'] ?? '');
+
+            fputcsv($out, [
+                $row['ticket_number'] ?? '',
+                $purposeLabels[$purpose] ?? $purpose,
+                $row['status'] ?? '',
+                personNameFromRow($row),
+                formatDateDisplay(substr((string) ($row['created_at'] ?? ''), 0, 10)),
+            ]);
+        }
+    }
+
+    if (in_array('records', $sections, true)) {
+        fputcsv($out, []);
+        fputcsv($out, ['CIVIL RECORDS QUARTERLY SUMMARY (' . $reportYear . ')']);
+        fputcsv($out, ['Quarter', 'Birth', 'Death', 'Marriage', 'Quarter Total']);
+
+        foreach ($recordsReport['quarters'] as $quarter) {
+            fputcsv($out, [
+                $quarter['label'] ?? '',
+                (int) ($quarter['birth'] ?? 0),
+                (int) ($quarter['death'] ?? 0),
+                (int) ($quarter['marriage'] ?? 0),
+                (int) ($quarter['total'] ?? 0),
+            ]);
+        }
+
+        fputcsv($out, [
+            $reportYear . ' total',
+            (int) ($recordsReport['year_totals']['birth'] ?? 0),
+            (int) ($recordsReport['year_totals']['death'] ?? 0),
+            (int) ($recordsReport['year_totals']['marriage'] ?? 0),
+            (int) ($recordsReport['year_totals']['total'] ?? 0),
+        ]);
+
+        reportExportCivilRecordsDetailSection($pdo, $out, $reportYear, $recordsType);
+    }
+
+    if (in_array('activity', $sections, true)) {
+        fputcsv($out, []);
+        fputcsv($out, ['STAFF ACTIVITY LOG']);
+        fputcsv($out, ['Staff ID', 'Action', 'Details', 'When']);
+
+        foreach ($report['activities'] as $row) {
+            fputcsv($out, [
+                $row['staff_id'] ?? '',
+                $row['action'] ?? '',
+                $row['details'] ?? '',
+                $row['created_at'] ?? '',
+            ]);
+        }
+    }
+
+    fputcsv($out, []);
+    fputcsv($out, ['End of export']);
+    fclose($out);
+}
+
 require_once __DIR__ . '/system_errors.php';

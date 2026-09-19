@@ -23,6 +23,53 @@ $report = buildOperationalReport($pdo, $fromDate, $toDate);
 $recordsReport = buildQuarterlyCivilRecordsReport($pdo, $reportYear);
 $summary = $report['summary'];
 
+if (isset($_GET['action']) && $_GET['action'] === 'export') {
+    @ini_set('memory_limit', '1024M');
+    @set_time_limit(0);
+    ignore_user_abort(true);
+
+    if (strtolower((string) ($_GET['format'] ?? 'csv')) !== 'csv') {
+        http_response_code(400);
+        exit('Only CSV export is available.');
+    }
+
+    $exportSections = parseReportExportSections($_GET['sections'] ?? '');
+    if ($exportSections === []) {
+        http_response_code(400);
+        exit('Select at least one report section to export.');
+    }
+
+    $exportRecordsType = reportExportRecordsType($_GET['records_type'] ?? 'all');
+    $sectionLabels = array_map(
+        static fn (string $key): string => match ($key) {
+            'overview' => 'Overview',
+            'requests' => 'Requests',
+            'appointments' => 'Appointments',
+            'queue' => 'Queue',
+            'records' => 'Civil Records',
+            'activity' => 'Activity',
+            default => $key,
+        },
+        $exportSections
+    );
+
+    logActivity(
+        staffId(),
+        'CSV Export',
+        'Exported operational report (' . implode(', ', $sectionLabels) . ')'
+    );
+    exportOperationalReportCsv(
+        $pdo,
+        $report,
+        $recordsReport,
+        $reportYear,
+        $exportSections,
+        $exportRecordsType,
+        $rangeLabel
+    );
+    exit;
+}
+
 function reportPageUrl(string $range, string $from, string $to, string $section = 'overview', ?int $year = null): string
 {
     return buildAuthUrl('report.php', array_filter([
@@ -47,7 +94,7 @@ $analytics = $section === 'analytics' ? fetchAnalyticsDashboard($pdo) : null;
 $pageTitle = 'Reports';
 $pageSubtitle = $section === 'analytics'
     ? 'Live charts for online and walk-in requests, certifications, appointments, queue, and civil records.'
-    : 'Print summaries for requests, appointments, queue, and civil records.';
+    : 'Summaries for requests, appointments, queue, and civil records with CSV export.';
 $pageHeaderMeta = $section === 'analytics'
     ? '<p class="admin-header__meta">' . htmlspecialchars($report['office_name']) . ' · Live charts and statistics</p>'
     : '<p class="admin-header__meta">' . htmlspecialchars($report['office_name']) . ' · Showing <strong>'
@@ -82,7 +129,7 @@ $liveSnapshot = [
 
 $reportTabs = [
     'overview'     => ['label' => 'Overview',     'icon' => 'layout-dashboard', 'count' => null],
-    'analytics'    => ['label' => 'Analytics',    'icon' => 'bar-chart-2',      'count' => null, 'print' => false],
+    'analytics'    => ['label' => 'Analytics',    'icon' => 'bar-chart-2',      'count' => null, 'export' => false],
     'requests'     => ['label' => 'Requests',     'icon' => 'file-text',        'count' => count($report['requests'])],
     'appointments' => ['label' => 'Appointments', 'icon' => 'calendar',         'count' => count($report['appointments'])],
     'queue'        => ['label' => 'Queue',        'icon' => 'users',            'count' => count($report['queue_tickets'])],
@@ -120,33 +167,73 @@ $rangeOptions = [
         <div class="p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto admin-page-wrap space-y-5">
             <?php if ($section !== 'analytics'): ?>
             <div class="no-print flex flex-wrap gap-2 justify-end mb-2">
-                        <div class="relative" id="reportPrintMenu">
-                            <button type="button" id="reportPrintBtn" class="inline-flex items-center gap-2 bg-white border border-gray-200 hover:border-gray-300 text-slate-700 px-3.5 py-2 rounded-lg text-xs font-bold">
-                                <i data-lucide="printer" class="w-3.5 h-3.5"></i> Print Report
-                                <i data-lucide="chevron-down" class="w-3.5 h-3.5 opacity-70"></i>
+                        <div class="relative" id="reportExportMenu">
+                            <button type="button" id="reportExportBtn" class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg text-xs font-bold">
+                                <i data-lucide="download" class="w-3.5 h-3.5"></i> Export CSV
+                                <i data-lucide="chevron-down" class="w-3.5 h-3.5 opacity-80"></i>
                             </button>
-                            <div id="reportPrintPanel" class="hidden absolute right-0 mt-2 w-64 bg-white border border-gray-100 rounded-xl shadow-lg z-20 p-4 text-xs">
-                                <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3">Sections to print</p>
+                            <div id="reportExportPanel" class="hidden absolute right-0 mt-2 w-72 bg-white border border-gray-100 rounded-xl shadow-lg z-20 p-4 text-xs">
+                                <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3">Sections to export</p>
                                 <div class="space-y-2 mb-3">
                                     <?php foreach ($reportTabs as $tabKey => $tab): ?>
-                                    <?php if (($tab['print'] ?? true) === false) continue; ?>
+                                    <?php if (($tab['export'] ?? true) === false) continue; ?>
                                     <label class="flex items-center gap-2.5 cursor-pointer text-slate-700 font-medium">
-                                        <input type="checkbox" class="report-print-check rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        <input type="checkbox" class="report-export-check rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                                                value="<?= htmlspecialchars($tabKey) ?>"
                                                <?= $section === $tabKey ? 'checked' : '' ?>>
                                         <span><?= htmlspecialchars($tab['label']) ?><?= $tabKey === 'records' ? ' (' . (int) $reportYear . ')' : '' ?></span>
                                     </label>
                                     <?php endforeach; ?>
                                 </div>
-                                <div class="flex items-center justify-between gap-2 pt-3 border-t border-gray-100 mb-3">
-                                    <button type="button" id="reportPrintSelectAll" class="text-blue-600 font-bold hover:underline">Select all</button>
-                                    <button type="button" id="reportPrintClearAll" class="text-slate-500 font-bold hover:underline">Clear</button>
+                                <div id="reportExportRecordsFilter" class="mb-3 pt-3 border-t border-gray-100 <?= $section === 'records' ? '' : 'hidden' ?>">
+                                    <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Civil records type</p>
+                                    <div class="space-y-1.5">
+                                        <?php
+                                        $recordsExportTypes = [
+                                            'all' => 'All record types',
+                                            'birth' => 'Birth records',
+                                            'death' => 'Death records',
+                                            'marriage' => 'Marriage records',
+                                        ];
+                                        foreach ($recordsExportTypes as $typeKey => $typeLabel):
+                                        ?>
+                                        <label class="flex items-center gap-2 cursor-pointer text-slate-700">
+                                            <input type="radio" name="reportExportRecordsType" class="report-export-records-type rounded-full border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                                   value="<?= htmlspecialchars($typeKey) ?>" <?= $typeKey === 'all' ? 'checked' : '' ?>>
+                                            <span><?= htmlspecialchars($typeLabel) ?></span>
+                                        </label>
+                                        <?php endforeach; ?>
+                                    </div>
+                                    <p class="text-[10px] text-gray-400 mt-2 leading-snug">Includes quarterly summary plus full record rows for <?= (int) $reportYear ?>.</p>
                                 </div>
-                                <button type="button" id="reportPrintSubmit" class="w-full bg-slate-800 hover:bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-bold">
-                                    Print selected
+                                <div class="flex items-center justify-between gap-2 pt-3 border-t border-gray-100 mb-3">
+                                    <button type="button" id="reportExportSelectAll" class="text-emerald-600 font-bold hover:underline">Select all</button>
+                                    <button type="button" id="reportExportClearAll" class="text-slate-500 font-bold hover:underline">Clear</button>
+                                </div>
+                                <button type="button" id="reportExportSubmit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-bold">
+                                    Download CSV
                                 </button>
                             </div>
                         </div>
+                        <form id="reportExportForm" method="GET" action="<?= htmlspecialchars(buildAuthUrl('report.php')) ?>" class="hidden">
+                            <input type="hidden" name="action" value="export">
+                            <input type="hidden" name="format" value="csv">
+                            <input type="hidden" name="sections" id="reportExportSectionsField" value="">
+                            <input type="hidden" name="records_type" id="reportExportRecordsTypeField" value="all">
+                            <?php if ($range !== 'today'): ?>
+                            <input type="hidden" name="range" value="<?= htmlspecialchars($range) ?>">
+                            <?php endif; ?>
+                            <?php if ($range === 'custom'): ?>
+                            <input type="hidden" name="from" value="<?= htmlspecialchars($fromDate) ?>">
+                            <input type="hidden" name="to" value="<?= htmlspecialchars($toDate) ?>">
+                            <?php endif; ?>
+                            <?php if ($section !== 'overview'): ?>
+                            <input type="hidden" name="section" value="<?= htmlspecialchars($section) ?>">
+                            <?php endif; ?>
+                            <?php if ($reportYear !== (int) date('Y')): ?>
+                            <input type="hidden" name="year" value="<?= (int) $reportYear ?>">
+                            <?php endif; ?>
+                        </form>
             </div>
 
             <div class="no-print admin-toolbar flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -192,17 +279,8 @@ $rangeOptions = [
             </div>
             <?php endif; ?>
 
-            <?php if ($section !== 'analytics'): ?>
-            <!-- Print header -->
-            <div class="print-report-header">
-                <h1 class="print-report-header__title"><?= htmlspecialchars($report['site_name']) ?> — Operational Report</h1>
-                <p class="print-report-header__meta"><?= htmlspecialchars($report['office_name']) ?> · <?= htmlspecialchars($rangeLabel) ?></p>
-                <p class="print-report-header__meta">Generated <?= htmlspecialchars(formatReportDateTime($report['generated_at'])) ?></p>
-            </div>
-            <?php endif; ?>
-
             <!-- Overview -->
-            <div class="report-panel" data-print-section="overview" <?= $section !== 'overview' ? 'hidden' : '' ?>>
+            <div class="report-panel" <?= $section !== 'overview' ? 'hidden' : '' ?>>
                 <div class="space-y-5">
                     <section class="report-section">
                         <h2 class="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-3">Activity in this period</h2>
@@ -453,7 +531,7 @@ $rangeOptions = [
             <?php endif; ?>
 
             <!-- Document Requests -->
-            <div class="report-panel" data-print-section="requests" <?= $section !== 'requests' ? 'hidden' : '' ?>>
+            <div class="report-panel" <?= $section !== 'requests' ? 'hidden' : '' ?>>
                 <section class="report-section bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
                     <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
                         <div>
@@ -511,7 +589,7 @@ $rangeOptions = [
             </div>
 
             <!-- Appointments -->
-            <div class="report-panel" data-print-section="appointments" <?= $section !== 'appointments' ? 'hidden' : '' ?>>
+            <div class="report-panel" <?= $section !== 'appointments' ? 'hidden' : '' ?>>
                 <section class="report-section bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
                     <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
                         <div>
@@ -562,7 +640,7 @@ $rangeOptions = [
             </div>
 
             <!-- Queue -->
-            <div class="report-panel" data-print-section="queue" <?= $section !== 'queue' ? 'hidden' : '' ?>>
+            <div class="report-panel" <?= $section !== 'queue' ? 'hidden' : '' ?>>
                 <section class="report-section bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
                     <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
                         <div>
@@ -608,7 +686,7 @@ $rangeOptions = [
             </div>
 
             <!-- Civil Records (Quarterly) -->
-            <div class="report-panel" data-print-section="records" <?= $section !== 'records' ? 'hidden' : '' ?>>
+            <div class="report-panel" <?= $section !== 'records' ? 'hidden' : '' ?>>
                 <section class="report-section bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
                     <div class="px-5 py-4 border-b border-gray-100">
                         <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -691,7 +769,7 @@ $rangeOptions = [
             </div>
 
             <!-- Activity -->
-            <div class="report-panel" data-print-section="activity" <?= $section !== 'activity' ? 'hidden' : '' ?>>
+            <div class="report-panel" <?= $section !== 'activity' ? 'hidden' : '' ?>>
                 <section class="report-section bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
                     <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
                         <div>

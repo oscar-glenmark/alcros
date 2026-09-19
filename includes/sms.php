@@ -252,7 +252,59 @@ function notifyRequestStatusSms(PDO $pdo, int $requestId, string $newStatus, ?st
     return sendCitizenSms((string) $row['phone'], $message, 'request_' . $status, $code);
 }
 
-function notifyRequestVisitSmsReminder(array $row): bool
+function smsReminderLeadTimes(): array
+{
+    return [3, 1];
+}
+
+function smsReminderSentColumn(int $hours): string
+{
+    return match ($hours) {
+        3 => 'sms_reminder_3h_sent_at',
+        1 => 'sms_reminder_1h_sent_at',
+        default => throw new InvalidArgumentException('Unsupported SMS reminder lead time.'),
+    };
+}
+
+function smsReminderHoursLabel(int $hours): string
+{
+    return $hours === 1 ? '1 hour' : $hours . ' hours';
+}
+
+function nextDueSmsReminderLeadTime(int $minutesUntil): ?int
+{
+    if ($minutesUntil <= 0) {
+        return null;
+    }
+    if ($minutesUntil <= 60) {
+        return 1;
+    }
+    if ($minutesUntil <= 180) {
+        return 3;
+    }
+
+    return null;
+}
+
+function markEarlierSmsRemindersSkipped(PDO $pdo, string $table, int $id, int $sentHours): void
+{
+    if (!in_array($table, ['document_requests', 'appointments'], true)) {
+        return;
+    }
+
+    foreach (smsReminderLeadTimes() as $hours) {
+        if ($hours <= $sentHours) {
+            continue;
+        }
+        $column = smsReminderSentColumn($hours);
+        $stmt = $pdo->prepare(
+            "UPDATE `$table` SET `$column` = COALESCE(`$column`, NOW()) WHERE id = ? AND `$column` IS NULL"
+        );
+        $stmt->execute([$id]);
+    }
+}
+
+function notifyRequestVisitSmsReminder(array $row, int $hoursBefore = 3): bool
 {
     if (!citizenWantsSmsNotify($row)) {
         return false;
@@ -261,14 +313,20 @@ function notifyRequestVisitSmsReminder(array $row): bool
     $code = (string) $row['tracking_code'];
     $doc = documentTypeLabel((string) ($row['document_type'] ?? ''));
     $visit = formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
-    $message = smsSiteShortName() . ': Reminder — pickup visit for ' . $doc . ' (' . $code . ') is in about 3 hours.'
+    $hoursLabel = smsReminderHoursLabel($hoursBefore);
+    $message = smsSiteShortName() . ': Reminder — pickup visit for ' . $doc . ' (' . $code . ') is in about ' . $hoursLabel . '.'
         . ($visit !== '' && $visit !== '—' ? ' Schedule: ' . $visit . '.' : '')
         . ' Bring valid ID.';
 
-    return sendCitizenSms((string) $row['phone'], $message, 'visit_reminder_3h', $code);
+    return sendCitizenSms(
+        (string) $row['phone'],
+        $message,
+        'visit_reminder_' . $hoursBefore . 'h',
+        $code
+    );
 }
 
-function notifyAppointmentSmsReminder(array $row): bool
+function notifyAppointmentSmsReminder(array $row, int $hoursBefore = 3): bool
 {
     if (!citizenWantsSmsNotify($row)) {
         return false;
@@ -277,11 +335,17 @@ function notifyAppointmentSmsReminder(array $row): bool
     $code = (string) $row['appointment_code'];
     $service = appointmentServiceLabel((string) ($row['service_type'] ?? ''));
     $visit = formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
-    $message = smsSiteShortName() . ': Reminder — your ' . $service . ' appointment (' . $code . ') is in about 3 hours.'
+    $hoursLabel = smsReminderHoursLabel($hoursBefore);
+    $message = smsSiteShortName() . ': Reminder — your ' . $service . ' appointment (' . $code . ') is in about ' . $hoursLabel . '.'
         . ($visit !== '' && $visit !== '—' ? ' Schedule: ' . $visit . '.' : '')
         . ' Please arrive on time with valid ID.';
 
-    return sendCitizenSms((string) $row['phone'], $message, 'appointment_reminder_3h', $code);
+    return sendCitizenSms(
+        (string) $row['phone'],
+        $message,
+        'appointment_reminder_' . $hoursBefore . 'h',
+        $code
+    );
 }
 
 function notifyAppointmentStatusSms(PDO $pdo, int $appointmentId, string $newStatus): bool
@@ -325,6 +389,115 @@ function notifyAppointmentStatusSms(PDO $pdo, int $appointmentId, string $newSta
     return sendCitizenSms((string) $row['phone'], $message, 'appointment_' . $newStatus, $code);
 }
 
+function sendDueSmsReminderRow(
+    PDO $pdo,
+    array $row,
+    string $table,
+    callable $notifyFn,
+    ?callable $afterSendFn = null
+): bool {
+    $minutesUntil = appointmentMinutesUntil($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
+    if ($minutesUntil === null) {
+        return false;
+    }
+
+    $leadTime = nextDueSmsReminderLeadTime($minutesUntil);
+    if ($leadTime === null) {
+        return false;
+    }
+
+    $column = smsReminderSentColumn($leadTime);
+    if (!empty($row[$column])) {
+        return false;
+    }
+
+    $claim = $pdo->prepare("UPDATE `$table` SET `$column` = NOW() WHERE id = ? AND `$column` IS NULL");
+    $undo = $pdo->prepare("UPDATE `$table` SET `$column` = NULL WHERE id = ?");
+    $claim->execute([(int) $row['id']]);
+    if ($claim->rowCount() === 0) {
+        return false;
+    }
+
+    if ($notifyFn($row, $leadTime)) {
+        markEarlierSmsRemindersSkipped($pdo, $table, (int) $row['id'], $leadTime);
+        if ($afterSendFn !== null) {
+            $afterSendFn($row, $leadTime);
+        }
+
+        return true;
+    }
+
+    $undo->execute([(int) $row['id']]);
+
+    return false;
+}
+
+function sendDueDocumentRequestSmsReminders(PDO $pdo): int
+{
+    $stmt = $pdo->query(
+        "SELECT id, tracking_code, first_name, middle_name, last_name, phone, document_type, status,
+                appointment_date, appointment_time, notify_sms,
+                sms_reminder_3h_sent_at, sms_reminder_1h_sent_at
+         FROM document_requests
+         WHERE notify_sms = 1
+           AND phone IS NOT NULL AND phone != ''
+           AND status IN ('pending', 'verified', 'ready')
+           AND appointment_date IS NOT NULL
+           AND appointment_time IS NOT NULL
+           AND TIMESTAMP(appointment_date, appointment_time) > NOW()
+           AND TIMESTAMP(appointment_date, appointment_time) <= DATE_ADD(NOW(), INTERVAL 3 HOUR)
+           AND (sms_reminder_3h_sent_at IS NULL OR sms_reminder_1h_sent_at IS NULL)"
+    );
+    $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+    $sent = 0;
+
+    foreach ($rows as $row) {
+        $afterSend = static function (array $sentRow, int $leadTime) use ($pdo): void {
+            $trackingCode = trim((string) ($sentRow['tracking_code'] ?? ''));
+            if ($trackingCode === '') {
+                return;
+            }
+            $column = smsReminderSentColumn($leadTime);
+            $markLinkedAppt = $pdo->prepare(
+                "UPDATE appointments SET `$column` = NOW() WHERE tracking_code = ? AND `$column` IS NULL"
+            );
+            $markLinkedAppt->execute([$trackingCode]);
+        };
+
+        if (sendDueSmsReminderRow($pdo, $row, 'document_requests', 'notifyRequestVisitSmsReminder', $afterSend)) {
+            $sent++;
+        }
+    }
+
+    return $sent;
+}
+
+function sendDueStandaloneAppointmentSmsReminders(PDO $pdo): int
+{
+    $stmt = $pdo->query(
+        "SELECT id, appointment_code, first_name, middle_name, last_name, phone, service_type,
+                appointment_date, appointment_time, notify_sms,
+                sms_reminder_3h_sent_at, sms_reminder_1h_sent_at
+         FROM appointments
+         WHERE notify_sms = 1
+           AND phone IS NOT NULL AND phone != ''
+           AND status IN ('scheduled', 'confirmed')
+           AND TIMESTAMP(appointment_date, appointment_time) > NOW()
+           AND TIMESTAMP(appointment_date, appointment_time) <= DATE_ADD(NOW(), INTERVAL 3 HOUR)
+           AND (sms_reminder_3h_sent_at IS NULL OR sms_reminder_1h_sent_at IS NULL)"
+    );
+    $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+    $sent = 0;
+
+    foreach ($rows as $row) {
+        if (sendDueSmsReminderRow($pdo, $row, 'appointments', 'notifyAppointmentSmsReminder')) {
+            $sent++;
+        }
+    }
+
+    return $sent;
+}
+
 function sendDueSmsVisitReminders(PDO $pdo): int
 {
     if (!isSmsConfigured()) {
@@ -332,75 +505,8 @@ function sendDueSmsVisitReminders(PDO $pdo): int
     }
 
     ensureCitizenNotifyColumns($pdo);
-    $sent = 0;
 
-    $reqStmt = $pdo->query(
-        "SELECT id, tracking_code, first_name, middle_name, last_name, phone, document_type, status,
-                appointment_date, appointment_time, notify_sms
-         FROM document_requests
-         WHERE notify_sms = 1
-           AND phone IS NOT NULL AND phone != ''
-           AND sms_reminder_3h_sent_at IS NULL
-           AND status IN ('pending', 'verified', 'ready')
-           AND appointment_date IS NOT NULL
-           AND appointment_time IS NOT NULL
-           AND TIMESTAMP(appointment_date, appointment_time) > NOW()
-           AND TIMESTAMP(appointment_date, appointment_time) <= DATE_ADD(NOW(), INTERVAL 3 HOUR)"
-    );
-    $requests = $reqStmt ? $reqStmt->fetchAll(PDO::FETCH_ASSOC) : [];
-
-    $claimReq = $pdo->prepare('UPDATE document_requests SET sms_reminder_3h_sent_at = NOW() WHERE id = ? AND sms_reminder_3h_sent_at IS NULL');
-    $undoReq = $pdo->prepare('UPDATE document_requests SET sms_reminder_3h_sent_at = NULL WHERE id = ?');
-    $markLinkedAppt = $pdo->prepare(
-        'UPDATE appointments SET sms_reminder_3h_sent_at = NOW()
-         WHERE tracking_code = ? AND sms_reminder_3h_sent_at IS NULL'
-    );
-
-    foreach ($requests as $row) {
-        $claimReq->execute([(int) $row['id']]);
-        if ($claimReq->rowCount() === 0) {
-            continue;
-        }
-        if (notifyRequestVisitSmsReminder($row)) {
-            $sent++;
-            $trackingCode = trim((string) ($row['tracking_code'] ?? ''));
-            if ($trackingCode !== '') {
-                $markLinkedAppt->execute([$trackingCode]);
-            }
-        } else {
-            $undoReq->execute([(int) $row['id']]);
-        }
-    }
-
-    $apptStmt = $pdo->query(
-        "SELECT id, appointment_code, first_name, middle_name, last_name, phone, service_type,
-                appointment_date, appointment_time, notify_sms
-         FROM appointments
-         WHERE notify_sms = 1
-           AND phone IS NOT NULL AND phone != ''
-           AND sms_reminder_3h_sent_at IS NULL
-           AND status IN ('scheduled', 'confirmed')
-           AND TIMESTAMP(appointment_date, appointment_time) > NOW()
-           AND TIMESTAMP(appointment_date, appointment_time) <= DATE_ADD(NOW(), INTERVAL 3 HOUR)"
-    );
-    $appointments = $apptStmt ? $apptStmt->fetchAll(PDO::FETCH_ASSOC) : [];
-
-    $claimAppt = $pdo->prepare('UPDATE appointments SET sms_reminder_3h_sent_at = NOW() WHERE id = ? AND sms_reminder_3h_sent_at IS NULL');
-    $undoAppt = $pdo->prepare('UPDATE appointments SET sms_reminder_3h_sent_at = NULL WHERE id = ?');
-
-    foreach ($appointments as $row) {
-        $claimAppt->execute([(int) $row['id']]);
-        if ($claimAppt->rowCount() === 0) {
-            continue;
-        }
-        if (notifyAppointmentSmsReminder($row)) {
-            $sent++;
-        } else {
-            $undoAppt->execute([(int) $row['id']]);
-        }
-    }
-
-    return $sent;
+    return sendDueDocumentRequestSmsReminders($pdo) + sendDueStandaloneAppointmentSmsReminders($pdo);
 }
 
 function smsConfigurationSummary(): array

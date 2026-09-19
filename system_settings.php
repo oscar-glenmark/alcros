@@ -826,7 +826,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                         <?php else: ?>
                                         <p class="font-semibold text-slate-700">SMS is off until you subscribe at <a href="https://semaphore.co" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">semaphore.co</a> and enter your API key below.</p>
                                         <?php endif; ?>
-                                        <p class="mt-1.5">Citizens who opt in receive text messages when a request is accepted, when it is ready for pickup, and 3 hours before a confirmed visit.</p>
+                                        <p class="mt-1.5">Citizens who opt in receive text messages when a request is accepted, when it is ready for pickup, and 3 hours and 1 hour before a confirmed visit.</p>
                                     </div>
                                     <label class="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-100 cursor-pointer">
                                         <div>

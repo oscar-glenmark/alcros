@@ -690,6 +690,15 @@ function ensureCitizenNotifyColumns(PDO $pdo): void
     }
 
     try {
+        $pdo->query('SELECT sms_reminder_1h_sent_at FROM document_requests LIMIT 1');
+    } catch (Throwable $e) {
+        try {
+            $pdo->exec('ALTER TABLE document_requests ADD COLUMN sms_reminder_1h_sent_at TIMESTAMP NULL DEFAULT NULL AFTER sms_reminder_3h_sent_at');
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    try {
         $pdo->query('SELECT date_of_marriage FROM document_requests LIMIT 1');
     } catch (Throwable $e) {
         try {
@@ -732,6 +741,15 @@ function ensureCitizenNotifyColumns(PDO $pdo): void
     } catch (Throwable $e) {
         try {
             $pdo->exec('ALTER TABLE appointments ADD COLUMN sms_reminder_3h_sent_at TIMESTAMP NULL DEFAULT NULL AFTER reminder_1h_sent_at');
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    try {
+        $pdo->query('SELECT sms_reminder_1h_sent_at FROM appointments LIMIT 1');
+    } catch (Throwable $e) {
+        try {
+            $pdo->exec('ALTER TABLE appointments ADD COLUMN sms_reminder_1h_sent_at TIMESTAMP NULL DEFAULT NULL AFTER sms_reminder_3h_sent_at');
         } catch (Throwable $ignored) {
         }
     }

@@ -36,6 +36,13 @@ try {
     ensurePersonNamePartColumns($pdo);
     ensureCivilRecordTypeTables($pdo);
     ensureCivilRecordPrintSchema($pdo);
+    syncCivilRecordDerivedFields($pdo);
+
+    try {
+        $pdo->query('SELECT deleted_at FROM civil_records LIMIT 1');
+    } catch (PDOException $e) {
+        $pdo->exec('ALTER TABLE civil_records ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL AFTER notes');
+    }
 
     $result = createCivilRecordFromPrintFill($pdo, $recordType, $printFill);
 
@@ -56,6 +63,9 @@ try {
     ]);
 } catch (InvalidArgumentException $e) {
     apiError($e->getMessage(), 422);
+} catch (PDOException $e) {
+    error_log('ALCROS documents create record DB error: ' . $e->getMessage());
+    apiError('Could not save the record. Check required fields and try again.', 500);
 } catch (Throwable $e) {
     error_log('ALCROS documents create record failed: ' . $e->getMessage());
     apiError('Could not save the record. Please try again.', 500);

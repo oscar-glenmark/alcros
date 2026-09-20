@@ -3,6 +3,65 @@
 require_once __DIR__ . '/printing.php';
 require_once __DIR__ . '/civil_record_schema.php';
 
+function civilRecordCsvDateFields(): array
+{
+    return [
+        'birth_date', 'event_date', 'registration_date', 'parents_marriage_date',
+        'death_date', 'marriage_date', 'husband_birth_date', 'wife_birth_date',
+    ];
+}
+
+function civilRecordNormalizeDate(?string $value): ?string
+{
+    $value = trim((string) ($value ?? ''));
+    if ($value === '') {
+        return null;
+    }
+
+    if (is_numeric($value)) {
+        $serial = (float) $value;
+        if ($serial >= 25569 && $serial <= 60000) {
+            $timestamp = (int) round(($serial - 25569) * 86400);
+
+            return gmdate('Y-m-d', $timestamp);
+        }
+    }
+
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+        $dt = DateTime::createFromFormat('Y-m-d', $value);
+
+        return ($dt && $dt->format('Y-m-d') === $value) ? $value : null;
+    }
+
+    if (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/', $value, $m)) {
+        $year = (int) $m[3];
+        $a = (int) $m[1];
+        $b = (int) $m[2];
+        if ($a > 12 && $b <= 12) {
+            $day = $a;
+            $month = $b;
+        } else {
+            $month = $a;
+            $day = $b;
+        }
+        if (checkdate($month, $day, $year)) {
+            return sprintf('%04d-%02d-%02d', $year, $month, $day);
+        }
+    }
+
+    $timestamp = strtotime($value);
+    if ($timestamp !== false) {
+        return date('Y-m-d', $timestamp);
+    }
+
+    return null;
+}
+
+function insertCivilRecord(PDO $pdo, array $data, array $options = []): void
+{
+    saveCivilRecord($pdo, $data, null, $options);
+}
+
 function applyCsvDateNormalization(array $input): array
 {
     foreach (civilRecordCsvDateFields() as $field) {
@@ -129,6 +188,7 @@ function createCivilRecordFromPrintFill(PDO $pdo, string $recordType, array $pri
         'record_type' => $recordType,
         'print_fill'  => $cleanFill,
     ]));
+    unset($data['_provided_fields']);
 
     $recordId = saveCivilRecord($pdo, $data, null);
 

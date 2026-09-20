@@ -610,6 +610,42 @@
         }
     }
 
+    function askConfirm(message) {
+        if (window.AlcrosConfirm && typeof window.AlcrosConfirm.ask === 'function') {
+            return window.AlcrosConfirm.ask(message);
+        }
+        return Promise.resolve(window.confirm(message));
+    }
+
+    function postCreateRecord(body) {
+        return fetch(cfg.createRecordApiUrl, {
+            method: 'POST',
+            body: body,
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': csrfToken
+            }
+        }).then(function (res) {
+            return res.text().then(function (text) {
+                var data = null;
+                try {
+                    data = text ? JSON.parse(text) : null;
+                } catch (parseErr) {
+                    data = null;
+                }
+                if (!res.ok || !data || data.ok === false) {
+                    var err = (data && (data.error || data.message))
+                        || (text && text.length < 280 ? text.trim() : '')
+                        || ('Could not save the record (HTTP ' + res.status + ').');
+                    throw new Error(err);
+                }
+                return data;
+            });
+        });
+    }
+
     function bindAddRecord() {
         if (!cfg.manualMode || !cfg.createRecordApiUrl) {
             return;
@@ -627,43 +663,47 @@
                 return;
             }
 
-            btn.disabled = true;
-            var originalLabel = btn.textContent;
-            btn.textContent = 'Saving…';
+            var typeLabel = (cfg.certificateType || 'birth').charAt(0).toUpperCase()
+                + (cfg.certificateType || 'birth').slice(1);
 
-            var body = new FormData();
-            body.append('action', 'create_record');
-            body.append('csrf_token', csrfToken);
-            body.append('record_type', cfg.certificateType || 'birth');
-            body.append('print_fill', JSON.stringify(fillOverrides));
+            askConfirm('Save this ' + typeLabel + ' form as a new civil record?').then(function (ok) {
+                if (!ok) {
+                    return;
+                }
 
-            fetch(cfg.createRecordApiUrl, {
-                method: 'POST',
-                body: body,
-                credentials: 'same-origin'
-            }).then(function (res) {
-                return res.json().then(function (data) {
-                    if (!res.ok || !data || data.ok === false) {
-                        throw new Error((data && data.error) || 'Could not save the record.');
+                btn.disabled = true;
+                var originalLabel = btn.textContent;
+                btn.textContent = 'Saving…';
+
+                var body = new FormData();
+                body.append('action', 'create_record');
+                body.append('csrf_token', csrfToken);
+                body.append('record_type', cfg.certificateType || 'birth');
+                body.append('print_fill', JSON.stringify(fillOverrides));
+
+                postCreateRecord(body).then(function (data) {
+                    var message = 'Record saved';
+                    if (data.display_name) {
+                        message += ': ' + data.display_name;
                     }
-                    return data;
+                    message += '.';
+
+                    if (!data.records_url) {
+                        window.alert(message);
+                        return;
+                    }
+
+                    return askConfirm(message + ' Open it in Records now?').then(function (openRecords) {
+                        if (openRecords) {
+                            window.location.href = data.records_url;
+                        }
+                    });
+                }).catch(function (err) {
+                    window.alert(err.message || 'Could not save the record.');
+                }).finally(function () {
+                    btn.disabled = false;
+                    btn.textContent = originalLabel;
                 });
-            }).then(function (data) {
-                var message = 'Record saved';
-                if (data.display_name) {
-                    message += ': ' + data.display_name;
-                }
-                message += '.';
-                if (data.records_url && window.confirm(message + ' Open it in Records now?')) {
-                    window.location.href = data.records_url;
-                } else {
-                    window.alert(message);
-                }
-            }).catch(function (err) {
-                window.alert(err.message || 'Could not save the record.');
-            }).finally(function () {
-                btn.disabled = false;
-                btn.textContent = originalLabel;
             });
         });
     }

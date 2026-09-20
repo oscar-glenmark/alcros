@@ -313,6 +313,9 @@ function requireAdmin(): void
 {
     requireStaffLogin();
     if (!isAdmin()) {
+        if (isJsonApiRequest()) {
+            jsonClientError(403, 'forbidden', 'Administrator access required.');
+        }
         redirectWithAuth('dashboard.php');
     }
 }
@@ -324,6 +327,9 @@ function requirePageAccess(string $page): void
         return;
     }
     if (!in_array($page, staffMenuPages(), true)) {
+        if (isJsonApiRequest()) {
+            jsonClientError(403, 'forbidden', 'You do not have access to this feature.');
+        }
         redirectWithAuth('dashboard.php');
     }
 }

@@ -7,6 +7,8 @@ require_once __DIR__ . '/../includes/printing.php';
 require_once __DIR__ . '/../includes/record_locks.php';
 require_once __DIR__ . '/../includes/civil_record_schema.php';
 require_once __DIR__ . '/../includes/cascading_location.php';
+require_once __DIR__ . '/../includes/records_form.php';
+require_once __DIR__ . '/../includes/records_csv_import.php';
 
 requireStaffLogin();
 requirePageAccess('records.php');
@@ -16,8 +18,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
 }
 
 requireStaffPostCsrf();
-
-require_once __DIR__ . '/../records.php';
 
 $payload = json_decode((string) file_get_contents('php://input'), true);
 if (!is_array($payload)) {
@@ -43,7 +43,7 @@ if (!is_array($headers) || !is_array($rows)) {
 try {
     $pdo = getDB();
     ensurePersonNamePartColumns($pdo);
-    ensureCivilRecordExtendedColumns($pdo);
+    ensureCivilRecordTypeTables($pdo);
     ensureCivilRecordPrintSchema($pdo);
 
     if ($finalize && $rows === []) {

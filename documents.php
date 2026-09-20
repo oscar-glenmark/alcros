@@ -191,7 +191,12 @@ $pageSubtitle = 'Blank certificate and certification forms for manual entry';
                         <h2 class="print-cert-section-title">Fill-in Data</h2>
                         <p class="print-cert-hint">Type values manually. You can also click text directly in the preview below.</p>
                     </div>
-                    <button type="button" class="print-cert-btn print-cert-btn--ghost" id="resetFillData">Clear all fields</button>
+                    <div class="print-cert-fill-actions">
+                        <?php if (!$isCertification): ?>
+                        <button type="button" class="print-cert-btn print-cert-btn--primary" id="addRecordFromDocument">Add to records</button>
+                        <?php endif; ?>
+                        <button type="button" class="print-cert-btn print-cert-btn--ghost" id="resetFillData">Clear all fields</button>
+                    </div>
                 </div>
                 <?php if (!$isCertification): ?>
                 <div class="print-cert-fill-tabs" role="tablist" aria-label="Fill-in page">
@@ -290,6 +295,7 @@ $pageSubtitle = 'Blank certificate and certification forms for manual entry';
     'manualMode' => true,
     'certificateType' => $certificateType,
     'documentKind' => $documentKind,
+    'createRecordApiUrl' => !$isCertification ? buildAuthUrl('api/documents.php') : '',
     'printAuthUrl' => buildAuthUrl('print_render.php'),
     'apiPrintUrl' => buildAuthUrl('api/print.php'),
     'paperWidthMm' => $paperW,

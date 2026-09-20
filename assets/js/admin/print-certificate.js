@@ -610,6 +610,64 @@
         }
     }
 
+    function bindAddRecord() {
+        if (!cfg.manualMode || !cfg.createRecordApiUrl) {
+            return;
+        }
+
+        var btn = document.getElementById('addRecordFromDocument');
+        if (!btn) {
+            return;
+        }
+
+        btn.addEventListener('click', function () {
+            collectFillOverrides();
+            if (Object.keys(fillOverrides).length === 0) {
+                window.alert('Fill in at least the required name fields before saving a record.');
+                return;
+            }
+
+            btn.disabled = true;
+            var originalLabel = btn.textContent;
+            btn.textContent = 'Saving…';
+
+            var body = new FormData();
+            body.append('action', 'create_record');
+            body.append('csrf_token', csrfToken);
+            body.append('record_type', cfg.certificateType || 'birth');
+            body.append('print_fill', JSON.stringify(fillOverrides));
+
+            fetch(cfg.createRecordApiUrl, {
+                method: 'POST',
+                body: body,
+                credentials: 'same-origin'
+            }).then(function (res) {
+                return res.json().then(function (data) {
+                    if (!res.ok || !data || data.ok === false) {
+                        throw new Error((data && data.error) || 'Could not save the record.');
+                    }
+                    return data;
+                });
+            }).then(function (data) {
+                var message = 'Record saved';
+                if (data.display_name) {
+                    message += ': ' + data.display_name;
+                }
+                message += '.';
+                if (data.records_url && window.confirm(message + ' Open it in Records now?')) {
+                    window.location.href = data.records_url;
+                } else {
+                    window.alert(message);
+                }
+            }).catch(function (err) {
+                window.alert(err.message || 'Could not save the record.');
+            }).finally(function () {
+                btn.disabled = false;
+                btn.textContent = originalLabel;
+            });
+        });
+    }
+
     function bindActions() {
         document.querySelectorAll('[data-print-side]').forEach(function (btn) {
             btn.addEventListener('click', function () {
@@ -652,6 +710,7 @@
         lastCalibrationStamp = '';
     }
     bindFillEditor();
+    bindAddRecord();
     bindActions();
     applyLocalPaperCssVars();
     setPreviewView('front');

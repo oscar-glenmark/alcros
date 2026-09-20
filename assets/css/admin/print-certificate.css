@@ -165,6 +165,14 @@
     margin-bottom: 0.75rem;
 }
 
+.print-cert-fill-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
 .print-cert-fill-tabs {
     display: flex;
     align-items: center;

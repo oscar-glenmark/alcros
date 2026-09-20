@@ -385,6 +385,34 @@
         });
     }
 
+    function isLcroFooterField(fieldName) {
+        return /^lcro_box_/.test(String(fieldName || ''));
+    }
+
+    function normalizeLcroFooterText(value) {
+        return String(value || '').replace(/\s+/g, '');
+    }
+
+    function formatLcroFooterDisplayText(value) {
+        var compact = normalizeLcroFooterText(value);
+        if (!compact) {
+            return '';
+        }
+        return compact.split('').join('  ');
+    }
+
+    function formatEntryPrintFillInput(input) {
+        var name = input.getAttribute('data-field-name') || '';
+        if (!isLcroFooterField(name)) {
+            return;
+        }
+        var stored = normalizeLcroFooterText(input.value);
+        var display = formatLcroFooterDisplayText(stored);
+        if (input.value !== display) {
+            input.value = display;
+        }
+    }
+
     function bindEntryPrintFillTabs() {
         document.querySelectorAll('.records-entry-print-fill').forEach(function (section) {
             section.querySelectorAll('[data-entry-fill-tab]').forEach(function (btn) {
@@ -398,6 +426,13 @@
                     section.querySelectorAll('[data-entry-fill-panel]').forEach(function (panel) {
                         panel.hidden = panel.getAttribute('data-entry-fill-panel') !== side;
                     });
+                });
+            });
+
+            section.querySelectorAll('[data-field-name]').forEach(function (input) {
+                formatEntryPrintFillInput(input);
+                input.addEventListener('input', function () {
+                    formatEntryPrintFillInput(input);
                 });
             });
         });

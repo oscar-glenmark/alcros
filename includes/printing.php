@@ -1233,6 +1233,9 @@ function printRebuildRecordFillData(array $record, string $certificateType, arra
             continue;
         }
         $trimmed = trim((string) $value);
+        if (printIsLcroFooterField($key)) {
+            $trimmed = printNormalizeLcroFooterText($trimmed);
+        }
         if ($trimmed !== '') {
             $manual[$key] = $trimmed;
         }
@@ -1652,6 +1655,33 @@ function printFillFieldGroup(string $fieldName): string
     }
 
     return '';
+}
+
+/** @return array<string, string> Catalog + custom calibration field labels for front and back pages. */
+function printFillFieldLabelsForType(PDO $pdo, string $certificateType): array
+{
+    if (!function_exists('printFieldCatalog')) {
+        require_once __DIR__ . '/print_field_definitions.php';
+    }
+
+    $catalog = printFieldCatalog()[$certificateType] ?? [];
+    $labels = array_merge($catalog['front'] ?? [], $catalog['back'] ?? []);
+
+    foreach (['front', 'back'] as $side) {
+        $template = getPrintTemplate($pdo, $certificateType, $side);
+        if (!$template) {
+            continue;
+        }
+        foreach (getPrintFields($pdo, (int) $template['id'], true) as $dbField) {
+            $name = (string) $dbField['field_name'];
+            if (!printIsCustomField($name)) {
+                continue;
+            }
+            $labels[$name] = (string) ($dbField['label'] ?: $name);
+        }
+    }
+
+    return $labels;
 }
 
 /** @return list<array{field_name: string, label: string, page_side: string, value: string}> */

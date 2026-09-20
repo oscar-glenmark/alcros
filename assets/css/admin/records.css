@@ -522,6 +522,18 @@ body.records-view-modal-open {
     gap: 0.625rem;
 }
 
+.records-entry-print-fill__empty {
+    grid-column: 1 / -1;
+    margin: 0;
+    padding: 0.75rem;
+    border: 1px dashed #cbd5e1;
+    border-radius: 0.625rem;
+    background: #fff;
+    font-size: 0.75rem;
+    color: #64748b;
+    text-align: center;
+}
+
 .records-entry-print-fill__field {
     display: flex;
     flex-direction: column;

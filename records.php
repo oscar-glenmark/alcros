@@ -1407,16 +1407,16 @@ function recordEntryPrintFillSource(string $type, array $modalRecord): array
     return ['record_type' => $type];
 }
 
-function renderRecordEntryPrintFillSection(string $type, array $modalRecord, bool $active): void
+function renderRecordEntryPrintFillSection(PDO $pdo, string $type, array $modalRecord, bool $active): void
 {
-    $fields = printFillEditorFields($type, recordEntryPrintFillSource($type, $modalRecord));
+    $fields = printFillEditorFields($type, recordEntryPrintFillSource($type, $modalRecord), [], $pdo);
     $panelId = $type . 'PrintFillPanel';
     ?>
     <div id="<?= htmlspecialchars($panelId) ?>" class="records-entry-print-fill <?= $active ? '' : 'hidden' ?>">
         <div class="records-entry-print-fill__head">
             <div>
                 <p class="records-entry-print-fill__title">Print Certificate Fields</p>
-                <p class="records-entry-print-fill__hint">Additional values for the municipal form (attendant, informant, registrar, LCRO, affidavits, etc.).</p>
+                <p class="records-entry-print-fill__hint">Additional values for the municipal form (attendant, informant, registrar, LCRO, affidavits, etc.). Use <strong>Back page</strong> for affidavit and optional sections. Custom textboxes from Print Calibration appear here automatically.</p>
             </div>
         </div>
         <div class="records-entry-print-fill__tabs" role="tablist" aria-label="<?= htmlspecialchars(ucfirst($type)) ?> fill-in page">
@@ -1424,11 +1424,17 @@ function renderRecordEntryPrintFillSection(string $type, array $modalRecord, boo
             <button type="button" class="records-entry-print-fill__tab" data-entry-fill-tab="back" role="tab" aria-selected="false">Back page</button>
         </div>
         <?php foreach (['front', 'back'] as $fillSide): ?>
+        <?php
+        $sideFields = array_values(array_filter(
+            $fields,
+            static fn (array $fillField): bool => ($fillField['page_side'] ?? '') === $fillSide
+        ));
+        ?>
         <div class="records-entry-print-fill__grid" data-entry-fill-panel="<?= $fillSide ?>" role="tabpanel"<?= $fillSide === 'back' ? ' hidden' : '' ?>>
-            <?php foreach ($fields as $fillField):
-                if ($fillField['page_side'] !== $fillSide) {
-                    continue;
-                }
+            <?php if ($sideFields === []): ?>
+            <p class="records-entry-print-fill__empty">No <?= $fillSide === 'back' ? 'back page' : 'front page' ?> fields configured yet.</p>
+            <?php else: ?>
+            <?php foreach ($sideFields as $fillField):
                 $fillGroup = printFillFieldGroup($fillField['field_name']);
             ?>
             <label class="records-entry-print-fill__field"<?= $fillGroup !== '' ? ' data-fill-group="' . htmlspecialchars($fillGroup) . '"' : '' ?>>
@@ -1436,11 +1442,13 @@ function renderRecordEntryPrintFillSection(string $type, array $modalRecord, boo
                 <input type="text"
                        name="print_fill[<?= htmlspecialchars($fillField['field_name']) ?>]"
                        value="<?= htmlspecialchars($fillField['value']) ?>"
-                       class="<?= cascadingLocationUsesField($fillField['field_name']) ? htmlspecialchars(cascadingLocationInputClass()) : '' ?>"
+                       class="<?= cascadingLocationUsesField($fillField['field_name']) ? htmlspecialchars(cascadingLocationInputClass()) : '' ?><?= printIsLcroFooterField($fillField['field_name']) ? ' records-entry-print-fill__field--lcro' : '' ?>"
+                       data-field-name="<?= htmlspecialchars($fillField['field_name']) ?>"
                        autocomplete="off"
                        spellcheck="false">
             </label>
             <?php endforeach; ?>
+            <?php endif; ?>
         </div>
         <?php endforeach; ?>
     </div>
@@ -2248,7 +2256,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                     </div>
 
                     <?php foreach ($validTypes as $fillType): ?>
-                        <?php renderRecordEntryPrintFillSection($fillType, $modalRecord, $defaultRecordType === $fillType); ?>
+                        <?php renderRecordEntryPrintFillSection($pdo, $fillType, $modalRecord, $defaultRecordType === $fillType); ?>
                     <?php endforeach; ?>
                 </fieldset>
                 </div>
@@ -2335,9 +2343,9 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
             'marriage' => civilRecordViewSections('marriage'),
         ],
         'printFillFieldLabels' => [
-            'birth' => civilRecordPrintFillFieldLabels('birth'),
-            'death' => civilRecordPrintFillFieldLabels('death'),
-            'marriage' => civilRecordPrintFillFieldLabels('marriage'),
+            'birth' => printFillFieldLabelsForType($pdo, 'birth'),
+            'death' => printFillFieldLabelsForType($pdo, 'death'),
+            'marriage' => printFillFieldLabelsForType($pdo, 'marriage'),
         ],
         'openEntryModal' => (bool) ($showModal || $editRecord),
         'defaultEntryType' => $defaultRecordType,

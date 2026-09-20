@@ -6,6 +6,7 @@ require_once __DIR__ . '/includes/scripts.php';
 require_once __DIR__ . '/includes/printing.php';
 require_once __DIR__ . '/includes/record_locks.php';
 require_once __DIR__ . '/includes/cascading_location.php';
+require_once __DIR__ . '/includes/print_fill_controls.php';
 require_once __DIR__ . '/includes/records_form.php';
 requireStaffLogin();
 requirePageAccess('records.php');
@@ -1342,13 +1343,10 @@ function renderRecordEntryPrintFillSection(PDO $pdo, string $type, array $modalR
             ?>
             <label class="records-entry-print-fill__field"<?= $fillGroup !== '' ? ' data-fill-group="' . htmlspecialchars($fillGroup) . '"' : '' ?>>
                 <span><?= htmlspecialchars($fillField['label']) ?></span>
-                <input type="text"
-                       name="print_fill[<?= htmlspecialchars($fillField['field_name']) ?>]"
-                       value="<?= htmlspecialchars($fillField['value']) ?>"
-                       class="<?= cascadingLocationUsesField($fillField['field_name']) ? htmlspecialchars(cascadingLocationInputClass()) : '' ?><?= printIsLcroFooterField($fillField['field_name']) ? ' records-entry-print-fill__field--lcro' : '' ?>"
-                       data-field-name="<?= htmlspecialchars($fillField['field_name']) ?>"
-                       autocomplete="off"
-                       spellcheck="false">
+                <?php renderPrintFillFieldInput($fillField, [
+                    'name'       => 'print_fill[' . $fillField['field_name'] . ']',
+                    'lcro_class' => 'records-entry-print-fill__field--lcro',
+                ]); ?>
             </label>
             <?php endforeach; ?>
             <?php endif; ?>

@@ -4,6 +4,7 @@ require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 require_once __DIR__ . '/includes/printing.php';
+require_once __DIR__ . '/includes/print_fill_controls.php';
 require_once __DIR__ . '/includes/certification_print.php';
 requireStaffLogin();
 requirePageAccess('documents.php');
@@ -214,11 +215,7 @@ $pageSubtitle = 'Blank certificate and certification forms for manual entry';
                     ?>
                     <label class="print-cert-fill-field"<?= ($fillGroup = printFillFieldGroup($fillField['field_name'])) !== '' ? ' data-fill-group="' . htmlspecialchars($fillGroup) . '"' : '' ?>>
                         <span><?= htmlspecialchars($fillField['label']) ?></span>
-                        <input type="text"
-                               data-field-name="<?= htmlspecialchars($fillField['field_name']) ?>"
-                               value=""
-                               autocomplete="off"
-                               spellcheck="false">
+                        <?php renderPrintFillFieldInput($fillField); ?>
                     </label>
                     <?php endforeach; ?>
                 </div>
@@ -296,6 +293,7 @@ $pageSubtitle = 'Blank certificate and certification forms for manual entry';
     'certificateType' => $certificateType,
     'documentKind' => $documentKind,
     'createRecordApiUrl' => !$isCertification ? buildAuthUrl('api/documents.php') : '',
+    'locationsApiUrl' => buildAuthUrl('api/locations.php'),
     'printAuthUrl' => buildAuthUrl('print_render.php'),
     'apiPrintUrl' => buildAuthUrl('api/print.php'),
     'paperWidthMm' => $paperW,
@@ -306,6 +304,7 @@ $pageSubtitle = 'Blank certificate and certification forms for manual entry';
 ]) ?>
 <?= scriptTag('admin/print-fit-text.js') ?>
 <?= scriptTag('core/page-config.js') ?>
+<?= scriptTag('core/cascading-location.js') ?>
 <?= scriptTag('admin/print-certificate.js') ?>
 <?php endif; ?>
 <?= lucideInitScript() ?>

@@ -317,8 +317,13 @@
         this.panel.classList.toggle('is-country-step', step === 'country');
     };
 
+    CascadingLocationPicker.prototype.notifyInputChanged = function () {
+        this.input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+
     CascadingLocationPicker.prototype.updateInput = function () {
         this.input.value = partialValue(this.selection);
+        this.notifyInputChanged();
     };
 
     CascadingLocationPicker.prototype.resetFromStep = function (index) {
@@ -459,6 +464,7 @@
                 this.searchEl.focus();
             } else {
                 this.input.value = this.selection.country;
+                this.notifyInputChanged();
                 this.toggle(false);
             }
             return;
@@ -487,6 +493,7 @@
         this.selection.barangayId = Number(item.id);
         this.selection.barangay = item.name;
         this.input.value = formatValue(this.selection);
+        this.notifyInputChanged();
         this.toggle(false);
     };
 

@@ -709,7 +709,15 @@
     } catch (err) {
         lastCalibrationStamp = '';
     }
+    function initLocationPickers() {
+        if (!cfg.locationsApiUrl || !window.AlcrosCascadingLocation) {
+            return;
+        }
+        window.AlcrosCascadingLocation.init({ apiUrl: cfg.locationsApiUrl });
+    }
+
     bindFillEditor();
+    initLocationPickers();
     bindAddRecord();
     bindActions();
     applyLocalPaperCssVars();

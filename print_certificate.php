@@ -4,6 +4,7 @@ require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 require_once __DIR__ . '/includes/printing.php';
+require_once __DIR__ . '/includes/print_fill_controls.php';
 require_once __DIR__ . '/includes/certification_print.php';
 requireStaffLogin();
 requirePageAccess('print_certificate.php');
@@ -203,11 +204,7 @@ $printModeSetting = printMode();
                     ?>
                     <label class="print-cert-fill-field"<?= ($fillGroup = printFillFieldGroup($fillField['field_name'])) !== '' ? ' data-fill-group="' . htmlspecialchars($fillGroup) . '"' : '' ?>>
                         <span><?= htmlspecialchars($fillField['label']) ?></span>
-                        <input type="text"
-                               data-field-name="<?= htmlspecialchars($fillField['field_name']) ?>"
-                               value="<?= htmlspecialchars($fillField['value']) ?>"
-                               autocomplete="off"
-                               spellcheck="false">
+                        <?php renderPrintFillFieldInput($fillField); ?>
                     </label>
                     <?php endforeach; ?>
                 </div>
@@ -286,6 +283,7 @@ $printModeSetting = printMode();
     'requestId' => (int) ($request['id'] ?? $requestId),
     'recordId' => (int) (($record['id'] ?? 0) ?: $recordId),
     'documentKind' => $documentKind,
+    'locationsApiUrl' => buildAuthUrl('api/locations.php'),
     'printAuthUrl' => buildAuthUrl('print_render.php'),
     'apiPrintUrl' => buildAuthUrl('api/print.php'),
     'paperWidthMm' => $paperW,
@@ -295,6 +293,7 @@ $printModeSetting = printMode();
 ]) ?>
 <?= scriptTag('admin/print-fit-text.js') ?>
 <?= scriptTag('core/page-config.js') ?>
+<?= scriptTag('core/cascading-location.js') ?>
 <?= scriptTag('admin/print-certificate.js') ?>
 <?php endif; ?>
 <?= lucideInitScript() ?>

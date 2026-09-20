@@ -922,10 +922,43 @@ function printCalibrationSampleRecord(string $certificateType): array
     };
 }
 
-function printFormatFieldDisplayText(string $text): string
+function printIsLcroFooterField(string $fieldName): bool
+{
+    return (bool) preg_match('/^lcro_box_/', $fieldName);
+}
+
+function printNormalizeLcroFooterText(string $text): string
 {
     if ($text === '') {
         return '';
+    }
+
+    return preg_replace('/\s+/u', '', $text) ?? '';
+}
+
+function printFormatLcroFooterDisplayText(string $text): string
+{
+    $compact = printNormalizeLcroFooterText($text);
+    if ($compact === '') {
+        return '';
+    }
+
+    $chars = preg_split('//u', $compact, -1, PREG_SPLIT_NO_EMPTY);
+    if ($chars === false || $chars === []) {
+        return $compact;
+    }
+
+    return implode('  ', $chars);
+}
+
+function printFormatFieldDisplayText(string $text, ?string $fieldName = null): string
+{
+    if ($text === '') {
+        return '';
+    }
+
+    if ($fieldName !== null && printIsLcroFooterField($fieldName)) {
+        return printFormatLcroFooterDisplayText($text);
     }
 
     return mb_strtoupper($text, 'UTF-8');
@@ -1581,6 +1614,12 @@ function printApplyFillOverrides(array $values, array $overrides): array
         if ($trimmed === '') {
             continue;
         }
+        if (printIsLcroFooterField($key)) {
+            $trimmed = printNormalizeLcroFooterText($trimmed);
+        }
+        if ($trimmed === '') {
+            continue;
+        }
         $values[$key] = $trimmed;
     }
 
@@ -1627,11 +1666,14 @@ function printFillEditorFields(string $certificateType, array $record, array $op
 
     foreach (['front', 'back'] as $side) {
         foreach ($catalog[$side] ?? [] as $name => $label) {
+            $rawValue = (string) ($values[$name] ?? '');
             $fields[] = [
                 'field_name' => $name,
                 'label'      => $label,
                 'page_side'  => $side,
-                'value'      => $values[$name] ?? '',
+                'value'      => printIsLcroFooterField($name)
+                    ? printFormatLcroFooterDisplayText($rawValue)
+                    : $rawValue,
             ];
             $seen[$name] = true;
         }
@@ -1648,11 +1690,14 @@ function printFillEditorFields(string $certificateType, array $record, array $op
                 if (!printIsCustomField($name) || isset($seen[$name])) {
                     continue;
                 }
+                $rawValue = (string) ($values[$name] ?? '');
                 $fields[] = [
                     'field_name' => $name,
                     'label'      => (string) ($dbField['label'] ?: $name),
                     'page_side'  => $side,
-                    'value'      => $values[$name] ?? '',
+                    'value'      => printIsLcroFooterField($name)
+                        ? printFormatLcroFooterDisplayText($rawValue)
+                        : $rawValue,
                 ];
                 $seen[$name] = true;
             }
@@ -1944,7 +1989,7 @@ function renderPrintOverlayHtml(array $printData, array $options = []): string
         }
 
         if (!$testMode && trim($text) !== '' && !$isCertification) {
-            $text = printFormatFieldDisplayText($text);
+            $text = printFormatFieldDisplayText($text, $name);
         }
 
         if ($useEffectivePositions) {

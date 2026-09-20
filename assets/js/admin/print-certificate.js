@@ -35,7 +35,13 @@
         var csrfEl = document.querySelector('input[name="csrf_token"]');
         csrfToken = csrfEl ? csrfEl.value : '';
         initialFillValues = cfg.initialFillValues || {};
-        fillOverrides = Object.assign({}, initialFillValues);
+        fillOverrides = {};
+        Object.keys(initialFillValues).forEach(function (key) {
+            var stored = storedPrintFieldValue(initialFillValues[key], key);
+            if (stored !== '') {
+                fillOverrides[key] = stored;
+            }
+        });
     }
 
     function numericId(value) {
@@ -43,9 +49,36 @@
         return id > 0 ? id : 0;
     }
 
-    function formatPrintFieldText(value) {
+    function isLcroFooterField(fieldName) {
+        return /^lcro_box_/.test(String(fieldName || ''));
+    }
+
+    function normalizeLcroFooterText(value) {
+        return String(value || '').replace(/\s+/g, '');
+    }
+
+    function formatLcroFooterDisplayText(value) {
+        var compact = normalizeLcroFooterText(value);
+        if (!compact) {
+            return '';
+        }
+        return compact.split('').join('  ');
+    }
+
+    function storedPrintFieldValue(value, fieldName) {
+        var trimmed = String(value || '').trim();
+        if (isLcroFooterField(fieldName)) {
+            return normalizeLcroFooterText(trimmed);
+        }
+        return formatPrintFieldText(trimmed, fieldName);
+    }
+
+    function formatPrintFieldText(value, fieldName) {
         if (cfg.documentKind === 'certification') {
             return String(value || '');
+        }
+        if (isLcroFooterField(fieldName)) {
+            return formatLcroFooterDisplayText(value);
         }
         return String(value || '').toUpperCase();
     }
@@ -54,7 +87,7 @@
         document.querySelectorAll('[data-field-name]').forEach(function (input) {
             var name = input.getAttribute('data-field-name');
             if (!name) return;
-            var value = formatPrintFieldText(String(input.value || '').trim());
+            var value = storedPrintFieldValue(input.value, name);
             if (value === '') {
                 delete fillOverrides[name];
                 return;
@@ -64,16 +97,17 @@
     }
 
     function syncFillInput(fieldName, value) {
-        var formatted = formatPrintFieldText(String(value || '').trim());
+        var stored = storedPrintFieldValue(value, fieldName);
+        var formatted = formatPrintFieldText(stored, fieldName);
         var input = document.querySelector('[data-field-name="' + fieldName + '"]');
         if (input && document.activeElement !== input) {
             input.value = formatted;
         }
-        if (formatted === '') {
+        if (stored === '') {
             delete fillOverrides[fieldName];
             return;
         }
-        fillOverrides[fieldName] = formatted;
+        fillOverrides[fieldName] = stored;
     }
 
     function encodeFillOverrides() {
@@ -81,7 +115,7 @@
         var payload = {};
         Object.keys(fillOverrides).forEach(function (key) {
             var value = String(fillOverrides[key] || '').trim();
-            var initial = String(initialFillValues[key] || '').trim();
+            var initial = storedPrintFieldValue(initialFillValues[key] || '', key);
             if (value === initial) {
                 return;
             }
@@ -321,7 +355,10 @@
             el.addEventListener('input', function () {
                 var name = el.getAttribute('data-field');
                 if (!name) return;
-                syncFillInput(name, formatPrintFieldText((el.textContent || '').trim()));
+                syncFillInput(name, storedPrintFieldValue((el.textContent || '').trim(), name));
+                if (isLcroFooterField(name)) {
+                    el.textContent = formatPrintFieldText(fillOverrides[name] || '', name);
+                }
                 if (window.AlcrosPrintFitText) {
                     AlcrosPrintFitText.fitOne(el);
                 }
@@ -508,14 +545,15 @@
         document.querySelectorAll('[data-field-name]').forEach(function (input) {
             input.addEventListener('input', function () {
                 var name = input.getAttribute('data-field-name');
-                var value = formatPrintFieldText(String(input.value || '').trim());
-                if (input.value !== value) {
-                    input.value = value;
+                var stored = storedPrintFieldValue(input.value, name);
+                var display = formatPrintFieldText(stored, name);
+                if (input.value !== display) {
+                    input.value = display;
                 }
-                if (value === '') {
+                if (stored === '') {
                     delete fillOverrides[name];
                 } else {
-                    fillOverrides[name] = value;
+                    fillOverrides[name] = stored;
                 }
                 schedulePreviewRefresh(true);
             });
@@ -527,7 +565,8 @@
                 fillOverrides = Object.assign({}, initialFillValues);
                 document.querySelectorAll('[data-field-name]').forEach(function (input) {
                     var name = input.getAttribute('data-field-name');
-                    input.value = fillOverrides[name] || '';
+                    var stored = fillOverrides[name] || '';
+                    input.value = stored ? formatPrintFieldText(stored, name) : '';
                 });
                 refreshPreviews();
             });

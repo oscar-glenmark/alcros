@@ -317,7 +317,7 @@
 
         importType.value = type;
         importModalTitle.textContent = 'Import ' + type.charAt(0).toUpperCase() + type.slice(1) + ' Records';
-        importTemplateLink.href = recordsAuthUrl + (recordsAuthUrl.indexOf('?') !== -1 ? '&' : '?') + 'action=template&format=xlsx&type=' + encodeURIComponent(type) + '&v=4';
+        importTemplateLink.href = recordsAuthUrl + (recordsAuthUrl.indexOf('?') !== -1 ? '&' : '?') + 'action=template&format=xlsx&type=' + encodeURIComponent(type) + '&v=6';
         importTemplateLink.download = 'alcros_' + type + '_import_template.xlsx';
         var requiredHint = type === 'marriage'
             ? 'husband and wife first and last names'

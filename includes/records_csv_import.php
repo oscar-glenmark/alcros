@@ -140,16 +140,46 @@ function csvRowLooksMergedIntoOneCell(array $row): bool
     return str_contains($cell, ',') || str_contains($cell, ';') || str_contains($cell, "\t");
 }
 
-function buildCsvInputFromRow(array $headers, array $row, string $importType): array
+/** @return array<string, string> Normalized header => custom_textbox field name */
+function printFillCustomCsvHeaderAliases(PDO $pdo, string $type): array
+{
+    $aliases = [];
+
+    foreach (['front', 'back'] as $side) {
+        $template = getPrintTemplate($pdo, $type, $side);
+        if (!$template) {
+            continue;
+        }
+        foreach (getPrintFields($pdo, (int) $template['id'], true) as $dbField) {
+            $name = (string) $dbField['field_name'];
+            if (!printIsCustomField($name)) {
+                continue;
+            }
+            $aliases[normalizeCsvHeader($name)] = $name;
+            $label = trim((string) ($dbField['label'] ?: ''));
+            if ($label !== '') {
+                $aliases[normalizeCsvHeader($label)] = $name;
+            }
+        }
+    }
+
+    return $aliases;
+}
+
+function buildCsvInputFromRow(array $headers, array $row, string $importType, ?PDO $pdo = null): array
 {
     $input = ['record_type' => $importType];
     $normalizedHeaders = array_map('normalizeCsvHeader', normalizeCsvHeaderRow($headers));
     $hasKnownHeader = csvRowLooksLikeHeader($headers);
+    $customHeaderAliases = $pdo !== null ? printFillCustomCsvHeaderAliases($pdo, $importType) : [];
 
     if ($hasKnownHeader) {
         foreach ($normalizedHeaders as $i => $key) {
             if ($key === '' || in_array($key, civilRecordCsvSkipColumns(), true)) {
                 continue;
+            }
+            if (isset($customHeaderAliases[$key])) {
+                $key = $customHeaderAliases[$key];
             }
             $input[$key] = trim((string) ($row[$i] ?? ''));
         }
@@ -284,7 +314,7 @@ function csvImportSampleRowValues(string $importType): array
     return $cache[$importType];
 }
 
-function csvRowMatchesSampleRow(array $headers, array $row, string $importType): bool
+function csvRowMatchesSampleRow(array $headers, array $row, string $importType, ?PDO $pdo = null): bool
 {
     if (!csvRowLooksLikeHeader($headers)) {
         $sample = csvImportSampleRowValues($importType);
@@ -300,7 +330,7 @@ function csvRowMatchesSampleRow(array $headers, array $row, string $importType):
 
     $columns = civilRecordCsvColumns($importType);
     $sample = csvImportSampleRowValues($importType);
-    $input = buildCsvInputFromRow($headers, $row, $importType);
+    $input = buildCsvInputFromRow($headers, $row, $importType, $pdo);
 
     foreach ($columns as $i => $column) {
         $actual = trim((string) ($input[$column] ?? ''));
@@ -313,14 +343,14 @@ function csvRowMatchesSampleRow(array $headers, array $row, string $importType):
     return true;
 }
 
-function parseCsvRecordRow(array $headers, array $row, string $importType, ?string &$error = null): ?array
+function parseCsvRecordRow(array $headers, array $row, string $importType, ?string &$error = null, ?PDO $pdo = null): ?array
 {
     $error = null;
     if (isCsvRowEmpty($row)) {
         return null;
     }
 
-    $input = buildCsvInputFromRow($headers, $row, $importType);
+    $input = buildCsvInputFromRow($headers, $row, $importType, $pdo);
     $effectiveType = $input['record_type'] ?? $importType;
 
     if ($effectiveType === 'marriage') {
@@ -423,11 +453,11 @@ function importCsvRecords(PDO $pdo, string $filePath, string $importType): array
             if (csvRowLooksLikeHeader($firstRow)) {
                 $headers = normalizeCsvHeaderRow($firstRow);
             } else {
-                if (csvRowMatchesSampleRow([], $firstRow, $importType)) {
+                if (csvRowMatchesSampleRow([], $firstRow, $importType, $pdo)) {
                     $sampleSkipped++;
                 } else {
                     $rowError = null;
-                    $parsed = parseCsvRecordRow([], $firstRow, $importType, $rowError);
+                    $parsed = parseCsvRecordRow([], $firstRow, $importType, $rowError, $pdo);
                     if ($parsed === null) {
                         $skipped++;
                         if (count($errors) < $maxErrors) {
@@ -454,13 +484,13 @@ function importCsvRecords(PDO $pdo, string $filePath, string $importType): array
                 continue;
             }
 
-            if (csvRowMatchesSampleRow($headers, $row, $importType)) {
+            if (csvRowMatchesSampleRow($headers, $row, $importType, $pdo)) {
                 $sampleSkipped++;
                 continue;
             }
 
             $rowError = null;
-            $parsed = parseCsvRecordRow($headers, $row, $importType, $rowError);
+            $parsed = parseCsvRecordRow($headers, $row, $importType, $rowError, $pdo);
             if ($parsed === null) {
                 $skipped++;
                 if (count($errors) < $maxErrors) {
@@ -521,14 +551,14 @@ function importCsvParsedRows(PDO $pdo, string $importType, array $headers, array
             $lineNum++;
             continue;
         }
-        if (csvRowMatchesSampleRow($headers, $row, $importType)) {
+        if (csvRowMatchesSampleRow($headers, $row, $importType, $pdo)) {
             $sampleSkipped++;
             $lineNum++;
             continue;
         }
 
         $rowError = null;
-        $parsed = parseCsvRecordRow($headers, $row, $importType, $rowError);
+        $parsed = parseCsvRecordRow($headers, $row, $importType, $rowError, $pdo);
         if ($parsed === null) {
             $skipped++;
             if (count($errors) < $maxErrors) {

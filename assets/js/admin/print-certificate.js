@@ -617,6 +617,14 @@
         return Promise.resolve(window.confirm(message));
     }
 
+    function showActionResult(type, message) {
+        if (window.AlcrosActionResult && typeof window.AlcrosActionResult.show === 'function') {
+            window.AlcrosActionResult.show(type, message);
+            return;
+        }
+        window.alert(message);
+    }
+
     function postCreateRecord(body) {
         return fetch(cfg.createRecordApiUrl, {
             method: 'POST',
@@ -682,24 +690,14 @@
                 body.append('print_fill', JSON.stringify(fillOverrides));
 
                 postCreateRecord(body).then(function (data) {
-                    var message = 'Record saved';
+                    var message = 'Record saved successfully';
                     if (data.display_name) {
                         message += ': ' + data.display_name;
                     }
                     message += '.';
-
-                    if (!data.records_url) {
-                        window.alert(message);
-                        return;
-                    }
-
-                    return askConfirm(message + ' Open it in Records now?').then(function (openRecords) {
-                        if (openRecords) {
-                            window.location.href = data.records_url;
-                        }
-                    });
+                    showActionResult('success', message);
                 }).catch(function (err) {
-                    window.alert(err.message || 'Could not save the record.');
+                    showActionResult('error', err.message || 'Could not save the record.');
                 }).finally(function () {
                     btn.disabled = false;
                     btn.textContent = originalLabel;

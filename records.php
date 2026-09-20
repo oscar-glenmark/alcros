@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
@@ -452,7 +452,7 @@ function exportCivilRecordsFetchChunk(PDO $pdo, string $where, array $params, in
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
-function exportCivilRecordTemplateXlsx(string $type): void
+function exportCivilRecordTemplateXlsx(PDO $pdo, string $type): void
 {
     global $validTypes;
 
@@ -466,8 +466,8 @@ function exportCivilRecordTemplateXlsx(string $type): void
     $sheet = $spreadsheet->getActiveSheet();
     $sheet->setTitle('Import data');
 
-    $headers = civilRecordCsvColumns($type);
-    $sample = civilRecordCsvSampleRow($type);
+    $headers = printFillCsvTemplateHeadersForType($pdo, $type);
+    $sample = civilRecordCsvSampleRowFromPrintFields($type, $pdo);
 
     $row = 1;
     alcrosExcelWriteMetaBlock($sheet, [
@@ -522,7 +522,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'template') {
     }
     $format = strtolower((string) ($_GET['format'] ?? 'xlsx'));
     if ($format === 'xlsx') {
-        exportCivilRecordTemplateXlsx($tplType);
+        exportCivilRecordTemplateXlsx($pdo, $tplType);
     }
 
     $filename = "alcros_{$tplType}_import_template.csv";
@@ -532,8 +532,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'template') {
     header('Pragma: no-cache');
     $out = fopen('php://output', 'w');
     fprintf($out, "\xEF\xBB\xBF");
-    fputcsv($out, civilRecordCsvColumns($tplType));
-    fputcsv($out, civilRecordCsvSampleRow($tplType));
+    fputcsv($out, printFillCsvTemplateHeadersForType($pdo, $tplType));
+    fputcsv($out, civilRecordCsvSampleRowFromPrintFields($tplType, $pdo));
     fclose($out);
     exit;
 }

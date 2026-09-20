@@ -1684,6 +1684,53 @@ function printFillFieldLabelsForType(PDO $pdo, string $certificateType): array
     return $labels;
 }
 
+/** @return list<string> Catalog print fill columns plus custom calibration textboxes (front, then back). */
+function printFillCsvColumnsForType(PDO $pdo, string $type): array
+{
+    if (!function_exists('printFillCsvColumns')) {
+        require_once __DIR__ . '/print_field_definitions.php';
+    }
+
+    $columns = printFillCsvColumns($type);
+    $seen = array_fill_keys($columns, true);
+
+    foreach (['front', 'back'] as $side) {
+        $template = getPrintTemplate($pdo, $type, $side);
+        if (!$template) {
+            continue;
+        }
+        foreach (getPrintFields($pdo, (int) $template['id'], true) as $dbField) {
+            $name = (string) $dbField['field_name'];
+            if (!printIsCustomField($name) || isset($seen[$name])) {
+                continue;
+            }
+            $columns[] = $name;
+            $seen[$name] = true;
+        }
+    }
+
+    return $columns;
+}
+
+/** @return list<string> Template column headers — custom fields use their calibration display name. */
+function printFillCsvTemplateHeadersForType(PDO $pdo, string $type): array
+{
+    $columns = printFillCsvColumnsForType($pdo, $type);
+    $labels = printFillFieldLabelsForType($pdo, $type);
+
+    return array_map(
+        static function (string $column) use ($labels): string {
+            if (!printIsCustomField($column)) {
+                return $column;
+            }
+            $label = trim((string) ($labels[$column] ?? ''));
+
+            return $label !== '' ? $label : $column;
+        },
+        $columns
+    );
+}
+
 /** @return list<array{field_name: string, label: string, page_side: string, value: string}> */
 function printFillEditorFields(string $certificateType, array $record, array $options = [], ?PDO $pdo = null): array
 {
@@ -2451,6 +2498,16 @@ function csvCollectPrintFillData(array $input, string $type): array
         }
     }
 
+    foreach ($input as $field => $value) {
+        if (!is_string($field) || !printIsCustomField($field)) {
+            continue;
+        }
+        $trimmed = trim((string) $value);
+        if ($trimmed !== '') {
+            $fill[$field] = $trimmed;
+        }
+    }
+
     return $fill;
 }
 
@@ -2641,7 +2698,7 @@ function civilRecordExpandPrintFieldInput(array $input, string $type): array
 }
 
 /** @return list<string|null> */
-function civilRecordCsvSampleRowFromPrintFields(string $type): array
+function civilRecordCsvSampleRowFromPrintFields(string $type, ?PDO $pdo = null): array
 {
     $record = printCalibrationSampleRecord($type);
     $values = printBuildFieldValues($record, $type, ['keep_empty' => false]);
@@ -2653,8 +2710,12 @@ function civilRecordCsvSampleRowFromPrintFields(string $type): array
         }
     }
 
+    $columns = ($pdo !== null)
+        ? printFillCsvColumnsForType($pdo, $type)
+        : printFillCsvColumns($type);
+
     return array_map(
         static fn (string $column) => (($values[$column] ?? '') !== '' ? (string) $values[$column] : null),
-        printFillCsvColumns($type)
+        $columns
     );
 }

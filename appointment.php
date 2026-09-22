@@ -23,10 +23,9 @@ function appointmentsRedirectFilters(): array
         $status = 'all';
     }
 
-    $date = $_POST['redirect_date'] ?? $_GET['date'] ?? alcrosTodayDate();
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
-        $date = alcrosTodayDate();
-    }
+    $rawDate = $_POST['redirect_date'] ?? $_GET['date'] ?? null;
+    $date = is_string($rawDate) && $rawDate !== '' ? trim($rawDate) : null;
+    $date = resolveAppointmentsManageDate(getDB(), $date);
 
     return [
         'status' => $status,
@@ -142,10 +141,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     ]));
 }
 
-$viewDate = $_GET['date'] ?? alcrosTodayDate();
-if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $viewDate)) {
-    $viewDate = alcrosTodayDate();
+$requestedViewDate = isset($_GET['date']) ? trim((string) $_GET['date']) : null;
+if ($requestedViewDate === '') {
+    $requestedViewDate = null;
 }
+$viewDate = resolveAppointmentsManageDate($pdo, $requestedViewDate);
 
 $filterStatus = $_GET['status'] ?? 'all';
 $search = trim($_GET['q'] ?? '');
@@ -372,7 +372,9 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                 </div>
                 <h2>No appointments in this view</h2>
                 <p><?= $search !== '' ? 'No matches for your search. Try different keywords or reset filters.' : 'There are no appointments for the selected filter on this date.' ?></p>
-                <?php if ($filterStatus !== 'all' || $search !== ''): ?>
+                <?php if ($search === '' && in_array($filterStatus, ['all', 'scheduled'], true) && ($appointmentStats['total'] ?? 0) > 0): ?>
+                <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $viewDate, 'status' => 'all_appointments'])) ?>" class="manage-empty-reset">View all <?= number_format($appointmentStats['total']) ?> appointment<?= $appointmentStats['total'] === 1 ? '' : 's' ?> on this date</a>
+                <?php elseif ($filterStatus !== 'all' || $search !== ''): ?>
                 <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $viewDate])) ?>" class="manage-empty-reset">View awaiting queue</a>
                 <?php endif; ?>
             </div>
@@ -394,7 +396,6 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                             <?php elseif ($isRecentlyDeletedView): ?>
                             · <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $viewDate, 'status' => 'all_appointments'])) ?>" class="manage-bulk-meta-link">Back to all appointments</a>
                             <?php endif; ?>
-                            · <span class="live-sync-indicator" aria-live="polite">Live</span>
                         </p>
                     </div>
                     <p class="manage-table-head__tip"><?= $isRecentlyDeletedView ? 'Select items to restore or permanently delete them' : ($showSidePanel ? 'Click Verify to review details, then confirm or reject the appointment in the popup' : 'Click Complete to open the visit popup and mark it served') ?></p>

@@ -35,7 +35,9 @@ if (!$template) {
     redirectWithAuth('print_calibration.php', $isCertification ? ['kind' => 'certification'] : []);
 }
 
-$fields = getPrintFields($pdo, (int) $template['id'], false);
+$fields = $isCertification
+    ? getPrintFields($pdo, (int) $template['id'], false)
+    : getPrintFieldsForCalibration($pdo, (int) $template['id'], false);
 $calibration = getPrintCalibration($pdo, (int) $template['id']);
 $globalCalibration = printGlobalCalibration();
 $meta = $isCertification
@@ -134,6 +136,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $selectedFieldId = (int) ($_GET['field'] ?? 0);
+$calibratableFieldIds = array_map(static fn (array $f): int => (int) $f['id'], $fields);
+if ($selectedFieldId > 0 && !in_array($selectedFieldId, $calibratableFieldIds, true)) {
+    $selectedFieldId = 0;
+}
 $formDefaults = null;
 foreach ($fields as $f) {
     if ((int) $f['id'] === $selectedFieldId) {

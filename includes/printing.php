@@ -560,6 +560,23 @@ function seedCertificationPrintTemplatesIfAvailable(PDO $pdo): void
     }
 }
 
+function printDocumentKindSchemaReady(PDO $pdo): bool
+{
+    try {
+        $pdo->query('SELECT document_kind FROM print_templates LIMIT 1');
+        $indexStmt = $pdo->query(
+            "SHOW INDEX FROM print_templates WHERE Key_name = 'uniq_cert_page_kind'"
+        );
+        if (!$indexStmt || $indexStmt->fetch(PDO::FETCH_ASSOC) === false) {
+            return false;
+        }
+
+        return true;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
 function ensurePrintDocumentKindColumn(PDO $pdo): void
 {
     static $done = false;
@@ -567,6 +584,10 @@ function ensurePrintDocumentKindColumn(PDO $pdo): void
         return;
     }
     $done = true;
+
+    if (printDocumentKindSchemaReady($pdo)) {
+        return;
+    }
 
     try {
         $pdo->query('SELECT document_kind FROM print_templates LIMIT 1');
@@ -1743,6 +1764,9 @@ function printFillEditorFields(string $certificateType, array $record, array $op
 
     foreach (['front', 'back'] as $side) {
         foreach ($catalog[$side] ?? [] as $name => $label) {
+            if (printIsRecordRegistryField($name) && !empty($options['exclude_record_registry_fields'])) {
+                continue;
+            }
             $rawValue = (string) ($values[$name] ?? '');
             $fields[] = [
                 'field_name' => $name,
@@ -2051,11 +2075,15 @@ function renderPrintOverlayHtml(array $printData, array $options = []): string
 
     foreach ($fields as $field) {
         $name = (string) $field['field_name'];
+        if (!empty($options['hide_record_registry_fields']) && printIsRecordRegistryField($name)) {
+            continue;
+        }
+
         $text = $testMode
             ? strtoupper(str_replace('_', ' ', $name))
             : (string) ($values[$name] ?? '');
 
-        $editable = !empty($options['editable']) && !$testMode;
+        $editable = !empty($options['editable']) && !$testMode && !printIsRecordRegistryField($name);
 
         if (!$testMode && !$calibrationPreview && trim($text) === '' && !$editable) {
             continue;
@@ -2357,6 +2385,34 @@ function getPrintFieldById(PDO $pdo, int $fieldId): ?array
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
     return $row ?: null;
+}
+
+/** Municipal certificate templates: book/page positions are fixed; values come from civil_records. */
+function printFieldAllowsCalibration(PDO $pdo, array $field): bool
+{
+    if (!printIsRecordRegistryField((string) ($field['field_name'] ?? ''))) {
+        return true;
+    }
+
+    $templateId = (int) ($field['template_id'] ?? 0);
+    if ($templateId <= 0) {
+        return false;
+    }
+
+    $stmt = $pdo->prepare('SELECT document_kind FROM print_templates WHERE id = ? LIMIT 1');
+    $stmt->execute([$templateId]);
+    $kind = normalizePrintDocumentKind((string) ($stmt->fetchColumn() ?: 'certificate'));
+
+    return $kind === 'certification';
+}
+
+/** @return list<array<string, mixed>> */
+function getPrintFieldsForCalibration(PDO $pdo, int $templateId, bool $enabledOnly = false): array
+{
+    return array_values(array_filter(
+        getPrintFields($pdo, $templateId, $enabledOnly),
+        static fn (array $field): bool => printFieldAllowsCalibration($pdo, $field)
+    ));
 }
 
 function deletePrintField(PDO $pdo, int $fieldId): bool

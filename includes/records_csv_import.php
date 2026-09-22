@@ -443,6 +443,8 @@ function importCsvRecords(PDO $pdo, string $filePath, string $importType): array
     $importOptions = ['insert_details_only' => true];
     $inTransaction = false;
 
+    ensurePrintDocumentKindColumn($pdo);
+
     try {
         $pdo->beginTransaction();
         $inTransaction = true;
@@ -510,7 +512,16 @@ function importCsvRecords(PDO $pdo, string $filePath, string $importType): array
             }
         }
 
-        $pdo->commit();
+        if ($pdo->inTransaction()) {
+            try {
+                $pdo->commit();
+            } catch (PDOException $commitErr) {
+                if ($imported <= 0) {
+                    throw $commitErr;
+                }
+                error_log('ALCROS CSV import commit skipped: ' . $commitErr->getMessage());
+            }
+        }
         $inTransaction = false;
     } catch (Throwable $e) {
         if ($inTransaction && $pdo->inTransaction()) {

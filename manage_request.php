@@ -291,7 +291,6 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                             <?php elseif ($isRecentlyDeletedView): ?>
                             · <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php', ['status' => 'all_requests'])) ?>" class="manage-bulk-meta-link">Back to all requests</a>
                             <?php endif; ?>
-                            · <span id="live-sync-indicator" class="live-sync-indicator" aria-live="polite">Live</span>
                         </p>
                     </div>
                     <p class="manage-table-head__tip"><?= $isRecentlyDeletedView ? 'Select items to restore or permanently delete them' : ($showSidePanel ? 'Click Verify to review details, then accept the request in the popup' : 'Click Complete to open the request popup and mark it claimed') ?></p>

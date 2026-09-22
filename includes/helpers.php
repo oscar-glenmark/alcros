@@ -1186,6 +1186,44 @@ function appointmentStandaloneSql(string $alias = 'a'): string
     )";
 }
 
+/**
+ * Manage Appointments default date: explicit ?date= wins; otherwise today when it has
+ * standalone visits, or the nearest future date with scheduled/confirmed bookings.
+ */
+function resolveAppointmentsManageDate(PDO $pdo, ?string $requestedDate = null): string
+{
+    if ($requestedDate !== null && preg_match('/^\d{4}-\d{2}-\d{2}$/', $requestedDate)) {
+        return $requestedDate;
+    }
+
+    return appointmentsManageSuggestedDate($pdo, alcrosTodayDate());
+}
+
+function appointmentsManageSuggestedDate(PDO $pdo, string $today): string
+{
+    ensureSoftDeleteColumns($pdo);
+
+    if (countSpecialAppointmentsOnDate($pdo, $today) > 0) {
+        return $today;
+    }
+
+    $standaloneSql = appointmentStandaloneSql('a');
+    $stmt = $pdo->prepare(
+        "SELECT MIN(a.appointment_date) FROM appointments a
+         WHERE a.appointment_date >= ?
+           AND a.status IN ('scheduled', 'confirmed')
+           AND a.deleted_at IS NULL
+           AND {$standaloneSql}"
+    );
+    $stmt->execute([$today]);
+    $next = $stmt->fetchColumn();
+    if (is_string($next) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $next)) {
+        return $next;
+    }
+
+    return $today;
+}
+
 /** Appointments that still belong on the dashboard schedule (excludes finished visits). */
 function scheduleVisitAppointmentSql(string $alias = 'a'): string
 {
@@ -2931,13 +2969,33 @@ function staffPhotoExists(?string $photoPath): bool
     return is_file(__DIR__ . '/../' . ltrim($photoPath, '/'));
 }
 
+function alcrosFaviconAssetUrl(): string
+{
+    static $url = null;
+    if ($url !== null) {
+        return $url;
+    }
+
+    $full = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'images' . DIRECTORY_SEPARATOR . 'favicon.png';
+    $v = is_file($full) ? ('?v=' . filemtime($full)) : '?v=2';
+    $url = alcrosWebBasePath() . '/images/favicon.png' . $v;
+
+    return $url;
+}
+
+function faviconLinkTag(): string
+{
+    return '<link rel="icon" type="image/png" href="' . htmlspecialchars(alcrosFaviconAssetUrl(), ENT_QUOTES, 'UTF-8') . '">';
+}
+
 function alcrosFaviconImg(int $sizePx = 20, string $extraClass = ''): string
 {
     $size = max(16, min(72, $sizePx));
     $class = trim('object-cover shrink-0 rounded-full bg-white ' . $extraClass);
 
     return sprintf(
-        '<img src="images/favicon.png?v=2" alt="ALCROS" class="%s" width="%d" height="%d">',
+        '<img src="%s" alt="ALCROS" class="%s" width="%d" height="%d">',
+        htmlspecialchars(alcrosFaviconAssetUrl(), ENT_QUOTES, 'UTF-8'),
         htmlspecialchars($class, ENT_QUOTES, 'UTF-8'),
         $size,
         $size
@@ -3876,16 +3934,50 @@ function publicRequestStatusBadge(string $status): string
         . '</span>';
 }
 
+/** Web path prefix for ALCROS (e.g. `/alcros`), derived from the project folder under the docroot. */
+function alcrosWebBasePath(): string
+{
+    static $base = null;
+    if ($base !== null) {
+        return $base;
+    }
+
+    $docRoot = realpath($_SERVER['DOCUMENT_ROOT'] ?? '');
+    $projectRoot = realpath(dirname(__DIR__));
+    if ($docRoot !== false && $projectRoot !== false) {
+        $docNorm = str_replace('\\', '/', $docRoot);
+        $projNorm = str_replace('\\', '/', $projectRoot);
+        if (str_starts_with($projNorm, $docNorm)) {
+            $base = rtrim(substr($projNorm, strlen($docNorm)), '/');
+
+            return $base;
+        }
+    }
+
+    $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '/index.php'));
+    $dir = rtrim(dirname($script), '/\\');
+    if (str_ends_with($dir, '/api')) {
+        $dir = substr($dir, 0, -4);
+    }
+    if ($dir === '' || $dir === '.' || $dir === '/') {
+        $base = '';
+    } else {
+        $base = $dir;
+    }
+
+    return $base;
+}
+
 function appBaseUrl(): string
 {
     $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
     $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    $script = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '/index.php');
-    $base   = rtrim(str_replace('\\', '/', dirname($script)), '/');
-    if ($base === '' || $base === '.') {
+    $path   = alcrosWebBasePath();
+    if ($path === '') {
         return $scheme . '://' . $host;
     }
-    return $scheme . '://' . $host . $base;
+
+    return $scheme . '://' . $host . $path;
 }
 
 function trackRequestUrl(string $trackingCode): string
@@ -4204,7 +4296,7 @@ function isEmailConfigured(): bool
 function citizenEmailFailureReason(): string
 {
     if (!isEmailConfigured()) {
-        return 'Gmail SMTP is not configured. Set Gmail address and App Password in Settings → Operations.';
+        return 'Gmail SMTP is not configured. Set Gmail address and App Password in Settings → Configuration (Operations, Queue & Email).';
     }
 
     return 'Email delivery failed. Check Gmail SMTP credentials and App Password.';

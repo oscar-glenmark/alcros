@@ -163,13 +163,14 @@ if ($isCertificationDoc) {
 }
 $printWithBackground = $showBackground && $isCertificationDoc;
 $overlayHtml = renderPrintOverlayHtml($printData, [
-    'mode'                    => $mode,
-    'test_mode'               => $testMode,
-    'show_background'         => $showBackground,
-    'editable'                => $isPreview && !$autoPrint && !$testMode && !$calibrationPreview,
-    'prefer_scan_background'  => $showBackground,
-    'calibration_preview'     => $calibrationPreview,
-    'use_effective_positions' => !empty($printData['use_effective_positions']),
+    'mode'                         => $mode,
+    'test_mode'                    => $testMode,
+    'show_background'              => $showBackground,
+    'editable'                     => $isPreview && !$autoPrint && !$testMode && !$calibrationPreview,
+    'prefer_scan_background'       => $showBackground,
+    'calibration_preview'          => $calibrationPreview,
+    'use_effective_positions'      => !empty($printData['use_effective_positions']),
+    'hide_record_registry_fields'  => !$isCertificationDoc && $isPreview && !$autoPrint && !$calibrationPreview,
 ]);
 ?><!DOCTYPE html>
 <html lang="en">

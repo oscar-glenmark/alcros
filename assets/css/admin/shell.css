@@ -965,12 +965,20 @@ body.admin-sidebar-minimized .admin-sidebar button {
     min-width: 0;
 }
 
-/* ── Prevent content blowout ── */
+/* ── Prevent content blowout (exclude Lucide UI icons — they use fixed w/h utilities) ── */
 .admin-main img,
-.admin-main video,
-.admin-main svg {
+.admin-main video {
     max-width: 100%;
     height: auto;
+}
+
+.admin-main svg:not(.lucide) {
+    max-width: 100%;
+    height: auto;
+}
+
+.admin-main svg.lucide {
+    flex-shrink: 0;
 }
 
 .admin-main table {
@@ -1010,27 +1018,4 @@ body.admin-sidebar-minimized .admin-sidebar button {
     .admin-main .max-w-3xl {
         max-width: 48rem;
     }
-}
-
-.live-sync-indicator {
-    font-size: 0.625rem;
-    font-weight: 600;
-    color: #64748b;
-    white-space: nowrap;
-}
-
-.admin-header__sync {
-    margin-right: 0.5rem;
-    padding: 0.2rem 0.45rem;
-    border-radius: 9999px;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-}
-
-.live-sync-indicator.is-stale {
-    color: #b45309;
-}
-
-.live-sync-indicator.is-reconnecting {
-    color: #2563eb;
 }

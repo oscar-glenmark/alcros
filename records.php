@@ -3,6 +3,7 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
+require_once __DIR__ . '/includes/lucide_icons.php';
 require_once __DIR__ . '/includes/printing.php';
 require_once __DIR__ . '/includes/record_locks.php';
 require_once __DIR__ . '/includes/cascading_location.php';
@@ -709,7 +710,9 @@ function recordEntryPrintFillSource(string $type, array $modalRecord): array
 
 function renderRecordEntryPrintFillSection(PDO $pdo, string $type, array $modalRecord, bool $active): void
 {
-    $fields = printFillEditorFields($type, recordEntryPrintFillSource($type, $modalRecord), [], $pdo);
+    $fields = printFillEditorFields($type, recordEntryPrintFillSource($type, $modalRecord), [
+        'exclude_record_registry_fields' => true,
+    ], $pdo);
     $panelId = $type . 'PrintFillPanel';
     ?>
     <div id="<?= htmlspecialchars($panelId) ?>" class="records-entry-print-fill <?= $active ? '' : 'hidden' ?>">
@@ -766,7 +769,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <link rel="icon" type="image/png" href="images/favicon.png?v=2">
+    <?= faviconLinkTag() ?>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Civil Records - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
@@ -826,7 +829,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                             <p class="px-4 py-2 text-[9px] font-bold text-gray-400 uppercase tracking-widest">Bulk Import (CSV)</p>
                             <?php foreach ($validTypes as $t): ?>
                             <button type="button" data-import-type="<?= $t ?>" class="entry-menu-item w-full px-4 py-2.5 text-left text-sm font-bold text-slate-800 flex items-center gap-3">
-                                <i data-lucide="file-text" class="w-4 h-4 text-gray-400"></i> Import <?= civilRecordTypeLabel($t) ?> Records
+                                <?= lucideSvg('file-text', 'w-4 h-4 text-gray-400 shrink-0') ?> Import <?= civilRecordTypeLabel($t) ?> Records
                             </button>
                             <?php endforeach; ?>
                         </div>
@@ -836,7 +839,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                 <?php foreach (['birth' => ['count' => $birthCount, 'icon' => 'users', 'bg' => 'bg-blue-50 text-blue-600'], 'death' => ['count' => $deathCount, 'icon' => 'activity', 'bg' => 'bg-gray-50 text-gray-400'], 'marriage' => ['count' => $marriageCount, 'icon' => 'heart', 'bg' => 'bg-pink-50 text-pink-500']] as $key => $meta): ?>
                 <a href="<?= buildRecordsUrl(['type' => $key, 'page' => 1]) ?>" class="stat-card bg-white p-4 rounded-lg border border-gray-100 shadow-sm block <?= $type === $key ? 'ring-2 ring-blue-500' : '' ?>">
-                    <div class="<?= $meta['bg'] ?> p-1.5 rounded-md w-fit mb-2"><i data-lucide="<?= $meta['icon'] ?>" class="w-4 h-4"></i></div>
+                    <div class="<?= $meta['bg'] ?> p-1.5 rounded-md w-fit mb-2"><?= lucideSvg($meta['icon'], 'w-4 h-4') ?></div>
                     <p class="text-[9px] font-bold text-gray-400 uppercase tracking-widest"><?= civilRecordTypeLabel($key) ?></p>
                     <p class="text-2xl font-black text-slate-900 leading-tight mt-0.5"><?= $meta['count'] ?></p>
                 </a>
@@ -849,14 +852,25 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                 <?php if ($sort !== 'name'): ?><input type="hidden" name="sort" value="<?= htmlspecialchars($sort) ?>"><?php endif; ?>
                 <?php if ($dir !== 'asc'): ?><input type="hidden" name="dir" value="<?= htmlspecialchars($dir) ?>"><?php endif; ?>
                 <div class="relative flex-1 admin-toolbar-search">
-                    <i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-gray-400"></i>
+                    <span class="absolute left-3 top-2.5 pointer-events-none text-gray-400"><?= lucideSvg('search', 'w-4 h-4') ?></span>
                     <input type="text" name="q" id="recordsSearchInput" value="<?= htmlspecialchars($search) ?>" placeholder="First, middle, last, full name, DOB, DOM, registry…"
                         class="records-search-input w-full pl-10 pr-4 py-2 text-sm bg-gray-50 border-none rounded-lg focus:ring-0 text-slate-600 placeholder-gray-400" autocomplete="off">
                 </div>
                 <div class="admin-toolbar-filters">
-                    <?php foreach (['all' => 'All', 'birth' => 'Birth', 'death' => 'Death', 'marriage' => 'Marriage'] as $key => $label): ?>
+                    <?php
+                    $filterTabs = [
+                        'all'      => ['label' => 'All', 'icon' => 'layers'],
+                        'birth'    => ['label' => 'Birth', 'icon' => 'users'],
+                        'death'    => ['label' => 'Death', 'icon' => 'activity'],
+                        'marriage' => ['label' => 'Marriage', 'icon' => 'heart'],
+                    ];
+                    foreach ($filterTabs as $key => $filterMeta):
+                    ?>
                     <a href="<?= buildRecordsUrl(['type' => $key, 'page' => 1, 'q' => $search ?: null]) ?>"
-                       class="filter-chip whitespace-nowrap shrink-0 <?= $type === $key ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600' ?>"><?= $label ?></a>
+                       class="filter-chip filter-chip--with-icon whitespace-nowrap shrink-0 <?= $type === $key ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600' ?>">
+                        <?= lucideSvg($filterMeta['icon'], 'records-filter-icon shrink-0') ?>
+                        <span><?= htmlspecialchars($filterMeta['label']) ?></span>
+                    </a>
                     <?php endforeach; ?>
                 </div>
                 <button type="submit" class="w-full lg:w-auto bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold shrink-0" data-loading-text="Searching…">Search</button>
@@ -865,7 +879,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
             <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
                 <?php if (empty($records)): ?>
                 <div class="p-16 text-center">
-                    <div class="bg-gray-50 p-4 rounded-xl w-fit mx-auto mb-4"><i data-lucide="book-open" class="w-10 h-10 text-gray-200"></i></div>
+                    <div class="bg-gray-50 p-4 rounded-xl w-fit mx-auto mb-4 text-gray-200"><?= lucideSvg('book-open', 'w-10 h-10') ?></div>
                     <p class="text-sm font-bold text-slate-800 mb-1">No records found</p>
                     <p class="text-gray-400 text-xs">Try adjusting your filters or add a new entry.</p>
                 </div>
@@ -1011,7 +1025,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                             <button type="button" data-record-type="<?= $t ?>"
                                 class="record-type-tab rounded-xl border-2 px-3 py-3 text-center transition <?= $defaultRecordType === $t ? $meta['active'] : 'border-gray-200 text-gray-500 hover:border-gray-300' ?>"
                                 <?= $entryFormEditMode ? 'disabled aria-disabled="true"' : '' ?>>
-                                <i data-lucide="<?= $meta['icon'] ?>" class="w-5 h-5 mx-auto mb-1"></i>
+                                <?= lucideSvg($meta['icon'], 'records-type-tab-icon mx-auto mb-1') ?>
                                 <span class="text-xs font-bold"><?= $meta['label'] ?></span>
                             </button>
                             <?php endforeach; ?>
@@ -1068,7 +1082,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Place of Birth</label>
-                            <input type="text" name="place" value="<?= htmlspecialchars($birthPanelRecord['place'] ?? '') ?>" placeholder="Philippines, Province, City/Municipality, Barangay" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            <input type="text" name="place" value="<?= htmlspecialchars($birthPanelRecord['place'] ?? '') ?>" placeholder="Barangay, City/Municipality, Province" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>" data-location-mode="ph_birth_place">
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
@@ -1126,7 +1140,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                     </div>
                                     <div>
                                         <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Residence</label>
-                                        <input type="text" name="mother_residence" value="<?= htmlspecialchars($birthPanelRecord['mother_residence'] ?? '') ?>" placeholder="Philippines, Province, City/Municipality, Barangay" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>">
+                                        <input type="text" name="mother_residence" value="<?= htmlspecialchars($birthPanelRecord['mother_residence'] ?? '') ?>" placeholder="Barangay, City/Municipality, Province, Country" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>"<?= cascadingLocationDataAttributes('mother_residence') ?>>
                                     </div>
                                 </div>
                                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1174,7 +1188,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                     </div>
                                     <div>
                                         <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Residence</label>
-                                        <input type="text" name="father_residence" value="<?= htmlspecialchars($birthPanelRecord['father_residence'] ?? '') ?>" placeholder="Philippines, Province, City/Municipality, Barangay" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>">
+                                        <input type="text" name="father_residence" value="<?= htmlspecialchars($birthPanelRecord['father_residence'] ?? '') ?>" placeholder="Barangay, City/Municipality, Province, Country" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>"<?= cascadingLocationDataAttributes('father_residence') ?>>
                                     </div>
                                 </div>
                             </div>
@@ -1186,9 +1200,9 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                         <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Date</label>
                                         <input type="date" name="parents_marriage_date" value="<?= htmlspecialchars($birthPanelRecord['parents_marriage_date'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                                     </div>
-                                    <div>
-                                        <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Place (Municipality, Province)</label>
-                                        <input type="text" name="parents_marriage_place" value="<?= htmlspecialchars($birthPanelRecord['parents_marriage_place'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                    <div class="sm:col-span-2">
+                                        <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Place (City/Municipality, Province, Country)</label>
+                                        <input type="text" name="parents_marriage_place" value="<?= htmlspecialchars($birthPanelRecord['parents_marriage_place'] ?? '') ?>" placeholder="City/Municipality, Province, Country" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>"<?= cascadingLocationDataAttributes('parents_marriage_place') ?>>
                                     </div>
                                 </div>
                             </div>
@@ -1249,7 +1263,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Residence of Deceased</label>
-                            <input type="text" name="residence_deceased" value="<?= htmlspecialchars($deathPanelRecord['residence_deceased'] ?? '') ?>" placeholder="Philippines, Province, City/Municipality, Barangay" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>">
+                            <input type="text" name="residence_deceased" value="<?= htmlspecialchars($deathPanelRecord['residence_deceased'] ?? '') ?>" placeholder="Barangay, City/Municipality, Province, Country" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>"<?= cascadingLocationDataAttributes('residence_deceased') ?>>
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
@@ -1468,7 +1482,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                 </div>
                                 <div class="sm:col-span-2">
                                     <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Place of Birth</label>
-                                    <input type="text" name="<?= $prefix ?>_birth_place" value="<?= htmlspecialchars($marriagePanelRecord[$prefix . '_birth_place'] ?? '') ?>" placeholder="Philippines, Province, City/Municipality, Barangay" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>">
+                                    <input type="text" name="<?= $prefix ?>_birth_place" value="<?= htmlspecialchars($marriagePanelRecord[$prefix . '_birth_place'] ?? '') ?>" placeholder="Barangay, City/Municipality, Province" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>" data-location-mode="ph_birth_place">
                                 </div>
                                 <div>
                                     <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Citizenship</label>
@@ -1484,7 +1498,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                 </div>
                                 <div>
                                     <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Residence</label>
-                                    <input type="text" name="<?= $prefix ?>_residence" value="<?= htmlspecialchars($marriagePanelRecord[$prefix . '_residence'] ?? '') ?>" placeholder="Philippines, Province, City/Municipality, Barangay" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>">
+                                    <input type="text" name="<?= $prefix ?>_residence" value="<?= htmlspecialchars($marriagePanelRecord[$prefix . '_residence'] ?? '') ?>" placeholder="Barangay, City/Municipality, Province, Country" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>"<?= cascadingLocationDataAttributes($prefix . '_residence') ?>>
                                 </div>
                                 <div class="sm:col-span-2">
                                     <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Father's Full Name</label>
@@ -1512,7 +1526,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                 </div>
                                 <div>
                                     <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Consent Residence</label>
-                                    <input type="text" name="<?= $prefix ?>_consent_residence" value="<?= htmlspecialchars($marriagePanelRecord[$prefix . '_consent_residence'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                    <input type="text" name="<?= $prefix ?>_consent_residence" value="<?= htmlspecialchars($marriagePanelRecord[$prefix . '_consent_residence'] ?? '') ?>" placeholder="Barangay, City/Municipality, Province, Country" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>"<?= cascadingLocationDataAttributes($prefix . '_consent_residence') ?>>
                                 </div>
                             </div>
                         </div>
@@ -1603,7 +1617,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                 <h2 class="text-lg font-black text-slate-900" id="importModalTitle">Import Records</h2>
                 <button type="button" class="text-gray-400 hover:text-gray-600 close-modal"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
-            <form method="POST" enctype="multipart/form-data" class="space-y-4" id="importForm" data-no-confirm action="<?= htmlspecialchars(buildAuthUrl('records.php')) ?>">
+            <form method="POST" enctype="multipart/form-data" class="space-y-4" id="importForm" data-no-confirm data-no-loading action="<?= htmlspecialchars(buildAuthUrl('records.php')) ?>">
                 <?= authFormField() ?>
                 <input type="hidden" name="action" value="import_csv">
                 <input type="hidden" name="import_type" id="importType" value="">

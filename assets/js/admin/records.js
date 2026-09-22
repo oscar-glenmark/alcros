@@ -583,6 +583,12 @@
         var fileInput = importForm.querySelector('input[name="csv_file"]');
         var submitBtn = document.getElementById('importSubmitBtn');
         var importType = importTypeEl ? importTypeEl.value : '';
+        var totals = {
+            imported: 0,
+            skipped: 0,
+            sample_skipped: 0,
+            errors: []
+        };
 
         if (!importType) {
             alert('Please choose an import type from New Entry → Import.');
@@ -599,6 +605,35 @@
         }
 
         setImportProgress(0, 'Reading CSV file…');
+
+        function showImportOutcome(extraNote) {
+            var msg = 'Successfully imported ' + totals.imported.toLocaleString() + ' record(s).';
+            if (totals.sample_skipped > 0) {
+                msg += ' Skipped ' + totals.sample_skipped.toLocaleString() + ' template sample row(s).';
+            }
+            if (totals.skipped > 0) {
+                msg += ' Skipped ' + totals.skipped.toLocaleString() + ' invalid row(s).';
+            }
+            if (totals.errors.length) {
+                msg += ' ' + totals.errors.slice(0, 2).join(' ');
+            }
+            if (extraNote) {
+                msg += ' ' + extraNote;
+            }
+
+            var outcomeType = totals.imported > 0 ? 'success' : 'error';
+            if (window.AlcrosActionResult && typeof AlcrosActionResult.show === 'function') {
+                AlcrosActionResult.show(outcomeType, msg);
+            } else {
+                alert(msg);
+            }
+
+            if (totals.imported > 0) {
+                window.setTimeout(function () {
+                    window.location.reload();
+                }, 900);
+            }
+        }
 
         return fileInput.files[0].text().then(function (rawText) {
             var parsedRows = parseCsvText(stripCsvBom(rawText));
@@ -619,12 +654,6 @@
             }
 
             var batchSize = 250;
-            var totals = {
-                imported: 0,
-                skipped: 0,
-                sample_skipped: 0,
-                errors: []
-            };
             var lineOffset = startLine;
             var batchIndex = 0;
             var totalBatches = Math.ceil(dataRows.length / batchSize);
@@ -642,12 +671,14 @@
                     ' (' + totals.imported.toLocaleString() + ' saved so far)…'
                 );
 
+                var isLastBatch = batchIndex === totalBatches - 1;
                 var payload = {
                     import_type: importType,
                     headers: batchIndex === 0 ? headers : headers,
                     rows: slice,
                     start_line: lineOffset,
-                    finalize: false
+                    finalize: isLastBatch,
+                    imported_total: totals.imported
                 };
 
                 return postImportBatch(payload).then(function (result) {
@@ -664,38 +695,15 @@
             }
 
             return sendNextBatch().then(function () {
-                setImportProgress(100, 'Finishing import…');
-                return postImportBatch({
-                    import_type: importType,
-                    headers: [],
-                    rows: [],
-                    finalize: true,
-                    imported_total: totals.imported
-                }).then(function () {
-                    var msg = 'Successfully imported ' + totals.imported.toLocaleString() + ' record(s).';
-                    if (totals.sample_skipped > 0) {
-                        msg += ' Skipped ' + totals.sample_skipped.toLocaleString() + ' template sample row(s).';
-                    }
-                    if (totals.skipped > 0) {
-                        msg += ' Skipped ' + totals.skipped.toLocaleString() + ' invalid row(s).';
-                    }
-                    if (totals.errors.length) {
-                        msg += ' ' + totals.errors.slice(0, 2).join(' ');
-                    }
-
-                    if (window.AlcrosActionResult && typeof AlcrosActionResult.show === 'function') {
-                        AlcrosActionResult.show(totals.imported > 0 ? 'success' : 'error', msg);
-                    } else {
-                        alert(msg);
-                    }
-
-                    window.setTimeout(function () {
-                        window.location.reload();
-                    }, totals.imported > 0 ? 900 : 0);
-                });
+                setImportProgress(100, 'Import complete.');
+                showImportOutcome();
             });
         }).catch(function (err) {
             var message = err && err.message ? err.message : 'Import failed. Please try again.';
+            if (totals.imported > 0) {
+                showImportOutcome('However, the import could not finish cleanly: ' + message);
+                return;
+            }
             if (window.AlcrosActionResult && typeof AlcrosActionResult.show === 'function') {
                 AlcrosActionResult.show('error', message);
             } else {

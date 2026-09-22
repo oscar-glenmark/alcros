@@ -85,17 +85,10 @@
         return new Date((n.created_at || '').replace(' ', 'T')).getTime();
     }
 
-    function isPersistentAlert(n) {
-        return n.type === 'pending_request' || n.type === 'appointment';
-    }
-
     function visibleList(all) {
         var clearedAt = getClearedAt();
         var dismissed = getDismissed();
         return (all || []).filter(function (n) {
-            if (isPersistentAlert(n)) {
-                return true;
-            }
             if (dismissed.indexOf(n.id) !== -1) return false;
             if (clearedAt && notifTime(n) <= clearedAt) return false;
             return true;
@@ -107,19 +100,8 @@
         return getBellAckedIds().indexOf(n.id) === -1;
     }
 
-    function bellBadgeCount(all, counts) {
-        var unread = visibleList(all).filter(isBellUnread).length;
-        if (unread > 0) return unread;
-
-        var actions = actionCounts(counts);
-        var visible = visibleList(all);
-        if (actions.requests > 0 && !visible.some(function (n) { return n.type === 'pending_request'; })) {
-            return actions.requests;
-        }
-        if (actions.appointments > 0 && !visible.some(function (n) { return n.type === 'appointment'; })) {
-            return actions.appointments;
-        }
-        return 0;
+    function bellBadgeCount(all) {
+        return visibleList(all).filter(isBellUnread).length;
     }
 
     function escapeHtml(str) {
@@ -158,8 +140,8 @@
         };
     }
 
-    function updateBellBadges(all, counts) {
-        var count = bellBadgeCount(all, counts);
+    function updateBellBadges(all) {
+        var count = bellBadgeCount(all);
         updateBadgeEl(document.getElementById('notif-badge'), count);
         updateBadgeEl(document.getElementById('sidebar-notif-badge'), count);
     }
@@ -188,7 +170,7 @@
     }
 
     function updateAllBadges(all, counts) {
-        updateBellBadges(all, counts);
+        updateBellBadges(all);
         updateSidebarBadges(all, counts);
     }
 
@@ -217,9 +199,7 @@
                 ? '<p class="text-[10px] text-gray-400 font-mono truncate mt-0.5">' + escapeHtml(n.detail) + '</p>'
                 : '';
 
-            var deleteBtn = (n.type === 'system' || isPersistentAlert(n))
-                ? ''
-                : '<button type="button" class="notif-delete p-1.5 rounded-lg text-gray-300 hover:text-red-500 self-start" data-id="' + escapeHtml(n.id) + '" title="Remove">' +
+            var deleteBtn = '<button type="button" class="notif-delete p-1.5 rounded-lg text-gray-300 hover:text-red-500 self-start" data-id="' + escapeHtml(n.id) + '" title="Remove">' +
                     '<i data-lucide="x" class="w-3.5 h-3.5"></i></button>';
 
             return '<div class="notif-item group flex gap-2 px-3 py-3 border-b border-gray-50' + faded + '" data-notif-id="' + escapeHtml(n.id) + '">' +
@@ -277,13 +257,10 @@
                 e.stopPropagation();
                 function proceed() {
                     var now = Date.now();
-                    visibleList(latestGetter()).forEach(function (n) {
-                        if (!isPersistentAlert(n)) {
-                            dismissId(n.id);
-                        }
-                    });
+                    var ids = visibleList(latestGetter()).map(function (n) { return n.id; });
+                    ids.forEach(function (id) { dismissId(id); });
                     setClearedAt(now);
-                    ackBellIds(visibleList(latestGetter()).map(function (n) { return n.id; }));
+                    ackBellIds(ids);
                     refresh();
                     flashButton(btn, 'Cleared');
                 }
@@ -312,11 +289,8 @@
                 e.stopPropagation();
                 function proceed() {
                     var id = btn.getAttribute('data-id');
-                    var item = (latestGetter() || []).filter(function (n) { return n.id === id; })[0];
-                    if (item && isPersistentAlert(item)) {
-                        return;
-                    }
                     dismissId(id);
+                    ackBellId(id);
                     refresh();
                 }
                 if (window.AlcrosConfirm) {

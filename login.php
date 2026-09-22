@@ -36,13 +36,31 @@ $submittedStaffId = '';
 
 $resetSuccess = isset($_GET['reset']) && $_GET['reset'] === '1';
 
+$loginLocked = false;
+
+$loginRetryAfter = 0;
+
+const LOGIN_RATE_MAX = 8;
+
+const LOGIN_RATE_WINDOW = 900;
+
 
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    rateLimitOrAbort(rateLimitKey('login', strtoupper(trim($_POST['staff_id'] ?? ''))), 8, 900, 'Too many login attempts. Please wait 15 minutes and try again.');
-
     $submittedStaffId = strtoupper(trim($_POST['staff_id'] ?? ''));
+
+    $loginRateKey = rateLimitKey('login', $submittedStaffId);
+
+    if (!rateLimitCheck($loginRateKey, LOGIN_RATE_MAX, LOGIN_RATE_WINDOW)) {
+
+        http_response_code(429);
+
+        $loginLocked = true;
+
+        $loginRetryAfter = rateLimitRetryAfterSeconds($loginRateKey, LOGIN_RATE_MAX, LOGIN_RATE_WINDOW) ?? LOGIN_RATE_WINDOW;
+
+    } else {
 
     $password          = $_POST['password'] ?? '';
 
@@ -99,6 +117,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Invalid Staff ID or password.';
 
         }
+
+    }
 
     }
 
@@ -183,7 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <div class="mb-8">
 
-                    <span class="auth-portal-badge">Staff Portal Login</span>
+                    <span class="auth-portal-badge"><?= $loginLocked ? 'Sign-in temporarily locked' : 'Staff Portal Login' ?></span>
 
                 </div>
 
@@ -221,7 +241,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
 
-                <?php if ($error): ?>
+                <?php if ($error && !$loginLocked): ?>
 
                 <div class="mb-6 px-4 py-3 rounded-xl bg-red-50 border border-red-100 text-red-600 text-[11px] font-semibold text-left flex items-center gap-2">
 
@@ -234,6 +254,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php endif; ?>
 
 
+
+                <?php if ($loginLocked): ?>
+
+                <div class="auth-portal-lockout text-left">
+
+                    <div class="auth-portal-lockout__icon" aria-hidden="true">
+
+                        <i data-lucide="shield-off" class="w-7 h-7"></i>
+
+                    </div>
+
+                    <h2 class="auth-portal-lockout__title">Too many sign-in attempts</h2>
+
+                    <p class="auth-portal-lockout__lead">For your security, sign-in for this Staff ID is paused after several failed tries.</p>
+
+                    <div class="auth-portal-lockout__timer-card">
+
+                        <span class="auth-portal-lockout__timer-label">Try again in</span>
+
+                        <span class="auth-portal-lockout__timer-value" id="loginRetryCountdown" data-seconds="<?= (int) $loginRetryAfter ?>">--:--</span>
+
+                    </div>
+
+                    <p class="auth-portal-lockout__hint" id="loginRetryHint">Leave this page open—the timer updates automatically.</p>
+
+                </div>
+
+                <?php else: ?>
 
                 <form id="loginForm" class="text-left space-y-5" method="POST" action="login.php?redirect=<?= urlencode($redirectTarget) ?>" autocomplete="off" data-no-confirm>
 
@@ -313,6 +361,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 </form>
 
+                <?php endif; ?>
+
             </div>
 
 
@@ -340,6 +390,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?= scriptTag('core/password-toggle.js') ?>
 
     <?= lucideInitScript() ?>
+
+    <?php if ($loginLocked): ?>
+
+    <script>
+
+    (function () {
+
+        var el = document.getElementById('loginRetryCountdown');
+
+        var hint = document.getElementById('loginRetryHint');
+
+        if (!el) return;
+
+        var s = parseInt(el.getAttribute('data-seconds') || '0', 10);
+
+        function format(sec) {
+
+            var m = Math.floor(sec / 60);
+
+            var r = sec % 60;
+
+            return m + ':' + (r < 10 ? '0' : '') + r;
+
+        }
+
+        function tick() {
+
+            if (s <= 0) {
+
+                el.textContent = '0:00';
+
+                if (hint) hint.textContent = 'You can try signing in again. Refreshing…';
+
+                window.setTimeout(function () { window.location.reload(); }, 1200);
+
+                return;
+
+            }
+
+            el.textContent = format(s);
+
+            s -= 1;
+
+            window.setTimeout(tick, 1000);
+
+        }
+
+        el.textContent = format(s);
+
+        window.setTimeout(tick, 1000);
+
+    })();
+
+    </script>
+
+    <?php endif; ?>
 
 </body>
 

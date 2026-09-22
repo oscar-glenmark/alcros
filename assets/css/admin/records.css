@@ -13,6 +13,48 @@
     border-radius: 6px;
 }
 
+.filter-chip--with-icon {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    text-decoration: none;
+}
+
+.records-filter-icon {
+    width: 0.875rem;
+    height: 0.875rem;
+    min-width: 0.875rem;
+    min-height: 0.875rem;
+    flex-shrink: 0;
+    display: block;
+}
+
+.filter-chip--with-icon svg.lucide {
+    width: 0.875rem;
+    height: 0.875rem;
+    min-width: 0.875rem;
+    min-height: 0.875rem;
+    flex-shrink: 0;
+    display: block;
+}
+
+.record-type-tab .records-type-tab-icon,
+.record-type-tab svg.lucide {
+    width: 1.25rem;
+    height: 1.25rem;
+    min-width: 1.25rem;
+    min-height: 1.25rem;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.stat-card svg.lucide {
+    width: 1rem;
+    height: 1rem;
+    display: block;
+}
+
 .record-type-tabs--locked .record-type-tab {
     cursor: not-allowed;
     opacity: 0.72;
@@ -568,6 +610,18 @@ body.records-view-modal-open {
 @media (max-width: 640px) {
     .records-entry-print-fill__grid {
         grid-template-columns: 1fr;
+    }
+}
+
+.marriage-place-composite__parts {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+}
+
+@media (min-width: 640px) {
+    .marriage-place-composite__parts {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 }
 

@@ -43,6 +43,272 @@ function normalizeSmsPhone(string $phone): string
     return '';
 }
 
+const SEMAPHORE_API_BASE = 'https://semaphore.co/api/v4';
+
+function semaphoreApiKey(): string
+{
+    return trim(getSetting('semaphore_api_key', ''));
+}
+
+function semaphoreSenderNamesCachePath(): string
+{
+    return __DIR__ . '/../storage/semaphore_sender_names.json';
+}
+
+function clearSemaphoreSenderNamesCache(): void
+{
+    $path = semaphoreSenderNamesCachePath();
+    if (is_file($path)) {
+        @unlink($path);
+    }
+}
+
+function semaphoreHttpRequest(string $method, string $path, array $query = [], array $post = []): array
+{
+    if (!function_exists('curl_init')) {
+        return ['ok' => false, 'error' => 'PHP cURL extension is required for Semaphore SMS.'];
+    }
+
+    $apiKey = semaphoreApiKey();
+    if ($apiKey === '') {
+        return ['ok' => false, 'error' => 'Semaphore API key is not configured.'];
+    }
+
+    $url = SEMAPHORE_API_BASE . $path;
+    $query = array_merge(['apikey' => $apiKey], $query);
+    if ($method === 'GET') {
+        $url .= '?' . http_build_query($query);
+    }
+
+    $ch = curl_init($url);
+    $options = [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 20,
+    ];
+    if ($method === 'POST') {
+        $options[CURLOPT_POST] = true;
+        $options[CURLOPT_POSTFIELDS] = http_build_query(array_merge($post, ['apikey' => $apiKey]));
+        $options[CURLOPT_HTTPHEADER] = ['Content-Type: application/x-www-form-urlencoded'];
+    }
+    curl_setopt_array($ch, $options);
+    $body = curl_exec($ch);
+    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if ($body === false) {
+        return ['ok' => false, 'error' => $curlError !== '' ? $curlError : 'Could not reach Semaphore.'];
+    }
+
+    $decoded = json_decode($body, true);
+
+    return [
+        'ok'       => $httpCode >= 200 && $httpCode < 300,
+        'httpCode' => $httpCode,
+        'body'     => $body,
+        'decoded'  => $decoded,
+    ];
+}
+
+/** @return list<array{name: string, status: string}>|null */
+function fetchSemaphoreSenderNames(bool $forceRefresh = false): ?array
+{
+    static $memoryCache = null;
+    if (!$forceRefresh && is_array($memoryCache)) {
+        return $memoryCache;
+    }
+
+    $cachePath = semaphoreSenderNamesCachePath();
+    if (!$forceRefresh && is_file($cachePath)) {
+        $cached = json_decode((string) file_get_contents($cachePath), true);
+        if (is_array($cached) && ($cached['fetched_at'] ?? 0) > time() - 300 && is_array($cached['names'] ?? null)) {
+            $memoryCache = $cached['names'];
+
+            return $memoryCache;
+        }
+    }
+
+    $result = semaphoreHttpRequest('GET', '/account/sendernames');
+    if (empty($result['ok']) || !is_array($result['decoded'])) {
+        return null;
+    }
+
+    $names = [];
+    foreach ($result['decoded'] as $row) {
+        if (!is_array($row) || empty($row['name'])) {
+            continue;
+        }
+        $names[] = [
+            'name'   => (string) $row['name'],
+            'status' => (string) ($row['status'] ?? ''),
+        ];
+    }
+
+    $memoryCache = $names;
+    $cacheDir = dirname($cachePath);
+    if (!is_dir($cacheDir)) {
+        @mkdir($cacheDir, 0755, true);
+    }
+    @file_put_contents($cachePath, json_encode(['fetched_at' => time(), 'names' => $names]));
+
+    return $names;
+}
+
+function isSemaphoreSenderActive(array $senderRow): bool
+{
+    $status = strtolower(trim((string) ($senderRow['status'] ?? '')));
+
+    return in_array($status, ['active', 'approved', 'enabled'], true);
+}
+
+function findAnyActiveSemaphoreSender(?array $names): ?string
+{
+    if (!is_array($names)) {
+        return null;
+    }
+
+    foreach ($names as $row) {
+        if (!is_array($row) || empty($row['name']) || !isSemaphoreSenderActive($row)) {
+            continue;
+        }
+
+        return (string) $row['name'];
+    }
+
+    return null;
+}
+
+/** @return array{ok: true, sendername: ?string} */
+function resolveSemaphoreOutboundSender(): array
+{
+    $configured = trim(getSetting('semaphore_sender_name', ''));
+    $names = fetchSemaphoreSenderNames();
+
+    if ($configured !== '' && is_array($names)) {
+        foreach ($names as $row) {
+            if (strcasecmp($row['name'], $configured) === 0 && isSemaphoreSenderActive($row)) {
+                return ['ok' => true, 'sendername' => $row['name']];
+            }
+        }
+    }
+
+    $active = findAnyActiveSemaphoreSender($names);
+    if ($active !== null && $active !== '') {
+        return ['ok' => true, 'sendername' => $active];
+    }
+
+    return ['ok' => true, 'sendername' => null];
+}
+
+function smsSemaphoreSendBlockReason(): ?string
+{
+    if (!isSmsConfigured()) {
+        return null;
+    }
+
+    $names = fetchSemaphoreSenderNames();
+    if (!is_array($names)) {
+        return 'Could not load sender names from Semaphore. Check your API key and internet connection, then save Settings again.';
+    }
+
+    if (findAnyActiveSemaphoreSender($names) !== null) {
+        return null;
+    }
+
+    if ($names === []) {
+        return 'No sender name is registered on your Semaphore account. Add one at semaphore.co and wait until it shows Active before SMS can send.';
+    }
+
+    $parts = [];
+    foreach ($names as $row) {
+        $parts[] = $row['name'] . ' (' . ($row['status'] !== '' ? $row['status'] : 'unknown') . ')';
+    }
+
+    return 'Semaphore has no Active sender (' . implode(', ', $parts) . '). '
+        . 'This account cannot send SMS until at least one sender is Active (usually 1–2 business days after registration). '
+        . 'The shared SEMAPHORE sender is not available on new accounts.';
+}
+
+function smsSenderConfigurationHint(): ?string
+{
+    if (!isSmsConfigured()) {
+        return null;
+    }
+
+    $configured = trim(getSetting('semaphore_sender_name', ''));
+    if ($configured === '') {
+        return null;
+    }
+
+    $names = fetchSemaphoreSenderNames();
+    if (!is_array($names)) {
+        return null;
+    }
+
+    foreach ($names as $row) {
+        if (strcasecmp($row['name'], $configured) === 0 && isSemaphoreSenderActive($row)) {
+            return null;
+        }
+    }
+
+    $pendingStatus = null;
+    foreach ($names as $row) {
+        if (strcasecmp($row['name'], $configured) === 0) {
+            $pendingStatus = trim((string) ($row['status'] ?? ''));
+            break;
+        }
+    }
+
+    if ($pendingStatus !== null && $pendingStatus !== '') {
+        return 'Sender "' . $configured . '" is ' . $pendingStatus . ' on Semaphore. SMS will send automatically once it becomes Active.';
+    }
+
+    return 'Sender "' . $configured . '" is not Active on Semaphore yet. SMS will send once Semaphore approves it.';
+}
+
+function semaphoreFormatApiError(mixed $decoded, int $httpCode): string
+{
+    if (is_array($decoded)) {
+        $items = array_is_list($decoded) ? $decoded : [$decoded];
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            foreach (['senderName', 'sendername', 'message', 'error'] as $key) {
+                if (isset($item[$key]) && (string) $item[$key] !== '') {
+                    return (string) $item[$key];
+                }
+            }
+        }
+    }
+
+    return 'Semaphore returned HTTP ' . $httpCode . '.';
+}
+
+function semaphoreResponsesIndicateSuccess(mixed $decoded): bool
+{
+    if (!is_array($decoded)) {
+        return false;
+    }
+
+    $items = array_is_list($decoded) ? $decoded : [$decoded];
+    if ($items === []) {
+        return false;
+    }
+
+    foreach ($items as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+        $status = strtolower((string) ($item['status'] ?? ''));
+        if (in_array($status, ['failed', 'refunded'], true)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 function logSmsDelivery(
     string $recipient,
     string $message,
@@ -85,52 +351,45 @@ function sendSemaphoreSms(string $phone, string $message): array
     if ($message === '') {
         return ['ok' => false, 'error' => 'SMS message is empty.'];
     }
+
+    $sendBlock = smsSemaphoreSendBlockReason();
+    if ($sendBlock !== null) {
+        return ['ok' => false, 'error' => $sendBlock];
+    }
+
+    $senderResolved = resolveSemaphoreOutboundSender();
+
     $payload = [
-        'apikey'  => trim(getSetting('semaphore_api_key', '')),
         'number'  => $number,
         'message' => $message,
     ];
-    $senderName = trim(getSetting('semaphore_sender_name', ''));
+    $senderName = trim((string) ($senderResolved['sendername'] ?? ''));
     if ($senderName !== '') {
         $payload['sendername'] = $senderName;
     }
 
-    if (!function_exists('curl_init')) {
-        return ['ok' => false, 'error' => 'PHP cURL extension is required for Semaphore SMS.'];
+    $result = semaphoreHttpRequest('POST', '/messages', [], $payload);
+    if (empty($result['ok'])) {
+        $httpCode = (int) ($result['httpCode'] ?? 0);
+        $decoded = $result['decoded'] ?? null;
+
+        return [
+            'ok'       => false,
+            'error'    => semaphoreFormatApiError($decoded, $httpCode),
+            'response' => $decoded ?? ($result['body'] ?? null),
+        ];
     }
 
-    $ch = curl_init('https://api.semaphore.co/api/v4/messages');
-    curl_setopt_array($ch, [
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => http_build_query($payload),
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 20,
-        CURLOPT_HTTPHEADER     => ['Content-Type: application/x-www-form-urlencoded'],
-    ]);
-    $body = curl_exec($ch);
-    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlError = curl_error($ch);
-    curl_close($ch);
-
-    if ($body === false) {
-        return ['ok' => false, 'error' => $curlError !== '' ? $curlError : 'Could not reach Semaphore.'];
+    $decoded = $result['decoded'] ?? null;
+    if (!semaphoreResponsesIndicateSuccess($decoded)) {
+        return [
+            'ok'       => false,
+            'error'    => semaphoreFormatApiError($decoded, (int) ($result['httpCode'] ?? 200)),
+            'response' => $decoded,
+        ];
     }
 
-    $decoded = json_decode($body, true);
-    if ($httpCode >= 200 && $httpCode < 300) {
-        return ['ok' => true, 'response' => $decoded ?? $body];
-    }
-
-    $error = 'Semaphore returned HTTP ' . $httpCode . '.';
-    if (is_array($decoded)) {
-        if (!empty($decoded['message'])) {
-            $error = (string) $decoded['message'];
-        } elseif (!empty($decoded[0]['message'])) {
-            $error = (string) $decoded[0]['message'];
-        }
-    }
-
-    return ['ok' => false, 'error' => $error, 'response' => $decoded ?? $body];
+    return ['ok' => true, 'response' => $decoded ?? ($result['body'] ?? null)];
 }
 
 function sendCitizenSms(string $phone, string $message, string $smsType = 'general', ?string $referenceCode = null): bool
@@ -511,10 +770,13 @@ function sendDueSmsVisitReminders(PDO $pdo): int
 
 function smsConfigurationSummary(): array
 {
+    $hint = isSmsConfigured() ? smsSenderConfigurationHint() : null;
+
     return [
-        'enabled'    => isSmsEnabled(),
-        'configured' => isSmsConfigured(),
-        'sender'     => trim(getSetting('semaphore_sender_name', '')),
-        'has_api_key'=> trim(getSetting('semaphore_api_key', '')) !== '',
+        'enabled'      => isSmsEnabled(),
+        'configured'   => isSmsConfigured(),
+        'sender'       => trim(getSetting('semaphore_sender_name', '')),
+        'has_api_key'  => trim(getSetting('semaphore_api_key', '')) !== '',
+        'sender_hint'  => $hint,
     ];
 }

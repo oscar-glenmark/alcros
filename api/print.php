@@ -169,6 +169,10 @@ function printFieldUpdateDataFromInput(PDO $pdo, int $fieldId, array $input): ar
         return ['error' => 'Field #' . $fieldId . ' not found.'];
     }
 
+    if (!printFieldAllowsCalibration($pdo, $existing)) {
+        return ['skip' => true];
+    }
+
     $data = [];
     foreach (['x_mm', 'y_mm', 'width_mm', 'height_mm', 'font_size', 'font_family', 'font_weight', 'alignment', 'max_length', 'line_height', 'enabled'] as $key) {
         if (array_key_exists($key, $input)) {
@@ -212,6 +216,9 @@ function handleSaveField(PDO $pdo): void
     }
 
     $result = printFieldUpdateDataFromInput($pdo, $fieldId, $_POST);
+    if (!empty($result['skip'])) {
+        apiError('Book Number and Page Number are edited on the civil record form and cannot be calibrated here.');
+    }
     if (isset($result['error'])) {
         apiError($result['error']);
     }
@@ -253,6 +260,10 @@ function handleSaveFields(PDO $pdo): void
             $result = printFieldUpdateDataFromInput($pdo, $fieldId, $entry);
         } catch (Throwable $e) {
             $lastError = 'Could not save field #' . $fieldId . '.';
+            continue;
+        }
+
+        if (!empty($result['skip'])) {
             continue;
         }
 

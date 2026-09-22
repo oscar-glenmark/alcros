@@ -353,7 +353,7 @@ CREATE TABLE IF NOT EXISTS staff_password_otps (
 
 -- Default administrator (change password after first login in System Settings).
 INSERT INTO staff (staff_id, first_name, middle_name, last_name, password_hash, role, email) VALUES
-('ALORAN-001', 'Glen Mark', NUL, 'Gonzaga', '$2y$10$Cx6KHQWZUxmyrz.7v3s.UeGNWmwmyncSad1FhNh8N.YPqoUwL5zbO', 'Administrator', 'glenmarkgonzaga57@gmail.com')
+('ALORAN-001', 'Glen Mark', NULL, 'Gonzaga', '$2y$10$lJL7jF91HNFhyCDWNTknX.TdpL3a0.x31/e7obGLYaopM94g3ceRi', 'Administrator', 'glenmarkgonzaga57@gmail.com')
 ON DUPLICATE KEY UPDATE first_name = VALUES(first_name), middle_name = VALUES(middle_name), last_name = VALUES(last_name), role = VALUES(role), email = VALUES(email);
 
 -- Default office settings (no other sample records).

@@ -34,7 +34,40 @@ function systemErrorsMaintenanceUrl(): string
     return buildAuthUrl('system_settings.php', ['tab' => 'admin-tools', 'admin_sub' => 'maintenance']);
 }
 
+/** Insert or update an error row without reopening one the staff already resolved. */
 function upsertSystemError(
+    PDO $pdo,
+    string $errorKey,
+    string $category,
+    string $title,
+    string $reason,
+    string $fixAction,
+    ?string $href = null
+): void {
+    ensureSystemErrorsTable($pdo);
+    $stmt = $pdo->prepare(
+        'INSERT INTO system_errors (error_key, category, title, reason, fix_action, href, resolved_at, resolved_by)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)
+         ON DUPLICATE KEY UPDATE
+            category = IF(resolved_at IS NULL, VALUES(category), category),
+            title = IF(resolved_at IS NULL, VALUES(title), title),
+            reason = IF(resolved_at IS NULL, VALUES(reason), reason),
+            fix_action = IF(resolved_at IS NULL, VALUES(fix_action), fix_action),
+            href = IF(resolved_at IS NULL, VALUES(href), href),
+            updated_at = IF(resolved_at IS NULL, CURRENT_TIMESTAMP, updated_at)'
+    );
+    $stmt->execute([
+        $errorKey,
+        $category,
+        $title,
+        mb_substr($reason, 0, 500),
+        $fixAction,
+        $href ?? systemErrorsMaintenanceUrl(),
+    ]);
+}
+
+/** Open or reopen an active system error when a condition is currently detected. */
+function raiseSystemError(
     PDO $pdo,
     string $errorKey,
     string $category,
@@ -235,7 +268,51 @@ function getDeliveryFailureAckTime(string $channel): ?string
 
 function acknowledgeDeliveryFailures(string $channel): void
 {
-    setSetting(deliveryFailureAckSettingKey($channel), date('Y-m-d H:i:s'));
+    try {
+        $now = getDB()->query('SELECT NOW()')->fetchColumn();
+        setSetting(deliveryFailureAckSettingKey($channel), (string) ($now ?: date('Y-m-d H:i:s')));
+    } catch (Throwable $e) {
+        setSetting(deliveryFailureAckSettingKey($channel), date('Y-m-d H:i:s'));
+    }
+}
+
+/** Mark all failed email_log rows in the window as reviewed (uses MySQL time, same as sent_at). */
+function acknowledgeEmailLogFailuresThrough(PDO $pdo, int $hours = 24): void
+{
+    ensureExtendedSchema($pdo);
+    $stmt = $pdo->prepare(
+        'SELECT MAX(sent_at) AS max_sent FROM email_logs
+         WHERE success = 0 AND sent_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)'
+    );
+    $stmt->execute([max(1, $hours)]);
+    $maxSent = $stmt->fetchColumn();
+    if ($maxSent !== false && $maxSent !== null && (string) $maxSent !== '') {
+        setSetting(deliveryFailureAckSettingKey('email'), (string) $maxSent);
+    } else {
+        acknowledgeDeliveryFailures('email');
+    }
+}
+
+function smsSenderPendingAckSettingKey(): string
+{
+    return 'sms_sender_pending_ack_at';
+}
+
+function getSmsSenderPendingAckTime(): ?string
+{
+    $value = trim(getSetting(smsSenderPendingAckSettingKey(), ''));
+
+    return $value !== '' ? $value : null;
+}
+
+function acknowledgeSmsSenderPending(): void
+{
+    setSetting(smsSenderPendingAckSettingKey(), date('Y-m-d H:i:s'));
+}
+
+function clearSmsSenderPendingAck(): void
+{
+    setSetting(smsSenderPendingAckSettingKey(), '');
 }
 
 function recentDeliveryFailureSummary(
@@ -261,7 +338,8 @@ function recentDeliveryFailureSummary(
     $params = [max(1, $hours)];
 
     if ($since !== null && trim($since) !== '') {
-        $sql .= $sinceInclusive ? ' AND sent_at >= ?' : ' AND sent_at > ?';
+        // Ignore failures at or before the ack timestamp (1s slack avoids same-second log rows re-triggering alerts).
+        $sql .= ' AND sent_at > DATE_ADD(?, INTERVAL 1 SECOND)';
         $params[] = $since;
     }
 
@@ -279,6 +357,70 @@ function recentDeliveryFailureSummary(
     ];
 }
 
+/** Failures logged before Gmail SMTP was saved (not current delivery problems). */
+function emailLogErrorIsMissingSmtpConfig(string $reason): bool
+{
+    $reason = strtolower(trim($reason));
+    if ($reason === '') {
+        return false;
+    }
+
+    return str_contains($reason, 'not configured')
+        || str_contains($reason, 'gmail smtp is not');
+}
+
+/** True when every failed email_log in the window is from missing Gmail SMTP setup (historical). */
+function allRecentEmailFailuresAreMissingSmtpConfig(PDO $pdo, int $hours = 24, ?string $since = null): bool
+{
+    ensureExtendedSchema($pdo);
+
+    $sql =
+        'SELECT error_message FROM email_logs
+         WHERE success = 0
+           AND sent_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)';
+    $params = [max(1, $hours)];
+
+    if ($since !== null && trim($since) !== '') {
+        $sql .= ' AND sent_at > DATE_ADD(?, INTERVAL 1 SECOND)';
+        $params[] = $since;
+    }
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    if ($rows === []) {
+        return false;
+    }
+
+    foreach ($rows as $message) {
+        if (!emailLogErrorIsMissingSmtpConfig((string) $message)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Clear "email delivery failing" when Gmail is configured now but logs only show old missing-SMTP errors.
+ */
+function clearStaleEmailConfigFailureAlert(PDO $pdo): bool
+{
+    if (!isEmailConfigured()) {
+        return false;
+    }
+
+    $since = getDeliveryFailureAckTime('email');
+    if (!allRecentEmailFailuresAreMissingSmtpConfig($pdo, 24, $since)) {
+        return false;
+    }
+
+    acknowledgeEmailLogFailuresThrough($pdo, 24);
+    resolveSystemErrorIfActive($pdo, 'email-delivery-failed');
+
+    return true;
+}
+
 function syncSystemErrors(PDO $pdo): void
 {
     ensureSystemErrorsTable($pdo);
@@ -286,7 +428,7 @@ function syncSystemErrors(PDO $pdo): void
     require_once __DIR__ . '/sms.php';
 
     if (!isEmailConfigured()) {
-        upsertSystemError(
+        raiseSystemError(
             $pdo,
             'email-not-configured',
             'email',
@@ -300,7 +442,7 @@ function syncSystemErrors(PDO $pdo): void
     }
 
     if (isSmsEnabled() && !isSmsConfigured()) {
-        upsertSystemError(
+        raiseSystemError(
             $pdo,
             'sms-not-configured',
             'sms',
@@ -313,48 +455,80 @@ function syncSystemErrors(PDO $pdo): void
         resolveSystemErrorIfActive($pdo, 'sms-not-configured');
     }
 
+    resolveSystemErrorIfActive($pdo, 'sms-sender-not-ready');
+
+    if (clearStaleEmailConfigFailureAlert($pdo)) {
+        // Stale pre-configuration failures cleared; skip re-opening the alert this run.
+    }
+
     $emailFailures = recentDeliveryFailureSummary($pdo, 'email_logs', 24, getDeliveryFailureAckTime('email'));
     if ($emailFailures !== null && isEmailConfigured()) {
-        $reason = $emailFailures['count'] . ' email(s) failed in the last 24 hours.';
-        if ($emailFailures['reason'] !== '') {
-            $reason .= ' Latest reason: ' . $emailFailures['reason'];
+        if (allRecentEmailFailuresAreMissingSmtpConfig($pdo, 24, getDeliveryFailureAckTime('email'))) {
+            acknowledgeEmailLogFailuresThrough($pdo, 24);
+            resolveSystemErrorIfActive($pdo, 'email-delivery-failed');
+        } else {
+            $reason = $emailFailures['count'] . ' email(s) failed in the last 24 hours.';
+            if ($emailFailures['reason'] !== '') {
+                $reason .= ' Latest reason: ' . $emailFailures['reason'];
+            }
+            raiseSystemError(
+                $pdo,
+                'email-delivery-failed',
+                'email',
+                'Email delivery failing',
+                $reason,
+                'retry_email_delivery',
+                buildAuthUrl('system_settings.php', ['tab' => 'system-configuration'])
+            );
         }
-        upsertSystemError(
-            $pdo,
-            'email-delivery-failed',
-            'email',
-            'Email delivery failing',
-            $reason,
-            'retry_email_delivery',
-            buildAuthUrl('system_settings.php', ['tab' => 'system-configuration'])
-        );
     } else {
         resolveSystemErrorIfActive($pdo, 'email-delivery-failed');
     }
 
     if (function_exists('isSmsConfigured')) {
-        $smsFailures = recentDeliveryFailureSummary($pdo, 'sms_logs', 24, getDeliveryFailureAckTime('sms'));
-        if ($smsFailures !== null && isSmsConfigured()) {
-            $reason = $smsFailures['count'] . ' SMS message(s) failed in the last 24 hours.';
-            if ($smsFailures['reason'] !== '') {
-                $reason .= ' Latest reason: ' . $smsFailures['reason'];
+        $smsBlock = isSmsEnabled() && isSmsConfigured() ? smsSemaphoreSendBlockReason() : null;
+        if ($smsBlock !== null) {
+            if (getSmsSenderPendingAckTime() === null) {
+                raiseSystemError(
+                    $pdo,
+                    'sms-sender-pending',
+                    'sms',
+                    'SMS waiting on Semaphore',
+                    $smsBlock,
+                    'acknowledge_sms_sender_pending',
+                    buildAuthUrl('system_settings.php', ['tab' => 'system-configuration'])
+                );
+            } else {
+                resolveSystemErrorIfActive($pdo, 'sms-sender-pending');
             }
-            upsertSystemError(
-                $pdo,
-                'sms-delivery-failed',
-                'sms',
-                'SMS delivery failing',
-                $reason,
-                'retry_sms_delivery',
-                buildAuthUrl('system_settings.php', ['tab' => 'system-configuration'])
-            );
-        } else {
             resolveSystemErrorIfActive($pdo, 'sms-delivery-failed');
+        } else {
+            clearSmsSenderPendingAck();
+            resolveSystemErrorIfActive($pdo, 'sms-sender-pending');
+
+            $smsFailures = recentDeliveryFailureSummary($pdo, 'sms_logs', 24, getDeliveryFailureAckTime('sms'));
+            if ($smsFailures !== null && isSmsConfigured()) {
+                $reason = $smsFailures['count'] . ' SMS message(s) failed in the last 24 hours.';
+                if ($smsFailures['reason'] !== '') {
+                    $reason .= ' Latest reason: ' . $smsFailures['reason'];
+                }
+                raiseSystemError(
+                    $pdo,
+                    'sms-delivery-failed',
+                    'sms',
+                    'SMS delivery failing',
+                    $reason,
+                    'retry_sms_delivery',
+                    buildAuthUrl('system_settings.php', ['tab' => 'system-configuration'])
+                );
+            } else {
+                resolveSystemErrorIfActive($pdo, 'sms-delivery-failed');
+            }
         }
     }
 
     if (reminderSchedulerLockIsStale()) {
-        upsertSystemError(
+        raiseSystemError(
             $pdo,
             'reminder-lock-stale',
             'cron',
@@ -368,7 +542,7 @@ function syncSystemErrors(PDO $pdo): void
     }
 
     if (reminderSchedulerIsStale()) {
-        upsertSystemError(
+        raiseSystemError(
             $pdo,
             'reminder-scheduler-stale',
             'cron',
@@ -447,6 +621,20 @@ function runSystemErrorFix(PDO $pdo, string $errorKey, string $staffId): array
                 resolveSystemError($pdo, $errorKey, $staffId);
                 break;
 
+            case 'refresh_sms_sender':
+                clearSemaphoreSenderNamesCache();
+                fetchSemaphoreSenderNames(true);
+                resolveSystemError($pdo, $errorKey, $staffId);
+                break;
+
+            case 'acknowledge_sms_sender_pending':
+                clearSemaphoreSenderNamesCache();
+                acknowledgeDeliveryFailures('sms');
+                acknowledgeSmsSenderPending();
+                resolveSystemError($pdo, 'sms-sender-pending', $staffId);
+                resolveSystemError($pdo, 'sms-delivery-failed', $staffId);
+                break;
+
             case 'clear_reminder_lock':
                 clearReminderSchedulerLock();
                 touchReminderSchedulerTick();
@@ -479,8 +667,12 @@ function runSystemErrorFix(PDO $pdo, string $errorKey, string $staffId): array
                 if (!isEmailConfigured()) {
                     return [
                         'ok'      => false,
-                        'message' => 'Configure Gmail SMTP first in Configuration, save settings, then run Fix again.',
+                        'message' => 'Gmail is not fully configured. In Configuration → Operations, Queue & Email, save both Gmail address and App Password, then try Fix again.',
                     ];
+                }
+                if (clearStaleEmailConfigFailureAlert($pdo)) {
+                    resolveSystemError($pdo, $errorKey, $staffId);
+                    break;
                 }
                 clearReminderSchedulerLock();
                 $fixStarted = date('Y-m-d H:i:s');
@@ -496,7 +688,7 @@ function runSystemErrorFix(PDO $pdo, string $errorKey, string $staffId): array
                         'message' => 'Email is still failing after retry.' . $reason . ' Open Configuration and verify Gmail SMTP credentials.',
                     ];
                 }
-                acknowledgeDeliveryFailures('email');
+                acknowledgeEmailLogFailuresThrough($pdo, 24);
                 resolveSystemError($pdo, $errorKey, $staffId);
                 break;
 
@@ -508,6 +700,7 @@ function runSystemErrorFix(PDO $pdo, string $errorKey, string $staffId): array
                     ];
                 }
                 require_once __DIR__ . '/sms.php';
+                clearSemaphoreSenderNamesCache();
                 clearReminderSchedulerLock();
                 $fixStarted = date('Y-m-d H:i:s');
                 sendDueAppointmentReminders($pdo);
@@ -531,7 +724,7 @@ function runSystemErrorFix(PDO $pdo, string $errorKey, string $staffId): array
                 break;
         }
     } catch (Throwable $e) {
-        upsertSystemError(
+        raiseSystemError(
             $pdo,
             'fix-action-failed-' . $errorKey,
             'system',
@@ -547,6 +740,8 @@ function runSystemErrorFix(PDO $pdo, string $errorKey, string $staffId): array
         ];
     }
 
+    syncSystemErrors($pdo);
+
     logActivity($staffId, 'System Error Fixed', 'Resolved ' . ($active['title'] ?? $errorKey));
 
     return [
@@ -557,7 +752,7 @@ function runSystemErrorFix(PDO $pdo, string $errorKey, string $staffId): array
 
 function recordReminderSchedulerFailure(PDO $pdo, string $message): void
 {
-    upsertSystemError(
+    raiseSystemError(
         $pdo,
         'reminder-scheduler-failed',
         'cron',

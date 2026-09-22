@@ -13,6 +13,10 @@ require_once __DIR__ . '/../includes/records_csv_import.php';
 requireStaffLogin();
 requirePageAccess('records.php');
 
+while (ob_get_level() > 0) {
+    ob_end_clean();
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     apiError('Method not allowed.', 405);
 }
@@ -45,23 +49,7 @@ try {
     ensurePersonNamePartColumns($pdo);
     ensureCivilRecordTypeTables($pdo);
     ensureCivilRecordPrintSchema($pdo);
-
-    if ($finalize && $rows === []) {
-        if ($importedTotal > 0) {
-            logActivity(
-                staffId(),
-                'CSV Import',
-                'Imported ' . number_format($importedTotal) . ' ' . $importType . ' record(s) via bulk upload'
-            );
-        }
-        apiJsonResponse([
-            'ok'              => true,
-            'imported'        => 0,
-            'skipped'         => 0,
-            'sample_skipped'  => 0,
-            'errors'          => [],
-        ]);
-    }
+    ensurePrintDocumentKindColumn($pdo);
 
     if ($rows === []) {
         apiError('No rows to import.', 422);
@@ -73,14 +61,27 @@ try {
 
     $pdo->beginTransaction();
     $result = importCsvParsedRows($pdo, $importType, $headers, $rows, $startLine);
-    $pdo->commit();
+    if ($pdo->inTransaction()) {
+        try {
+            $pdo->commit();
+        } catch (PDOException $commitErr) {
+            // MySQL implicitly commits when DDL runs mid-request; treat as success if rows imported.
+            if ((int) ($result['imported'] ?? 0) <= 0) {
+                throw $commitErr;
+            }
+            error_log('ALCROS records import commit skipped: ' . $commitErr->getMessage());
+        }
+    }
 
-    if ($finalize && $importedTotal > 0) {
-        logActivity(
-            staffId(),
-            'CSV Import',
-            'Imported ' . number_format($importedTotal) . ' ' . $importType . ' record(s) via bulk upload'
-        );
+    if ($finalize) {
+        $loggedTotal = $importedTotal + (int) ($result['imported'] ?? 0);
+        if ($loggedTotal > 0) {
+            logActivity(
+                staffId(),
+                'CSV Import',
+                'Imported ' . number_format($loggedTotal) . ' ' . $importType . ' record(s) via bulk upload'
+            );
+        }
     }
 
     apiJsonResponse(array_merge(['ok' => true], $result));

@@ -425,6 +425,21 @@
         }
     }
 
+    /** Table rows only — buttons also carry data-appointment-row and must not be counted twice. */
+    function appointmentTableRows() {
+        return document.querySelectorAll('tr.manage-requests-row[data-appointment-row]');
+    }
+
+    function syncRowAppointmentPayload(row, payload) {
+        if (!row || !payload) return;
+        var json = JSON.stringify(payload);
+        row.setAttribute('data-appointment', json);
+        var btn = row.querySelector('.view-appointment-btn');
+        if (btn) {
+            btn.setAttribute('data-appointment', json);
+        }
+    }
+
     function isInteractiveTarget(target) {
         return !!target.closest('form, button, select, option, a, input, textarea, label, .manage-bulk-col');
     }
@@ -638,9 +653,9 @@
                 apiById[item.id] = item;
             });
 
-            var revisionMismatch = false;
+            var refreshTasks = [];
 
-            document.querySelectorAll('[data-appointment-row]').forEach(function (row) {
+            appointmentTableRows().forEach(function (row) {
                 var rowId = parseInt(row.getAttribute('data-appointment-row'), 10);
                 var item = apiById[rowId];
                 if (!item) {
@@ -659,26 +674,36 @@
 
                 var existing = parseAppointmentData(row);
                 if (existing && item.revision && item.revision !== existing.revision) {
-                    revisionMismatch = true;
+                    refreshTasks.push(
+                        fetchAppointmentFocus(rowId).then(function (focus) {
+                            if (!focus) return;
+                            syncRowAppointmentPayload(row, focus);
+                            if (row.classList.contains('is-selected')) {
+                                refreshOpenDetail(focus);
+                            }
+                        })
+                    );
                 }
             });
 
-            if (revisionMismatch) {
-                window.location.reload();
+            var domCount = appointmentTableRows().length;
+            if (domCount !== appointments.length) {
+                Promise.all(refreshTasks).finally(function () {
+                    window.location.reload();
+                });
                 return;
             }
 
-            var domCount = document.querySelectorAll('[data-appointment-row]').length;
-            if (domCount !== appointments.length) {
-                window.location.reload();
-                return;
-            }
+            Promise.all(refreshTasks).then(function () {
+                if (data.focus) {
+                    refreshOpenDetail(data.focus);
+                }
+            });
         } else {
             updateStatCards(data.stats);
-        }
-
-        if (data.focus) {
-            refreshOpenDetail(data.focus);
+            if (data.focus) {
+                refreshOpenDetail(data.focus);
+            }
         }
 
         if (window.AlcrosAdminLive && typeof window.AlcrosAdminLive.refresh === 'function') {
@@ -688,7 +713,7 @@
 
     var lastListSignature = listSignature(
         Array.prototype.map.call(
-            document.querySelectorAll('[data-appointment-row]'),
+            appointmentTableRows(),
             function (row) {
                 var parsed = parseAppointmentData(row);
                 return {

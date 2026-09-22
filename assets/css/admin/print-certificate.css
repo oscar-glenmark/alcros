@@ -173,6 +173,18 @@
     gap: 0.5rem;
 }
 
+.marriage-place-composite__parts {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+}
+
+@media (min-width: 640px) {
+    .marriage-place-composite__parts {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
 .cascading-location {
     position: relative;
 }

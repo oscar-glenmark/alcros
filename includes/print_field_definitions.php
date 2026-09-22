@@ -337,6 +337,17 @@ function printFieldCatalog(): array
     ];
 }
 
+/** Book and page are edited on the civil record form (Registry / Book / Page), not in print calibration. */
+function printRecordRegistryFieldNames(): array
+{
+    return ['book_number', 'page_number'];
+}
+
+function printIsRecordRegistryField(string $fieldName): bool
+{
+    return in_array($fieldName, printRecordRegistryFieldNames(), true);
+}
+
 /** @return list<string> Print certificate fill-in field names (front + back) for CSV import/export. */
 function printFillCsvColumns(string $type): array
 {

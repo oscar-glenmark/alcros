@@ -140,9 +140,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 } elseif ($key === 'semaphore_api_key') {
                     $apiKey = (string) ($_POST['semaphore_api_key'] ?? '');
-                    if ($apiKey !== '') {
+                    $secretMask = '••••••••••••••••';
+                    if ($apiKey !== '' && $apiKey !== $secretMask) {
                         setSetting($key, $apiKey);
+                        require_once __DIR__ . '/includes/sms.php';
+                        clearSemaphoreSenderNamesCache();
                     }
+                } elseif ($key === 'semaphore_sender_name') {
+                    setSetting($key, trim((string) ($_POST[$key] ?? '')));
+                    require_once __DIR__ . '/includes/sms.php';
+                    clearSemaphoreSenderNamesCache();
                 } elseif ($key === 'privacy_policy_url') {
                     setSetting($key, sanitizeExternalUrl(trim((string) ($_POST[$key] ?? '')), 'privacy.php'));
                 } elseif (isset($_POST[$key])) {
@@ -155,6 +162,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 setSetting('maintenance_mode', '0');
             }
             logActivity($currentStaffId, 'Settings Updated', 'System configuration saved');
+            require_once __DIR__ . '/includes/system_errors.php';
+            clearStaleEmailConfigFailureAlert($pdo);
+            syncSystemErrors($pdo);
             settingsFlashSet('success', 'System settings saved successfully.');
             $handled = true;
         } elseif ($action === 'add_staff' && $isAdmin) {
@@ -425,6 +435,7 @@ foreach ($adminSettingKeys as $key) {
 }
 $smtpPassMask = '••••••••••••••••';
 $smtpPassSaved = trim($settings['smtp_pass']) !== '';
+$semaphoreKeySaved = trim($settings['semaphore_api_key']) !== '';
 
 $currentStaff = currentStaffRow($pdo, $currentStaffId);
 $profileNeeds2svConfirmation = staffRecoveryGmailNeeds2svConfirmation($currentStaff, (string) ($currentStaff['email'] ?? ''));
@@ -882,6 +893,14 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 config-chevron"></i>
                                 </summary>
                                 <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-100">
+                                    <?php $gmailSmtpReady = isEmailConfigured(); ?>
+                                    <div class="sm:col-span-2 rounded-lg px-3 py-2.5 text-[11px] font-semibold leading-relaxed <?= $gmailSmtpReady ? 'bg-emerald-50 text-emerald-900 border border-emerald-100' : 'bg-amber-50 text-amber-950 border border-amber-100' ?>">
+                                        <?php if ($gmailSmtpReady): ?>
+                                        Gmail SMTP is configured. Citizen and reminder emails use the Gmail address and App Password below—not Semaphore SMS.
+                                        <?php else: ?>
+                                        Gmail SMTP is not complete yet. Fill in <strong>Gmail Address (SMTP user)</strong> and <strong>Gmail App Password</strong> below, then Save. Notification Email alone does not enable sending.
+                                        <?php endif; ?>
+                                    </div>
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Queue Window Number</label><input type="number" name="queue_window" value="<?= htmlspecialchars($settings['queue_window']) ?>" min="1" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Max Daily Appointments</label><input type="number" name="max_daily_appointments" value="<?= htmlspecialchars($settings['max_daily_appointments']) ?>" min="1" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                     <div class="sm:col-span-2"><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Notification Email</label><input type="email" name="notification_email" value="<?= htmlspecialchars($settings['notification_email']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Fallback From address if Gmail SMTP is not used.</p></div>
@@ -903,8 +922,12 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     $smsSummary = smsConfigurationSummary();
                                     ?>
                                     <div class="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-xs text-slate-600">
-                                        <?php if ($smsSummary['configured']): ?>
+                                        <?php if ($smsSummary['configured'] && empty($smsSummary['sender_hint'])): ?>
                                         <p class="font-semibold text-green-700">Semaphore is configured and ready to send SMS.</p>
+                                        <?php elseif ($smsSummary['configured'] && !empty($smsSummary['sender_hint'])): ?>
+                                        <p class="font-semibold text-amber-700"><?= htmlspecialchars($smsSummary['sender_hint']) ?></p>
+                                        <?php elseif ($smsSummary['configured']): ?>
+                                        <p class="font-semibold text-green-700">API key saved. SMS uses Semaphore&apos;s default sender until a custom sender is Active.</p>
                                         <?php elseif ($smsSummary['enabled'] && !$smsSummary['has_api_key']): ?>
                                         <p class="font-semibold text-amber-700">SMS is enabled but no API key is saved yet.</p>
                                         <?php else: ?>
@@ -920,8 +943,8 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                         <input type="checkbox" name="sms_enabled" value="1" <?= $settings['sms_enabled'] === '1' ? 'checked' : '' ?> class="rounded text-blue-600 w-5 h-5">
                                     </label>
                                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Semaphore API Key</label><input type="password" name="semaphore_api_key" value="" autocomplete="new-password" placeholder="<?= $settings['semaphore_api_key'] !== '' ? 'Leave blank to keep the saved key' : 'API key from Semaphore dashboard' ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Found under Account → API in your Semaphore dashboard.</p></div>
-                                        <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Sender Name (optional)</label><input type="text" name="semaphore_sender_name" value="<?= htmlspecialchars($settings['semaphore_sender_name']) ?>" maxlength="11" placeholder="ALCROS" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Must be registered with Semaphore. Leave blank for the default sender.</p></div>
+                                        <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Semaphore API Key</label><input type="password" name="semaphore_api_key" id="semaphoreApiKeyInput" value="<?= $semaphoreKeySaved ? htmlspecialchars($smtpPassMask) : '' ?>" autocomplete="new-password" data-saved-mask="<?= $semaphoreKeySaved ? htmlspecialchars($smtpPassMask) : '' ?>" data-saved-value="<?= $semaphoreKeySaved ? htmlspecialchars($settings['semaphore_api_key']) : '' ?>" placeholder="<?= $semaphoreKeySaved ? '' : 'API key from Semaphore dashboard' ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Found under Account → API in your Semaphore dashboard.<?= $semaphoreKeySaved ? ' Click the field, then the eye icon, to view the saved key.' : '' ?></p></div>
+                                        <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Sender Name (optional)</label><input type="text" name="semaphore_sender_name" value="<?= htmlspecialchars($settings['semaphore_sender_name']) ?>" maxlength="11" placeholder="AlCROS" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Must match a sender on Semaphore and be <strong>Active</strong> before any SMS can send. While it is Pending, outbound messages are held—not sent with a generic default.</p></div>
                                     </div>
                                 </div>
                             </details>
@@ -1655,7 +1678,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                             <h3 class="text-sm font-bold text-red-900 flex items-center gap-2">
                                                 <i data-lucide="alert-triangle" class="w-4 h-4"></i> System errors
                                             </h3>
-                                            <p class="text-xs text-red-800/80 mt-1">Issues detected across email, SMS, and scheduled reminders. These also appear in the notification bell.</p>
+                                            <p class="text-xs text-red-800/80 mt-1">Includes Gmail delivery, SMS (Semaphore), and reminder scheduler issues. Each item is fixed separately—Gmail errors need Gmail SMTP under Configuration, not SMS settings.</p>
                                         </div>
                                         <?php if (!empty($activeSystemErrors)): ?>
                                         <span class="inline-flex items-center min-w-[1.5rem] h-6 px-2 rounded-full bg-red-600 text-white text-[10px] font-black"><?= count($activeSystemErrors) ?></span>

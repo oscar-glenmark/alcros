@@ -15,12 +15,67 @@ function cascadingLocationFieldNames(): array
         'wife_birth_place',
         'husband_residence',
         'wife_residence',
+        'husband_consent_residence',
+        'wife_consent_residence',
+        'parents_marriage_place',
+        'delayed_birth_parents_marriage_place',
     ];
 }
 
 function cascadingLocationUsesField(string $fieldName): bool
 {
     return in_array($fieldName, cascadingLocationFieldNames(), true);
+}
+
+/** Birth certificate place of birth: province → city/municipality → barangay (no country step). */
+function cascadingLocationIsPhBirthPlaceField(string $fieldName): bool
+{
+    return $fieldName === 'birth_place'
+        || str_ends_with($fieldName, '_birth_place');
+}
+
+function cascadingLocationIsPhMarriagePlaceField(string $fieldName): bool
+{
+    return in_array($fieldName, [
+        'parents_marriage_place',
+        'delayed_birth_parents_marriage_place',
+    ], true);
+}
+
+function cascadingLocationIsPhResidenceField(string $fieldName): bool
+{
+    if (cascadingLocationIsPhBirthPlaceField($fieldName) || cascadingLocationIsPhMarriagePlaceField($fieldName)) {
+        return false;
+    }
+
+    return $fieldName === 'residence'
+        || $fieldName === 'residence_deceased'
+        || str_ends_with($fieldName, '_residence');
+}
+
+function cascadingLocationPickerMode(string $fieldName): string
+{
+    if (cascadingLocationIsPhBirthPlaceField($fieldName)) {
+        return 'ph_birth_place';
+    }
+    if (cascadingLocationIsPhMarriagePlaceField($fieldName)) {
+        return 'ph_marriage_place';
+    }
+    if (cascadingLocationIsPhResidenceField($fieldName)) {
+        return 'ph_residence';
+    }
+
+    return 'full';
+}
+
+function cascadingLocationDataAttributes(string $fieldName): string
+{
+    $mode = cascadingLocationPickerMode($fieldName);
+    if ($mode === 'full') {
+        return '';
+    }
+
+    return ' data-location-mode="' . htmlspecialchars($mode, ENT_QUOTES, 'UTF-8') . '"';
 }
 
 function cascadingLocationInputClass(string $baseClass = ''): string

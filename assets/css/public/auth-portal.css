@@ -210,6 +210,79 @@ body.auth-portal {
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.04);
 }
 
+.auth-portal-lockout {
+    padding: 0.25rem 0 0.5rem;
+}
+
+.auth-portal-lockout__icon {
+    width: 3.5rem;
+    height: 3.5rem;
+    margin: 0 auto 1.25rem;
+    border-radius: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(145deg, rgba(244, 180, 0, 0.18), rgba(244, 180, 0, 0.06));
+    color: #92400e;
+    border: 1px solid rgba(244, 180, 0, 0.35);
+    box-shadow: 0 8px 24px rgba(244, 180, 0, 0.12);
+}
+
+.auth-portal-lockout__title {
+    font-size: 1.125rem;
+    font-weight: 800;
+    color: var(--alcros-navy);
+    text-align: center;
+    margin: 0 0 0.5rem;
+    letter-spacing: -0.02em;
+}
+
+.auth-portal-lockout__lead {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 1.55;
+    color: #64748b;
+    text-align: center;
+    margin: 0 0 1.25rem;
+}
+
+.auth-portal-lockout__timer-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 1rem 1.25rem;
+    border-radius: 1rem;
+    background: rgba(7, 20, 40, 0.04);
+    border: 1px solid rgba(7, 20, 40, 0.08);
+    margin-bottom: 1rem;
+}
+
+.auth-portal-lockout__timer-label {
+    font-size: 0.625rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+
+.auth-portal-lockout__timer-value {
+    font-size: 2rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+    color: var(--alcros-navy-mid);
+    line-height: 1.1;
+}
+
+.auth-portal-lockout__hint {
+    font-size: 0.625rem;
+    font-weight: 600;
+    color: #94a3b8;
+    text-align: center;
+    margin: 0;
+}
+
 body.auth-reset-page {
     font-family: 'Inter', sans-serif;
     background-color: #f8fafc;

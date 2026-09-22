@@ -299,7 +299,7 @@ $pageSubtitle = 'Blank certificate and certification forms for manual entry';
     'paperWidthMm' => $paperW,
     'paperHeightMm' => $paperH,
     'calibrationRev' => printCalibrationRevision(),
-    'initialFillValues' => array_fill_keys(array_column($fillEditorFields, 'field_name'), ''),
+    'initialFillValues' => array_column($fillEditorFields, 'value', 'field_name'),
     'calibrationUrl' => buildAuthUrl('print_calibration.php', $docQueryParams(['page' => 'front'])),
 ]) ?>
 <?= scriptTag('admin/print-fit-text.js') ?>

@@ -156,44 +156,45 @@
         });
     }
 
-    var smtpPassInput = document.getElementById('smtpPassInput');
-    if (smtpPassInput) {
-        var savedMask = smtpPassInput.dataset.savedMask || '';
-        var savedValue = smtpPassInput.dataset.savedValue || '';
+    function bindSavedSecretPasswordField(secretInput) {
+        if (!secretInput) return;
 
-        function smtpPassWrap() {
-            return smtpPassInput.closest('.alcros-password-wrap');
+        var savedMask = secretInput.dataset.savedMask || '';
+        var savedValue = secretInput.dataset.savedValue || '';
+
+        function secretWrap() {
+            return secretInput.closest('.alcros-password-wrap');
         }
 
-        function smtpPassToggleBtn() {
-            var wrap = smtpPassWrap();
+        function secretToggleBtn() {
+            var wrap = secretWrap();
             return wrap ? wrap.querySelector('.alcros-password-toggle') : null;
         }
 
-        function smtpPassShowsSavedMask() {
-            return savedMask !== '' && smtpPassInput.value === savedMask;
+        function showsSavedMask() {
+            return savedMask !== '' && secretInput.value === savedMask;
         }
 
-        function setSmtpPassRevealed(toggleBtn, revealed) {
+        function setRevealed(toggleBtn, revealed) {
             toggleBtn.classList.toggle('is-revealed', revealed);
             toggleBtn.setAttribute('aria-pressed', revealed ? 'true' : 'false');
             toggleBtn.setAttribute('aria-label', revealed ? 'Hide password' : 'Show password');
         }
 
-        function syncSmtpPassToggle() {
-            var toggleBtn = smtpPassToggleBtn();
+        function syncSecretToggle() {
+            var toggleBtn = secretToggleBtn();
             if (!toggleBtn) {
                 return;
             }
 
-            var focused = document.activeElement === smtpPassInput;
+            var focused = document.activeElement === secretInput;
             var revealed = toggleBtn.classList.contains('is-revealed');
-            var hideToggle = savedMask !== '' && smtpPassShowsSavedMask() && !focused && !revealed;
+            var hideToggle = savedMask !== '' && showsSavedMask() && !focused && !revealed;
             toggleBtn.hidden = hideToggle;
             toggleBtn.classList.toggle('hidden', hideToggle);
         }
 
-        function bindSmtpPassToggle(toggleBtn) {
+        function bindSecretToggle(toggleBtn) {
             toggleBtn.addEventListener('mousedown', function (e) {
                 e.preventDefault();
             });
@@ -203,63 +204,66 @@
                 var revealed = toggleBtn.classList.contains('is-revealed');
 
                 if (revealed) {
-                    if (savedValue && smtpPassInput.value === savedValue) {
-                        smtpPassInput.value = savedMask;
-                        smtpPassInput.setAttribute('type', 'password');
+                    if (savedValue && secretInput.value === savedValue) {
+                        secretInput.value = savedMask;
+                        secretInput.setAttribute('type', 'password');
                     } else {
-                        smtpPassInput.setAttribute('type', 'password');
+                        secretInput.setAttribute('type', 'password');
                     }
-                    setSmtpPassRevealed(toggleBtn, false);
-                    syncSmtpPassToggle();
+                    setRevealed(toggleBtn, false);
+                    syncSecretToggle();
                     return;
                 }
 
-                if (savedValue && smtpPassShowsSavedMask()) {
-                    smtpPassInput.value = savedValue;
-                    smtpPassInput.setAttribute('type', 'text');
-                    setSmtpPassRevealed(toggleBtn, true);
-                    syncSmtpPassToggle();
+                if (savedValue && showsSavedMask()) {
+                    secretInput.value = savedValue;
+                    secretInput.setAttribute('type', 'text');
+                    setRevealed(toggleBtn, true);
+                    syncSecretToggle();
                     return;
                 }
 
-                smtpPassInput.setAttribute('type', 'text');
-                setSmtpPassRevealed(toggleBtn, true);
-                syncSmtpPassToggle();
+                secretInput.setAttribute('type', 'text');
+                setRevealed(toggleBtn, true);
+                syncSecretToggle();
             });
         }
 
-        var initialToggleBtn = smtpPassToggleBtn();
+        var initialToggleBtn = secretToggleBtn();
         if (initialToggleBtn) {
-            var smtpToggleBtn = initialToggleBtn.cloneNode(true);
-            initialToggleBtn.parentNode.replaceChild(smtpToggleBtn, initialToggleBtn);
-            bindSmtpPassToggle(smtpToggleBtn);
+            var boundToggleBtn = initialToggleBtn.cloneNode(true);
+            initialToggleBtn.parentNode.replaceChild(boundToggleBtn, initialToggleBtn);
+            bindSecretToggle(boundToggleBtn);
         }
 
-        smtpPassInput.addEventListener('focus', syncSmtpPassToggle);
-        smtpPassInput.addEventListener('blur', function (e) {
-            var toggleBtn = smtpPassToggleBtn();
+        secretInput.addEventListener('focus', syncSecretToggle);
+        secretInput.addEventListener('blur', function (e) {
+            var toggleBtn = secretToggleBtn();
             if (toggleBtn && e.relatedTarget === toggleBtn) {
                 return;
             }
 
             window.setTimeout(function () {
                 if (toggleBtn && toggleBtn.classList.contains('is-revealed')) {
-                    syncSmtpPassToggle();
+                    syncSecretToggle();
                     return;
                 }
 
-                if (savedValue && smtpPassInput.value === savedValue) {
-                    smtpPassInput.value = savedMask;
-                    smtpPassInput.setAttribute('type', 'password');
+                if (savedValue && secretInput.value === savedValue) {
+                    secretInput.value = savedMask;
+                    secretInput.setAttribute('type', 'password');
                     if (toggleBtn) {
-                        setSmtpPassRevealed(toggleBtn, false);
+                        setRevealed(toggleBtn, false);
                     }
                 }
-                syncSmtpPassToggle();
+                syncSecretToggle();
             }, 0);
         });
-        syncSmtpPassToggle();
+        syncSecretToggle();
     }
+
+    bindSavedSecretPasswordField(document.getElementById('smtpPassInput'));
+    bindSavedSecretPasswordField(document.getElementById('semaphoreApiKeyInput'));
 
     if (allowRequestsToggle && maintenanceToggle) {
         allowRequestsToggle.addEventListener('change', function () {

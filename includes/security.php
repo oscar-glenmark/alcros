@@ -322,6 +322,32 @@ function rateLimitCheck(string $key, int $maxAttempts, int $windowSeconds): bool
     return true;
 }
 
+/** Seconds until the rate-limit window resets, or null if not currently blocked. */
+function rateLimitRetryAfterSeconds(string $key, int $maxAttempts, int $windowSeconds): ?int
+{
+    $dir = securityStoragePath('rate_limits');
+    $file = $dir . '/' . hash('sha256', $key) . '.json';
+    $now = time();
+
+    if (!is_readable($file)) {
+        return null;
+    }
+
+    $decoded = json_decode((string) file_get_contents($file), true);
+    if (!is_array($decoded)) {
+        return null;
+    }
+
+    $reset = (int) ($decoded['reset'] ?? 0);
+    $count = (int) ($decoded['count'] ?? 0);
+
+    if ($reset <= $now || $count < $maxAttempts) {
+        return null;
+    }
+
+    return max(1, $reset - $now);
+}
+
 function rateLimitOrAbort(string $key, int $maxAttempts, int $windowSeconds, string $message): void
 {
     if (rateLimitCheck($key, $maxAttempts, $windowSeconds)) {

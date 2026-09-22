@@ -549,7 +549,7 @@ function fetchNotifications(PDO $pdo, int $limit = 20): array
             'message'    => $row['citizen_name'] . ' · ' . appointmentServiceLabel($row['service_type']) . ' · ' . $dateLabel . ' ' . $timeLabel,
             'detail'     => $row['appointment_code'],
             'created_at' => $row['created_at'],
-            'href'       => 'appointment.php?date=' . $row['appointment_date'],
+            'href'       => 'appointment.php?date=' . rawurlencode((string) $row['appointment_date']) . '&status=all_appointments',
         ];
     }
 

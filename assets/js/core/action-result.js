@@ -10,6 +10,8 @@
     var titleEl = null;
     var messageEl = null;
     var okBtn = null;
+    var pendingRedirect = null;
+    var autoRedirectTimer = null;
 
     function readConfig() {
         var el = document.getElementById('alcros-action-result');
@@ -64,13 +66,13 @@
 
         okBtn.addEventListener('click', function (e) {
             e.preventDefault();
-            closeModal();
+            closeModal(true);
         });
         modal.addEventListener('click', function (e) {
-            if (e.target === modal) closeModal();
+            if (e.target === modal) closeModal(true);
         });
         document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape' && modal.classList.contains('is-open')) closeModal();
+            if (e.key === 'Escape' && modal.classList.contains('is-open')) closeModal(true);
         });
 
         return modal;
@@ -95,12 +97,23 @@
         okBtn.className = 'alcros-action-result-modal__btn alcros-action-result-modal__btn--' + tone;
     }
 
-    function openModal(type, message) {
+    function followPendingRedirect() {
+        if (!pendingRedirect) return;
+        var target = pendingRedirect;
+        pendingRedirect = null;
+        window.location.href = target;
+    }
+
+    function openModal(type, message, options) {
+        options = options || {};
         ensureModal();
         if (global.AlcrosLoading && typeof global.AlcrosLoading.page === 'function') {
             global.AlcrosLoading.page(false);
         }
         applyType(type);
+        if (options.title) titleEl.textContent = options.title;
+        if (options.badge && badgeEl) badgeEl.textContent = options.badge;
+        if (options.buttonLabel) okBtn.textContent = options.buttonLabel;
         messageEl.textContent = message || (type === 'success' ? 'The action completed successfully.' : 'The action could not be completed.');
         document.body.appendChild(modal);
         modal.classList.remove('is-hidden');
@@ -108,21 +121,39 @@
         if (okBtn) okBtn.focus();
     }
 
-    function closeModal() {
+    function closeModal(allowRedirect) {
         if (!modal) return;
         modal.classList.add('is-hidden');
         modal.classList.remove('is-open');
+        if (autoRedirectTimer) {
+            window.clearTimeout(autoRedirectTimer);
+            autoRedirectTimer = null;
+        }
+        if (allowRedirect) followPendingRedirect();
     }
 
-    function show(type, message) {
-        openModal(type === 'success' ? 'success' : 'error', message);
+    function show(type, message, options) {
+        openModal(type === 'success' ? 'success' : 'error', message, options || {});
     }
 
     function initFromConfig() {
         var cfg = readConfig();
         consumeConfigElement();
         if (!cfg) return;
-        show(cfg.type, cfg.message);
+        pendingRedirect = typeof cfg.redirect === 'string' && cfg.redirect ? cfg.redirect : null;
+        show(cfg.type, cfg.message, {
+            title: cfg.title,
+            badge: cfg.badge,
+            buttonLabel: cfg.buttonLabel
+        });
+        if (pendingRedirect && cfg.autoRedirectMs) {
+            var ms = parseInt(cfg.autoRedirectMs, 10);
+            if (!isNaN(ms) && ms > 0) {
+                autoRedirectTimer = window.setTimeout(function () {
+                    closeModal(true);
+                }, ms);
+            }
+        }
     }
 
     global.AlcrosActionResult = {
@@ -139,7 +170,8 @@
     window.addEventListener('pageshow', function (event) {
         if (event.persisted) {
             consumeConfigElement();
-            closeModal();
+            pendingRedirect = null;
+            closeModal(false);
         }
     });
 })(window);

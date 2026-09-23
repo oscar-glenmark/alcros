@@ -28,6 +28,30 @@ if (!preg_match('/^[a-zA-Z0-9_\-\.]+\.php(\?.*)?$/', $redirectTarget)) {
 
 $loggedInStaff = getAuthenticatedStaff();
 
+$loginSuccessModal = null;
+
+if (isset($_GET['signed_in']) && (string) $_GET['signed_in'] === '1') {
+
+    $signedInStaff = getAuthenticatedStaff();
+
+    $postLoginRedirect = isset($_SESSION['post_login_redirect']) ? (string) $_SESSION['post_login_redirect'] : '';
+
+    unset($_SESSION['post_login_redirect']);
+
+    if ($signedInStaff && $postLoginRedirect !== '' && preg_match('/^[a-zA-Z0-9_\-\.]+\.php(\?.*)?$/', $postLoginRedirect)) {
+
+        $loginSuccessModal = [
+
+            'name'     => (string) ($signedInStaff['name'] ?? 'Staff'),
+
+            'redirect' => $postLoginRedirect,
+
+        ];
+
+    }
+
+}
+
 
 
 $error = '';
@@ -100,7 +124,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $joiner = str_contains($redirectTarget, '?') ? '&' : '?';
 
-                header('Location: ' . $redirectTarget . $joiner . 'alcros_auth=' . urlencode($token));
+                $_SESSION['post_login_redirect'] = $redirectTarget . $joiner . 'alcros_auth=' . urlencode($token);
+
+                header('Location: login.php?signed_in=1');
 
                 exit;
 
@@ -209,7 +235,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
 
-                <?php if ($loggedInStaff): ?>
+                <?php if ($loggedInStaff && !$loginSuccessModal): ?>
 
                 <div class="mb-6 px-4 py-3 rounded-xl bg-blue-50 border border-blue-100 text-blue-800 text-[11px] font-semibold text-left">
 
@@ -241,7 +267,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
 
-                <?php if ($error && !$loginLocked): ?>
+                <?php if ($loginSuccessModal): ?>
+
+                <p class="text-[11px] text-slate-500 font-medium">Signing you in…</p>
+
+                <?php elseif ($error && !$loginLocked): ?>
 
                 <div class="mb-6 px-4 py-3 rounded-xl bg-red-50 border border-red-100 text-red-600 text-[11px] font-semibold text-left flex items-center gap-2">
 
@@ -281,7 +311,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 </div>
 
-                <?php else: ?>
+                <?php elseif (!$loginSuccessModal): ?>
 
                 <form id="loginForm" class="text-left space-y-5" method="POST" action="login.php?redirect=<?= urlencode($redirectTarget) ?>" autocomplete="off" data-no-confirm>
 
@@ -384,6 +414,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </main>
 
 
+
+    <?php if ($loginSuccessModal): ?>
+
+    <?= pageConfigJson([
+
+        'type'           => 'success',
+
+        'title'          => 'Signed in successfully',
+
+        'badge'          => 'Staff portal',
+
+        'message'        => 'Welcome back, ' . $loginSuccessModal['name'] . '.',
+
+        'buttonLabel'    => 'Continue',
+
+        'redirect'       => $loginSuccessModal['redirect'],
+
+        'autoRedirectMs' => 2400,
+
+    ], 'alcros-action-result') ?>
+
+    <?php endif; ?>
 
     <?= actionCoreScripts() ?>
 

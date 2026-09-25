@@ -263,7 +263,7 @@
     }
 
     bindSavedSecretPasswordField(document.getElementById('smtpPassInput'));
-    bindSavedSecretPasswordField(document.getElementById('semaphoreApiKeyInput'));
+    bindSavedSecretPasswordField(document.getElementById('iprogApiTokenInput'));
 
     if (allowRequestsToggle && maintenanceToggle) {
         allowRequestsToggle.addEventListener('change', function () {

@@ -308,7 +308,7 @@ CREATE TABLE IF NOT EXISTS email_logs (
     INDEX idx_sent (sent_at)
 ) ENGINE=InnoDB;
 
--- Citizen SMS delivery audit trail (Semaphore).
+-- Citizen SMS delivery audit trail (IPROG).
 CREATE TABLE IF NOT EXISTS sms_logs (
     id INT AUTO_INCREMENT PRIMARY KEY,
     recipient VARCHAR(20) NOT NULL,

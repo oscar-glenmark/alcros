@@ -447,7 +447,7 @@ function syncSystemErrors(PDO $pdo): void
             'sms-not-configured',
             'sms',
             'SMS not configured',
-            'SMS notifications are enabled but Semaphore API key is missing. Add your Semaphore API key in Settings → Configuration or turn SMS off.',
+            'SMS notifications are enabled but the IPROG API token is missing. Add your IPROG API token in Settings → Configuration or turn SMS off.',
             'verify_sms_config',
             buildAuthUrl('system_settings.php', ['tab' => 'system-configuration'])
         );
@@ -486,14 +486,14 @@ function syncSystemErrors(PDO $pdo): void
     }
 
     if (function_exists('isSmsConfigured')) {
-        $smsBlock = isSmsEnabled() && isSmsConfigured() ? smsSemaphoreSendBlockReason() : null;
+        $smsBlock = isSmsEnabled() && isSmsConfigured() ? smsProviderSendBlockReason() : null;
         if ($smsBlock !== null) {
             if (getSmsSenderPendingAckTime() === null) {
                 raiseSystemError(
                     $pdo,
                     'sms-sender-pending',
                     'sms',
-                    'SMS waiting on Semaphore',
+                    'SMS sender not ready',
                     $smsBlock,
                     'acknowledge_sms_sender_pending',
                     buildAuthUrl('system_settings.php', ['tab' => 'system-configuration'])
@@ -614,7 +614,7 @@ function runSystemErrorFix(PDO $pdo, string $errorKey, string $staffId): array
                     if (isSmsEnabled()) {
                         return [
                             'ok'      => false,
-                            'message' => 'SMS is still enabled without a Semaphore API key. Add the key in Configuration or disable SMS.',
+                            'message' => 'SMS is still enabled without an IPROG API token. Add the token in Configuration or disable SMS.',
                         ];
                     }
                 }
@@ -622,13 +622,10 @@ function runSystemErrorFix(PDO $pdo, string $errorKey, string $staffId): array
                 break;
 
             case 'refresh_sms_sender':
-                clearSemaphoreSenderNamesCache();
-                fetchSemaphoreSenderNames(true);
                 resolveSystemError($pdo, $errorKey, $staffId);
                 break;
 
             case 'acknowledge_sms_sender_pending':
-                clearSemaphoreSenderNamesCache();
                 acknowledgeDeliveryFailures('sms');
                 acknowledgeSmsSenderPending();
                 resolveSystemError($pdo, 'sms-sender-pending', $staffId);
@@ -696,11 +693,10 @@ function runSystemErrorFix(PDO $pdo, string $errorKey, string $staffId): array
                 if (!function_exists('isSmsConfigured') || !isSmsConfigured()) {
                     return [
                         'ok'      => false,
-                        'message' => 'Configure Semaphore SMS first, then run Fix again.',
+                        'message' => 'Configure IPROG SMS first, then run Fix again.',
                     ];
                 }
                 require_once __DIR__ . '/sms.php';
-                clearSemaphoreSenderNamesCache();
                 clearReminderSchedulerLock();
                 $fixStarted = date('Y-m-d H:i:s');
                 sendDueAppointmentReminders($pdo);
@@ -712,7 +708,7 @@ function runSystemErrorFix(PDO $pdo, string $errorKey, string $staffId): array
                         : '';
                     return [
                         'ok'      => false,
-                        'message' => 'SMS is still failing after retry.' . $reason . ' Verify Semaphore API key and sender name.',
+                        'message' => 'SMS is still failing after retry.' . $reason . ' Verify the IPROG API token and account credits.',
                     ];
                 }
                 acknowledgeDeliveryFailures('sms');

@@ -1,17 +1,41 @@
 <?php
 /**
- * Semaphore SMS integration for ALCROS citizen notifications.
+ * IPROG SMS integration for ALCROS citizen notifications.
  * Requires includes/helpers.php to be loaded first.
  */
 
 function isSmsEnabled(): bool
 {
+    purgeObsoleteSemaphoreSettings();
+
     return getSetting('sms_enabled', '0') === '1';
 }
 
 function isSmsConfigured(): bool
 {
-    return isSmsEnabled() && trim(getSetting('semaphore_api_key', '')) !== '';
+    return isSmsEnabled() && iprogApiToken() !== '';
+}
+
+function purgeObsoleteSemaphoreSettings(): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+
+    try {
+        getDB()->exec(
+            "DELETE FROM system_settings WHERE setting_key IN ('semaphore_api_key', 'semaphore_sender_name')"
+        );
+    } catch (Throwable $e) {
+        // Non-fatal if the settings table is unavailable.
+    }
+
+    $legacyCache = __DIR__ . '/../storage/semaphore_sender_names.json';
+    if (is_file($legacyCache)) {
+        @unlink($legacyCache);
+    }
 }
 
 function citizenWantsSmsNotify(?array $row): bool
@@ -43,52 +67,46 @@ function normalizeSmsPhone(string $phone): string
     return '';
 }
 
-const SEMAPHORE_API_BASE = 'https://semaphore.co/api/v4';
+const IPROG_SMS_API_BASE = 'https://sms.iprogtech.com/api/v1';
 
-function semaphoreApiKey(): string
+function iprogApiToken(): string
 {
-    return trim(getSetting('semaphore_api_key', ''));
+    purgeObsoleteSemaphoreSettings();
+
+    return trim(getSetting('iprog_api_token', ''));
 }
 
-function semaphoreSenderNamesCachePath(): string
+function iprogSenderName(): string
 {
-    return __DIR__ . '/../storage/semaphore_sender_names.json';
+    return trim(getSetting('iprog_sender_name', ''));
 }
 
-function clearSemaphoreSenderNamesCache(): void
-{
-    $path = semaphoreSenderNamesCachePath();
-    if (is_file($path)) {
-        @unlink($path);
-    }
-}
-
-function semaphoreHttpRequest(string $method, string $path, array $query = [], array $post = []): array
+function iprogHttpRequest(string $method, string $path, array $payload = []): array
 {
     if (!function_exists('curl_init')) {
-        return ['ok' => false, 'error' => 'PHP cURL extension is required for Semaphore SMS.'];
+        return ['ok' => false, 'error' => 'PHP cURL extension is required for IPROG SMS.'];
     }
 
-    $apiKey = semaphoreApiKey();
-    if ($apiKey === '') {
-        return ['ok' => false, 'error' => 'Semaphore API key is not configured.'];
+    $apiToken = iprogApiToken();
+    if ($apiToken === '') {
+        return ['ok' => false, 'error' => 'IPROG API token is not configured.'];
     }
 
-    $url = SEMAPHORE_API_BASE . $path;
-    $query = array_merge(['apikey' => $apiKey], $query);
-    if ($method === 'GET') {
-        $url .= '?' . http_build_query($query);
-    }
+    $url = IPROG_SMS_API_BASE . $path;
+    $payload = array_merge(['api_token' => $apiToken], $payload);
 
     $ch = curl_init($url);
     $options = [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT        => 20,
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Accept: application/json'],
     ];
-    if ($method === 'POST') {
+    if (strtoupper($method) === 'GET') {
+        $url .= (str_contains($url, '?') ? '&' : '?') . http_build_query($payload);
+        curl_setopt($ch, CURLOPT_URL, $url);
+    } else {
         $options[CURLOPT_POST] = true;
-        $options[CURLOPT_POSTFIELDS] = http_build_query(array_merge($post, ['apikey' => $apiKey]));
-        $options[CURLOPT_HTTPHEADER] = ['Content-Type: application/x-www-form-urlencoded'];
+        $options[CURLOPT_POSTFIELDS] = json_encode($payload, JSON_UNESCAPED_UNICODE);
     }
     curl_setopt_array($ch, $options);
     $body = curl_exec($ch);
@@ -97,7 +115,7 @@ function semaphoreHttpRequest(string $method, string $path, array $query = [], a
     curl_close($ch);
 
     if ($body === false) {
-        return ['ok' => false, 'error' => $curlError !== '' ? $curlError : 'Could not reach Semaphore.'];
+        return ['ok' => false, 'error' => $curlError !== '' ? $curlError : 'Could not reach IPROG SMS.'];
     }
 
     $decoded = json_decode($body, true);
@@ -110,203 +128,75 @@ function semaphoreHttpRequest(string $method, string $path, array $query = [], a
     ];
 }
 
-/** @return list<array{name: string, status: string}>|null */
-function fetchSemaphoreSenderNames(bool $forceRefresh = false): ?array
+function smsProviderSendBlockReason(): ?string
 {
-    static $memoryCache = null;
-    if (!$forceRefresh && is_array($memoryCache)) {
-        return $memoryCache;
-    }
-
-    $cachePath = semaphoreSenderNamesCachePath();
-    if (!$forceRefresh && is_file($cachePath)) {
-        $cached = json_decode((string) file_get_contents($cachePath), true);
-        if (is_array($cached) && ($cached['fetched_at'] ?? 0) > time() - 300 && is_array($cached['names'] ?? null)) {
-            $memoryCache = $cached['names'];
-
-            return $memoryCache;
-        }
-    }
-
-    $result = semaphoreHttpRequest('GET', '/account/sendernames');
-    if (empty($result['ok']) || !is_array($result['decoded'])) {
-        return null;
-    }
-
-    $names = [];
-    foreach ($result['decoded'] as $row) {
-        if (!is_array($row) || empty($row['name'])) {
-            continue;
-        }
-        $names[] = [
-            'name'   => (string) $row['name'],
-            'status' => (string) ($row['status'] ?? ''),
-        ];
-    }
-
-    $memoryCache = $names;
-    $cacheDir = dirname($cachePath);
-    if (!is_dir($cacheDir)) {
-        @mkdir($cacheDir, 0755, true);
-    }
-    @file_put_contents($cachePath, json_encode(['fetched_at' => time(), 'names' => $names]));
-
-    return $names;
-}
-
-function isSemaphoreSenderActive(array $senderRow): bool
-{
-    $status = strtolower(trim((string) ($senderRow['status'] ?? '')));
-
-    return in_array($status, ['active', 'approved', 'enabled'], true);
-}
-
-function findAnyActiveSemaphoreSender(?array $names): ?string
-{
-    if (!is_array($names)) {
-        return null;
-    }
-
-    foreach ($names as $row) {
-        if (!is_array($row) || empty($row['name']) || !isSemaphoreSenderActive($row)) {
-            continue;
-        }
-
-        return (string) $row['name'];
-    }
-
     return null;
-}
-
-/** @return array{ok: true, sendername: ?string} */
-function resolveSemaphoreOutboundSender(): array
-{
-    $configured = trim(getSetting('semaphore_sender_name', ''));
-    $names = fetchSemaphoreSenderNames();
-
-    if ($configured !== '' && is_array($names)) {
-        foreach ($names as $row) {
-            if (strcasecmp($row['name'], $configured) === 0 && isSemaphoreSenderActive($row)) {
-                return ['ok' => true, 'sendername' => $row['name']];
-            }
-        }
-    }
-
-    $active = findAnyActiveSemaphoreSender($names);
-    if ($active !== null && $active !== '') {
-        return ['ok' => true, 'sendername' => $active];
-    }
-
-    return ['ok' => true, 'sendername' => null];
-}
-
-function smsSemaphoreSendBlockReason(): ?string
-{
-    if (!isSmsConfigured()) {
-        return null;
-    }
-
-    $names = fetchSemaphoreSenderNames();
-    if (!is_array($names)) {
-        return 'Could not load sender names from Semaphore. Check your API key and internet connection, then save Settings again.';
-    }
-
-    if (findAnyActiveSemaphoreSender($names) !== null) {
-        return null;
-    }
-
-    if ($names === []) {
-        return 'No sender name is registered on your Semaphore account. Add one at semaphore.co and wait until it shows Active before SMS can send.';
-    }
-
-    $parts = [];
-    foreach ($names as $row) {
-        $parts[] = $row['name'] . ' (' . ($row['status'] !== '' ? $row['status'] : 'unknown') . ')';
-    }
-
-    return 'Semaphore has no Active sender (' . implode(', ', $parts) . '). '
-        . 'This account cannot send SMS until at least one sender is Active (usually 1–2 business days after registration). '
-        . 'The shared SEMAPHORE sender is not available on new accounts.';
 }
 
 function smsSenderConfigurationHint(): ?string
 {
-    if (!isSmsConfigured()) {
-        return null;
-    }
-
-    $configured = trim(getSetting('semaphore_sender_name', ''));
-    if ($configured === '') {
-        return null;
-    }
-
-    $names = fetchSemaphoreSenderNames();
-    if (!is_array($names)) {
-        return null;
-    }
-
-    foreach ($names as $row) {
-        if (strcasecmp($row['name'], $configured) === 0 && isSemaphoreSenderActive($row)) {
-            return null;
-        }
-    }
-
-    $pendingStatus = null;
-    foreach ($names as $row) {
-        if (strcasecmp($row['name'], $configured) === 0) {
-            $pendingStatus = trim((string) ($row['status'] ?? ''));
-            break;
-        }
-    }
-
-    if ($pendingStatus !== null && $pendingStatus !== '') {
-        return 'Sender "' . $configured . '" is ' . $pendingStatus . ' on Semaphore. SMS will send automatically once it becomes Active.';
-    }
-
-    return 'Sender "' . $configured . '" is not Active on Semaphore yet. SMS will send once Semaphore approves it.';
+    return null;
 }
 
-function semaphoreFormatApiError(mixed $decoded, int $httpCode): string
+function iprogFormatApiError(mixed $decoded, int $httpCode): string
 {
     if (is_array($decoded)) {
-        $items = array_is_list($decoded) ? $decoded : [$decoded];
-        foreach ($items as $item) {
-            if (!is_array($item)) {
+        foreach (['message', 'error', 'errors'] as $key) {
+            if (!isset($decoded[$key])) {
                 continue;
             }
-            foreach (['senderName', 'sendername', 'message', 'error'] as $key) {
-                if (isset($item[$key]) && (string) $item[$key] !== '') {
-                    return (string) $item[$key];
+            $value = $decoded[$key];
+            if (is_array($value)) {
+                $flat = [];
+                array_walk_recursive($value, static function ($item) use (&$flat): void {
+                    if (is_scalar($item) && (string) $item !== '') {
+                        $flat[] = (string) $item;
+                    }
+                });
+                if ($flat !== []) {
+                    return implode(' ', $flat);
                 }
+                continue;
+            }
+            if ((string) $value !== '') {
+                return (string) $value;
             }
         }
     }
 
-    return 'Semaphore returned HTTP ' . $httpCode . '.';
+    return 'IPROG returned HTTP ' . $httpCode . '.';
 }
 
-function semaphoreResponsesIndicateSuccess(mixed $decoded): bool
+function iprogResponseIndicatesSuccess(mixed $decoded, int $httpCode): bool
 {
+    if ($httpCode < 200 || $httpCode >= 300) {
+        return false;
+    }
     if (!is_array($decoded)) {
-        return false;
+        return $httpCode >= 200 && $httpCode < 300;
     }
 
-    $items = array_is_list($decoded) ? $decoded : [$decoded];
-    if ($items === []) {
-        return false;
-    }
-
-    foreach ($items as $item) {
-        if (!is_array($item)) {
-            continue;
+    if (isset($decoded['status'])) {
+        $status = $decoded['status'];
+        if (is_numeric($status)) {
+            $code = (int) $status;
+            if ($code >= 400) {
+                return false;
+            }
+            if ($code >= 200 && $code < 300) {
+                return true;
+            }
         }
-        $status = strtolower((string) ($item['status'] ?? ''));
-        if (in_array($status, ['failed', 'refunded'], true)) {
+        $statusText = strtolower((string) $status);
+        if (in_array($statusText, ['error', 'failed', 'fail'], true)) {
             return false;
         }
+        if (in_array($statusText, ['success', 'ok', 'queued', 'pending'], true)) {
+            return true;
+        }
     }
 
-    return true;
+    return !empty($decoded['message_id']) || !empty($decoded['message_ids']);
 }
 
 function logSmsDelivery(
@@ -336,10 +226,10 @@ function logSmsDelivery(
     }
 }
 
-function sendSemaphoreSms(string $phone, string $message): array
+function sendIprogSms(string $phone, string $message): array
 {
     if (!isSmsConfigured()) {
-        return ['ok' => false, 'error' => 'SMS is disabled or Semaphore is not configured.'];
+        return ['ok' => false, 'error' => 'SMS is disabled or IPROG is not configured.'];
     }
 
     $number = normalizeSmsPhone($phone);
@@ -352,40 +242,21 @@ function sendSemaphoreSms(string $phone, string $message): array
         return ['ok' => false, 'error' => 'SMS message is empty.'];
     }
 
-    $sendBlock = smsSemaphoreSendBlockReason();
-    if ($sendBlock !== null) {
-        return ['ok' => false, 'error' => $sendBlock];
-    }
-
-    $senderResolved = resolveSemaphoreOutboundSender();
-
     $payload = [
-        'number'  => $number,
-        'message' => $message,
+        'phone_number' => $number,
+        'message'      => $message,
+        'sms_provider' => 2,
     ];
-    $senderName = trim((string) ($senderResolved['sendername'] ?? ''));
-    if ($senderName !== '') {
-        $payload['sendername'] = $senderName;
-    }
 
-    $result = semaphoreHttpRequest('POST', '/messages', [], $payload);
-    if (empty($result['ok'])) {
-        $httpCode = (int) ($result['httpCode'] ?? 0);
-        $decoded = $result['decoded'] ?? null;
-
-        return [
-            'ok'       => false,
-            'error'    => semaphoreFormatApiError($decoded, $httpCode),
-            'response' => $decoded ?? ($result['body'] ?? null),
-        ];
-    }
-
+    $result = iprogHttpRequest('POST', '/sms_messages', $payload);
+    $httpCode = (int) ($result['httpCode'] ?? 0);
     $decoded = $result['decoded'] ?? null;
-    if (!semaphoreResponsesIndicateSuccess($decoded)) {
+
+    if (empty($result['ok']) || !iprogResponseIndicatesSuccess($decoded, $httpCode)) {
         return [
             'ok'       => false,
-            'error'    => semaphoreFormatApiError($decoded, (int) ($result['httpCode'] ?? 200)),
-            'response' => $decoded,
+            'error'    => $result['error'] ?? iprogFormatApiError($decoded, $httpCode),
+            'response' => $decoded ?? ($result['body'] ?? null),
         ];
     }
 
@@ -413,12 +284,12 @@ function sendCitizenSms(string $phone, string $message, string $smsType = 'gener
             $smsType,
             $referenceCode,
             false,
-            'Semaphore API key is not configured.'
+            'IPROG API token is not configured.'
         );
         return false;
     }
 
-    $result = sendSemaphoreSms($phone, $message);
+    $result = sendIprogSms($phone, $message);
     logSmsDelivery(
         normalizeSmsPhone($phone) ?: $phone,
         $message,
@@ -775,8 +646,8 @@ function smsConfigurationSummary(): array
     return [
         'enabled'      => isSmsEnabled(),
         'configured'   => isSmsConfigured(),
-        'sender'       => trim(getSetting('semaphore_sender_name', '')),
-        'has_api_key'  => trim(getSetting('semaphore_api_key', '')) !== '',
+        'sender'       => iprogSenderName(),
+        'has_api_key'  => iprogApiToken() !== '',
         'sender_hint'  => $hint,
     ];
 }

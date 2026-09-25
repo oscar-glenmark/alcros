@@ -21,7 +21,7 @@ $adminSettingKeys = [
     'queue_window', 'maintenance_mode', 'allow_public_requests', 'notification_email',
     'max_daily_appointments', 'privacy_policy_url', 'kiosk_welcome_message',
     'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass',
-    'sms_enabled', 'semaphore_api_key', 'semaphore_sender_name',
+    'sms_enabled', 'iprog_api_token', 'iprog_sender_name',
 ];
 
 $defaults = [
@@ -47,8 +47,8 @@ $defaults = [
     'smtp_user'               => '',
     'smtp_pass'               => '',
     'sms_enabled'             => '0',
-    'semaphore_api_key'       => '',
-    'semaphore_sender_name'   => '',
+    'iprog_api_token'         => '',
+    'iprog_sender_name'       => '',
 ];
 
 function currentStaffRow(PDO $pdo, string $staffId): ?array
@@ -138,18 +138,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($smtpPass !== '' && $smtpPass !== $smtpPassMask) {
                         setSetting($key, $smtpPass);
                     }
-                } elseif ($key === 'semaphore_api_key') {
-                    $apiKey = (string) ($_POST['semaphore_api_key'] ?? '');
+                } elseif ($key === 'iprog_api_token') {
+                    $apiKey = (string) ($_POST['iprog_api_token'] ?? '');
                     $secretMask = '••••••••••••••••';
                     if ($apiKey !== '' && $apiKey !== $secretMask) {
                         setSetting($key, $apiKey);
-                        require_once __DIR__ . '/includes/sms.php';
-                        clearSemaphoreSenderNamesCache();
                     }
-                } elseif ($key === 'semaphore_sender_name') {
+                } elseif ($key === 'iprog_sender_name') {
                     setSetting($key, trim((string) ($_POST[$key] ?? '')));
-                    require_once __DIR__ . '/includes/sms.php';
-                    clearSemaphoreSenderNamesCache();
                 } elseif ($key === 'privacy_policy_url') {
                     setSetting($key, sanitizeExternalUrl(trim((string) ($_POST[$key] ?? '')), 'privacy.php'));
                 } elseif (isset($_POST[$key])) {
@@ -162,6 +158,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 setSetting('maintenance_mode', '0');
             }
             logActivity($currentStaffId, 'Settings Updated', 'System configuration saved');
+            require_once __DIR__ . '/includes/sms.php';
+            purgeObsoleteSemaphoreSettings();
             require_once __DIR__ . '/includes/system_errors.php';
             clearStaleEmailConfigFailureAlert($pdo);
             syncSystemErrors($pdo);
@@ -435,7 +433,7 @@ foreach ($adminSettingKeys as $key) {
 }
 $smtpPassMask = '••••••••••••••••';
 $smtpPassSaved = trim($settings['smtp_pass']) !== '';
-$semaphoreKeySaved = trim($settings['semaphore_api_key']) !== '';
+$iprogTokenSaved = trim($settings['iprog_api_token']) !== '';
 
 $currentStaff = currentStaffRow($pdo, $currentStaffId);
 $profileNeeds2svConfirmation = staffRecoveryGmailNeeds2svConfirmation($currentStaff, (string) ($currentStaff['email'] ?? ''));
@@ -896,7 +894,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     <?php $gmailSmtpReady = isEmailConfigured(); ?>
                                     <div class="sm:col-span-2 rounded-lg px-3 py-2.5 text-[11px] font-semibold leading-relaxed <?= $gmailSmtpReady ? 'bg-emerald-50 text-emerald-900 border border-emerald-100' : 'bg-amber-50 text-amber-950 border border-amber-100' ?>">
                                         <?php if ($gmailSmtpReady): ?>
-                                        Gmail SMTP is configured. Citizen and reminder emails use the Gmail address and App Password below—not Semaphore SMS.
+                                        Gmail SMTP is configured. Citizen and reminder emails use the Gmail address and App Password below—not IPROG SMS.
                                         <?php else: ?>
                                         Gmail SMTP is not complete yet. Fill in <strong>Gmail Address (SMTP user)</strong> and <strong>Gmail App Password</strong> below, then Save. Notification Email alone does not enable sending.
                                         <?php endif; ?>
@@ -913,7 +911,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
 
                             <details class="config-section group rounded-xl border border-slate-200 overflow-hidden">
                                 <summary class="flex items-center justify-between gap-3 px-4 py-3.5 bg-slate-50 hover:bg-slate-100/80 font-semibold text-sm text-slate-800">
-                                    <span class="flex items-center gap-2"><i data-lucide="message-square" class="w-4 h-4 text-slate-500"></i> SMS (Semaphore)</span>
+                                    <span class="flex items-center gap-2"><i data-lucide="message-square" class="w-4 h-4 text-slate-500"></i> SMS (IPROG)</span>
                                     <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 config-chevron"></i>
                                 </summary>
                                 <div class="p-4 space-y-4 border-t border-slate-100">
@@ -923,28 +921,28 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     ?>
                                     <div class="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-xs text-slate-600">
                                         <?php if ($smsSummary['configured'] && empty($smsSummary['sender_hint'])): ?>
-                                        <p class="font-semibold text-green-700">Semaphore is configured and ready to send SMS.</p>
+                                        <p class="font-semibold text-green-700">IPROG is configured and ready to send SMS.</p>
                                         <?php elseif ($smsSummary['configured'] && !empty($smsSummary['sender_hint'])): ?>
                                         <p class="font-semibold text-amber-700"><?= htmlspecialchars($smsSummary['sender_hint']) ?></p>
                                         <?php elseif ($smsSummary['configured']): ?>
-                                        <p class="font-semibold text-green-700">API key saved. SMS uses Semaphore&apos;s default sender until a custom sender is Active.</p>
+                                        <p class="font-semibold text-green-700">API token saved. SMS uses IPROG&apos;s default sender unless a custom sender is set below.</p>
                                         <?php elseif ($smsSummary['enabled'] && !$smsSummary['has_api_key']): ?>
-                                        <p class="font-semibold text-amber-700">SMS is enabled but no API key is saved yet.</p>
+                                        <p class="font-semibold text-amber-700">SMS is enabled but no API token is saved yet.</p>
                                         <?php else: ?>
-                                        <p class="font-semibold text-slate-700">SMS is off until you subscribe at <a href="https://semaphore.co" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">semaphore.co</a> and enter your API key below.</p>
+                                        <p class="font-semibold text-slate-700">SMS is off until you subscribe at <a href="https://www.iprogsms.com" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">iprogsms.com</a> and enter your API token below.</p>
                                         <?php endif; ?>
                                         <p class="mt-1.5">Citizens who opt in receive text messages when a request is accepted, when it is ready for pickup, and 3 hours and 1 hour before a confirmed visit.</p>
                                     </div>
                                     <label class="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-100 cursor-pointer">
                                         <div>
                                             <p class="text-sm font-semibold text-slate-800">Enable SMS notifications</p>
-                                            <p class="text-xs text-slate-500">Turn on after your Semaphore account is active and funded.</p>
+                                            <p class="text-xs text-slate-500">Turn on after your IPROG account is active and funded.</p>
                                         </div>
                                         <input type="checkbox" name="sms_enabled" value="1" <?= $settings['sms_enabled'] === '1' ? 'checked' : '' ?> class="rounded text-blue-600 w-5 h-5">
                                     </label>
                                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Semaphore API Key</label><input type="password" name="semaphore_api_key" id="semaphoreApiKeyInput" value="<?= $semaphoreKeySaved ? htmlspecialchars($smtpPassMask) : '' ?>" autocomplete="new-password" data-saved-mask="<?= $semaphoreKeySaved ? htmlspecialchars($smtpPassMask) : '' ?>" data-saved-value="<?= $semaphoreKeySaved ? htmlspecialchars($settings['semaphore_api_key']) : '' ?>" placeholder="<?= $semaphoreKeySaved ? '' : 'API key from Semaphore dashboard' ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Found under Account → API in your Semaphore dashboard.<?= $semaphoreKeySaved ? ' Click the field, then the eye icon, to view the saved key.' : '' ?></p></div>
-                                        <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Sender Name (optional)</label><input type="text" name="semaphore_sender_name" value="<?= htmlspecialchars($settings['semaphore_sender_name']) ?>" maxlength="11" placeholder="AlCROS" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Must match a sender on Semaphore and be <strong>Active</strong> before any SMS can send. While it is Pending, outbound messages are held—not sent with a generic default.</p></div>
+                                        <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">IPROG API Token</label><input type="password" name="iprog_api_token" id="iprogApiTokenInput" value="<?= $iprogTokenSaved ? htmlspecialchars($smtpPassMask) : '' ?>" autocomplete="new-password" data-saved-mask="<?= $iprogTokenSaved ? htmlspecialchars($smtpPassMask) : '' ?>" data-saved-value="<?= $iprogTokenSaved ? htmlspecialchars($settings['iprog_api_token']) : '' ?>" placeholder="<?= $iprogTokenSaved ? '' : 'API token from IPROG dashboard' ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Found in your IPROG SMS dashboard.<?= $iprogTokenSaved ? ' Click the field, then the eye icon, to view the saved token.' : '' ?></p></div>
+                                        <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Sender Name (optional)</label><input type="text" name="iprog_sender_name" value="<?= htmlspecialchars($settings['iprog_sender_name']) ?>" maxlength="11" placeholder="AlCROS" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Leave blank to use IPROG&apos;s default sender. A custom name is optional and does not block sending.</p></div>
                                     </div>
                                 </div>
                             </details>
@@ -1678,7 +1676,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                             <h3 class="text-sm font-bold text-red-900 flex items-center gap-2">
                                                 <i data-lucide="alert-triangle" class="w-4 h-4"></i> System errors
                                             </h3>
-                                            <p class="text-xs text-red-800/80 mt-1">Includes Gmail delivery, SMS (Semaphore), and reminder scheduler issues. Each item is fixed separately—Gmail errors need Gmail SMTP under Configuration, not SMS settings.</p>
+                                            <p class="text-xs text-red-800/80 mt-1">Includes Gmail delivery, SMS (IPROG), and reminder scheduler issues. Each item is fixed separately—Gmail errors need Gmail SMTP under Configuration, not SMS settings.</p>
                                         </div>
                                         <?php if (!empty($activeSystemErrors)): ?>
                                         <span class="inline-flex items-center min-w-[1.5rem] h-6 px-2 rounded-full bg-red-600 text-white text-[10px] font-black"><?= count($activeSystemErrors) ?></span>

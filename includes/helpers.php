@@ -2791,10 +2791,15 @@ function maskEmailAddress(string $email): string
     return $maskedLocal . '@' . $domain;
 }
 
+function staffPasswordOtpTtlMinutes(): int
+{
+    return 15;
+}
+
 function purgeExpiredStaffOtps(PDO $pdo): void
 {
     ensureExtendedSchema($pdo);
-    $pdo->exec('DELETE FROM staff_password_otps WHERE expires_at < NOW()');
+    $pdo->exec('DELETE FROM staff_password_otps WHERE expires_at <= NOW()');
 }
 
 function sendStaffPasswordOtp(PDO $pdo, string $staffId): array
@@ -2823,12 +2828,14 @@ function sendStaffPasswordOtp(PDO $pdo, string $staffId): array
     }
 
     $otp = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-    $expiresAt = date('Y-m-d H:i:s', time() + 900);
+    $ttlMinutes = staffPasswordOtpTtlMinutes();
 
     $pdo->prepare('DELETE FROM staff_password_otps WHERE staff_id = ?')->execute([$staff['staff_id']]);
-    $pdo->prepare(
-        'INSERT INTO staff_password_otps (staff_id, otp_hash, expires_at, attempts) VALUES (?, ?, ?, 0)'
-    )->execute([$staff['staff_id'], password_hash($otp, PASSWORD_DEFAULT), $expiresAt]);
+    $insert = $pdo->prepare(
+        'INSERT INTO staff_password_otps (staff_id, otp_hash, expires_at, attempts)
+         VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ' . $ttlMinutes . ' MINUTE), 0)'
+    );
+    $insert->execute([$staff['staff_id'], password_hash($otp, PASSWORD_DEFAULT)]);
 
     $site = getSiteSettings()['name'];
     $subject = $site . ' — Staff password reset code';
@@ -2836,13 +2843,13 @@ function sendStaffPasswordOtp(PDO $pdo, string $staffId): array
     $plain = "Hello {$displayName},\n\n"
         . "Your ALCROS staff portal password reset code is: {$otp}\n\n"
         . "Staff ID: {$staff['staff_id']}\n"
-        . "This code expires in 15 minutes.\n\n"
+        . "This code expires in {$ttlMinutes} minutes.\n\n"
         . "If you did not request this, ignore this email and contact your administrator.";
     $html = '<p>Hello <strong>' . htmlspecialchars($displayName) . '</strong>,</p>'
         . '<p>Your staff portal password reset code is:</p>'
         . '<p style="font-size:28px;font-weight:800;letter-spacing:6px;color:#2563eb;">' . htmlspecialchars($otp) . '</p>'
         . '<p>Staff ID: <strong>' . htmlspecialchars($staff['staff_id']) . '</strong><br>'
-        . 'This code expires in <strong>15 minutes</strong>.</p>'
+        . 'This code expires in <strong>' . $ttlMinutes . ' minutes</strong>.</p>'
         . '<p style="color:#64748b;font-size:13px;">If you did not request this, ignore this email and contact your administrator.</p>';
 
     if (!sendCitizenEmail($email, $subject, $plain, $html)) {
@@ -2879,7 +2886,11 @@ function resetStaffPasswordWithOtp(PDO $pdo, string $staffId, string $otp, strin
     }
 
     $stmt = $pdo->prepare(
-        'SELECT id, otp_hash, expires_at, attempts FROM staff_password_otps WHERE staff_id = ? ORDER BY id DESC LIMIT 1'
+        'SELECT id, otp_hash, attempts, (expires_at > NOW()) AS is_fresh
+         FROM staff_password_otps
+         WHERE staff_id = ?
+         ORDER BY id DESC
+         LIMIT 1'
     );
     $stmt->execute([$staffId]);
     $row = $stmt->fetch();
@@ -2889,7 +2900,7 @@ function resetStaffPasswordWithOtp(PDO $pdo, string $staffId, string $otp, strin
     if ((int) ($row['attempts'] ?? 0) >= 5) {
         return ['ok' => false, 'message' => 'Too many incorrect attempts. Request a new verification code.'];
     }
-    if (strtotime((string) $row['expires_at']) < time()) {
+    if ((int) ($row['is_fresh'] ?? 0) !== 1) {
         $pdo->prepare('DELETE FROM staff_password_otps WHERE id = ?')->execute([(int) $row['id']]);
 
         return ['ok' => false, 'message' => 'Verification code expired. Request a new code.'];

@@ -210,8 +210,8 @@ function logSmsDelivery(
     try {
         ensureExtendedSchema(getDB());
         $stmt = getDB()->prepare(
-            'INSERT INTO sms_logs (recipient, message, sms_type, reference_code, success, error_message)
-             VALUES (?, ?, ?, ?, ?, ?)'
+            'INSERT INTO delivery_logs (channel, recipient, body, delivery_type, reference_code, success, error_message)
+             VALUES (\'sms\', ?, ?, ?, ?, ?, ?)'
         );
         $stmt->execute([
             $recipient,

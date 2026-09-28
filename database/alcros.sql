@@ -1,9 +1,29 @@
--- ALCROS Civil Registry System - MySQL Schema
--- Import via phpMyAdmin or: mysql -u root < database/alcros.sql
-
+-- ALCROS Civil Registry System - Core MySQL Schema
+-- Import order (phpMyAdmin or CLI):
+--   1. database/alcros.sql
+--   2. database/alcros_print.sql
+--
+-- Table map (phpMyAdmin Designer shows lines for FOREIGN KEY constraints only):
+--   Staff & config     staff, system_settings, staff_password_otps
+--   Citizen services   document_requests, appointments
+--   Queue              queue_tickets, queue_announcements
+--   Civil registry     civil_records + birth/death/marriage_record_details, civil_record_edit_locks
+--   Audit & messaging  activity_logs, delivery_logs
+--   Operations         system_errors
+--   Printing           see alcros_print.sql
+--
+-- phpMyAdmin Designer (two pages: Core + Print, same alcros_db):
+--   C:\xampp\php\php.exe scripts/setup_phpmyadmin_designer.php
+--
 CREATE DATABASE IF NOT EXISTS alcros_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE alcros_db;
 
+-- ---------------------------------------------------------------------------
+-- staff
+-- LCRO staff accounts for the admin portal (login, roles, profile).
+-- staff_id is the business login ID (e.g. ALORAN-001); id is the internal PK.
+-- Referenced in logs/locks by staff_id (string), not always by id.
+-- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS staff (
     id INT AUTO_INCREMENT PRIMARY KEY,
     staff_id VARCHAR(50) NOT NULL UNIQUE,
@@ -18,6 +38,15 @@ CREATE TABLE IF NOT EXISTS staff (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+-- ---------------------------------------------------------------------------
+-- document_requests
+-- Online certificate requests from the public portal (request.php).
+-- tracking_code is what citizens use to track status; soft-deleted via deleted_at.
+-- status drives staff workflow (pending → processing → printing → ready → completed).
+-- civil_record_id links to the registry row staff matched for printing (optional).
+-- print_fill_data stores per-request overlay values for certificate printing (JSON).
+-- appointment_date/time on this row are pickup slots tied to the request when set.
+-- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS document_requests (
     id INT AUTO_INCREMENT PRIMARY KEY,
     tracking_code VARCHAR(20) NOT NULL UNIQUE,
@@ -54,9 +83,18 @@ CREATE TABLE IF NOT EXISTS document_requests (
     deleted_at TIMESTAMP NULL DEFAULT NULL,
     INDEX idx_status (status),
     INDEX idx_citizen_name (last_name, first_name),
-    INDEX idx_deleted_at (deleted_at)
+    INDEX idx_deleted_at (deleted_at),
+    INDEX idx_civil_record (civil_record_id)
 ) ENGINE=InnoDB;
 
+-- ---------------------------------------------------------------------------
+-- appointments
+-- Office visit bookings (book_appointment.php, appointment.php).
+-- appointment_code is the citizen tracking ID for appointments (like tracking_code).
+-- source = standalone vs tied to a document request; tracking_code links when linked.
+-- Reminder_* columns track email/SMS pickup reminders (cron/API).
+-- Soft-deleted via deleted_at; does not replace document_requests (separate flow).
+-- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS appointments (
     id INT AUTO_INCREMENT PRIMARY KEY,
     appointment_code VARCHAR(20) NOT NULL UNIQUE,
@@ -91,6 +129,14 @@ CREATE TABLE IF NOT EXISTS appointments (
     INDEX idx_deleted_at (deleted_at)
 ) ENGINE=InnoDB;
 
+-- ---------------------------------------------------------------------------
+-- queue_tickets
+-- Live queue state for kiosk and staff queue UI (live-queue.php, kiosk.php).
+-- One row per ticket issued today: waiting → serving → completed/skipped.
+-- purpose: walk_in | appointment | document_claim (why they are in line).
+-- reference_code may hold appointment_code or tracking_code for display/call.
+-- window_number set when staff calls the ticket to a service window.
+-- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS queue_tickets (
     id INT AUTO_INCREMENT PRIMARY KEY,
     ticket_number VARCHAR(10) NOT NULL,
@@ -107,7 +153,12 @@ CREATE TABLE IF NOT EXISTS queue_tickets (
     INDEX idx_date (created_at)
 ) ENGINE=InnoDB;
 
--- Sequential speaker queue: one table announcement at a time, ordered by click time.
+-- ---------------------------------------------------------------------------
+-- queue_announcements
+-- Ordered speaker/TTS queue: staff “call ticket” clicks enqueue rows here.
+-- Processed pending → playing → completed so only one announcement runs at a time.
+-- Pairs with queue_tickets (ticket_number + window) but is separate timing/state.
+-- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS queue_announcements (
     id INT AUTO_INCREMENT PRIMARY KEY,
     purpose ENUM('walk_in','appointment','document_claim') NOT NULL,
@@ -121,7 +172,14 @@ CREATE TABLE IF NOT EXISTS queue_announcements (
     INDEX idx_purpose_status (purpose, status)
 ) ENGINE=InnoDB;
 
--- Shared civil registry row (all record types).
+-- ---------------------------------------------------------------------------
+-- civil_records
+-- Master row for each birth/death/marriage registry entry (records.php).
+-- Shared identity fields; type-specific PSA form fields live in *_record_details.
+-- registry/book/page support official register references and print overlays.
+-- print_fill_data: JSON cache of values mapped onto certificate print fields.
+-- Soft-deleted via deleted_at (record hidden, not physically removed).
+-- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS civil_records (
     id INT AUTO_INCREMENT PRIMARY KEY,
     record_type ENUM('birth','death','marriage') NOT NULL,
@@ -145,16 +203,28 @@ CREATE TABLE IF NOT EXISTS civil_records (
     INDEX idx_deleted (deleted_at)
 ) ENGINE=InnoDB;
 
+-- ---------------------------------------------------------------------------
+-- civil_record_edit_locks
+-- Prevents two staff editing the same civil record at once (record_locks.php).
+-- One row per locked record; expires_at TTL; removed when lock released or expired.
+-- civil_record_id PK = at most one active lock row per record.
+-- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS civil_record_edit_locks (
     civil_record_id INT NOT NULL PRIMARY KEY,
     staff_id VARCHAR(32) NOT NULL,
     staff_name VARCHAR(120) NOT NULL DEFAULT '',
     locked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expires_at DATETIME NOT NULL,
-    INDEX idx_expires (expires_at)
+    INDEX idx_expires (expires_at),
+    CONSTRAINT fk_edit_locks_record
+        FOREIGN KEY (civil_record_id) REFERENCES civil_records(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- Birth certificate fields (Form 102).
+-- ---------------------------------------------------------------------------
+-- birth_record_details
+-- 1:1 extension of civil_records for birth certificates (PSA Form 102).
+-- civil_record_id is PK and FK; deleted automatically if parent record deleted.
+-- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS birth_record_details (
     civil_record_id INT NOT NULL PRIMARY KEY,
     sex VARCHAR(10) DEFAULT NULL,
@@ -182,7 +252,11 @@ CREATE TABLE IF NOT EXISTS birth_record_details (
         FOREIGN KEY (civil_record_id) REFERENCES civil_records(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- Death certificate fields (Form 103).
+-- ---------------------------------------------------------------------------
+-- death_record_details
+-- 1:1 extension of civil_records for death certificates (PSA Form 103).
+-- Includes infant/maternal supplemental cause fields where applicable.
+-- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS death_record_details (
     civil_record_id INT NOT NULL PRIMARY KEY,
     sex VARCHAR(10) DEFAULT NULL,
@@ -225,7 +299,11 @@ CREATE TABLE IF NOT EXISTS death_record_details (
         FOREIGN KEY (civil_record_id) REFERENCES civil_records(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- Marriage certificate fields (Form 97).
+-- ---------------------------------------------------------------------------
+-- marriage_record_details
+-- 1:1 extension of civil_records for marriage certificates (PSA Form 97).
+-- Husband/wife blocks, consent, solemnizer, witnesses.
+-- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS marriage_record_details (
     civil_record_id INT NOT NULL PRIMARY KEY,
     husband_name VARCHAR(150) DEFAULT NULL,
@@ -265,6 +343,12 @@ CREATE TABLE IF NOT EXISTS marriage_record_details (
         FOREIGN KEY (civil_record_id) REFERENCES civil_records(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- ---------------------------------------------------------------------------
+-- activity_logs
+-- Staff audit trail: logins, record edits, request status changes, admin actions.
+-- staff_id is the string login ID; details is free-text or structured message.
+-- Exported from System Settings; shown on dashboard and activity-log.php.
+-- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS activity_logs (
     id INT AUTO_INCREMENT PRIMARY KEY,
     staff_id VARCHAR(50) DEFAULT NULL,
@@ -274,72 +358,66 @@ CREATE TABLE IF NOT EXISTS activity_logs (
     INDEX idx_created (created_at)
 ) ENGINE=InnoDB;
 
+-- ---------------------------------------------------------------------------
+-- system_settings
+-- Key-value configuration: office info, portal text, SMTP, queue window, flags.
+-- Read via getSetting()/setSetting() in helpers.php (cached per request).
+-- Print-specific keys are seeded in alcros_print.sql.
+-- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS system_settings (
     setting_key VARCHAR(100) PRIMARY KEY,
     setting_value TEXT,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
--- Persisted admin alerts (sidebar / bell notifications).
-CREATE TABLE IF NOT EXISTS staff_notifications (
+-- ---------------------------------------------------------------------------
+-- delivery_logs
+-- Audit of outbound citizen email and SMS (helpers.php, sms.php).
+-- channel = email | sms; reference_code often tracking/appointment code.
+-- system_errors.php scans failures here for admin “delivery failing” alerts.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS delivery_logs (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    notif_key VARCHAR(80) NOT NULL UNIQUE,
-    type ENUM('pending_request','ready_pickup','queue','appointment','system') NOT NULL DEFAULT 'system',
+    channel ENUM('email','sms') NOT NULL,
+    recipient VARCHAR(150) NOT NULL,
+    subject VARCHAR(255) DEFAULT NULL,
+    body VARCHAR(500) DEFAULT NULL,
+    delivery_type VARCHAR(50) NOT NULL DEFAULT 'general',
+    reference_code VARCHAR(30) DEFAULT NULL,
+    success TINYINT(1) NOT NULL DEFAULT 0,
+    error_message VARCHAR(255) DEFAULT NULL,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_channel_sent (channel, sent_at),
+    INDEX idx_recipient (recipient),
+    INDEX idx_reference (reference_code)
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------------
+-- system_errors
+-- Active operational issues for staff (SMTP missing, SMS failures, maintenance).
+-- error_key is stable for dedupe; resolved_at NULL = still shown in notifications.
+-- Synced into the admin bell via systemErrorsAsNotifications().
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS system_errors (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    error_key VARCHAR(80) NOT NULL UNIQUE,
+    category VARCHAR(30) NOT NULL DEFAULT 'system',
     title VARCHAR(150) NOT NULL,
-    message VARCHAR(255) NOT NULL,
-    detail VARCHAR(100) DEFAULT NULL,
+    reason VARCHAR(500) NOT NULL,
+    fix_action VARCHAR(50) NOT NULL DEFAULT 'acknowledge',
     href VARCHAR(255) DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_type_created (type, created_at)
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP NULL DEFAULT NULL,
+    resolved_by VARCHAR(30) DEFAULT NULL,
+    INDEX idx_active (resolved_at, updated_at)
 ) ENGINE=InnoDB;
 
--- Citizen Gmail delivery audit trail.
-CREATE TABLE IF NOT EXISTS email_logs (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    recipient VARCHAR(150) NOT NULL,
-    subject VARCHAR(255) NOT NULL,
-    email_type VARCHAR(50) NOT NULL DEFAULT 'general',
-    reference_code VARCHAR(30) DEFAULT NULL,
-    success TINYINT(1) NOT NULL DEFAULT 0,
-    error_message VARCHAR(255) DEFAULT NULL,
-    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_recipient (recipient),
-    INDEX idx_reference (reference_code),
-    INDEX idx_sent (sent_at)
-) ENGINE=InnoDB;
-
--- Citizen SMS delivery audit trail (IPROG).
-CREATE TABLE IF NOT EXISTS sms_logs (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    recipient VARCHAR(20) NOT NULL,
-    message VARCHAR(500) NOT NULL,
-    sms_type VARCHAR(50) NOT NULL DEFAULT 'general',
-    reference_code VARCHAR(30) DEFAULT NULL,
-    success TINYINT(1) NOT NULL DEFAULT 0,
-    error_message VARCHAR(255) DEFAULT NULL,
-    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_recipient (recipient),
-    INDEX idx_reference (reference_code),
-    INDEX idx_sent (sent_at)
-) ENGINE=InnoDB;
-
--- Document request status change history.
-CREATE TABLE IF NOT EXISTS request_status_history (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    request_id INT NOT NULL,
-    tracking_code VARCHAR(20) NOT NULL,
-    old_status VARCHAR(20) DEFAULT NULL,
-    new_status VARCHAR(20) NOT NULL,
-    changed_by VARCHAR(50) DEFAULT NULL,
-    notes TEXT DEFAULT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_request (request_id),
-    INDEX idx_tracking (tracking_code),
-    INDEX idx_created (created_at),
-    CONSTRAINT fk_status_history_request
-        FOREIGN KEY (request_id) REFERENCES document_requests(id) ON DELETE CASCADE
-) ENGINE=InnoDB;
-
+-- ---------------------------------------------------------------------------
+-- staff_password_otps
+-- Short-lived hashed OTPs for staff password reset (login flow in helpers.php).
+-- Rows deleted after use, expiry, or max attempts; not long-term credential storage.
+-- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS staff_password_otps (
     id INT AUTO_INCREMENT PRIMARY KEY,
     staff_id VARCHAR(50) NOT NULL,
@@ -370,94 +448,45 @@ INSERT INTO system_settings (setting_key, setting_value) VALUES
 ('portal_description', 'Request document submissions or track application statuses online.'),
 ('queue_window', '1'),
 ('smtp_host', 'smtp.gmail.com'),
-('smtp_port', '587'),
-('print_mode', 'preprinted'),
-('print_global_x_offset_mm', '0'),
-('print_global_y_offset_mm', '0'),
-('print_global_scale_x', '1'),
-('print_global_scale_y', '1'),
-('print_back_orientation_hint', 'flip_long_edge'),
-('print_province', 'Misamis Occidental'),
-('print_city_municipality', 'Aloran'),
-('print_paper_preset', 'legal'),
-('print_paper_width_mm', '215.9'),
-('print_paper_height_mm', '358.9')
+('smtp_port', '587')
 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value);
 
-CREATE TABLE IF NOT EXISTS print_templates (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    certificate_type ENUM('birth','death','marriage') NOT NULL,
-    page_side ENUM('front','back') NOT NULL,
-    form_number VARCHAR(10) NOT NULL,
-    paper_width_mm DECIMAL(8,2) NOT NULL DEFAULT 215.90,
-    paper_height_mm DECIMAL(8,2) NOT NULL DEFAULT 358.90,
-    orientation ENUM('portrait','landscape') NOT NULL DEFAULT 'portrait',
-    margin_top_mm DECIMAL(8,2) NOT NULL DEFAULT 0.00,
-    margin_left_mm DECIMAL(8,2) NOT NULL DEFAULT 0.00,
-    reference_image VARCHAR(255) DEFAULT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uniq_cert_page (certificate_type, page_side)
-) ENGINE=InnoDB;
+-- ---------------------------------------------------------------------------
+-- Foreign keys (phpMyAdmin Designer draws lines only for these, not for app-only links)
+--
+-- ENFORCED (Core ERD):
+--   staff ← staff_password_otps, activity_logs, civil_record_edit_locks
+--   civil_records ← document_requests (optional link), edit_locks, *\_record_details
+--   document_requests ← appointments.tracking_code (when appointment follows a request)
+--
+-- LOGICAL ONLY (no FK — see table comments above):
+--   queue_tickets, queue_announcements  (today's line; reference_code is optional text)
+--   delivery_logs                       (audit; reference_code may be any code)
+--   system_errors, system_settings      (config / alerts, not row parents)
+-- print_jobs FKs: alcros_print.sql
+-- ---------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS print_fields (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    template_id INT NOT NULL,
-    field_name VARCHAR(80) NOT NULL,
-    label VARCHAR(120) DEFAULT NULL,
-    x_mm DECIMAL(8,2) NOT NULL DEFAULT 0.00,
-    y_mm DECIMAL(8,2) NOT NULL DEFAULT 0.00,
-    width_mm DECIMAL(8,2) NOT NULL DEFAULT 50.00,
-    height_mm DECIMAL(8,2) NOT NULL DEFAULT 5.00,
-    font_family VARCHAR(60) NOT NULL DEFAULT 'Arial',
-    font_size DECIMAL(4,1) NOT NULL DEFAULT 10.0,
-    font_weight VARCHAR(20) NOT NULL DEFAULT 'normal',
-    alignment ENUM('left','center','right') NOT NULL DEFAULT 'left',
-    max_length INT NOT NULL DEFAULT 120,
-    line_height DECIMAL(4,2) NOT NULL DEFAULT 1.20,
-    enabled TINYINT(1) NOT NULL DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uniq_template_field (template_id, field_name),
-    CONSTRAINT fk_print_fields_template
-        FOREIGN KEY (template_id) REFERENCES print_templates(id) ON DELETE CASCADE
-) ENGINE=InnoDB;
+ALTER TABLE document_requests
+    ADD CONSTRAINT fk_document_requests_civil_record
+        FOREIGN KEY (civil_record_id) REFERENCES civil_records(id) ON DELETE SET NULL;
 
-CREATE TABLE IF NOT EXISTS print_calibrations (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    template_id INT NOT NULL,
-    x_offset_mm DECIMAL(8,2) NOT NULL DEFAULT 0.00,
-    y_offset_mm DECIMAL(8,2) NOT NULL DEFAULT 0.00,
-    scale_x DECIMAL(8,4) NOT NULL DEFAULT 1.0000,
-    scale_y DECIMAL(8,4) NOT NULL DEFAULT 1.0000,
-    updated_by VARCHAR(50) DEFAULT NULL,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uniq_template_calibration (template_id),
-    CONSTRAINT fk_print_calibrations_template
-        FOREIGN KEY (template_id) REFERENCES print_templates(id) ON DELETE CASCADE
-) ENGINE=InnoDB;
+ALTER TABLE staff_password_otps
+    ADD CONSTRAINT fk_staff_password_otps_staff
+        FOREIGN KEY (staff_id) REFERENCES staff(staff_id) ON DELETE CASCADE;
 
-CREATE TABLE IF NOT EXISTS print_jobs (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    request_id INT DEFAULT NULL,
-    civil_record_id INT DEFAULT NULL,
-    template_id INT NOT NULL,
-    page_side ENUM('front','back') NOT NULL,
-    certificate_type ENUM('birth','death','marriage') NOT NULL,
-    registry_number VARCHAR(50) DEFAULT NULL,
-    book_number VARCHAR(20) DEFAULT NULL,
-    page_number VARCHAR(20) DEFAULT NULL,
-    printer_name VARCHAR(120) DEFAULT NULL,
-    printed_by VARCHAR(50) DEFAULT NULL,
-    print_mode ENUM('preview','test','production') NOT NULL DEFAULT 'production',
-    copies INT NOT NULL DEFAULT 1,
-    status ENUM('queued','completed','failed','cancelled') NOT NULL DEFAULT 'completed',
-    notes TEXT DEFAULT NULL,
-    printed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_request (request_id),
-    INDEX idx_record (civil_record_id),
-    INDEX idx_printed (printed_at),
-    CONSTRAINT fk_print_jobs_template
-        FOREIGN KEY (template_id) REFERENCES print_templates(id) ON DELETE RESTRICT
-) ENGINE=InnoDB;
+ALTER TABLE activity_logs
+    ADD CONSTRAINT fk_activity_logs_staff
+        FOREIGN KEY (staff_id) REFERENCES staff(staff_id) ON DELETE SET NULL;
+
+ALTER TABLE civil_record_edit_locks
+    ADD CONSTRAINT fk_edit_locks_staff
+        FOREIGN KEY (staff_id) REFERENCES staff(staff_id) ON DELETE CASCADE;
+
+ALTER TABLE appointments
+    ADD INDEX idx_tracking_code (tracking_code);
+
+ALTER TABLE appointments
+    ADD CONSTRAINT fk_appointments_document_request
+        FOREIGN KEY (tracking_code) REFERENCES document_requests(tracking_code)
+        ON DELETE SET NULL ON UPDATE CASCADE;
 

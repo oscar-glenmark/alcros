@@ -1,6 +1,6 @@
 <?php
 /**
- * Live-site cloud backup (Hostinger / production).
+ * Live-site cloud backup (production).
  * Creates the ALCROS backup bundle and uploads a zip to Google Cloud Storage.
  */
 

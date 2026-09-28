@@ -1,8 +1,8 @@
 <?php
 /**
- * Hostinger / live-site scheduled backup endpoint.
+ * Live-site scheduled backup endpoint.
  *
- * hPanel → Cron Jobs → every hour:
+ * Server cron → every hour:
  *   curl -s "https://YOUR-DOMAIN.com/api/cloud-backup.php?token=YOUR_TOKEN"
  */
 require_once __DIR__ . '/../config/database.php';

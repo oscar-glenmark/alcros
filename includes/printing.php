@@ -86,6 +86,8 @@ function ensurePrintTables(PDO $pdo): void
             page_side ENUM('front','back') NOT NULL,
             certificate_type ENUM('birth','death','marriage') NOT NULL,
             registry_number VARCHAR(50) DEFAULT NULL,
+            book_number VARCHAR(20) DEFAULT NULL,
+            page_number VARCHAR(20) DEFAULT NULL,
             printer_name VARCHAR(120) DEFAULT NULL,
             printed_by VARCHAR(50) DEFAULT NULL,
             print_mode ENUM('preview','test','production') NOT NULL DEFAULT 'production',
@@ -105,6 +107,7 @@ function ensurePrintTables(PDO $pdo): void
     }
 
     foreach ([
+        static fn (PDO $db) => ensurePrintJobSchemaExtras($db),
         static fn (PDO $db) => ensurePrintRequestColumns($db),
         static fn (PDO $db) => ensurePrintRequestStatuses($db),
         static fn (PDO $db) => seedPrintTemplates($db),
@@ -120,6 +123,44 @@ function ensurePrintTables(PDO $pdo): void
             $step($pdo);
         } catch (Throwable $e) {
             // Non-fatal — keep print pages usable if one migration step fails.
+        }
+    }
+}
+
+function ensurePrintJobSchemaExtras(PDO $pdo): void
+{
+    foreach ([
+        'book_number' => "VARCHAR(20) DEFAULT NULL AFTER registry_number",
+        'page_number' => "VARCHAR(20) DEFAULT NULL AFTER book_number",
+    ] as $column => $definition) {
+        try {
+            $pdo->query("SELECT `{$column}` FROM print_jobs LIMIT 1");
+        } catch (Throwable $e) {
+            try {
+                $pdo->exec("ALTER TABLE print_jobs ADD COLUMN `{$column}` {$definition}");
+            } catch (Throwable $ignored) {
+            }
+        }
+    }
+
+    $constraints = [
+        'fk_print_jobs_request' =>
+            'FOREIGN KEY (request_id) REFERENCES document_requests(id) ON DELETE SET NULL',
+        'fk_print_jobs_civil_record' =>
+            'FOREIGN KEY (civil_record_id) REFERENCES civil_records(id) ON DELETE SET NULL',
+    ];
+
+    foreach ($constraints as $name => $definition) {
+        try {
+            $check = $pdo->prepare(
+                'SELECT COUNT(*) FROM information_schema.table_constraints
+                 WHERE table_schema = DATABASE() AND table_name = ? AND constraint_name = ?'
+            );
+            $check->execute(['print_jobs', $name]);
+            if ((int) $check->fetchColumn() === 0) {
+                $pdo->exec("ALTER TABLE print_jobs ADD CONSTRAINT {$name} {$definition}");
+            }
+        } catch (Throwable $ignored) {
         }
     }
 }

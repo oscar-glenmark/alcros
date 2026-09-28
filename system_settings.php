@@ -406,7 +406,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'regenerate_backup_cron_token' && $isAdmin) {
             alcrosRegenerateCloudBackupCronToken();
             logActivity($currentStaffId, 'Backup Token Regenerated', 'Cloud backup cron URL token was regenerated');
-            settingsFlashSet('success', 'Cron URL token regenerated. Update your Hostinger cron job with the new URL.');
+            settingsFlashSet('success', 'Cron URL token regenerated. Update your server cron job with the new URL.');
             $handled = true;
         }
     } catch (InvalidArgumentException $e) {
@@ -1141,18 +1141,18 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
 
                                 <div class="rounded-xl border border-indigo-200 bg-indigo-50/40 p-5 mb-8">
                                     <h3 class="text-base font-black text-slate-900 mb-1 flex items-center gap-2">
-                                        <i data-lucide="cloud" class="w-4 h-4 text-indigo-600"></i> Live site backup (Hostinger / production)
+                                        <i data-lucide="cloud" class="w-4 h-4 text-indigo-600"></i> Live site backup (production)
                                     </h3>
                                     <p class="text-xs text-slate-600 mb-4 leading-relaxed">Use this when ALCROS is online. Every run exports <strong>all current</strong> civil records, staff, and print settings from the live database, then uploads a zip to <strong>Google Cloud Storage</strong>. New records added on the live site are included the next time backup runs.</p>
 
                                     <details class="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 mb-5 text-xs text-slate-600 leading-relaxed" open>
-                                        <summary class="font-bold text-slate-900 cursor-pointer text-sm">Full setup guide — Google Cloud + ALCROS + Hostinger (click to collapse)</summary>
+                                        <summary class="font-bold text-slate-900 cursor-pointer text-sm">Full setup guide — Google Cloud + ALCROS (click to collapse)</summary>
 
-                                        <p class="mt-4 mb-2 text-slate-500">Do these steps <strong>once</strong> after ALCROS is live on Hostinger. Total time: about 20–30 minutes. You need a Google account and a credit/debit card for Google Cloud billing (small backups usually cost pennies per month).</p>
+                                        <p class="mt-4 mb-2 text-slate-500">Do these steps <strong>once</strong> after ALCROS is live on your server. Total time: about 20–30 minutes. You need a Google account and a credit/debit card for Google Cloud billing (small backups usually cost pennies per month).</p>
 
                                         <div class="rounded-lg border border-blue-100 bg-blue-50/70 p-4 mb-4 text-slate-700">
                                             <p class="font-bold text-slate-900 mb-1">What is the Google service account JSON?</p>
-                                            <p class="mb-2">It is a small key file from Google (not created by ALCROS). ALCROS uses it to upload backups to your private cloud bucket <strong>without</strong> your personal Google password — so hourly cron backups work automatically on Hostinger.</p>
+                                            <p class="mb-2">It is a small key file from Google (not created by ALCROS). ALCROS uses it to upload backups to your private cloud bucket <strong>without</strong> your personal Google password — so hourly cron backups can run automatically on your server.</p>
                                             <p class="font-semibold text-slate-800 mb-1">You get it from:</p>
                                             <p>Google Cloud Console → IAM &amp; Admin → Service Accounts → Keys → Add key → JSON → file downloads to your computer → you upload that file below on this page.</p>
                                         </div>
@@ -1307,15 +1307,15 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                             </section>
 
                                             <section>
-                                                <h4 class="text-sm font-black text-indigo-900 mb-2">Part 3 — Hostinger (automatic hourly backups)</h4>
+                                                <h4 class="text-sm font-black text-indigo-900 mb-2">Part 3 — Server cron (automatic hourly backups)</h4>
                                                 <div class="rounded-lg border border-slate-100 bg-slate-50/80 p-4">
                                                     <p class="font-bold text-slate-800 mb-1">Step 11 — Add a cron job so new live records are backed up automatically</p>
                                                     <ol class="list-decimal pl-4 space-y-1.5">
-                                                        <li>Log in to <strong>Hostinger hPanel</strong></li>
-                                                        <li>Go to <strong>Advanced</strong> → <strong>Cron Jobs</strong></li>
+                                                        <li>Log in to your hosting control panel</li>
+                                                        <li>Open <strong>Cron Jobs</strong> (or equivalent)</li>
                                                         <li>Click <strong>Create cron job</strong></li>
                                                         <li><strong>Schedule:</strong> every hour (<code class="bg-white px-1 rounded border border-slate-200">0 * * * *</code>) — or every 15 minutes if your plan allows</li>
-                                                        <li><strong>Command:</strong> copy the full <code class="bg-white px-1 rounded border border-slate-200">curl</code> line from the <strong>Hostinger cron job</strong> box below this guide</li>
+                                                        <li><strong>Command:</strong> copy the full <code class="bg-white px-1 rounded border border-slate-200">curl</code> line from the <strong>cron job</strong> box below this guide</li>
                                                         <li>Save the cron job</li>
                                                         <li>After 1 hour, check <strong>Cloud backup files</strong> on this page (Step 10) — a new zip should appear</li>
                                                     </ol>
@@ -1329,7 +1329,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                                     <li>Test connection succeeds</li>
                                                     <li>Backup to cloud now succeeds</li>
                                                     <li><strong>Cloud backup files</strong> shows at least one zip (or you see it in Google Cloud bucket)</li>
-                                                    <li>Hostinger cron is saved (for automatic backups)</li>
+                                                    <li>Server cron job is saved (for automatic backups)</li>
                                                 </ul>
                                             </div>
                                         </div>
@@ -1470,9 +1470,9 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     </div>
 
                                     <div class="rounded-xl border border-slate-200 bg-white p-4">
-                                        <p class="text-sm font-bold text-slate-900 mb-2">Hostinger cron job (automatic backups)</p>
+                                        <p class="text-sm font-bold text-slate-900 mb-2">Cron job (automatic backups)</p>
                                         <ol class="text-xs text-slate-600 space-y-2 list-decimal pl-4 mb-3">
-                                            <li>Hostinger hPanel → <strong>Advanced</strong> → <strong>Cron Jobs</strong></li>
+                                            <li>Hosting control panel → <strong>Cron Jobs</strong></li>
                                             <li>Create a job: <strong>every hour</strong> (or every 15 minutes if allowed)</li>
                                             <li>Paste this command (replace nothing if URL is already correct):</li>
                                         </ol>
@@ -1493,7 +1493,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                 <?php if ($backupIsLocalOffice): ?>
                                 <div class="rounded-xl border border-amber-100 bg-amber-50/60 p-4 mb-6 text-xs text-amber-950">
                                     <p class="font-bold flex items-center gap-2"><i data-lucide="monitor" class="w-4 h-4"></i> Optional — local XAMPP only (Duplicati)</p>
-                                    <p class="mt-1 text-amber-900/85 leading-relaxed">The section below is only for backing up ALCROS on this Windows PC. When the site is live on Hostinger, use the <strong>Live site backup</strong> section above instead.</p>
+                                    <p class="mt-1 text-amber-900/85 leading-relaxed">The section below is only for backing up ALCROS on this Windows PC. When the site is live on a server, use the <strong>Live site backup</strong> section above instead.</p>
                                 </div>
 
                                 <div class="rounded-xl border border-slate-200 bg-white p-5 mb-8">

@@ -15,9 +15,6 @@ try {
 
     $limit = isset($_GET['limit']) ? max(1, min(100, (int) $_GET['limit'])) : 20;
     $notifications = fetchNotifications($pdo, $limit);
-    foreach ($notifications as $notification) {
-        upsertStaffNotification($notification);
-    }
 
     $counts = fetchSidebarActionCounts($pdo);
 

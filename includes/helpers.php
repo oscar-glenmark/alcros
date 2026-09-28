@@ -283,6 +283,180 @@ function logActivity(?string $staffId, string $action, string $details = ''): vo
     }
 }
 
+function alcrosTableExists(PDO $pdo, string $table): bool
+{
+    static $cache = [];
+    if (array_key_exists($table, $cache)) {
+        return $cache[$table];
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM information_schema.tables
+         WHERE table_schema = DATABASE() AND table_name = ?'
+    );
+    $stmt->execute([$table]);
+    $cache[$table] = (int) $stmt->fetchColumn() > 0;
+
+    return $cache[$table];
+}
+
+function ensureDeliveryLogsTable(PDO $pdo): void
+{
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS delivery_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            channel ENUM('email','sms') NOT NULL,
+            recipient VARCHAR(150) NOT NULL,
+            subject VARCHAR(255) DEFAULT NULL,
+            body VARCHAR(500) DEFAULT NULL,
+            delivery_type VARCHAR(50) NOT NULL DEFAULT 'general',
+            reference_code VARCHAR(30) DEFAULT NULL,
+            success TINYINT(1) NOT NULL DEFAULT 0,
+            error_message VARCHAR(255) DEFAULT NULL,
+            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_channel_sent (channel, sent_at),
+            INDEX idx_recipient (recipient),
+            INDEX idx_reference (reference_code)
+        ) ENGINE=InnoDB"
+    );
+}
+
+function migrateLegacyAlcrosSchema(PDO $pdo): void
+{
+    ensureDeliveryLogsTable($pdo);
+
+    if (alcrosTableExists($pdo, 'email_logs')) {
+        $pdo->exec(
+            "INSERT INTO delivery_logs (channel, recipient, subject, body, delivery_type, reference_code, success, error_message, sent_at)
+             SELECT 'email', recipient, subject, NULL, email_type, reference_code, success, error_message, sent_at
+             FROM email_logs"
+        );
+        $pdo->exec('DROP TABLE email_logs');
+    }
+
+    if (alcrosTableExists($pdo, 'sms_logs')) {
+        $pdo->exec(
+            "INSERT INTO delivery_logs (channel, recipient, subject, body, delivery_type, reference_code, success, error_message, sent_at)
+             SELECT 'sms', recipient, NULL, message, sms_type, reference_code, success, error_message, sent_at
+             FROM sms_logs"
+        );
+        $pdo->exec('DROP TABLE sms_logs');
+    }
+
+    if (alcrosTableExists($pdo, 'staff_notifications')) {
+        $pdo->exec('DROP TABLE staff_notifications');
+    }
+
+    if (alcrosTableExists($pdo, 'request_status_history')) {
+        try {
+            $pdo->exec(
+                "INSERT INTO activity_logs (staff_id, action, details, created_at)
+                 SELECT COALESCE(NULLIF(changed_by, ''), 'system'),
+                        'Request status change',
+                        CONCAT(
+                            '#', request_id, ' ', tracking_code, ': ',
+                            IFNULL(old_status, '(none)'), ' → ', new_status,
+                            IF(notes IS NOT NULL AND notes != '', CONCAT(' — ', notes), '')
+                        ),
+                        created_at
+                 FROM request_status_history"
+            );
+        } catch (PDOException $e) {
+            // Non-fatal if activity_logs is unavailable.
+        }
+        $pdo->exec('DROP TABLE request_status_history');
+    }
+}
+
+function alcrosForeignKeyExists(PDO $pdo, string $constraintName): bool
+{
+    $stmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM information_schema.table_constraints
+         WHERE table_schema = DATABASE()
+           AND constraint_name = ?
+           AND constraint_type = 'FOREIGN KEY'"
+    );
+    $stmt->execute([$constraintName]);
+
+    return (int) $stmt->fetchColumn() > 0;
+}
+
+function ensureCoreForeignKeys(PDO $pdo): void
+{
+    if (!alcrosTableExists($pdo, 'staff')) {
+        return;
+    }
+
+    try {
+        $pdo->exec(
+            'UPDATE document_requests SET civil_record_id = NULL
+             WHERE civil_record_id IS NOT NULL
+               AND civil_record_id NOT IN (SELECT id FROM civil_records)'
+        );
+        $pdo->exec(
+            "UPDATE appointments SET tracking_code = NULL
+             WHERE tracking_code IS NOT NULL AND tracking_code != ''
+               AND tracking_code NOT IN (SELECT tracking_code FROM document_requests)"
+        );
+        $pdo->exec(
+            "UPDATE activity_logs SET staff_id = NULL
+             WHERE staff_id IS NOT NULL AND staff_id != ''
+               AND staff_id NOT IN (SELECT staff_id FROM staff)"
+        );
+        $pdo->exec(
+            "DELETE FROM civil_record_edit_locks
+             WHERE staff_id != '' AND staff_id NOT IN (SELECT staff_id FROM staff)"
+        );
+    } catch (PDOException $e) {
+        // Continue; ALTER may still succeed on clean data.
+    }
+
+    try {
+        $pdo->query('SELECT tracking_code FROM appointments LIMIT 1');
+        $index = $pdo->query(
+            "SHOW INDEX FROM appointments WHERE Key_name = 'idx_tracking_code'"
+        )->fetch();
+        if ($index === false) {
+            $pdo->exec('ALTER TABLE appointments ADD INDEX idx_tracking_code (tracking_code)');
+        }
+    } catch (PDOException $e) {
+        // Non-fatal.
+    }
+
+    $statements = [
+        'fk_edit_locks_record' =>
+            'ALTER TABLE civil_record_edit_locks ADD CONSTRAINT fk_edit_locks_record
+             FOREIGN KEY (civil_record_id) REFERENCES civil_records(id) ON DELETE CASCADE',
+        'fk_document_requests_civil_record' =>
+            'ALTER TABLE document_requests ADD CONSTRAINT fk_document_requests_civil_record
+             FOREIGN KEY (civil_record_id) REFERENCES civil_records(id) ON DELETE SET NULL',
+        'fk_staff_password_otps_staff' =>
+            'ALTER TABLE staff_password_otps ADD CONSTRAINT fk_staff_password_otps_staff
+             FOREIGN KEY (staff_id) REFERENCES staff(staff_id) ON DELETE CASCADE',
+        'fk_activity_logs_staff' =>
+            'ALTER TABLE activity_logs ADD CONSTRAINT fk_activity_logs_staff
+             FOREIGN KEY (staff_id) REFERENCES staff(staff_id) ON DELETE SET NULL',
+        'fk_edit_locks_staff' =>
+            'ALTER TABLE civil_record_edit_locks ADD CONSTRAINT fk_edit_locks_staff
+             FOREIGN KEY (staff_id) REFERENCES staff(staff_id) ON DELETE CASCADE',
+        'fk_appointments_document_request' =>
+            'ALTER TABLE appointments ADD CONSTRAINT fk_appointments_document_request
+             FOREIGN KEY (tracking_code) REFERENCES document_requests(tracking_code)
+             ON DELETE SET NULL ON UPDATE CASCADE',
+    ];
+
+    foreach ($statements as $name => $sql) {
+        if (alcrosForeignKeyExists($pdo, $name)) {
+            continue;
+        }
+        try {
+            $pdo->exec($sql);
+        } catch (PDOException $e) {
+            // Orphan rows or partial installs — FK optional for runtime.
+        }
+    }
+}
+
 function ensureExtendedSchema(PDO $pdo): void
 {
     static $ensured = false;
@@ -291,73 +465,8 @@ function ensureExtendedSchema(PDO $pdo): void
     }
     $ensured = true;
 
-    $pdo->exec(
-        "CREATE TABLE IF NOT EXISTS staff_notifications (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            notif_key VARCHAR(80) NOT NULL UNIQUE,
-            type ENUM('pending_request','ready_pickup','queue','appointment','system') NOT NULL DEFAULT 'system',
-            title VARCHAR(150) NOT NULL,
-            message VARCHAR(255) NOT NULL,
-            detail VARCHAR(100) DEFAULT NULL,
-            href VARCHAR(255) DEFAULT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_type_created (type, created_at)
-        ) ENGINE=InnoDB"
-    );
-
-    $pdo->exec(
-        "CREATE TABLE IF NOT EXISTS email_logs (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            recipient VARCHAR(150) NOT NULL,
-            subject VARCHAR(255) NOT NULL,
-            email_type VARCHAR(50) NOT NULL DEFAULT 'general',
-            reference_code VARCHAR(30) DEFAULT NULL,
-            success TINYINT(1) NOT NULL DEFAULT 0,
-            error_message VARCHAR(255) DEFAULT NULL,
-            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_recipient (recipient),
-            INDEX idx_reference (reference_code),
-            INDEX idx_sent (sent_at)
-        ) ENGINE=InnoDB"
-    );
-
-    $pdo->exec(
-        "CREATE TABLE IF NOT EXISTS sms_logs (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            recipient VARCHAR(20) NOT NULL,
-            message VARCHAR(500) NOT NULL,
-            sms_type VARCHAR(50) NOT NULL DEFAULT 'general',
-            reference_code VARCHAR(30) DEFAULT NULL,
-            success TINYINT(1) NOT NULL DEFAULT 0,
-            error_message VARCHAR(255) DEFAULT NULL,
-            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_recipient (recipient),
-            INDEX idx_reference (reference_code),
-            INDEX idx_sent (sent_at)
-        ) ENGINE=InnoDB"
-    );
-
-    try {
-        $pdo->query('SELECT 1 FROM request_status_history LIMIT 1');
-    } catch (PDOException) {
-        $pdo->exec(
-            "CREATE TABLE IF NOT EXISTS request_status_history (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                request_id INT NOT NULL,
-                tracking_code VARCHAR(20) NOT NULL,
-                old_status VARCHAR(20) DEFAULT NULL,
-                new_status VARCHAR(20) NOT NULL,
-                changed_by VARCHAR(50) DEFAULT NULL,
-                notes TEXT DEFAULT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_request (request_id),
-                INDEX idx_tracking (tracking_code),
-                INDEX idx_created (created_at),
-                CONSTRAINT fk_status_history_request
-                    FOREIGN KEY (request_id) REFERENCES document_requests(id) ON DELETE CASCADE
-            ) ENGINE=InnoDB"
-        );
-    }
+    ensureDeliveryLogsTable($pdo);
+    migrateLegacyAlcrosSchema($pdo);
 
     try {
         $pdo->exec("UPDATE staff SET role = 'Administrator' WHERE role = 'Registrar'");
@@ -377,6 +486,8 @@ function ensureExtendedSchema(PDO $pdo): void
             INDEX idx_expires (expires_at)
         ) ENGINE=InnoDB"
     );
+
+    ensureCoreForeignKeys($pdo);
 }
 
 function logEmailDelivery(
@@ -390,8 +501,8 @@ function logEmailDelivery(
     try {
         ensureExtendedSchema(getDB());
         $stmt = getDB()->prepare(
-            'INSERT INTO email_logs (recipient, subject, email_type, reference_code, success, error_message)
-             VALUES (?, ?, ?, ?, ?, ?)'
+            'INSERT INTO delivery_logs (channel, recipient, subject, delivery_type, reference_code, success, error_message)
+             VALUES (\'email\', ?, ?, ?, ?, ?, ?)'
         );
         $stmt->execute([
             $recipient,
@@ -415,45 +526,15 @@ function logRequestStatusChange(
     ?string $changedBy = null,
     ?string $notes = null
 ): void {
-    try {
-        ensureExtendedSchema($pdo);
-        $stmt = $pdo->prepare(
-            'INSERT INTO request_status_history (request_id, tracking_code, old_status, new_status, changed_by, notes)
-             VALUES (?, ?, ?, ?, ?, ?)'
-        );
-        $stmt->execute([$requestId, $trackingCode, $oldStatus, $newStatus, $changedBy, $notes]);
-    } catch (PDOException $e) {
-        // Non-fatal if logging fails
-    }
-}
-
-function upsertStaffNotification(array $item): void
-{
-    try {
-        ensureExtendedSchema(getDB());
-        $stmt = getDB()->prepare(
-            'INSERT INTO staff_notifications (notif_key, type, title, message, detail, href, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE
-                type = VALUES(type),
-                title = VALUES(title),
-                message = VALUES(message),
-                detail = VALUES(detail),
-                href = VALUES(href),
-                created_at = VALUES(created_at)'
-        );
-        $stmt->execute([
-            $item['id'] ?? $item['notif_key'] ?? '',
-            $item['type'] ?? 'system',
-            $item['title'] ?? '',
-            $item['message'] ?? '',
-            $item['detail'] ?? null,
-            $item['href'] ?? null,
-            $item['created_at'] ?? date('Y-m-d H:i:s'),
-        ]);
-    } catch (PDOException $e) {
-        // Non-fatal if sync fails
-    }
+    $details = sprintf(
+        '#%d %s: %s → %s%s',
+        $requestId,
+        $trackingCode,
+        $oldStatus ?? '(none)',
+        $newStatus,
+        ($notes !== null && trim($notes) !== '') ? ' — ' . trim($notes) : ''
+    );
+    logActivity($changedBy, 'Request status change', $details);
 }
 
 /** @return array<string, string> */

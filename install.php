@@ -1,108 +1,119 @@
-<?php
-/**
- * One-time database setup for ALCROS.
- * Creates empty tables with default administrator — no other sample records.
- */
-require_once __DIR__ . '/config/database.php';
-require_once __DIR__ . '/includes/helpers.php';
-require_once __DIR__ . '/includes/scripts.php';
-
-$sqlFile = __DIR__ . '/database/alcros.sql';
-$messages = [];
-$error = null;
-$alreadyInstalled = databaseIsInstalled();
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if ($alreadyInstalled) {
-        $error = 'Database is already installed. Re-running setup from the web is disabled for security.';
-    } else {
-        try {
-            if (!mysqlServerUp()) {
-                throw new RuntimeException('MySQL is not running. Start it in the XAMPP Control Panel first.');
-            }
-            if (!is_file($sqlFile)) {
-                throw new RuntimeException('SQL file not found: database/alcros.sql');
-            }
-
-            $pdo = new PDO('mysql:host=' . DB_HOST . ';charset=' . DB_CHARSET, DB_USER, DB_PASS, [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            ]);
-            $pdo->exec(file_get_contents($sqlFile));
-
-            require_once __DIR__ . '/includes/record_locks.php';
-            require_once __DIR__ . '/includes/printing.php';
-            $dbPdo = getDB();
-            ensureCivilRecordEditLocksTable($dbPdo);
-            ensurePrintTables($dbPdo);
-
-            $flagDir = __DIR__ . '/storage';
-            if (!is_dir($flagDir)) {
-                mkdir($flagDir, 0755, true);
-            }
-            file_put_contents($flagDir . '/installed.txt', date('c'));
-
-            $messages[] = 'Database installed successfully.';
-            $messages[] = 'Sign in at the staff portal and change the default administrator password immediately.';
-            $alreadyInstalled = true;
-        } catch (Throwable $e) {
-            $error = $e->getMessage();
-        }
-    }
-}
-?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <link rel="icon" type="image/png" href="images/favicon.png?v=2">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ALCROS Database Setup</title>
-    <?= vendorScriptTag('tailwindcss.js') ?>
-    <?= publicStylesheet('back-home') ?>
-</head>
-<body class="bg-gray-50 min-h-screen flex items-center justify-center p-6">
-    <div class="max-w-md w-full bg-white rounded-2xl shadow p-8 border border-gray-100">
-        <h1 class="text-xl font-black text-slate-900 mb-2">ALCROS Database Setup</h1>
-
-        <?php if ($error): ?>
-        <div class="mb-4 p-3 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg"><?= htmlspecialchars($error) ?></div>
-        <?php endif; ?>
-
-        <?php foreach ($messages as $msg): ?>
-        <div class="mb-4 p-3 bg-green-50 border border-green-100 text-green-700 text-sm rounded-lg"><?= $msg ?></div>
-        <?php endforeach; ?>
-
-        <?php if ($alreadyInstalled && $_SERVER['REQUEST_METHOD'] !== 'POST'): ?>
-        <div class="mb-4 p-4 bg-green-50 border border-green-100 rounded-xl">
-            <p class="text-sm font-bold text-green-800 mb-1">Already installed</p>
-            <p class="text-xs text-green-700">Database <code class="bg-white px-1 rounded">alcros_db</code> is ready. You do <strong>not</strong> need to install again when restarting XAMPP — just start MySQL.</p>
-        </div>
-        <a href="index.php" class="back-home back-home--primary block mb-3">Go to ALCROS Home</a>
-        <a href="login.php" class="block w-full text-center border border-gray-200 text-gray-600 rounded-xl py-3 text-sm font-bold">Staff Login</a>
-        <details class="mt-4">
-            <summary class="text-xs text-gray-400 cursor-pointer hover:text-gray-600">Re-run setup anyway</summary>
-            <p class="text-[11px] text-amber-700 mt-3">Web re-install is disabled after the first setup. Use phpMyAdmin or CLI if you need to rebuild the database.</p>
-        </details>
-        <?php else: ?>
-
-        <p class="text-sm text-gray-500 mb-6">Creates <code class="bg-gray-100 px-1 rounded">alcros_db</code> with empty tables and the default administrator. No other sample records.</p>
-
-        <?php if (empty($messages)): ?>
-        <?php if (!mysqlServerUp()): ?>
-        <div class="mb-4 p-3 bg-amber-50 border border-amber-100 text-amber-800 text-sm rounded-lg">
-            Start <strong>MySQL</strong> in XAMPP Control Panel first.
-        </div>
-        <?php endif; ?>
-        <form method="POST">
-            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 text-sm font-bold" <?= mysqlServerUp() ? '' : 'disabled' ?>>
-                Install Database
-            </button>
-        </form>
-        <?php else: ?>
-        <a href="login.php" class="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 text-sm font-bold mt-2">Staff Login</a>
-        <a href="index.php" class="back-home back-home--outline block mt-2">Go to ALCROS Home</a>
-        <?php endif; ?>
-        <?php endif; ?>
-    </div>
-</body>
-</html>
+<?php
+/**
+ * One-time database setup for ALCROS.
+ * Creates empty tables with default administrator — no other sample records.
+ */
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/includes/helpers.php';
+require_once __DIR__ . '/includes/scripts.php';
+
+$sqlFile = __DIR__ . '/database/alcros.sql';
+$messages = [];
+$error = null;
+$alreadyInstalled = databaseIsInstalled();
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if ($alreadyInstalled) {
+        $error = 'Database is already installed. Re-running setup from the web is disabled for security.';
+    } else {
+        try {
+            if (!mysqlServerUp()) {
+                throw new RuntimeException(
+                    alcrosIsLocalXamppDefaults()
+                        ? 'MySQL is not running. Start it in the XAMPP Control Panel first.'
+                        : 'Cannot connect to MySQL. Check config/database.local.php or ALCROS_DB_* environment variables.'
+                );
+            }
+            if (!is_file($sqlFile)) {
+                throw new RuntimeException('SQL file not found: database/alcros.sql');
+            }
+
+            $pdo = new PDO('mysql:host=' . DB_HOST . ';charset=' . DB_CHARSET, DB_USER, DB_PASS, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            ]);
+            $pdo->exec(file_get_contents($sqlFile));
+
+            require_once __DIR__ . '/includes/record_locks.php';
+            require_once __DIR__ . '/includes/printing.php';
+            $dbPdo = getDB();
+            ensureCivilRecordEditLocksTable($dbPdo);
+            ensurePrintTables($dbPdo);
+            ensureExtendedSchema($dbPdo);
+            require_once __DIR__ . '/includes/system_errors.php';
+            ensureSystemErrorsTable($dbPdo);
+
+            $flagDir = __DIR__ . '/storage';
+            if (!is_dir($flagDir)) {
+                mkdir($flagDir, 0755, true);
+            }
+            file_put_contents($flagDir . '/installed.txt', date('c'));
+
+            $messages[] = 'Database installed successfully.';
+            $messages[] = 'Sign in at the staff portal and change the default administrator password immediately.';
+            $alreadyInstalled = true;
+        } catch (Throwable $e) {
+            $error = $e->getMessage();
+        }
+    }
+}
+
+$dbLabel = htmlspecialchars(DB_NAME, ENT_QUOTES, 'UTF-8');
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="images/favicon.png?v=2">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ALCROS Database Setup</title>
+    <?= vendorScriptTag('tailwindcss.js') ?>
+    <?= publicStylesheet('back-home') ?>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-6">
+    <div class="max-w-md w-full bg-white rounded-2xl shadow p-8 border border-gray-100">
+        <h1 class="text-xl font-black text-slate-900 mb-2">ALCROS Database Setup</h1>
+
+        <?php if ($error): ?>
+        <div class="mb-4 p-3 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg"><?= htmlspecialchars($error) ?></div>
+        <?php endif; ?>
+
+        <?php foreach ($messages as $msg): ?>
+        <div class="mb-4 p-3 bg-green-50 border border-green-100 text-green-700 text-sm rounded-lg"><?= htmlspecialchars($msg) ?></div>
+        <?php endforeach; ?>
+
+        <?php if ($alreadyInstalled && $_SERVER['REQUEST_METHOD'] !== 'POST'): ?>
+        <div class="mb-4 p-4 bg-green-50 border border-green-100 rounded-xl">
+            <p class="text-sm font-bold text-green-800 mb-1">Already installed</p>
+            <p class="text-xs text-green-700">Database <code class="bg-white px-1 rounded"><?= $dbLabel ?></code> is ready. You do <strong>not</strong> need to install again when restarting XAMPP — just start MySQL.</p>
+        </div>
+        <a href="index.php" class="back-home back-home--primary block mb-3">Go to ALCROS Home</a>
+        <a href="login.php" class="block w-full text-center border border-gray-200 text-gray-600 rounded-xl py-3 text-sm font-bold">Staff Login</a>
+        <details class="mt-4">
+            <summary class="text-xs text-gray-400 cursor-pointer hover:text-gray-600">Re-run setup anyway</summary>
+            <p class="text-[11px] text-amber-700 mt-3">Web re-install is disabled after the first setup. Use phpMyAdmin or CLI if you need to rebuild the database.</p>
+        </details>
+        <?php else: ?>
+
+        <p class="text-sm text-gray-500 mb-6">Installs into <code class="bg-gray-100 px-1 rounded"><?= $dbLabel ?></code> from <code class="bg-gray-100 px-1 rounded text-[11px]">database/alcros.sql</code>.</p>
+
+        <?php if (empty($messages)): ?>
+        <?php if (!mysqlServerUp()): ?>
+        <div class="mb-4 p-3 bg-amber-50 border border-amber-100 text-amber-800 text-sm rounded-lg">
+            <?= alcrosIsLocalXamppDefaults()
+                ? 'Start <strong>MySQL</strong> in XAMPP Control Panel first.'
+                : 'Cannot connect to MySQL. Check <strong>config/database.local.php</strong>.' ?>
+        </div>
+        <?php endif; ?>
+        <form method="POST">
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 text-sm font-bold" <?= mysqlServerUp() ? '' : 'disabled' ?>>
+                Install Database
+            </button>
+        </form>
+        <?php else: ?>
+        <a href="login.php" class="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 text-sm font-bold mt-2">Staff Login</a>
+        <a href="index.php" class="back-home back-home--outline block mt-2">Go to ALCROS Home</a>
+        <?php endif; ?>
+        <?php endif; ?>
+    </div>
+</body>
+</html>

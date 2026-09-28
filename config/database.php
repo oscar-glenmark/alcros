@@ -1,12 +1,37 @@
-<?php
+﻿<?php
 /**
- * ALCROS MySQL connection
+ * ALCROS MySQL connection.
+ * Local XAMPP: defaults below.
+ * Production: config/database.local.php (gitignored) or ALCROS_DB_* env vars.
  */
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'alcros_db');
-define('DB_USER', 'root');
-define('DB_PASS', '');
-define('DB_CHARSET', 'utf8mb4');
+$localConfig = __DIR__ . '/database.local.php';
+if (is_file($localConfig)) {
+    require $localConfig;
+}
+
+if (!defined('DB_HOST')) {
+    define('DB_HOST', (string) (getenv('ALCROS_DB_HOST') ?: 'localhost'));
+}
+if (!defined('DB_NAME')) {
+    define('DB_NAME', (string) (getenv('ALCROS_DB_NAME') ?: 'alcros_db'));
+}
+if (!defined('DB_USER')) {
+    define('DB_USER', (string) (getenv('ALCROS_DB_USER') ?: 'root'));
+}
+if (!defined('DB_PASS')) {
+    define('DB_PASS', (string) (getenv('ALCROS_DB_PASS') ?: ''));
+}
+if (!defined('DB_CHARSET')) {
+    define('DB_CHARSET', 'utf8mb4');
+}
+
+function alcrosIsLocalXamppDefaults(): bool
+{
+    return DB_HOST === 'localhost'
+        && DB_NAME === 'alcros_db'
+        && DB_USER === 'root'
+        && DB_PASS === '';
+}
 
 function dbUnavailablePage(string $title, string $help, string $msg): never
 {
@@ -30,7 +55,7 @@ function mysqlServerUp(): bool
     }
 }
 
-/** Is alcros_db created with the staff table? (already installed) */
+/** Is the configured database installed (staff table present)? */
 function databaseIsInstalled(): bool
 {
     if (!mysqlServerUp()) {
@@ -50,25 +75,33 @@ function databaseIsInstalled(): bool
     }
 }
 
-/** User-friendly message when a page catches a database error (MySQL stopped vs not installed). */
+/** User-friendly message when a page catches a database error. */
 function dbConnectionHelpMessage(): string
 {
     if (!mysqlServerUp()) {
-        return 'MySQL is not running. Start it in the XAMPP Control Panel, then refresh this page.';
+        if (alcrosIsLocalXamppDefaults()) {
+            return 'MySQL is not running. Start it in the XAMPP Control Panel, then refresh this page.';
+        }
+
+        return 'Cannot connect to MySQL. Check config/database.local.php or ALCROS_DB_* environment variables.';
     }
     if (!databaseIsInstalled()) {
-        return 'Database not installed yet. Open install.php once while MySQL is running.';
+        return 'Database not installed yet. Run install.php once or import database/alcros.sql in phpMyAdmin.';
     }
-    return 'Database error. Check that MySQL is running in XAMPP.';
+
+    return 'Database error. Verify MySQL credentials and that the user can access database ' . DB_NAME . '.';
 }
 
 function createDBConnection(): PDO
 {
     if (!mysqlServerUp()) {
+        $help = alcrosIsLocalXamppDefaults()
+            ? 'Start <strong>MySQL</strong> in the XAMPP Control Panel, then refresh this page. You do <em>not</em> need to run install.php again if you already installed before.'
+            : 'Check <strong>config/database.local.php</strong> or your server MySQL settings.';
         dbUnavailablePage(
-            'MySQL Is Not Running',
-            'Start <strong>MySQL</strong> in the XAMPP Control Panel, then refresh this page. You do <em>not</em> need to run install.php again if you already installed before.',
-            'Connection refused (MySQL service stopped).'
+            'MySQL Connection Failed',
+            $help,
+            'Connection refused or access denied.'
         );
     }
 
@@ -88,12 +121,12 @@ function createDBConnection(): PDO
         $msg = $e->getMessage();
         if (str_contains($msg, 'Unknown database')) {
             dbUnavailablePage(
-                'Database Not Installed Yet',
-                'Open <a href="install.php" class="text-blue-600 font-bold">install.php</a> <strong>once</strong> while MySQL is running. After that, you only need install.php again if the database was deleted.',
+                'Database Not Found',
+                'Run <a href="install.php" class="text-blue-600 font-bold">install.php</a> once, or create database <code>' . htmlspecialchars(DB_NAME) . '</code> and import database/alcros.sql.',
                 $msg
             );
         }
-        dbUnavailablePage('Database Error', 'Check config/database.php and that MySQL is running.', $msg);
+        dbUnavailablePage('Database Error', 'Check MySQL host, user, password, and database name in config/database.local.php.', $msg);
     }
 }
 

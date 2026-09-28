@@ -79,6 +79,16 @@ body.auth-portal {
     flex-shrink: 0;
 }
 
+.auth-portal-card-logo {
+    width: 5.5rem;
+    height: 5.5rem;
+    border-radius: 9999px;
+    object-fit: cover;
+    background: #fff;
+    box-shadow: 0 12px 32px rgba(7, 20, 40, 0.18);
+    flex-shrink: 0;
+}
+
 .auth-portal-brand-title {
     color: #fff;
     font-weight: 800;
@@ -283,11 +293,6 @@ body.auth-portal {
     margin: 0;
 }
 
-body.auth-reset-page {
-    font-family: 'Inter', sans-serif;
-    background-color: #f8fafc;
-}
-
 @media (max-width: 639px) {
     html,
     body.auth-portal {
@@ -317,6 +322,11 @@ body.auth-reset-page {
     .auth-portal-brand-logo {
         width: 2.5rem;
         height: 2.5rem;
+    }
+
+    .auth-portal-card-logo {
+        width: 4.75rem;
+        height: 4.75rem;
     }
 
     .auth-portal-brand-title {

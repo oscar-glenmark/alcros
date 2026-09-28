@@ -293,6 +293,99 @@ function acknowledgeEmailLogFailuresThrough(PDO $pdo, int $hours = 24): void
     }
 }
 
+/** Mark failed sms_log rows in the window as reviewed (uses MySQL time, same as sent_at). */
+function acknowledgeSmsLogFailuresThrough(PDO $pdo, int $hours = 24, ?string $since = null): void
+{
+    ensureExtendedSchema($pdo);
+    $sql =
+        'SELECT MAX(sent_at) AS max_sent FROM sms_logs
+         WHERE success = 0 AND sent_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)';
+    $params = [max(1, $hours)];
+    if ($since !== null && trim($since) !== '') {
+        $sql .= ' AND sent_at > DATE_ADD(?, INTERVAL 1 SECOND)';
+        $params[] = $since;
+    }
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $maxSent = $stmt->fetchColumn();
+    if ($maxSent !== false && $maxSent !== null && (string) $maxSent !== '') {
+        setSetting(deliveryFailureAckSettingKey('sms'), (string) $maxSent);
+    } else {
+        acknowledgeDeliveryFailures('sms');
+    }
+}
+
+/**
+ * Latest success/failure timestamps in sms_logs (respects delivery-failure ack cursor).
+ *
+ * @return array{latest_failure: ?string, latest_success: ?string}
+ */
+function latestSmsLogTimestamps(PDO $pdo, int $hours = 24, ?string $since = null): array
+{
+    ensureExtendedSchema($pdo);
+    $window = 'sent_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)';
+    $params = [max(1, $hours)];
+    $sinceSql = '';
+    if ($since !== null && trim($since) !== '') {
+        $sinceSql = ' AND sent_at > DATE_ADD(?, INTERVAL 1 SECOND)';
+        $params[] = $since;
+    }
+
+    $latestFailure = null;
+    $latestSuccess = null;
+
+    $failStmt = $pdo->prepare(
+        "SELECT MAX(sent_at) AS max_sent FROM sms_logs WHERE success = 0 AND {$window}{$sinceSql}"
+    );
+    $failStmt->execute($params);
+    $failVal = $failStmt->fetchColumn();
+    if ($failVal !== false && $failVal !== null && (string) $failVal !== '') {
+        $latestFailure = (string) $failVal;
+    }
+
+    $okStmt = $pdo->prepare(
+        "SELECT MAX(sent_at) AS max_sent FROM sms_logs WHERE success = 1 AND {$window}{$sinceSql}"
+    );
+    $okStmt->execute($params);
+    $okVal = $okStmt->fetchColumn();
+    if ($okVal !== false && $okVal !== null && (string) $okVal !== '') {
+        $latestSuccess = (string) $okVal;
+    }
+
+    return [
+        'latest_failure' => $latestFailure,
+        'latest_success' => $latestSuccess,
+    ];
+}
+
+/**
+ * Clear SMS delivery alert when a later send succeeded (e.g. transient IPROG HTTP 520).
+ */
+function clearStaleSmsDeliveryFailureAlert(PDO $pdo): bool
+{
+    if (!function_exists('isSmsConfigured') || !isSmsConfigured()) {
+        return false;
+    }
+
+    $since = getDeliveryFailureAckTime('sms');
+    $times = latestSmsLogTimestamps($pdo, 24, $since);
+    if ($times['latest_failure'] === null) {
+        return false;
+    }
+    if ($times['latest_success'] === null) {
+        return false;
+    }
+
+    if (strtotime($times['latest_success']) <= strtotime($times['latest_failure'])) {
+        return false;
+    }
+
+    acknowledgeSmsLogFailuresThrough($pdo, 24, $since);
+    resolveSystemErrorIfActive($pdo, 'sms-delivery-failed');
+
+    return true;
+}
+
 function smsSenderPendingAckSettingKey(): string
 {
     return 'sms_sender_pending_ack_at';
@@ -506,6 +599,10 @@ function syncSystemErrors(PDO $pdo): void
             clearSmsSenderPendingAck();
             resolveSystemErrorIfActive($pdo, 'sms-sender-pending');
 
+            if (clearStaleSmsDeliveryFailureAlert($pdo)) {
+                // Recovered after a later successful send; skip re-opening this run.
+            }
+
             $smsFailures = recentDeliveryFailureSummary($pdo, 'sms_logs', 24, getDeliveryFailureAckTime('sms'));
             if ($smsFailures !== null && isSmsConfigured()) {
                 $reason = $smsFailures['count'] . ' SMS message(s) failed in the last 24 hours.';
@@ -711,7 +808,7 @@ function runSystemErrorFix(PDO $pdo, string $errorKey, string $staffId): array
                         'message' => 'SMS is still failing after retry.' . $reason . ' Verify the IPROG API token and account credits.',
                     ];
                 }
-                acknowledgeDeliveryFailures('sms');
+                acknowledgeSmsLogFailuresThrough($pdo, 24);
                 resolveSystemError($pdo, $errorKey, $staffId);
                 break;
 

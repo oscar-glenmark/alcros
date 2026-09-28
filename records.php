@@ -1289,7 +1289,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Place of Death</label>
-                            <input type="text" name="place" value="<?= htmlspecialchars($deathPanelRecord['place'] ?? '') ?>" placeholder="Hospital / Institution / Address" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            <input type="text" name="place" value="<?= htmlspecialchars($deathPanelRecord['place'] ?? '') ?>" placeholder="Barangay, City/Municipality, Province" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>" data-location-mode="ph_death_place">
                         </div>
 
                         <div class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 space-y-4">
@@ -1482,7 +1482,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                 </div>
                                 <div class="sm:col-span-2">
                                     <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Place of Birth</label>
-                                    <input type="text" name="<?= $prefix ?>_birth_place" value="<?= htmlspecialchars($marriagePanelRecord[$prefix . '_birth_place'] ?? '') ?>" placeholder="Barangay, City/Municipality, Province" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>" data-location-mode="ph_birth_place">
+                                    <input type="text" name="<?= $prefix ?>_birth_place" value="<?= htmlspecialchars($marriagePanelRecord[$prefix . '_birth_place'] ?? '') ?>" placeholder="City/Municipality, Province, Country" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>"<?= cascadingLocationDataAttributes($prefix . '_birth_place') ?>>
                                 </div>
                                 <div>
                                     <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Citizenship</label>
@@ -1496,9 +1496,19 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                     <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Civil Status</label>
                                     <input type="text" name="<?= $prefix ?>_civil_status" value="<?= htmlspecialchars($marriagePanelRecord[$prefix . '_civil_status'] ?? 'Single') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                                 </div>
-                                <div>
+                                <div class="sm:col-span-2 cascading-location-address space-y-2">
                                     <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Residence</label>
-                                    <input type="text" name="<?= $prefix ?>_residence" value="<?= htmlspecialchars($marriagePanelRecord[$prefix . '_residence'] ?? '') ?>" placeholder="Barangay, City/Municipality, Province, Country" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>"<?= cascadingLocationDataAttributes($prefix . '_residence') ?>>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="block text-[9px] font-bold text-gray-500 uppercase mb-1">House No.</label>
+                                            <input type="text" class="js-cascading-location-house w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm" autocomplete="off" placeholder="e.g. 12">
+                                        </div>
+                                        <div>
+                                            <label class="block text-[9px] font-bold text-gray-500 uppercase mb-1">Street</label>
+                                            <input type="text" class="js-cascading-location-street w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm" autocomplete="off" placeholder="e.g. Rizal St.">
+                                        </div>
+                                    </div>
+                                    <input type="text" name="<?= $prefix ?>_residence" value="<?= htmlspecialchars($marriagePanelRecord[$prefix . '_residence'] ?? '') ?>" placeholder="House No., St., Barangay, City/Municipality, Province, Country" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>"<?= cascadingLocationDataAttributes($prefix . '_residence') ?>>
                                 </div>
                                 <div class="sm:col-span-2">
                                     <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Father's Full Name</label>

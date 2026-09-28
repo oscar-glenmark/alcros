@@ -30,8 +30,13 @@ function cascadingLocationUsesField(string $fieldName): bool
 /** Birth certificate place of birth: province → city/municipality → barangay (no country step). */
 function cascadingLocationIsPhBirthPlaceField(string $fieldName): bool
 {
-    return $fieldName === 'birth_place'
-        || str_ends_with($fieldName, '_birth_place');
+    return $fieldName === 'birth_place';
+}
+
+/** Marriage spouse place of birth: country → province → city/municipality. */
+function cascadingLocationIsPhMarriageBirthPlaceField(string $fieldName): bool
+{
+    return in_array($fieldName, ['husband_birth_place', 'wife_birth_place'], true);
 }
 
 function cascadingLocationIsPhMarriagePlaceField(string $fieldName): bool
@@ -42,9 +47,18 @@ function cascadingLocationIsPhMarriagePlaceField(string $fieldName): bool
     ], true);
 }
 
+/** Marriage spouse residence: country → province → city/municipality → barangay (+ house/street in UI). */
+function cascadingLocationIsPhMarriageResidenceField(string $fieldName): bool
+{
+    return in_array($fieldName, ['husband_residence', 'wife_residence'], true);
+}
+
 function cascadingLocationIsPhResidenceField(string $fieldName): bool
 {
-    if (cascadingLocationIsPhBirthPlaceField($fieldName) || cascadingLocationIsPhMarriagePlaceField($fieldName)) {
+    if (cascadingLocationIsPhBirthPlaceField($fieldName)
+        || cascadingLocationIsPhMarriageBirthPlaceField($fieldName)
+        || cascadingLocationIsPhMarriagePlaceField($fieldName)
+        || cascadingLocationIsPhMarriageResidenceField($fieldName)) {
         return false;
     }
 
@@ -58,8 +72,11 @@ function cascadingLocationPickerMode(string $fieldName): string
     if (cascadingLocationIsPhBirthPlaceField($fieldName)) {
         return 'ph_birth_place';
     }
-    if (cascadingLocationIsPhMarriagePlaceField($fieldName)) {
+    if (cascadingLocationIsPhMarriageBirthPlaceField($fieldName) || cascadingLocationIsPhMarriagePlaceField($fieldName)) {
         return 'ph_marriage_place';
+    }
+    if (cascadingLocationIsPhMarriageResidenceField($fieldName)) {
+        return 'ph_marriage_residence';
     }
     if (cascadingLocationIsPhResidenceField($fieldName)) {
         return 'ph_residence';

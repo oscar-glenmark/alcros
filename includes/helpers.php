@@ -5053,8 +5053,8 @@ function maybeSendVisitSoonEmail(PDO $pdo, string $table, int $id): bool
 
     if ($table === 'document_requests') {
         $stmt = $pdo->prepare(
-            'SELECT id, tracking_code, first_name, middle_name, last_name, email, document_type, status,
-                    appointment_date, appointment_time, notify_email, reminder_1h_sent_at
+            'SELECT id, tracking_code, first_name, middle_name, last_name, email, phone, document_type, status,
+                    appointment_date, appointment_time, notify_email, notify_sms, reminder_1h_sent_at
              FROM document_requests WHERE id = ? LIMIT 1'
         );
         $stmt->execute([$id]);
@@ -5065,7 +5065,10 @@ function maybeSendVisitSoonEmail(PDO $pdo, string $table, int $id): bool
         if (!empty($row['reminder_1h_sent_at'])) {
             return false;
         }
-        if (!notifyRequestVisitSoon($row)) {
+        $emailSent = notifyRequestVisitSoon($row);
+        require_once __DIR__ . '/sms.php';
+        $smsSent = notifyRequestVisitSoonSms($row);
+        if (!$emailSent && !$smsSent) {
             return false;
         }
         markAllVisitEmailRemindersSent($pdo, 'document_requests', $id);
@@ -5074,8 +5077,8 @@ function maybeSendVisitSoonEmail(PDO $pdo, string $table, int $id): bool
 
     if ($table === 'appointments') {
         $stmt = $pdo->prepare(
-            'SELECT id, appointment_code, first_name, middle_name, last_name, email, service_type, status,
-                    appointment_date, appointment_time, notify_email, reminder_1h_sent_at
+            'SELECT id, appointment_code, first_name, middle_name, last_name, email, phone, service_type, status,
+                    appointment_date, appointment_time, notify_email, notify_sms, reminder_1h_sent_at
              FROM appointments WHERE id = ? LIMIT 1'
         );
         $stmt->execute([$id]);
@@ -5086,7 +5089,10 @@ function maybeSendVisitSoonEmail(PDO $pdo, string $table, int $id): bool
         if (!empty($row['reminder_1h_sent_at'])) {
             return false;
         }
-        if (!notifyAppointmentVisitSoon($row)) {
+        $emailSent = notifyAppointmentVisitSoon($row);
+        require_once __DIR__ . '/sms.php';
+        $smsSent = notifyAppointmentVisitSoonSms($row);
+        if (!$emailSent && !$smsSent) {
             return false;
         }
         markAllVisitEmailRemindersSent($pdo, 'appointments', $id);

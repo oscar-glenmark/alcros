@@ -307,6 +307,85 @@ function smsSiteShortName(): string
     return getSetting('site_name', 'ALCROS');
 }
 
+function smsCitizenGreeting(array $row): string
+{
+    $name = trim(personNameFromRow($row));
+
+    return $name !== '' ? 'Hi ' . $name . ',' : 'Hello,';
+}
+
+function smsOfficeName(): string
+{
+    return trim(getSetting('office_name', 'Local Civil Registrar Office (LCRO) of Aloran'));
+}
+
+/** Compact office contact block for SMS footers. */
+function smsOfficeContactLine(): string
+{
+    $bits = [];
+    $address = trim(getSetting('office_address', ''));
+    $hours = trim(getSetting('office_hours', ''));
+    $phone = trim(getSetting('office_phone', ''));
+    if ($address !== '') {
+        $bits[] = 'Office: ' . $address;
+    }
+    if ($hours !== '') {
+        $bits[] = 'Hours: ' . $hours;
+    }
+    if ($phone !== '') {
+        $bits[] = 'Contact: ' . $phone;
+    }
+    if ($bits === []) {
+        return smsSiteShortName() . ' — ' . smsOfficeName();
+    }
+
+    return implode(' | ', $bits);
+}
+
+function smsVisitDetailLine(?string $date, ?string $time, string $label = 'Schedule'): string
+{
+    $visit = formatAppointmentDisplay($date, $time);
+    if ($visit === '' || $visit === '—') {
+        return '';
+    }
+
+    return $label . ': ' . $visit;
+}
+
+function smsTrackLine(string $code): string
+{
+    $code = trim($code);
+    if ($code === '') {
+        return '';
+    }
+
+    return 'Track status: ' . trackRequestUrl($code);
+}
+
+/**
+ * @param list<string> $lines
+ */
+function smsComposeDetailedMessage(string $intro, array $lines, ?string $note = null): string
+{
+    $parts = [
+        smsSiteShortName() . ' — ' . smsOfficeName(),
+        trim($intro),
+    ];
+    $parts = array_filter($parts, static fn (string $line): bool => $line !== '');
+    foreach ($lines as $line) {
+        $line = trim((string) $line);
+        if ($line !== '') {
+            $parts[] = $line;
+        }
+    }
+    if ($note !== null && trim($note) !== '') {
+        $parts[] = trim($note);
+    }
+    $parts[] = smsOfficeContactLine();
+
+    return implode("\n", $parts);
+}
+
 function notifyRequestSubmittedSms(array $data): bool
 {
     if (!isSmsConfigured() || !citizenWantsSmsNotify($data)) {
@@ -315,11 +394,17 @@ function notifyRequestSubmittedSms(array $data): bool
 
     $code = (string) ($data['tracking_code'] ?? '');
     $doc = (string) ($data['document_label'] ?? documentTypeLabel((string) ($data['document_type'] ?? '')));
-    $visit = formatAppointmentDisplay($data['appointment_date'] ?? null, $data['appointment_time'] ?? null);
-    $site = smsSiteShortName();
-    $message = $site . ': Request received for ' . $doc . ' (' . $code . '). Status: pending review.'
-        . ($visit !== '' && $visit !== '—' ? ' Preferred visit: ' . $visit . '.' : '')
-        . ' Keep your tracking code.';
+    $intro = smsCitizenGreeting($data) . ' your ' . $doc . ' request was received through ' . smsSiteShortName() . '.';
+    $lines = [
+        'Tracking code: ' . $code,
+        'Document: ' . $doc,
+        'Status: Pending review (staff will verify your submission).',
+        smsVisitDetailLine($data['appointment_date'] ?? null, $data['appointment_time'] ?? null, 'Preferred visit'),
+        smsTrackLine($code),
+    ];
+    $note = 'Keep your tracking code safe. We will SMS you when the status changes and before your visit (3 hours and 1 hour reminders).';
+
+    $message = smsComposeDetailedMessage($intro, $lines, $note);
 
     return sendCitizenSms((string) $data['phone'], $message, 'request_submitted', $code);
 }
@@ -332,11 +417,17 @@ function notifyAppointmentBookedSms(array $data): bool
 
     $code = (string) ($data['appointment_code'] ?? '');
     $service = appointmentServiceLabel((string) ($data['service_type'] ?? $data['service_label'] ?? ''));
-    $visit = formatAppointmentDisplay($data['appointment_date'] ?? null, $data['appointment_time'] ?? null);
-    $site = smsSiteShortName();
-    $message = $site . ': Appointment booked for ' . $service . ' (' . $code . ').'
-        . ($visit !== '' && $visit !== '—' ? ' Preferred schedule: ' . $visit . '.' : '')
-        . ' Staff will confirm your visit.';
+    $intro = smsCitizenGreeting($data) . ' your LCRO appointment was booked through ' . smsSiteShortName() . '.';
+    $lines = [
+        'Appointment code: ' . $code,
+        'Service: ' . $service,
+        'Status: Awaiting confirmation by staff',
+        smsVisitDetailLine($data['appointment_date'] ?? null, $data['appointment_time'] ?? null, 'Preferred schedule'),
+        smsTrackLine($code),
+    ];
+    $note = 'Your preferred date and time are saved, but staff must still confirm. You will receive SMS updates and reminders (3 hours and 1 hour before a confirmed visit).';
+
+    $message = smsComposeDetailedMessage($intro, $lines, $note);
 
     return sendCitizenSms((string) $data['phone'], $message, 'appointment_booked', $code);
 }
@@ -362,22 +453,32 @@ function notifyRequestStatusSms(PDO $pdo, int $requestId, string $newStatus, ?st
     $status = $staffAction === 'verified' ? 'verified' : normalizeRequestStatus($newStatus);
     $code = (string) $row['tracking_code'];
     $doc = documentTypeLabel((string) $row['document_type']);
-    $visit = formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
-    $site = smsSiteShortName();
+    $appointment = fetchDocumentRequestAppointment($pdo, $code);
+    $visitDate = $appointment['appointment_date'] ?? $row['appointment_date'] ?? null;
+    $visitTime = $appointment['appointment_time'] ?? $row['appointment_time'] ?? null;
 
-    $message = match ($status) {
-        'verified' => $site . ': Your ' . $doc . ' request ' . $code . ' was accepted.'
-            . ($visit !== '' && $visit !== '—' ? ' Confirmed visit: ' . $visit . '.' : '')
-            . ' Visit the LCRO with valid ID.',
-        'ready' => $site . ': Your ' . $doc . ' request ' . $code . ' is ready for pickup.'
-            . ($visit !== '' && $visit !== '—' ? ' Visit: ' . $visit . '.' : '')
-            . ' Bring your tracking code and valid ID.',
-        default => null,
-    };
+    $intro = null;
+    $lines = [];
+    $note = null;
 
-    if ($message === null) {
+    if ($status === 'verified' || $status === 'ready') {
+        $intro = smsCitizenGreeting($row) . ' update on your ' . $doc . ' request (' . smsSiteShortName() . ').';
+        $lines = [
+            'Tracking code: ' . $code,
+            'Document: ' . $doc,
+            'New status: ' . publicRequestStatusLabel($newStatus),
+            'Visit status: Confirmed',
+            smsVisitDetailLine($visitDate, $visitTime, 'Scheduled visit'),
+            smsTrackLine($code),
+        ];
+        $note = trim(publicRequestStatusMessage($newStatus, $appointment));
+    }
+
+    if ($intro === null) {
         return false;
     }
+
+    $message = smsComposeDetailedMessage($intro, $lines, $note);
 
     return sendCitizenSms((string) $row['phone'], $message, 'request_' . $status, $code);
 }
@@ -442,11 +543,18 @@ function notifyRequestVisitSmsReminder(array $row, int $hoursBefore = 3): bool
 
     $code = (string) $row['tracking_code'];
     $doc = documentTypeLabel((string) ($row['document_type'] ?? ''));
-    $visit = formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
     $hoursLabel = smsReminderHoursLabel($hoursBefore);
-    $message = smsSiteShortName() . ': Reminder — pickup visit for ' . $doc . ' (' . $code . ') is in about ' . $hoursLabel . '.'
-        . ($visit !== '' && $visit !== '—' ? ' Schedule: ' . $visit . '.' : '')
-        . ' Bring valid ID.';
+    $intro = smsCitizenGreeting($row) . ' reminder: your document pickup visit is in about ' . $hoursLabel . '.';
+    $lines = [
+        'Tracking code: ' . $code,
+        'Document: ' . $doc,
+        'Current status: ' . requestStatusLabel((string) ($row['status'] ?? 'pending')),
+        smsVisitDetailLine($row['appointment_date'] ?? null, $row['appointment_time'] ?? null, 'Preferred visit'),
+        smsTrackLine($code),
+    ];
+    $note = 'Please arrive on time. Bring your tracking code and a valid government-issued ID.';
+
+    $message = smsComposeDetailedMessage($intro, $lines, $note);
 
     return sendCitizenSms(
         (string) $row['phone'],
@@ -464,11 +572,18 @@ function notifyAppointmentSmsReminder(array $row, int $hoursBefore = 3): bool
 
     $code = (string) $row['appointment_code'];
     $service = appointmentServiceLabel((string) ($row['service_type'] ?? ''));
-    $visit = formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
     $hoursLabel = smsReminderHoursLabel($hoursBefore);
-    $message = smsSiteShortName() . ': Reminder — your ' . $service . ' appointment (' . $code . ') is in about ' . $hoursLabel . '.'
-        . ($visit !== '' && $visit !== '—' ? ' Schedule: ' . $visit . '.' : '')
-        . ' Please arrive on time with valid ID.';
+    $intro = smsCitizenGreeting($row) . ' reminder: your LCRO appointment is in about ' . $hoursLabel . '.';
+    $lines = [
+        'Appointment code: ' . $code,
+        'Service: ' . $service,
+        'Status: ' . appointmentStatusLabel((string) ($row['status'] ?? 'scheduled')),
+        smsVisitDetailLine($row['appointment_date'] ?? null, $row['appointment_time'] ?? null, 'Confirmed schedule'),
+        smsTrackLine($code),
+    ];
+    $note = 'Please arrive on time and bring a valid government-issued ID.';
+
+    $message = smsComposeDetailedMessage($intro, $lines, $note);
 
     return sendCitizenSms(
         (string) $row['phone'],
@@ -476,6 +591,64 @@ function notifyAppointmentSmsReminder(array $row, int $hoursBefore = 3): bool
         'appointment_reminder_' . $hoursBefore . 'h',
         $code
     );
+}
+
+function notifyRequestVisitSoonSms(array $row): bool
+{
+    if (!isSmsConfigured() || !citizenWantsSmsNotify($row)) {
+        return false;
+    }
+
+    $minutesUntil = appointmentMinutesUntil($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
+    if ($minutesUntil === null || $minutesUntil <= 0 || $minutesUntil > visitSoonWindowMinutes()) {
+        return false;
+    }
+
+    $code = (string) ($row['tracking_code'] ?? '');
+    $doc = documentTypeLabel((string) ($row['document_type'] ?? ''));
+    $soonLabel = formatVisitSoonLabel($minutesUntil);
+    $intro = smsCitizenGreeting($row) . ' your LCRO visit is in about ' . $soonLabel . '. Please head to the office if you are not already on your way.';
+    $lines = [
+        'Tracking code: ' . $code,
+        'Document: ' . $doc,
+        'Current status: ' . requestStatusLabel((string) ($row['status'] ?? 'pending')),
+        smsVisitDetailLine($row['appointment_date'] ?? null, $row['appointment_time'] ?? null, 'Preferred visit'),
+        smsTrackLine($code),
+    ];
+    $note = 'Bring your tracking code and a valid ID. Staff may need a short time to review your request when you arrive.';
+
+    $message = smsComposeDetailedMessage($intro, $lines, $note);
+
+    return sendCitizenSms((string) $row['phone'], $message, 'visit_soon', $code);
+}
+
+function notifyAppointmentVisitSoonSms(array $row): bool
+{
+    if (!isSmsConfigured() || !citizenWantsSmsNotify($row)) {
+        return false;
+    }
+
+    $minutesUntil = appointmentMinutesUntil($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
+    if ($minutesUntil === null || $minutesUntil <= 0 || $minutesUntil > visitSoonWindowMinutes()) {
+        return false;
+    }
+
+    $code = (string) ($row['appointment_code'] ?? '');
+    $service = appointmentServiceLabel((string) ($row['service_type'] ?? ''));
+    $soonLabel = formatVisitSoonLabel($minutesUntil);
+    $intro = smsCitizenGreeting($row) . ' your LCRO appointment is in about ' . $soonLabel . '. Please head to the office if you are not already on your way.';
+    $lines = [
+        'Appointment code: ' . $code,
+        'Service: ' . $service,
+        'Status: ' . appointmentStatusLabel((string) ($row['status'] ?? 'scheduled')),
+        smsVisitDetailLine($row['appointment_date'] ?? null, $row['appointment_time'] ?? null, 'Schedule'),
+        smsTrackLine($code),
+    ];
+    $note = 'Please arrive on time and bring a valid government-issued ID.';
+
+    $message = smsComposeDetailedMessage($intro, $lines, $note);
+
+    return sendCitizenSms((string) $row['phone'], $message, 'visit_soon', $code);
 }
 
 function notifyAppointmentStatusSms(PDO $pdo, int $appointmentId, string $newStatus): bool
@@ -486,7 +659,8 @@ function notifyAppointmentStatusSms(PDO $pdo, int $appointmentId, string $newSta
 
     ensureCitizenNotifyColumns($pdo);
     $stmt = $pdo->prepare(
-        'SELECT appointment_code, phone, service_type, appointment_date, appointment_time, notify_sms
+        'SELECT appointment_code, first_name, middle_name, last_name, phone, service_type,
+                appointment_date, appointment_time, notify_sms
          FROM appointments WHERE id = ? LIMIT 1'
     );
     $stmt->execute([$appointmentId]);
@@ -495,26 +669,23 @@ function notifyAppointmentStatusSms(PDO $pdo, int $appointmentId, string $newSta
         return false;
     }
 
-    $code = (string) ($row['appointment_code'] ?? '');
-    $service = appointmentServiceLabel((string) ($row['service_type'] ?? ''));
-    $visit = formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
-    $site = smsSiteShortName();
-
-    $message = match ($newStatus) {
-        'confirmed' => $site . ': Your ' . $service . ' appointment ' . $code . ' is confirmed.'
-            . ($visit !== '' && $visit !== '—' ? ' Schedule: ' . $visit . '.' : '')
-            . ' Please arrive on time with valid ID.',
-        'cancelled' => $site . ': Your ' . $service . ' appointment ' . $code . ' was cancelled.'
-            . ' Contact the LCRO if you need to rebook.',
-        'completed' => $site . ': Your ' . $service . ' appointment ' . $code . ' is marked completed. Thank you.',
-        'no_show' => $site . ': You were marked no-show for appointment ' . $code . '.'
-            . ' Contact the LCRO to reschedule.',
-        default => null,
-    };
-
-    if ($message === null) {
+    if (!in_array($newStatus, ['confirmed', 'cancelled', 'completed', 'no_show'], true)) {
         return false;
     }
+
+    $code = (string) ($row['appointment_code'] ?? '');
+    $service = appointmentServiceLabel((string) ($row['service_type'] ?? ''));
+    $intro = smsCitizenGreeting($row) . ' update on your ' . smsSiteShortName() . ' appointment.';
+    $lines = [
+        'Appointment code: ' . $code,
+        'Service: ' . $service,
+        'New status: ' . appointmentStatusLabel($newStatus),
+        smsVisitDetailLine($row['appointment_date'] ?? null, $row['appointment_time'] ?? null, 'Schedule'),
+        smsTrackLine($code),
+    ];
+    $note = appointmentStatusMessage($newStatus);
+
+    $message = smsComposeDetailedMessage($intro, $lines, $note);
 
     return sendCitizenSms((string) $row['phone'], $message, 'appointment_' . $newStatus, $code);
 }
@@ -605,7 +776,7 @@ function sendDueDocumentRequestSmsReminders(PDO $pdo): int
 function sendDueStandaloneAppointmentSmsReminders(PDO $pdo): int
 {
     $stmt = $pdo->query(
-        "SELECT id, appointment_code, first_name, middle_name, last_name, phone, service_type,
+        "SELECT id, appointment_code, first_name, middle_name, last_name, phone, service_type, status,
                 appointment_date, appointment_time, notify_sms,
                 sms_reminder_3h_sent_at, sms_reminder_1h_sent_at
          FROM appointments

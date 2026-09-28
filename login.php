@@ -215,7 +215,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <div class="flex justify-center mb-6">
 
-                    <?= alcrosFaviconImg(56, 'auth-portal-brand-logo shadow-lg') ?>
+                    <?= alcrosFaviconImg(72, 'auth-portal-card-logo') ?>
 
                 </div>
 

@@ -56,12 +56,39 @@
         return parts.join(', ');
     }
 
-    function formatValueForMode(selection, mode) {
-        if (mode === 'ph_birth_place') {
-            return formatValuePhBirth(selection);
+    function formatValuePhDeath(selection) {
+        return formatValuePhBirth(selection);
+    }
+
+    function formatValuePhMarriageResidence(selection, house, street) {
+        house = String(house || '').trim();
+        street = String(street || '').trim();
+        if (selection.countryCode && selection.countryCode !== 'PH') {
+            var foreign = [];
+            if (house) foreign.push(house);
+            if (street) foreign.push(street);
+            if (selection.country) foreign.push(selection.country);
+            return foreign.join(', ');
+        }
+        var parts = [];
+        if (house) parts.push(house);
+        if (street) parts.push(street);
+        if (selection.barangay) parts.push(formatBarangay(selection.barangay));
+        if (selection.municipality) parts.push(selection.municipality);
+        if (selection.province) parts.push(selection.province);
+        if (selection.country) parts.push(selection.country);
+        return parts.join(', ');
+    }
+
+    function formatValueForMode(selection, mode, house, street) {
+        if (mode === 'ph_birth_place' || mode === 'ph_death_place') {
+            return mode === 'ph_death_place' ? formatValuePhDeath(selection) : formatValuePhBirth(selection);
         }
         if (mode === 'ph_residence') {
             return formatValuePhResidence(selection);
+        }
+        if (mode === 'ph_marriage_residence') {
+            return formatValuePhMarriageResidence(selection, house, street);
         }
         if (mode === 'ph_marriage_place') {
             return formatValuePhMarriage(selection);
@@ -69,8 +96,62 @@
         return formatValueFull(selection);
     }
 
-    function partialValue(selection, mode) {
-        return formatValueForMode(selection, mode);
+    function partialValue(selection, mode, house, street) {
+        return formatValueForMode(selection, mode, house, street);
+    }
+
+    function isPhLocalThreeStepMode(mode) {
+        return mode === 'ph_birth_place' || mode === 'ph_death_place';
+    }
+
+    function applyPhLocalPlaceParts(selection, parts) {
+        selection.countryCode = 'PH';
+        selection.country = 'Philippines';
+
+        if (normalizeText(parts[0]) === 'philippines' && parts.length >= 4) {
+            selection.province = parts[1];
+            selection.municipality = parts[2];
+            selection.barangay = stripBarangayPrefix(parts[3]);
+        } else if (parts.length >= 3) {
+            selection.barangay = stripBarangayPrefix(parts[0]);
+            selection.municipality = parts[1];
+            selection.province = parts[2];
+        } else if (parts.length === 2) {
+            selection.municipality = parts[0];
+            selection.province = parts[1];
+        } else {
+            selection.province = parts[0];
+        }
+    }
+
+    function applyPhResidenceParts(selection, parts) {
+        if (normalizeText(parts[0]) === 'philippines' && parts.length >= 4) {
+            selection.country = parts[0];
+            selection.countryCode = 'PH';
+            selection.province = parts[1];
+            selection.municipality = parts[2];
+            selection.barangay = stripBarangayPrefix(parts[3]);
+        } else if (parts.length >= 4) {
+            selection.barangay = stripBarangayPrefix(parts[0]);
+            selection.municipality = parts[1];
+            selection.province = parts[2];
+            selection.country = parts.slice(3).join(', ');
+            selection.countryCode = normalizeText(selection.country) === 'philippines' ? 'PH' : 'OTHER';
+        } else if (parts.length === 3) {
+            selection.barangay = stripBarangayPrefix(parts[0]);
+            selection.municipality = parts[1];
+            selection.province = parts[2];
+            selection.country = 'Philippines';
+            selection.countryCode = 'PH';
+        } else if (parts.length === 2) {
+            selection.municipality = parts[0];
+            selection.province = parts[1];
+            selection.country = 'Philippines';
+            selection.countryCode = 'PH';
+        } else {
+            selection.country = parts[0];
+            selection.countryCode = normalizeText(parts[0]) === 'philippines' ? 'PH' : 'OTHER';
+        }
     }
 
     function normalizeText(value) {
@@ -103,10 +184,12 @@
         this.input = input;
         this.apiUrl = options.apiUrl;
         this.mode = options.mode || input.dataset.locationMode || 'full';
-        if (this.mode === 'ph_birth_place') {
+        if (isPhLocalThreeStepMode(this.mode)) {
             this.steps = ['province', 'municipality', 'barangay'];
         } else if (this.mode === 'ph_marriage_place') {
             this.steps = ['country', 'province', 'municipality'];
+        } else if (this.mode === 'ph_residence' || this.mode === 'ph_marriage_residence') {
+            this.steps = STEPS.slice();
         } else {
             this.steps = STEPS.slice();
         }
@@ -160,7 +243,11 @@
         this.listEl.setAttribute('role', 'listbox');
         this.panel.appendChild(this.listEl);
 
-        if (this.mode === 'ph_birth_place') {
+        this.addressRoot = this.input.closest('.cascading-location-address');
+        this.houseInput = this.addressRoot ? this.addressRoot.querySelector('.js-cascading-location-house') : null;
+        this.streetInput = this.addressRoot ? this.addressRoot.querySelector('.js-cascading-location-street') : null;
+
+        if (isPhLocalThreeStepMode(this.mode)) {
             this.selection.countryCode = 'PH';
             this.selection.country = 'Philippines';
         }
@@ -169,8 +256,16 @@
         this.seedFromValue(this.input.value || '');
     }
 
+    CascadingLocationPicker.prototype.getStreetParts = function () {
+        return {
+            house: this.houseInput ? String(this.houseInput.value || '').trim() : '',
+            street: this.streetInput ? String(this.streetInput.value || '').trim() : ''
+        };
+    };
+
     CascadingLocationPicker.prototype.formatValue = function () {
-        return formatValueForMode(this.selection, this.mode);
+        var streetParts = this.getStreetParts();
+        return formatValueForMode(this.selection, this.mode, streetParts.house, streetParts.street);
     };
 
     CascadingLocationPicker.prototype.bindEvents = function () {
@@ -217,6 +312,17 @@
                 self.toggle(false);
             }
         });
+
+        if (this.houseInput) {
+            this.houseInput.addEventListener('input', function () {
+                self.updateInput();
+            });
+        }
+        if (this.streetInput) {
+            this.streetInput.addEventListener('input', function () {
+                self.updateInput();
+            });
+        }
     };
 
     CascadingLocationPicker.prototype.getScrollParents = function () {
@@ -289,7 +395,7 @@
     };
 
     CascadingLocationPicker.prototype.syncStepFromSelection = function () {
-        if (this.mode === 'ph_birth_place') {
+        if (isPhLocalThreeStepMode(this.mode)) {
             if (!this.selection.provinceId) {
                 this.stepIndex = 0;
                 return;
@@ -413,15 +519,16 @@
     };
 
     CascadingLocationPicker.prototype.updateInput = function () {
-        this.input.value = partialValue(this.selection, this.mode);
+        var streetParts = this.getStreetParts();
+        this.input.value = partialValue(this.selection, this.mode, streetParts.house, streetParts.street);
         this.notifyInputChanged();
     };
 
     CascadingLocationPicker.prototype.resetFromStep = function (index) {
         this.stepIndex = index;
-        var provinceIndex = this.mode === 'ph_birth_place' ? 0 : 1;
-        var municipalityIndex = this.mode === 'ph_birth_place' ? 1 : 2;
-        var barangayIndex = this.mode === 'ph_birth_place' ? 2 : 3;
+        var provinceIndex = isPhLocalThreeStepMode(this.mode) ? 0 : 1;
+        var municipalityIndex = isPhLocalThreeStepMode(this.mode) ? 1 : 2;
+        var barangayIndex = isPhLocalThreeStepMode(this.mode) ? 2 : 3;
 
         if (index <= provinceIndex) {
             this.selection.provinceId = 0;
@@ -615,25 +722,8 @@
             return;
         }
 
-        if (this.mode === 'ph_birth_place') {
-            this.selection.countryCode = 'PH';
-            this.selection.country = 'Philippines';
-
-            if (normalizeText(parts[0]) === 'philippines' && parts.length >= 4) {
-                this.selection.province = parts[1];
-                this.selection.municipality = parts[2];
-                this.selection.barangay = stripBarangayPrefix(parts[3]);
-            } else if (parts.length >= 3) {
-                this.selection.barangay = stripBarangayPrefix(parts[0]);
-                this.selection.municipality = parts[1];
-                this.selection.province = parts[2];
-            } else if (parts.length === 2) {
-                this.selection.municipality = parts[0];
-                this.selection.province = parts[1];
-            } else {
-                this.selection.province = parts[0];
-            }
-
+        if (isPhLocalThreeStepMode(this.mode)) {
+            applyPhLocalPlaceParts(this.selection, parts);
             this.input.value = value;
             return;
         }
@@ -664,34 +754,30 @@
         }
 
         if (this.mode === 'ph_residence') {
-            if (normalizeText(parts[0]) === 'philippines' && parts.length >= 4) {
-                this.selection.country = parts[0];
-                this.selection.countryCode = 'PH';
-                this.selection.province = parts[1];
-                this.selection.municipality = parts[2];
-                this.selection.barangay = stripBarangayPrefix(parts[3]);
-            } else if (parts.length >= 4) {
-                this.selection.barangay = stripBarangayPrefix(parts[0]);
-                this.selection.municipality = parts[1];
-                this.selection.province = parts[2];
-                this.selection.country = parts.slice(3).join(', ');
-                this.selection.countryCode = normalizeText(this.selection.country) === 'philippines' ? 'PH' : 'OTHER';
-            } else if (parts.length === 3) {
-                this.selection.barangay = stripBarangayPrefix(parts[0]);
-                this.selection.municipality = parts[1];
-                this.selection.province = parts[2];
-                this.selection.country = 'Philippines';
-                this.selection.countryCode = 'PH';
-            } else if (parts.length === 2) {
-                this.selection.municipality = parts[0];
-                this.selection.province = parts[1];
-                this.selection.country = 'Philippines';
-                this.selection.countryCode = 'PH';
-            } else {
-                this.selection.country = parts[0];
-                this.selection.countryCode = normalizeText(parts[0]) === 'philippines' ? 'PH' : 'OTHER';
-            }
+            applyPhResidenceParts(this.selection, parts);
+            this.input.value = value;
+            return;
+        }
 
+        if (this.mode === 'ph_marriage_residence') {
+            var house = '';
+            var street = '';
+            var locParts = parts.slice();
+            if (locParts.length >= 6) {
+                house = locParts[0];
+                street = locParts[1];
+                locParts = locParts.slice(2);
+            } else if (locParts.length === 5) {
+                house = locParts[0];
+                locParts = locParts.slice(1);
+            }
+            applyPhResidenceParts(this.selection, locParts);
+            if (this.houseInput) {
+                this.houseInput.value = house;
+            }
+            if (this.streetInput) {
+                this.streetInput.value = street;
+            }
             this.input.value = value;
             return;
         }
@@ -725,13 +811,21 @@
             new CascadingLocationPicker(input, { apiUrl: apiUrl, mode: 'ph_birth_place' });
         });
 
+        document.querySelectorAll('#deathFieldsPanel input[name="place"]').forEach(function (input) {
+            if (input.dataset.cascadingLocationInit === '1') return;
+            input.dataset.cascadingLocationInit = '1';
+            new CascadingLocationPicker(input, { apiUrl: apiUrl, mode: 'ph_death_place' });
+        });
+
     }
 
     global.AlcrosCascadingLocation = {
         init: initCascadingLocationFields,
         formatValue: formatValueFull,
         formatValuePhBirth: formatValuePhBirth,
+        formatValuePhDeath: formatValuePhDeath,
         formatValuePhResidence: formatValuePhResidence,
-        formatValuePhMarriage: formatValuePhMarriage
+        formatValuePhMarriage: formatValuePhMarriage,
+        formatValuePhMarriageResidence: formatValuePhMarriageResidence
     };
 })(window);

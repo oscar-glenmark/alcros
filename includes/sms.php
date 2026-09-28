@@ -599,7 +599,7 @@ function notifyRequestVisitSoonSms(array $row): bool
         return false;
     }
 
-    $minutesUntil = appointmentMinutesUntil($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
+    $minutesUntil = appointmentMinutesUntil($row['appointment_date' ] ?? null, $row['appointment_time'] ?? null);
     if ($minutesUntil === null || $minutesUntil <= 0 || $minutesUntil > visitSoonWindowMinutes()) {
         return false;
     }
@@ -615,7 +615,7 @@ function notifyRequestVisitSoonSms(array $row): bool
         smsVisitDetailLine($row['appointment_date'] ?? null, $row['appointment_time'] ?? null, 'Preferred visit'),
         smsTrackLine($code),
     ];
-    $note = 'Bring your tracking code and a valid ID. Staff may need a short time to review your request when you arrive.';
+    $note = 'Bring your valid ID. Staff may need a short time to review your request when you arrive.';
 
     $message = smsComposeDetailedMessage($intro, $lines, $note);
 

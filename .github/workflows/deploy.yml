@@ -14,37 +14,6 @@ jobs:
       - name: Checkout ALCROS
         uses: actions/checkout@v4
 
-      - name: Verify deploy secrets
-        env:
-          INFINITYFREE_DB_HOST: ${{ secrets.INFINITYFREE_DB_HOST }}
-          INFINITYFREE_DB_NAME: ${{ secrets.INFINITYFREE_DB_NAME }}
-          INFINITYFREE_DB_USER: ${{ secrets.INFINITYFREE_DB_USER }}
-          INFINITYFREE_DB_PASSWORD: ${{ secrets.INFINITYFREE_DB_PASSWORD }}
-          FTP_HOST: ${{ secrets.FTP_HOST }}
-          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
-          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
-        run: |
-          missing=""
-          for key in INFINITYFREE_DB_HOST INFINITYFREE_DB_NAME INFINITYFREE_DB_USER INFINITYFREE_DB_PASSWORD FTP_HOST FTP_USERNAME FTP_PASSWORD; do
-            eval "val=\$$key"
-            if [ -z "$val" ]; then
-              missing="$missing $key"
-            fi
-          done
-          if [ -n "$missing" ]; then
-            echo "::error::Missing or empty repository secrets:$missing"
-            echo "Add them under Settings → Secrets and variables → Actions → Repository secrets (exact names)."
-            exit 1
-          fi
-
-      - name: Write production database.local.php
-        env:
-          INFINITYFREE_DB_HOST: ${{ secrets.INFINITYFREE_DB_HOST }}
-          INFINITYFREE_DB_NAME: ${{ secrets.INFINITYFREE_DB_NAME }}
-          INFINITYFREE_DB_USER: ${{ secrets.INFINITYFREE_DB_USER }}
-          INFINITYFREE_DB_PASSWORD: ${{ secrets.INFINITYFREE_DB_PASSWORD }}
-        run: php scripts/write_database_local.php
-
       - name: Deploy files to InfinityFree
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -54,3 +23,5 @@ jobs:
           protocol: ftp
           port: 21
           server-dir: /htdocs/
+          exclude: |
+            config/database.local.php

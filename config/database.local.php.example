@@ -1,5 +1,8 @@
 <?php
-/** Copy to database.local.php — InfinityFree MySQL (not committed). */
+/**
+ * InfinityFree MySQL — copy to database.local.php on the server (File Manager).
+ * Not in git; deploy excludes database.local.php so FTP does not delete it.
+ */
 define('DB_HOST', 'sql123.infinityfree.com');
 define('DB_NAME', 'if0_12345678_alcros');
 define('DB_USER', 'if0_12345678');

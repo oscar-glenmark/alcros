@@ -2989,7 +2989,10 @@ function alcrosFaviconAssetUrl(): string
 
     $full = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'images' . DIRECTORY_SEPARATOR . 'favicon.png';
     $v = is_file($full) ? ('?v=' . filemtime($full)) : '?v=2';
-    $url = alcrosWebBasePath() . '/images/favicon.png' . $v;
+    // Relative to the current PHP page (same as dashboard.php, login.php, etc.).
+    // Absolute /images/... breaks under localhost/alcros/ when base path detection fails,
+    // and the browser then shows Apache/XAMPP's htdocs/favicon.ico.
+    $url = 'images/favicon.png' . $v;
 
     return $url;
 }

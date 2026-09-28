@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
@@ -769,7 +769,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <?= faviconLinkTag() ?>
+    <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Civil Records - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>

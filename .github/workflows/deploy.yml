@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -30,5 +31,3 @@ jobs:
           protocol: ftp
           port: 21
           server-dir: /htdocs/
-          exclude: |
-            config/database.local.php

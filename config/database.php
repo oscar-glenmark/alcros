@@ -73,10 +73,17 @@ function dbConnectionHelpMessage(): string
 function createDBConnection(): PDO
 {
     if (!mysqlServerUp()) {
+        if (alcrosIsLocalXamppDefaults() && !is_file(__DIR__ . '/database.local.php')) {
+            dbUnavailablePage(
+                'MySQL Is Not Running',
+                'Start <strong>MySQL</strong> in the XAMPP Control Panel, then refresh this page. You do <em>not</em> need to run install.php again if you already installed before.',
+                'Connection refused (MySQL service stopped).'
+            );
+        }
         dbUnavailablePage(
-            'MySQL Is Not Running',
-            'Start <strong>MySQL</strong> in the XAMPP Control Panel, then refresh this page. You do <em>not</em> need to run install.php again if you already installed before.',
-            'Connection refused (MySQL service stopped).'
+            'MySQL Connection Failed',
+            'Check <strong>config/database.local.php</strong> on the server (MySQL hostname from InfinityFree panel, not localhost).',
+            'Connection refused or access denied.'
         );
     }
 

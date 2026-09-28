@@ -24,7 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException(
                     alcrosIsLocalXamppDefaults()
                         ? 'MySQL is not running. Start it in the XAMPP Control Panel first.'
-                        : 'Cannot connect to MySQL. Check config/database.php or ALCROS_DB_* environment variables.'
+                        : 'Cannot connect to MySQL. Check config/database.local.php or ALCROS_DB_* environment variables.'
                 );
             }
             foreach ($sqlFiles as $sqlFile) {
@@ -110,7 +110,7 @@ $dbLabel = htmlspecialchars(DB_NAME, ENT_QUOTES, 'UTF-8');
         <div class="mb-4 p-3 bg-amber-50 border border-amber-100 text-amber-800 text-sm rounded-lg">
             <?= alcrosIsLocalXamppDefaults()
                 ? 'Start <strong>MySQL</strong> in XAMPP Control Panel first.'
-                : 'Cannot connect to MySQL. Check <strong>config/database.php</strong>.' ?>
+                : 'Cannot connect to MySQL. Check <strong>config/database.local.php</strong>.' ?>
         </div>
         <?php endif; ?>
         <form method="POST">

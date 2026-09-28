@@ -1,8 +1,6 @@
 <?php
 /**
- * ALCROS MySQL connection.
- * Local XAMPP: defaults below.
- * Production: config/database.local.php (gitignored) or ALCROS_DB_* env vars.
+ * ALCROS MySQL connection (XAMPP defaults; override via ALCROS_DB_* env vars).
  */
 $localConfig = __DIR__ . '/database.local.php';
 if (is_file($localConfig)) {
@@ -83,11 +81,7 @@ function dbConnectionHelpMessage(): string
             return 'MySQL is not running. Start it in the XAMPP Control Panel, then refresh this page.';
         }
 
-        if (!is_file(__DIR__ . '/database.local.php') && alcrosIsLocalXamppDefaults()) {
-            return 'Cannot connect to MySQL. On InfinityFree, create config/database.local.php from database.local.php.example (host must not be localhost).';
-        }
-
-        return 'Cannot connect to MySQL. Check config/database.local.php or ALCROS_DB_* environment variables.';
+        return 'Cannot connect to MySQL. Check config/database.php or ALCROS_DB_* environment variables.';
     }
     if (!databaseIsInstalled()) {
         return 'Database not installed yet. Run install.php once or import database/alcros.sql and alcros_print.sql in phpMyAdmin.';
@@ -99,24 +93,9 @@ function dbConnectionHelpMessage(): string
 function createDBConnection(): PDO
 {
     if (!mysqlServerUp()) {
-        if (function_exists('alcrosIsLocalXamppDefaults') && alcrosIsLocalXamppDefaults()) {
-            $host = strtolower((string) ($_SERVER['HTTP_HOST'] ?? ''));
-            $onFreeHost = str_contains($host, '42web.io')
-                || str_contains($host, 'infinityfree')
-                || str_contains($host, 'epizy.com')
-                || str_contains($host, 'rf.gd');
-            if ($onFreeHost && !is_file(__DIR__ . '/database.local.php')) {
-                $help = 'This server still uses XAMPP database defaults (<code>localhost</code>). '
-                    . 'Add <strong>config/database.local.php</strong> with your InfinityFree MySQL host and credentials, '
-                    . 'or set GitHub secrets and redeploy. If you edited <code>database.php</code> before, a git deploy may have overwritten it.';
-            } else {
-                $help = $onFreeHost
-                    ? 'Check <strong>config/database.local.php</strong> (MySQL hostname from hPanel, not <code>localhost</code>).'
-                    : 'Start <strong>MySQL</strong> in the XAMPP Control Panel, then refresh this page. You do <em>not</em> need to run install.php again if you already installed before.';
-            }
-        } else {
-            $help = 'Check <strong>config/database.local.php</strong> or your server MySQL settings.';
-        }
+        $help = function_exists('alcrosIsLocalXamppDefaults') && alcrosIsLocalXamppDefaults()
+            ? 'Start <strong>MySQL</strong> in the XAMPP Control Panel, then refresh this page. You do <em>not</em> need to run install.php again if you already installed before.'
+            : 'Check <strong>config/database.php</strong> or your server MySQL settings.';
         dbUnavailablePage(
             'MySQL Connection Failed',
             $help,

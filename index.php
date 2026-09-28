@@ -74,7 +74,7 @@ $faqs = [
                     <?= alcrosFaviconImg(48, 'brand-logo shrink-0') ?>
                     <div class="site-brand-text">
                         <div class="site-brand-title">ALCROS</div>
-                        <div class="site-brand-subtitle">Aloran Local Civil Registry Online System gwapo</div>
+                        <div class="site-brand-subtitle">Aloran Local Civil Registry Online System</div>
                     </div>
                 </a>
 

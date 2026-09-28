@@ -276,13 +276,13 @@ function acknowledgeDeliveryFailures(string $channel): void
     }
 }
 
-/** Mark all failed email delivery rows in the window as reviewed (uses MySQL time, same as sent_at). */
+/** Mark all failed email_log rows in the window as reviewed (uses MySQL time, same as sent_at). */
 function acknowledgeEmailLogFailuresThrough(PDO $pdo, int $hours = 24): void
 {
     ensureExtendedSchema($pdo);
     $stmt = $pdo->prepare(
-        "SELECT MAX(sent_at) AS max_sent FROM delivery_logs
-         WHERE channel = 'email' AND success = 0 AND sent_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)"
+        'SELECT MAX(sent_at) AS max_sent FROM email_logs
+         WHERE success = 0 AND sent_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)'
     );
     $stmt->execute([max(1, $hours)]);
     $maxSent = $stmt->fetchColumn();
@@ -293,13 +293,13 @@ function acknowledgeEmailLogFailuresThrough(PDO $pdo, int $hours = 24): void
     }
 }
 
-/** Mark failed SMS delivery rows in the window as reviewed (uses MySQL time, same as sent_at). */
+/** Mark failed sms_log rows in the window as reviewed (uses MySQL time, same as sent_at). */
 function acknowledgeSmsLogFailuresThrough(PDO $pdo, int $hours = 24, ?string $since = null): void
 {
     ensureExtendedSchema($pdo);
     $sql =
-        "SELECT MAX(sent_at) AS max_sent FROM delivery_logs
-         WHERE channel = 'sms' AND success = 0 AND sent_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)";
+        'SELECT MAX(sent_at) AS max_sent FROM sms_logs
+         WHERE success = 0 AND sent_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)';
     $params = [max(1, $hours)];
     if ($since !== null && trim($since) !== '') {
         $sql .= ' AND sent_at > DATE_ADD(?, INTERVAL 1 SECOND)';
@@ -316,7 +316,7 @@ function acknowledgeSmsLogFailuresThrough(PDO $pdo, int $hours = 24, ?string $si
 }
 
 /**
- * Latest success/failure SMS delivery timestamps (respects delivery-failure ack cursor).
+ * Latest success/failure timestamps in sms_logs (respects delivery-failure ack cursor).
  *
  * @return array{latest_failure: ?string, latest_success: ?string}
  */
@@ -335,7 +335,7 @@ function latestSmsLogTimestamps(PDO $pdo, int $hours = 24, ?string $since = null
     $latestSuccess = null;
 
     $failStmt = $pdo->prepare(
-        "SELECT MAX(sent_at) AS max_sent FROM delivery_logs WHERE channel = 'sms' AND success = 0 AND {$window}{$sinceSql}"
+        "SELECT MAX(sent_at) AS max_sent FROM sms_logs WHERE success = 0 AND {$window}{$sinceSql}"
     );
     $failStmt->execute($params);
     $failVal = $failStmt->fetchColumn();
@@ -344,7 +344,7 @@ function latestSmsLogTimestamps(PDO $pdo, int $hours = 24, ?string $since = null
     }
 
     $okStmt = $pdo->prepare(
-        "SELECT MAX(sent_at) AS max_sent FROM delivery_logs WHERE channel = 'sms' AND success = 1 AND {$window}{$sinceSql}"
+        "SELECT MAX(sent_at) AS max_sent FROM sms_logs WHERE success = 1 AND {$window}{$sinceSql}"
     );
     $okStmt->execute($params);
     $okVal = $okStmt->fetchColumn();
@@ -410,13 +410,13 @@ function clearSmsSenderPendingAck(): void
 
 function recentDeliveryFailureSummary(
     PDO $pdo,
-    string $channel,
+    string $table,
     int $hours = 24,
     ?string $since = null,
     bool $sinceInclusive = false
 ): ?array
 {
-    if (!in_array($channel, ['email', 'sms'], true)) {
+    if (!in_array($table, ['email_logs', 'sms_logs'], true)) {
         return null;
     }
 
@@ -425,11 +425,11 @@ function recentDeliveryFailureSummary(
         "SELECT COUNT(*) AS fail_count,
                 MAX(sent_at) AS latest_at,
                 SUBSTRING_INDEX(GROUP_CONCAT(error_message ORDER BY sent_at DESC SEPARATOR '||'), '||', 1) AS latest_reason
-         FROM delivery_logs
-         WHERE channel = ?
-           AND success = 0
+         FROM {$table}
+         WHERE success = 0
            AND sent_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)";
-    $params = [$channel, max(1, $hours)];
+    $params = [max(1, $hours)];
+
     if ($since !== null && trim($since) !== '') {
         // Ignore failures at or before the ack timestamp (1s slack avoids same-second log rows re-triggering alerts).
         $sql .= ' AND sent_at > DATE_ADD(?, INTERVAL 1 SECOND)';
@@ -462,15 +462,15 @@ function emailLogErrorIsMissingSmtpConfig(string $reason): bool
         || str_contains($reason, 'gmail smtp is not');
 }
 
-/** True when every failed email delivery in the window is from missing Gmail SMTP setup (historical). */
+/** True when every failed email_log in the window is from missing Gmail SMTP setup (historical). */
 function allRecentEmailFailuresAreMissingSmtpConfig(PDO $pdo, int $hours = 24, ?string $since = null): bool
 {
     ensureExtendedSchema($pdo);
 
     $sql =
-        "SELECT error_message FROM delivery_logs
-         WHERE channel = 'email' AND success = 0
-           AND sent_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)";
+        'SELECT error_message FROM email_logs
+         WHERE success = 0
+           AND sent_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)';
     $params = [max(1, $hours)];
 
     if ($since !== null && trim($since) !== '') {
@@ -554,7 +554,7 @@ function syncSystemErrors(PDO $pdo): void
         // Stale pre-configuration failures cleared; skip re-opening the alert this run.
     }
 
-    $emailFailures = recentDeliveryFailureSummary($pdo, 'email', 24, getDeliveryFailureAckTime('email'));
+    $emailFailures = recentDeliveryFailureSummary($pdo, 'email_logs', 24, getDeliveryFailureAckTime('email'));
     if ($emailFailures !== null && isEmailConfigured()) {
         if (allRecentEmailFailuresAreMissingSmtpConfig($pdo, 24, getDeliveryFailureAckTime('email'))) {
             acknowledgeEmailLogFailuresThrough($pdo, 24);
@@ -603,7 +603,7 @@ function syncSystemErrors(PDO $pdo): void
                 // Recovered after a later successful send; skip re-opening this run.
             }
 
-            $smsFailures = recentDeliveryFailureSummary($pdo, 'sms', 24, getDeliveryFailureAckTime('sms'));
+            $smsFailures = recentDeliveryFailureSummary($pdo, 'sms_logs', 24, getDeliveryFailureAckTime('sms'));
             if ($smsFailures !== null && isSmsConfigured()) {
                 $reason = $smsFailures['count'] . ' SMS message(s) failed in the last 24 hours.';
                 if ($smsFailures['reason'] !== '') {
@@ -772,7 +772,7 @@ function runSystemErrorFix(PDO $pdo, string $errorKey, string $staffId): array
                 $fixStarted = date('Y-m-d H:i:s');
                 sendDueAppointmentReminders($pdo);
                 touchReminderSchedulerTick();
-                $newFailures = recentDeliveryFailureSummary($pdo, 'email', 1, $fixStarted, true);
+                $newFailures = recentDeliveryFailureSummary($pdo, 'email_logs', 1, $fixStarted, true);
                 if ($newFailures !== null) {
                     $reason = $newFailures['reason'] !== ''
                         ? ' Reason: ' . $newFailures['reason']
@@ -798,7 +798,7 @@ function runSystemErrorFix(PDO $pdo, string $errorKey, string $staffId): array
                 $fixStarted = date('Y-m-d H:i:s');
                 sendDueAppointmentReminders($pdo);
                 touchReminderSchedulerTick();
-                $newFailures = recentDeliveryFailureSummary($pdo, 'sms', 1, $fixStarted, true);
+                $newFailures = recentDeliveryFailureSummary($pdo, 'sms_logs', 1, $fixStarted, true);
                 if ($newFailures !== null) {
                     $reason = $newFailures['reason'] !== ''
                         ? ' Reason: ' . $newFailures['reason']

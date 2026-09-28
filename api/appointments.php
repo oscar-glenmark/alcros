@@ -13,7 +13,7 @@ try {
     ensureSoftDeleteColumns($pdo);
     ensureAppointmentUpdatedColumn($pdo);
 
-    $filters = appointmentsListFilters($_GET);
+    $filters = appointmentsListFilters($_GET, $pdo);
     $focusId = (int) ($_GET['focus_id'] ?? 0);
     $rows = fetchAppointmentsManageList($pdo, $filters);
     $appointments = [];

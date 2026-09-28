@@ -101,12 +101,14 @@
         return true;
     }
 
-    function validateRequiredFields(form, labels) {
+    function validateRequiredFields(form, labels, skipRequired) {
         labels = labels || {};
+        skipRequired = skipRequired || {};
         var ok = true;
         var seenRadio = {};
 
         form.querySelectorAll('[required]').forEach(function (el) {
+            if (skipRequired[el.name] || (el.id && skipRequired[el.id])) return;
             if (el.disabled) return;
             if (el.type === 'radio') {
                 if (seenRadio[el.name]) return;
@@ -152,11 +154,22 @@
             if (ok && email && gmailInput) gmailInput.value = email;
         }
 
+        function setGmailInvalid(invalid) {
+            if (!gmailInput) return;
+            if (invalid) {
+                gmailInput.classList.add('is-invalid');
+                gmailInput.setAttribute('aria-invalid', 'true');
+            } else {
+                gmailInput.classList.remove('is-invalid');
+                gmailInput.removeAttribute('aria-invalid');
+            }
+        }
+
         if (verifyBtn && gmailInput) {
             verifyBtn.addEventListener('click', function () {
                 var email = gmailInput.value.trim();
                 if (!email) {
-                    setFieldError(gmailInput, 'Enter your Gmail address first.');
+                    setGmailInvalid(true);
                     setStatus('Enter your Gmail address first.', 'err');
                     return;
                 }
@@ -173,17 +186,17 @@
                         if (data.ok) {
                             setVerified(true, data.email);
                             setStatus(data.message || 'Gmail verified.', 'ok');
-                            gmailInput.classList.remove('is-invalid');
+                            setGmailInvalid(false);
                         } else {
                             setVerified(false);
                             setStatus(data.error || 'Verification failed.', 'err');
-                            setFieldError(gmailInput, data.error || 'This Gmail could not be verified.');
+                            setGmailInvalid(true);
                         }
                     })
                     .catch(function () {
                         setVerified(false);
                         setStatus('Network error. Try again.', 'err');
-                        setFieldError(gmailInput, 'Network error while verifying Gmail. Try again.');
+                        setGmailInvalid(true);
                     })
                     .finally(function () {
                         verifyBtn.disabled = false;
@@ -196,23 +209,23 @@
             gmailInput.addEventListener('input', function () {
                 setVerified(false);
                 if (gmailStatus) gmailStatus.classList.add('hidden');
-                gmailInput.classList.remove('is-invalid');
+                setGmailInvalid(false);
             });
         }
 
         if (form) {
             form.addEventListener('submit', function (e) {
                 clearFormValidation(form);
-                var ok = validateRequiredFields(form, options.fieldLabels || {});
+                var ok = validateRequiredFields(form, options.fieldLabels || {}, { email: true });
 
                 if (gmailInput) {
                     var email = gmailInput.value.trim();
                     if (!email) {
-                        setFieldError(gmailInput, 'Enter your Gmail address.');
+                        setGmailInvalid(true);
                         setStatus('Enter your Gmail address.', 'err');
                         ok = false;
                     } else if (emailVerified && emailVerified.value !== '1') {
-                        setFieldError(gmailInput, 'Click Verify Gmail before continuing.');
+                        setGmailInvalid(true);
                         setStatus('Click Verify Gmail before continuing.', 'err');
                         ok = false;
                     }

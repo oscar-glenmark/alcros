@@ -1187,8 +1187,9 @@ function appointmentStandaloneSql(string $alias = 'a'): string
 }
 
 /**
- * Manage Appointments default date: explicit ?date= wins; otherwise today when it has
- * standalone visits, or the nearest future date with scheduled/confirmed bookings.
+ * Manage Appointments default date: explicit ?date= wins; otherwise the nearest date
+ * with awaiting (scheduled) standalone visits, then today when it has other visits,
+ * or the nearest future date with scheduled/confirmed bookings.
  */
 function resolveAppointmentsManageDate(PDO $pdo, ?string $requestedDate = null): string
 {
@@ -1199,9 +1200,78 @@ function resolveAppointmentsManageDate(PDO $pdo, ?string $requestedDate = null):
     return appointmentsManageSuggestedDate($pdo, alcrosTodayDate());
 }
 
+/** Standalone appointments awaiting staff confirmation on a given date. */
+function countAwaitingAppointmentsOnDate(PDO $pdo, string $date): int
+{
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        $date = alcrosTodayDate();
+    }
+
+    ensureSoftDeleteColumns($pdo);
+    $standaloneSql = appointmentStandaloneSql('a');
+    $stmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM appointments a
+         WHERE a.appointment_date = ?
+           AND a.status = 'scheduled'
+           AND a.deleted_at IS NULL
+           AND {$standaloneSql}"
+    );
+    $stmt->execute([$date]);
+
+    return (int) $stmt->fetchColumn();
+}
+
+/** Earliest manage date with awaiting appointments (today/future first, then overdue). */
+function nearestAwaitingAppointmentManageDate(PDO $pdo, string $fromDate): ?string
+{
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fromDate)) {
+        $fromDate = alcrosTodayDate();
+    }
+
+    ensureSoftDeleteColumns($pdo);
+    $standaloneSql = appointmentStandaloneSql('a');
+
+    $stmt = $pdo->prepare(
+        "SELECT MIN(a.appointment_date) FROM appointments a
+         WHERE a.appointment_date >= ?
+           AND a.status = 'scheduled'
+           AND a.deleted_at IS NULL
+           AND {$standaloneSql}"
+    );
+    $stmt->execute([$fromDate]);
+    $next = $stmt->fetchColumn();
+    if (is_string($next) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $next)) {
+        return $next;
+    }
+
+    $stmt = $pdo->prepare(
+        "SELECT MIN(a.appointment_date) FROM appointments a
+         WHERE a.appointment_date < ?
+           AND a.status = 'scheduled'
+           AND a.deleted_at IS NULL
+           AND {$standaloneSql}"
+    );
+    $stmt->execute([$fromDate]);
+    $past = $stmt->fetchColumn();
+    if (is_string($past) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $past)) {
+        return $past;
+    }
+
+    return null;
+}
+
 function appointmentsManageSuggestedDate(PDO $pdo, string $today): string
 {
     ensureSoftDeleteColumns($pdo);
+
+    if (countAwaitingAppointmentsOnDate($pdo, $today) > 0) {
+        return $today;
+    }
+
+    $awaitingDate = nearestAwaitingAppointmentManageDate($pdo, $today);
+    if ($awaitingDate !== null) {
+        return $awaitingDate;
+    }
 
     if (countSpecialAppointmentsOnDate($pdo, $today) > 0) {
         return $today;
@@ -3518,15 +3588,23 @@ function appointmentRevision(array $row): string
     );
 }
 
-function appointmentsListFilters(array $input): array
+function appointmentsListFilters(array $input, ?PDO $pdo = null): array
 {
     $status = (string) ($input['status'] ?? 'all');
     if (!in_array($status, ['all', 'scheduled', 'confirmed', 'completed', 'no_show', 'all_appointments', 'recently_deleted'], true)) {
         $status = 'all';
     }
 
-    $date = (string) ($input['date'] ?? alcrosTodayDate());
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+    $rawDate = array_key_exists('date', $input) ? trim((string) $input['date']) : null;
+    if ($rawDate === '') {
+        $rawDate = null;
+    }
+
+    if ($pdo !== null) {
+        $date = resolveAppointmentsManageDate($pdo, $rawDate);
+    } elseif ($rawDate !== null && preg_match('/^\d{4}-\d{2}-\d{2}$/', $rawDate)) {
+        $date = $rawDate;
+    } else {
         $date = alcrosTodayDate();
     }
 

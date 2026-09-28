@@ -1,0 +1,15 @@
+<?php
+/**
+ * Production MySQL (InfinityFree, etc.). Not used on local XAMPP unless you copy this file.
+ *
+ * 1. Copy to database.local.php (same folder).
+ * 2. Fill in values from your hosting panel → MySQL Databases.
+ * 3. Do not commit database.local.php (gitignored).
+ *
+ * If you deploy via GitHub Actions, set repository secrets instead (see .github/workflows/deploy.yml).
+ */
+
+define('DB_HOST', 'sql123.infinityfree.com');
+define('DB_NAME', 'if0_12345678_alcros');
+define('DB_USER', 'if0_12345678');
+define('DB_PASS', 'your_mysql_password');

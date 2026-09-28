@@ -8,14 +8,6 @@ define('DB_USER', 'root');
 define('DB_PASS', '');
 define('DB_CHARSET', 'utf8mb4');
 
-function alcrosIsLocalXamppDefaults(): bool
-{
-    return DB_HOST === 'localhost'
-        && DB_NAME === 'alcros_db'
-        && DB_USER === 'root'
-        && DB_PASS === '';
-}
-
 function dbUnavailablePage(string $title, string $help, string $msg): never
 {
     http_response_code(503);
@@ -73,17 +65,10 @@ function dbConnectionHelpMessage(): string
 function createDBConnection(): PDO
 {
     if (!mysqlServerUp()) {
-        if (alcrosIsLocalXamppDefaults() && !is_file(__DIR__ . '/database.local.php')) {
-            dbUnavailablePage(
-                'MySQL Is Not Running',
-                'Start <strong>MySQL</strong> in the XAMPP Control Panel, then refresh this page. You do <em>not</em> need to run install.php again if you already installed before.',
-                'Connection refused (MySQL service stopped).'
-            );
-        }
         dbUnavailablePage(
-            'MySQL Connection Failed',
-            'Check <strong>config/database.local.php</strong> on the server (MySQL hostname from InfinityFree panel, not localhost).',
-            'Connection refused or access denied.'
+            'MySQL Is Not Running',
+            'Start <strong>MySQL</strong> in the XAMPP Control Panel, then refresh this page. You do <em>not</em> need to run install.php again if you already installed before.',
+            'Connection refused (MySQL service stopped).'
         );
     }
 

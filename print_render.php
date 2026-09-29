@@ -65,7 +65,7 @@ if ($calibrationPreview) {
     }
     if (!$context['ok']) {
         http_response_code(404);
-        echo '<!DOCTYPE html><html><body><p>' . htmlspecialchars($context['error']) . '</p></body></html>';
+        echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' . faviconLinkTag() . '<title>Print · ALCROS</title></head><body><p>' . htmlspecialchars($context['error']) . '</p></body></html>';
         exit;
     }
 
@@ -97,7 +97,7 @@ if ($calibrationPreview) {
 $printData = printCertificate($pdo, $certificateType, $pageSide, $record, $printOptions);
 if (!$printData) {
     http_response_code(404);
-    echo '<!DOCTYPE html><html><body><p>Print template not found.</p></body></html>';
+    echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' . faviconLinkTag() . '<title>Print · ALCROS</title></head><body><p>Print template not found.</p></body></html>';
     exit;
 }
 
@@ -176,6 +176,7 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <?= faviconLinkTag() ?>
     <title>Print <?= htmlspecialchars(ucfirst($certificateType)) ?> · <?= htmlspecialchars(ucfirst($pageSide)) ?></title>
     <?= $printerSetupCss ?>
     <style>

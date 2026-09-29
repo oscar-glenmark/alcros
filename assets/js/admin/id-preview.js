@@ -16,8 +16,11 @@
         return slash >= 0 ? path.slice(0, slash + 1) : '/';
     }
 
-    /** Ensure file.php URLs are under the app root and carry fresh staff auth + raw=1 for <img>. */
-    function resolveStaffUploadUrl(path) {
+    /**
+     * Ensure file.php URLs are under the app root and carry fresh staff auth.
+     * @param {boolean} forEmbed - true for <img>/iframe (raw=1); false for click-to-open tab (HTML viewer + favicon).
+     */
+    function resolveStaffUploadUrl(path, forEmbed) {
         if (!path) return '';
 
         try {
@@ -32,7 +35,11 @@
                 url.pathname = root + '/file.php';
             }
 
-            url.searchParams.set('raw', '1');
+            if (forEmbed) {
+                url.searchParams.set('raw', '1');
+            } else {
+                url.searchParams.delete('raw');
+            }
 
             var token = sessionStorage.getItem('alcros_auth') || '';
             if (token) {
@@ -48,15 +55,17 @@
     function idPreviewCard(label, path, eager) {
         if (!path) return '';
 
-        path = resolveStaffUploadUrl(path);
-        if (!path) return '';
+        var openPath = resolveStaffUploadUrl(path, false);
+        var embedPath = resolveStaffUploadUrl(path, true);
+        if (!openPath || !embedPath) return '';
 
-        var safePath = escapeAttr(path);
-        var isPdf = /\.pdf(\?|$)/i.test(path);
+        var safeOpenPath = escapeAttr(openPath);
+        var safeEmbedPath = escapeAttr(embedPath);
+        var isPdf = /\.pdf(\?|$)/i.test(openPath);
         var loadAttr = eager ? ' loading="eager" fetchpriority="high" decoding="async"' : ' loading="lazy" decoding="async"';
 
         if (isPdf) {
-            return '<a href="' + safePath + '" target="_blank" rel="noopener noreferrer" class="admin-id-preview-card admin-id-preview-card--pdf">' +
+            return '<a href="' + safeOpenPath + '" target="_blank" rel="noopener noreferrer" class="admin-id-preview-card admin-id-preview-card--pdf">' +
                 '<span class="admin-id-preview-label">' + escapeAttr(sideLabel(label)) + '</span>' +
                 '<div class="admin-id-preview-pdf">' +
                 '<i data-lucide="file-text" class="w-7 h-7 mb-1 opacity-60"></i>' +
@@ -64,9 +73,9 @@
                 '<span class="admin-id-preview-caption">' + escapeAttr(label) + '</span></a>';
         }
 
-        return '<a href="' + safePath + '" target="_blank" rel="noopener noreferrer" class="admin-id-preview-card">' +
+        return '<a href="' + safeOpenPath + '" target="_blank" rel="noopener noreferrer" class="admin-id-preview-card">' +
             '<span class="admin-id-preview-label">' + escapeAttr(sideLabel(label)) + '</span>' +
-            '<img src="' + safePath + '" alt="' + escapeAttr(label) + '" class="admin-id-preview-image"' + loadAttr +
+            '<img src="' + safeEmbedPath + '" alt="' + escapeAttr(label) + '" class="admin-id-preview-image"' + loadAttr +
             ' onerror="this.classList.add(\'admin-id-preview-image--error\');this.alt=\'Preview unavailable\';">' +
             '<span class="admin-id-preview-caption">' + escapeAttr(label) + ' · Click to open</span></a>';
     }

@@ -41,7 +41,13 @@ function adminPageStyles(string $page): string
         return '';
     }
 
-    return stylesheetTag('admin/' . $page . '.css');
+    $html = stylesheetTag('admin/' . $page . '.css');
+    // appointment.css used to @import manage-requests.css without ?v= cache bust on the import.
+    if ($page === 'appointment') {
+        $html .= "\n    " . stylesheetTag('admin/manage-requests.css');
+    }
+
+    return $html;
 }
 
 function adminLayoutHeadStyles(?string $page = null): string

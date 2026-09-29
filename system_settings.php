@@ -564,6 +564,13 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                         </span>
                     </button>
                     <?php endforeach; ?>
+                    <div class="settings-tab-nav-footer pt-2 mt-2 border-t border-slate-100">
+                        <button type="button" data-logout-trigger
+                            class="settings-tab-logout w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-left text-red-600 hover:bg-red-50 transition-colors">
+                            <i data-lucide="log-out" class="w-4 h-4 shrink-0"></i>
+                            <span>Logout</span>
+                        </button>
+                    </div>
                 </aside>
 
                 <section class="settings-tab-panel lg:col-span-9 space-y-6 min-w-0">

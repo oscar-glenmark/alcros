@@ -45,6 +45,20 @@
     line-height: 1.3;
 }
 
+.settings-tab-nav-footer {
+    flex-shrink: 0;
+}
+
+.settings-tab-logout {
+    cursor: pointer;
+    border: 0;
+    background: transparent;
+}
+
+.settings-tab-logout:hover {
+    color: #b91c1c;
+}
+
 .tab-btn.active .tab-desc {
     color: rgba(255, 255, 255, 0.75);
 }

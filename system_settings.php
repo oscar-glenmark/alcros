@@ -162,6 +162,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             purgeObsoleteSemaphoreSettings();
             require_once __DIR__ . '/includes/system_errors.php';
             clearStaleEmailConfigFailureAlert($pdo);
+            clearStaleEmailDeliveryFailureAlert($pdo);
             syncSystemErrors($pdo);
             settingsFlashSet('success', 'System settings saved successfully.');
             $handled = true;

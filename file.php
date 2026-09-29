@@ -3,9 +3,18 @@
  * Authenticated file delivery for sensitive uploads (IDs, staff photos).
  */
 require_once __DIR__ . '/includes/auth.php';
-require_once __DIR__ . '/includes/helpers.php';
 
-requireStaffLogin();
+requireStaffLoginForMedia();
+
+function filePhpHelpers(): void
+{
+    static $loaded = false;
+    if ($loaded) {
+        return;
+    }
+    $loaded = true;
+    require_once __DIR__ . '/includes/helpers.php';
+}
 
 /**
  * Stream bytes for embeds (<img>, iframe PDF, etc.). Top-level tab visits get an HTML shell with favicon + title.
@@ -26,6 +35,16 @@ function filePhpShouldStreamBinary(): bool
 
 function filePhpRespondHtmlError(int $status, string $title, string $message): never
 {
+    if (filePhpShouldStreamBinary()) {
+        http_response_code($status);
+        header('Content-Type: text/plain; charset=UTF-8');
+        header('X-Content-Type-Options: nosniff');
+        header('Cache-Control: no-store');
+        echo $title . ': ' . $message;
+        exit;
+    }
+
+    filePhpHelpers();
     http_response_code($status);
     header('Content-Type: text/html; charset=UTF-8');
     header('X-Content-Type-Options: nosniff');
@@ -45,7 +64,14 @@ function filePhpRespondHtmlError(int $status, string $title, string $message): n
 
 function filePhpRenderViewer(string $relative, string $mime, string $filename): never
 {
-    $rawUrl = buildAuthUrl('file.php', ['f' => $relative, 'raw' => '1']);
+    filePhpHelpers();
+    $rawUrl = buildAuthUrl(
+        (function (): string {
+            $base = function_exists('alcrosWebBasePath') ? alcrosWebBasePath() : '';
+            return ($base !== '' ? $base . '/' : '') . 'file.php';
+        })(),
+        ['f' => $relative, 'raw' => '1']
+    );
     $pageTitle = $filename . ' - ALCROS';
 
     header('Content-Type: text/html; charset=UTF-8');
@@ -82,26 +108,58 @@ function filePhpRenderViewer(string $relative, string $mime, string $filename): 
     exit;
 }
 
+function filePhpMimeForPath(string $fullPath): string
+{
+    $ext = strtolower(pathinfo($fullPath, PATHINFO_EXTENSION));
+    $byExt = [
+        'jpg'  => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'png'  => 'image/png',
+        'webp' => 'image/webp',
+        'pdf'  => 'application/pdf',
+    ];
+    if (isset($byExt[$ext])) {
+        return $byExt[$ext];
+    }
+
+    $detected = @mime_content_type($fullPath);
+
+    return is_string($detected) && $detected !== '' ? $detected : 'application/octet-stream';
+}
+
 $relative = normalizeUploadRelativePath((string) ($_GET['f'] ?? ''));
 if ($relative === null) {
     filePhpRespondHtmlError(404, 'File not found', 'The requested file path is invalid or not allowed.');
 }
 
-$full = __DIR__ . '/' . $relative;
+$full = __DIR__ . '/' . str_replace('/', DIRECTORY_SEPARATOR, $relative);
 if (!is_file($full)) {
     filePhpRespondHtmlError(404, 'File not found', 'The requested file could not be found on the server.');
 }
 
-$mime = mime_content_type($full) ?: 'application/octet-stream';
+$mime = filePhpMimeForPath($full);
 $filename = basename($full);
 
 if (!filePhpShouldStreamBinary()) {
     filePhpRenderViewer($relative, $mime, $filename);
 }
 
+$fileSize = filesize($full);
+$mtime = filemtime($full) ?: time();
+$etag = '"' . md5($relative . '|' . $mtime . '|' . (string) $fileSize) . '"';
+$ifNoneMatch = trim((string) ($_SERVER['HTTP_IF_NONE_MATCH'] ?? ''));
+if ($ifNoneMatch !== '' && hash_equals($etag, $ifNoneMatch)) {
+    http_response_code(304);
+    header('ETag: ' . $etag);
+    header('Cache-Control: private, max-age=86400');
+    exit;
+}
+
 header('Content-Type: ' . $mime);
 header('Content-Disposition: inline; filename="' . $filename . '"');
 header('X-Content-Type-Options: nosniff');
-header('Cache-Control: private, no-store');
+header('ETag: ' . $etag);
+header('Cache-Control: private, max-age=86400');
+header('Content-Length: ' . (string) $fileSize);
 readfile($full);
 exit;

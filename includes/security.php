@@ -479,9 +479,24 @@ function normalizeUploadRelativePath(string $path): ?string
         return null;
     }
 
-    $full = realpath(__DIR__ . '/../' . $path);
     $root = realpath(__DIR__ . '/../uploads');
-    if ($full === false || $root === false || !str_starts_with($full, $root)) {
+    if ($root === false) {
+        return null;
+    }
+
+    $fullPath = __DIR__ . '/../' . str_replace('/', DIRECTORY_SEPARATOR, $path);
+    $resolved = realpath($fullPath);
+    if ($resolved !== false) {
+        return str_starts_with($resolved, $root) ? $path : null;
+    }
+
+    $parent = realpath(dirname($fullPath));
+    if ($parent === false || !str_starts_with($parent, $root)) {
+        return null;
+    }
+
+    $basename = basename($path);
+    if ($basename === '' || $basename === '.' || $basename === '..') {
         return null;
     }
 
@@ -518,13 +533,29 @@ function publicTrackingAppointment(array $row): array
 
 function protectedUploadUrl(?string $path): ?string
 {
-    if (!$path || !isSensitiveUploadPath($path)) {
-        return $path;
+    if ($path === null || trim($path) === '') {
+        return null;
+    }
+
+    $normalized = normalizeUploadRelativePath($path);
+    if ($normalized === null) {
+        return null;
     }
 
     if (!function_exists('buildAuthUrl')) {
         require_once __DIR__ . '/auth.php';
     }
 
-    return buildAuthUrl('file.php', ['f' => ltrim(str_replace('\\', '/', $path), '/')]);
+    $fileScript = 'file.php';
+    if (function_exists('alcrosWebBasePath')) {
+        $base = alcrosWebBasePath();
+        if ($base !== '') {
+            $fileScript = $base . '/file.php';
+        }
+    }
+
+    return buildAuthUrl($fileScript, [
+        'f'   => $normalized,
+        'raw' => '1',
+    ]);
 }

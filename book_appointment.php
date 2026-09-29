@@ -121,11 +121,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ];
                         if ($notifyEmail) {
                             $emailSent = notifyAppointmentBooked($notifyPayload);
-                            maybeSendVisitSoonEmail($pdo, 'appointments', $appointmentId);
                         }
-                        if ($notifySms) {
-                            require_once __DIR__ . '/includes/sms.php';
-                            notifyAppointmentBookedSms($notifyPayload);
+                        if ($notifyEmail || $notifySms) {
+                            maybeSendVisitSoonEmail($pdo, 'appointments', $appointmentId);
                         }
                         runReminderSchedulerIfDue($pdo, 60);
                         $success = true;

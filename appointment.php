@@ -67,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($isUpdate) {
         $status = (string) ($_POST['status'] ?? '');
-        if ($id > 0 && updateAppointmentStatus($pdo, $id, $status, $isAjax)) {
+        if ($id > 0 && updateAppointmentStatus($pdo, $id, $status)) {
             $responseOk = true;
             $responseMessage = match ($status) {
                 'confirmed' => 'Appointment confirmed — citizen will be notified.',

@@ -301,10 +301,48 @@ function fetchScheduleDatesInMonth(PDO $pdo, string $yearMonth): array
     return $map;
 }
 
+function scheduleVisitManageRequestStatus(array $row): string
+{
+    $raw = (string) ($row['request_status'] ?? '');
+    if ($raw === '') {
+        return 'all_requests';
+    }
+
+    return match (normalizeRequestStatus($raw)) {
+        'ready'     => 'ready',
+        'completed' => 'completed',
+        'rejected'  => 'rejected',
+        'pending'   => 'pending',
+        default     => 'all_requests',
+    };
+}
+
+function scheduleVisitAppointmentStatus(array $row): string
+{
+    $raw = (string) ($row['appointment_status'] ?? $row['status'] ?? 'scheduled');
+
+    return match ($raw) {
+        'scheduled' => 'scheduled',
+        'confirmed' => 'confirmed',
+        'completed' => 'completed',
+        'no_show'   => 'no_show',
+        'cancelled' => 'cancelled',
+        default     => 'all_appointments',
+    };
+}
+
 function enrichScheduleVisitRow(array $row): array
 {
     if (!empty($row['tracking_code']) || ($row['source'] ?? '') === 'document_request') {
         $row['schedule_kind'] = 'certificate';
+        $row['appointment_status'] = (string) ($row['status'] ?? 'scheduled');
+        if (!empty($row['request_status'])) {
+            $row['request_status'] = normalizeRequestStatus((string) $row['request_status']);
+        } elseif ($row['appointment_status'] === 'confirmed') {
+            $row['request_status'] = 'ready';
+        } else {
+            $row['request_status'] = 'pending';
+        }
         $row['service_type'] = trim(appointmentServiceLabel((string) ($row['service_type'] ?? '')));
         if ($row['service_type'] === '') {
             $row['service_type'] = 'Certificate';
@@ -312,11 +350,16 @@ function enrichScheduleVisitRow(array $row): array
         if (!str_contains($row['service_type'], 'Pickup')) {
             $row['service_type'] .= ' · Pickup';
         }
-        $row['status'] = appointmentDisplayStatusLabel($row);
+        if (!empty($row['request_status'])) {
+            $row['status'] = requestStatusLabel(normalizeRequestStatus((string) $row['request_status']));
+        } else {
+            $row['status'] = appointmentDisplayStatusLabel($row);
+        }
     } else {
         $row['schedule_kind'] = 'appointment';
+        $row['appointment_status'] = (string) ($row['status'] ?? 'scheduled');
         $row['service_type'] = appointmentServiceLabel((string) ($row['service_type'] ?? ''));
-        $row['status'] = appointmentStatusLabel((string) ($row['status'] ?? 'scheduled'));
+        $row['status'] = appointmentStatusLabel($row['appointment_status']);
     }
 
     return $row;
@@ -327,13 +370,19 @@ function scheduleVisitLinkParams(array $row, string $scheduleDate): array
     if (($row['schedule_kind'] ?? '') === 'certificate' || !empty($row['tracking_code'])) {
         $code = trim((string) ($row['tracking_code'] ?? ''));
         if ($code !== '') {
-            return ['manage_request.php', ['q' => $code]];
+            return ['manage_request.php', [
+                'q'      => $code,
+                'status' => scheduleVisitManageRequestStatus($row),
+            ]];
         }
     }
 
     $code = trim((string) ($row['appointment_code'] ?? ''));
     $date = (string) ($row['appointment_date'] ?? $scheduleDate);
-    $query = ['date' => $date];
+    $query = [
+        'date'   => $date,
+        'status' => scheduleVisitAppointmentStatus($row),
+    ];
     if ($code !== '') {
         $query['q'] = $code;
     }
@@ -365,8 +414,10 @@ function fetchScheduleVisits(PDO $pdo, string $date, int $limit = 8): array
 
     $stmt = $pdo->prepare(
         "SELECT a.appointment_code, a.appointment_date, a.first_name, a.middle_name, a.last_name,
-                a.appointment_time, a.service_type, a.status, a.source, a.tracking_code
+                a.appointment_time, a.service_type, a.status, a.source, a.tracking_code,
+                dr.status AS request_status
          FROM appointments a
+         LEFT JOIN document_requests dr ON dr.tracking_code = a.tracking_code AND dr.deleted_at IS NULL
          WHERE a.appointment_date = ?
            AND " . scheduleVisitAppointmentSql('a') . "
            AND a.deleted_at IS NULL
@@ -396,15 +447,17 @@ function fetchScheduleVisits(PDO $pdo, string $date, int $limit = 8): array
     );
     $stmt->execute([$date]);
     foreach (enrichCitizenNameRows($stmt->fetchAll()) as $req) {
-        $rows[] = attachScheduleVisitMeta([
+        $requestStatus = normalizeRequestStatus((string) ($req['status'] ?? 'pending'));
+        $rows[] = attachScheduleVisitMeta(enrichScheduleVisitRow([
             'citizen_name'     => $req['citizen_name'],
             'appointment_time' => $req['appointment_time'],
             'appointment_date' => $req['appointment_date'],
             'service_type'     => documentTypeLabel((string) ($req['document_type'] ?? '')) . ' · Pickup',
-            'status'           => requestStatusLabel(normalizeRequestStatus((string) ($req['status'] ?? 'pending'))),
+            'request_status'   => $requestStatus,
+            'status'           => 'scheduled',
             'schedule_kind'    => 'certificate',
             'tracking_code'    => $req['tracking_code'] ?? '',
-        ], $date);
+        ]), $date);
     }
 
     usort($rows, static function (array $a, array $b): int {

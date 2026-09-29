@@ -6,13 +6,13 @@
 
 function isSmsEnabled(): bool
 {
-    purgeObsoleteSemaphoreSettings();
-
     return getSetting('sms_enabled', '0') === '1';
 }
 
 function isSmsConfigured(): bool
 {
+    purgeObsoleteSemaphoreSettings();
+
     return isSmsEnabled() && iprogApiToken() !== '';
 }
 
@@ -71,8 +71,6 @@ const IPROG_SMS_API_BASE = 'https://sms.iprogtech.com/api/v1';
 
 function iprogApiToken(): string
 {
-    purgeObsoleteSemaphoreSettings();
-
     return trim(getSetting('iprog_api_token', ''));
 }
 
@@ -302,46 +300,51 @@ function sendCitizenSms(string $phone, string $message, string $smsType = 'gener
     return !empty($result['ok']);
 }
 
-function smsSiteShortName(): string
-{
-    return getSetting('site_name', 'ALCROS');
-}
+/** IPROG template header already includes the site name — body must stay ≤150 chars. */
+const SMS_BODY_MAX_LENGTH = 150;
 
 function smsCitizenGreeting(array $row): string
 {
+    $first = trim((string) ($row['first_name'] ?? ''));
+    if ($first !== '') {
+        return 'Hi ' . $first . ',';
+    }
+
     $name = trim(personNameFromRow($row));
+    if ($name === '') {
+        return 'Hello,';
+    }
 
-    return $name !== '' ? 'Hi ' . $name . ',' : 'Hello,';
+    $short = preg_split('/\s+/u', $name, 2)[0] ?? $name;
+
+    return 'Hi ' . $short . ',';
 }
 
-function smsBrandTag(): string
-{
-    return '[' . smsSiteShortName() . ']';
-}
-
-/** Short visit text for SMS (keeps messages within 1–2 IPROG credits). */
+/** Compact visit line for SMS character limits. */
 function smsVisitShort(?string $date, ?string $time): string
 {
-    $visit = formatAppointmentDisplay($date, $time);
-    if ($visit === '' || $visit === '—') {
+    if ($date === null || trim($date) === '') {
         return '';
     }
 
-    return $visit;
-}
-
-function smsOfficePhoneShort(): string
-{
-    $phone = trim(getSetting('office_phone', ''));
-    if ($phone === '') {
+    $ts = strtotime(trim($date));
+    if ($ts === false) {
         return '';
     }
 
-    return 'Call ' . $phone . '.';
+    $out = date('n/j/y', $ts);
+    if ($time !== null && trim($time) !== '') {
+        $timeTs = strtotime(trim($time));
+        if ($timeTs !== false) {
+            $out .= ' ' . date('g:i A', $timeTs);
+        }
+    }
+
+    return $out;
 }
 
 /**
- * Single-paragraph SMS — no URLs (IPROG phishing filter) and no long office blocks (credit cost).
+ * Single-paragraph SMS — no URLs; capped at SMS_BODY_MAX_LENGTH (IPROG header is separate).
  *
  * @param list<string|null> $segments
  */
@@ -355,23 +358,16 @@ function smsComposeCitizenMessage(array $segments): string
         }
     }
 
+    while ($parts !== [] && mb_strlen(implode(' ', $parts)) > SMS_BODY_MAX_LENGTH) {
+        array_pop($parts);
+    }
+
     $message = implode(' ', $parts);
-    if (mb_strlen($message) > 320) {
-        $message = mb_substr($message, 0, 317) . '...';
+    if (mb_strlen($message) > SMS_BODY_MAX_LENGTH) {
+        $message = mb_substr($message, 0, SMS_BODY_MAX_LENGTH - 1) . '…';
     }
 
     return $message;
-}
-
-function smsAppointmentStatusNote(string $status): string
-{
-    return match ($status) {
-        'confirmed' => 'Confirmed. Arrive on time with valid ID.',
-        'cancelled' => 'Declined. Contact the office to reschedule.',
-        'completed' => 'Visit completed. Thank you.',
-        'no_show'   => 'No-show recorded. Contact the office to reschedule.',
-        default     => '',
-    };
 }
 
 function notifyRequestSubmittedSms(array $data): bool
@@ -384,39 +380,20 @@ function notifyRequestSubmittedSms(array $data): bool
     $doc = (string) ($data['document_label'] ?? documentTypeLabel((string) ($data['document_type'] ?? '')));
     $visit = smsVisitShort($data['appointment_date'] ?? null, $data['appointment_time'] ?? null);
     $message = smsComposeCitizenMessage([
-        smsBrandTag(),
         smsCitizenGreeting($data),
         $doc . ' request received.',
         'Code ' . $code . '.',
         $visit !== '' ? 'Visit ' . $visit . '.' : '',
-        'Pending staff review.',
-        smsOfficePhoneShort(),
+        'Pending review.',
     ]);
 
     return sendCitizenSms((string) $data['phone'], $message, 'request_submitted', $code);
 }
 
+/** Standalone appointments: SMS is sent when staff confirms, not at booking. */
 function notifyAppointmentBookedSms(array $data): bool
 {
-    if (!isSmsConfigured() || !citizenWantsSmsNotify($data)) {
-        return false;
-    }
-
-    $code = (string) ($data['appointment_code'] ?? '');
-    $service = appointmentServiceLabel((string) ($data['service_type'] ?? $data['service_label'] ?? ''));
-    $visit = smsVisitShort($data['appointment_date'] ?? null, $data['appointment_time'] ?? null);
-    $message = smsComposeCitizenMessage([
-        smsBrandTag(),
-        smsCitizenGreeting($data),
-        'Appointment booked.',
-        'Code ' . $code . '.',
-        $service . '.',
-        $visit !== '' ? 'Schedule ' . $visit . '.' : '',
-        'Awaiting staff confirmation.',
-        smsOfficePhoneShort(),
-    ]);
-
-    return sendCitizenSms((string) $data['phone'], $message, 'appointment_booked', $code);
+    return false;
 }
 
 function notifyRequestStatusSms(PDO $pdo, int $requestId, string $newStatus, ?string $staffAction = null): bool
@@ -444,22 +421,20 @@ function notifyRequestStatusSms(PDO $pdo, int $requestId, string $newStatus, ?st
     $visitDate = $appointment['appointment_date'] ?? $row['appointment_date'] ?? null;
     $visitTime = $appointment['appointment_time'] ?? $row['appointment_time'] ?? null;
 
-    if ($status === 'verified' || $status === 'ready') {
-        $visit = smsVisitShort($visitDate, $visitTime);
-        $message = smsComposeCitizenMessage([
-            smsBrandTag(),
-            smsCitizenGreeting($row),
-            $doc . ' ready for pickup.',
-            'Code ' . $code . '.',
-            $visit !== '' ? 'Visit ' . $visit . '.' : '',
-            'Bring code and valid ID.',
-            smsOfficePhoneShort(),
-        ]);
-
-        return sendCitizenSms((string) $row['phone'], $message, 'request_' . $status, $code);
+    if ($status !== 'verified' && $status !== 'ready') {
+        return false;
     }
 
-    return false;
+    $visit = smsVisitShort($visitDate, $visitTime);
+    $message = smsComposeCitizenMessage([
+        smsCitizenGreeting($row),
+        $doc . ' ready for pickup.',
+        'Code ' . $code . '.',
+        $visit !== '' ? 'Visit ' . $visit . '.' : '',
+        'Bring valid ID.',
+    ]);
+
+    return sendCitizenSms((string) $row['phone'], $message, 'request_ready', $code);
 }
 
 function smsReminderLeadTimes(): array
@@ -521,16 +496,13 @@ function notifyRequestVisitSmsReminder(array $row, int $hoursBefore = 3): bool
     }
 
     $code = (string) $row['tracking_code'];
-    $doc = documentTypeLabel((string) ($row['document_type'] ?? ''));
     $hoursLabel = smsReminderHoursLabel($hoursBefore);
     $visit = smsVisitShort($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
     $message = smsComposeCitizenMessage([
-        smsBrandTag(),
         smsCitizenGreeting($row),
-        'Pickup reminder in ' . $hoursLabel . '.',
-        $doc . '.',
+        'Pickup in ' . $hoursLabel . '.',
         'Code ' . $code . '.',
-        $visit !== '' ? 'Visit ' . $visit . '.' : '',
+        $visit !== '' ? $visit . '.' : '',
         'Bring valid ID.',
     ]);
 
@@ -549,16 +521,13 @@ function notifyAppointmentSmsReminder(array $row, int $hoursBefore = 3): bool
     }
 
     $code = (string) $row['appointment_code'];
-    $service = appointmentServiceLabel((string) ($row['service_type'] ?? ''));
     $hoursLabel = smsReminderHoursLabel($hoursBefore);
     $visit = smsVisitShort($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
     $message = smsComposeCitizenMessage([
-        smsBrandTag(),
         smsCitizenGreeting($row),
         'Appointment in ' . $hoursLabel . '.',
         'Code ' . $code . '.',
-        $service . '.',
-        $visit !== '' ? 'Schedule ' . $visit . '.' : '',
+        $visit !== '' ? $visit . '.' : '',
         'Bring valid ID.',
     ]);
 
@@ -576,23 +545,19 @@ function notifyRequestVisitSoonSms(array $row): bool
         return false;
     }
 
-    $minutesUntil = appointmentMinutesUntil($row['appointment_date' ] ?? null, $row['appointment_time'] ?? null);
+    $minutesUntil = appointmentMinutesUntil($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
     if ($minutesUntil === null || $minutesUntil <= 0 || $minutesUntil > visitSoonWindowMinutes()) {
         return false;
     }
 
     $code = (string) ($row['tracking_code'] ?? '');
-    $doc = documentTypeLabel((string) ($row['document_type'] ?? ''));
     $soonLabel = formatVisitSoonLabel($minutesUntil);
     $visit = smsVisitShort($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
     $message = smsComposeCitizenMessage([
-        smsBrandTag(),
         smsCitizenGreeting($row),
         'Visit in ' . $soonLabel . '.',
-        $doc . '.',
         'Code ' . $code . '.',
-        $visit !== '' ? 'Schedule ' . $visit . '.' : '',
-        'Bring valid ID.',
+        $visit !== '' ? $visit . '.' : '',
     ]);
 
     return sendCitizenSms((string) $row['phone'], $message, 'visit_soon', $code);
@@ -610,17 +575,13 @@ function notifyAppointmentVisitSoonSms(array $row): bool
     }
 
     $code = (string) ($row['appointment_code'] ?? '');
-    $service = appointmentServiceLabel((string) ($row['service_type'] ?? ''));
     $soonLabel = formatVisitSoonLabel($minutesUntil);
     $visit = smsVisitShort($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
     $message = smsComposeCitizenMessage([
-        smsBrandTag(),
         smsCitizenGreeting($row),
         'Appointment in ' . $soonLabel . '.',
         'Code ' . $code . '.',
-        $service . '.',
-        $visit !== '' ? 'Schedule ' . $visit . '.' : '',
-        'Bring valid ID.',
+        $visit !== '' ? $visit . '.' : '',
     ]);
 
     return sendCitizenSms((string) $row['phone'], $message, 'visit_soon', $code);
@@ -644,25 +605,21 @@ function notifyAppointmentStatusSms(PDO $pdo, int $appointmentId, string $newSta
         return false;
     }
 
-    if (!in_array($newStatus, ['confirmed', 'cancelled', 'completed', 'no_show'], true)) {
+    if ($newStatus !== 'confirmed') {
         return false;
     }
 
     $code = (string) ($row['appointment_code'] ?? '');
-    $service = appointmentServiceLabel((string) ($row['service_type'] ?? ''));
     $visit = smsVisitShort($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
     $message = smsComposeCitizenMessage([
-        smsBrandTag(),
         smsCitizenGreeting($row),
-        'Appointment ' . appointmentStatusLabel($newStatus) . '.',
+        'Appointment confirmed.',
         'Code ' . $code . '.',
-        $service . '.',
-        $visit !== '' ? 'Schedule ' . $visit . '.' : '',
-        smsAppointmentStatusNote($newStatus),
-        smsOfficePhoneShort(),
+        $visit !== '' ? $visit . '.' : '',
+        'Bring valid ID.',
     ]);
 
-    return sendCitizenSms((string) $row['phone'], $message, 'appointment_' . $newStatus, $code);
+    return sendCitizenSms((string) $row['phone'], $message, 'appointment_confirmed', $code);
 }
 
 function sendDueSmsReminderRow(
@@ -717,7 +674,7 @@ function sendDueDocumentRequestSmsReminders(PDO $pdo): int
          FROM document_requests
          WHERE notify_sms = 1
            AND phone IS NOT NULL AND phone != ''
-           AND status IN ('pending', 'verified', 'ready')
+           AND status = 'ready'
            AND appointment_date IS NOT NULL
            AND appointment_time IS NOT NULL
            AND TIMESTAMP(appointment_date, appointment_time) > NOW()
@@ -754,13 +711,14 @@ function sendDueStandaloneAppointmentSmsReminders(PDO $pdo): int
         "SELECT id, appointment_code, first_name, middle_name, last_name, phone, service_type, status,
                 appointment_date, appointment_time, notify_sms,
                 sms_reminder_3h_sent_at, sms_reminder_1h_sent_at
-         FROM appointments
+         FROM appointments a
          WHERE notify_sms = 1
            AND phone IS NOT NULL AND phone != ''
-           AND status IN ('scheduled', 'confirmed')
-           AND TIMESTAMP(appointment_date, appointment_time) > NOW()
-           AND TIMESTAMP(appointment_date, appointment_time) <= DATE_ADD(NOW(), INTERVAL 3 HOUR)
-           AND (sms_reminder_3h_sent_at IS NULL OR sms_reminder_1h_sent_at IS NULL)"
+           AND " . appointmentStandaloneSql('a') . "
+           AND a.status = 'confirmed'
+           AND TIMESTAMP(a.appointment_date, a.appointment_time) > NOW()
+           AND TIMESTAMP(a.appointment_date, a.appointment_time) <= DATE_ADD(NOW(), INTERVAL 3 HOUR)
+           AND (a.sms_reminder_3h_sent_at IS NULL OR a.sms_reminder_1h_sent_at IS NULL)"
     );
     $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
     $sent = 0;

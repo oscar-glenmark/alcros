@@ -41,9 +41,16 @@
     height: 7.5rem;
     object-fit: cover;
     object-position: center;
-    opacity: 0.42;
+    opacity: 1;
     display: block;
     pointer-events: none;
+    background: #ecfdf5;
+}
+
+.admin-id-preview-image--error {
+    object-fit: contain;
+    opacity: 0.35;
+    background: #fef2f2;
 }
 
 .admin-id-preview-pdf {

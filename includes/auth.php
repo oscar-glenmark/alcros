@@ -106,10 +106,44 @@ function hydrateStaffFromDatabase(array $staff): ?array
     return $staff;
 }
 
-function getAuthenticatedStaff(): ?array
+function getAuthenticatedStaff(bool $lightweight = false): ?array
 {
     static $resolved = false;
     static $staff = null;
+    static $lightweightResolved = false;
+    static $lightweightStaff = null;
+
+    if ($lightweight) {
+        if ($lightweightResolved) {
+            return $lightweightStaff;
+        }
+        $lightweightResolved = true;
+
+        $sessionStaff = getStaffFromSession();
+        if ($sessionStaff) {
+            $lightweightStaff = $sessionStaff;
+
+            return $lightweightStaff;
+        }
+
+        $token = authTokenFromRequest();
+        if ($token) {
+            $fromToken = validateStaffAuthToken($token);
+            if ($fromToken) {
+                $lightweightStaff = [
+                    'staff_id' => (string) $fromToken['staff_id'],
+                    'name'     => (string) ($fromToken['name'] ?? 'User'),
+                    'role'     => (string) ($fromToken['role'] ?? 'Staff'),
+                ];
+
+                return $lightweightStaff;
+            }
+        }
+
+        $lightweightStaff = null;
+
+        return null;
+    }
 
     if ($resolved) {
         return $staff;
@@ -118,22 +152,26 @@ function getAuthenticatedStaff(): ?array
 
     $token = authTokenFromRequest();
     if ($token) {
-        $staff = validateStaffAuthToken($token);
-        if ($staff) {
-            $staff = hydrateStaffFromDatabase($staff);
+        $fromToken = validateStaffAuthToken($token);
+        if ($fromToken) {
+            $staff = hydrateStaffFromDatabase($fromToken);
             if ($staff) {
                 staffSessionLogin($staff);
                 $_SESSION['staff_hydrated_at'] = time();
+
                 return $staff;
             }
         }
     }
 
-    $staff = getStaffFromSession();
-    if (!$staff) {
+    $sessionStaff = getStaffFromSession();
+    if (!$sessionStaff) {
+        $staff = null;
+
         return null;
     }
 
+    $staff = $sessionStaff;
     $hydratedAt = (int) ($_SESSION['staff_hydrated_at'] ?? 0);
     if ($hydratedAt > 0 && (time() - $hydratedAt) < 300) {
         return $staff;
@@ -142,6 +180,7 @@ function getAuthenticatedStaff(): ?array
     $staff = hydrateStaffFromDatabase($staff);
     if (!$staff) {
         staffSessionLogout();
+
         return null;
     }
 
@@ -214,6 +253,24 @@ function releaseSessionLock(): void
     if (session_status() === PHP_SESSION_ACTIVE) {
         session_write_close();
     }
+}
+
+/** Authenticated file/stream delivery — no DB hydrate per image, plain 401 on failure. */
+function requireStaffLoginForMedia(): void
+{
+    if (getAuthenticatedStaff(true)) {
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+            releaseSessionLock();
+        }
+
+        return;
+    }
+
+    http_response_code(401);
+    header('Content-Type: text/plain; charset=UTF-8');
+    header('Cache-Control: no-store');
+    echo 'Unauthorized';
+    exit;
 }
 
 function requireStaffLogin(): void

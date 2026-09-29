@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($isUpdate) {
         $status = (string) ($_POST['status'] ?? '');
-        if (updateDocumentRequestStatus($pdo, $id, $status, $isAjax)) {
+        if (updateDocumentRequestStatus($pdo, $id, $status)) {
             $responseOk = true;
             if ($status === 'verified') {
                 $responseMessage = 'Request accepted — moved to Ready for Pickup. Print the certificate when ready.';

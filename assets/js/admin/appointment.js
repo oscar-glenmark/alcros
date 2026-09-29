@@ -79,6 +79,9 @@
             if (!container) return;
             if (window.AlcrosIdPreview && typeof window.AlcrosIdPreview.renderGrid === 'function') {
                 container.innerHTML = window.AlcrosIdPreview.renderGrid(data.id_front_path, data.id_back_path);
+                if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
+                    lucide.createIcons({ nodes: [container] });
+                }
                 return;
             }
             var html = idLink('Front ID', data.id_front_path) + idLink('Back ID', data.id_back_path);
@@ -87,6 +90,9 @@
 
         function idLink(label, path) {
             if (!path) return '';
+            if (window.AlcrosIdPreview && typeof window.AlcrosIdPreview.resolveUrl === 'function') {
+                path = window.AlcrosIdPreview.resolveUrl(path);
+            }
             var isPdf = /\.pdf$/i.test(path);
             return '<a href="' + path.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 bg-blue-50 border border-blue-100 px-3 py-2 rounded-lg hover:bg-blue-100">' +
                 '<i data-lucide="' + (isPdf ? 'file-text' : 'image') + '" class="w-3.5 h-3.5"></i>' + label + '</a>';

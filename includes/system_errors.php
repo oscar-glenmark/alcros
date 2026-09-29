@@ -459,7 +459,9 @@ function emailLogErrorIsMissingSmtpConfig(string $reason): bool
     }
 
     return str_contains($reason, 'not configured')
-        || str_contains($reason, 'gmail smtp is not');
+        || str_contains($reason, 'gmail smtp is not')
+        || str_contains($reason, 'check gmail smtp')
+        || str_contains($reason, 'app password');
 }
 
 /** True when every failed email_log in the window is from missing Gmail SMTP setup (historical). */
@@ -514,6 +516,70 @@ function clearStaleEmailConfigFailureAlert(PDO $pdo): bool
     return true;
 }
 
+/**
+ * @return array{latest_failure: ?string, latest_success: ?string}
+ */
+function latestEmailLogTimestamps(PDO $pdo, int $hours = 24, ?string $since = null): array
+{
+    ensureExtendedSchema($pdo);
+    $window = 'sent_at >= DATE_SUB(NOW(), INTERVAL ? HOUR)';
+    $params = [max(1, $hours)];
+    $sinceSql = '';
+    if ($since !== null && trim($since) !== '') {
+        $sinceSql = ' AND sent_at > DATE_ADD(?, INTERVAL 1 SECOND)';
+        $params[] = $since;
+    }
+
+    $latestFailure = null;
+    $latestSuccess = null;
+
+    $failStmt = $pdo->prepare(
+        "SELECT MAX(sent_at) AS max_sent FROM email_logs WHERE success = 0 AND {$window}{$sinceSql}"
+    );
+    $failStmt->execute($params);
+    $failVal = $failStmt->fetchColumn();
+    if ($failVal !== false && $failVal !== null && (string) $failVal !== '') {
+        $latestFailure = (string) $failVal;
+    }
+
+    $okStmt = $pdo->prepare(
+        "SELECT MAX(sent_at) AS max_sent FROM email_logs WHERE success = 1 AND {$window}{$sinceSql}"
+    );
+    $okStmt->execute($params);
+    $okVal = $okStmt->fetchColumn();
+    if ($okVal !== false && $okVal !== null && (string) $okVal !== '') {
+        $latestSuccess = (string) $okVal;
+    }
+
+    return [
+        'latest_failure' => $latestFailure,
+        'latest_success' => $latestSuccess,
+    ];
+}
+
+/** Clear email alert when a later send succeeded (SMTP was fixed after earlier failures). */
+function clearStaleEmailDeliveryFailureAlert(PDO $pdo): bool
+{
+    if (!isEmailConfigured()) {
+        return false;
+    }
+
+    $since = getDeliveryFailureAckTime('email');
+    $times = latestEmailLogTimestamps($pdo, 24, $since);
+    if ($times['latest_failure'] === null || $times['latest_success'] === null) {
+        return false;
+    }
+
+    if (strtotime($times['latest_success']) <= strtotime($times['latest_failure'])) {
+        return false;
+    }
+
+    acknowledgeEmailLogFailuresThrough($pdo, 24);
+    resolveSystemErrorIfActive($pdo, 'email-delivery-failed');
+
+    return true;
+}
+
 function syncSystemErrors(PDO $pdo): void
 {
     ensureSystemErrorsTable($pdo);
@@ -552,6 +618,8 @@ function syncSystemErrors(PDO $pdo): void
 
     if (clearStaleEmailConfigFailureAlert($pdo)) {
         // Stale pre-configuration failures cleared; skip re-opening the alert this run.
+    } elseif (clearStaleEmailDeliveryFailureAlert($pdo)) {
+        // Recovered after a later successful send.
     }
 
     $emailFailures = recentDeliveryFailureSummary($pdo, 'email_logs', 24, getDeliveryFailureAckTime('email'));
@@ -764,22 +832,32 @@ function runSystemErrorFix(PDO $pdo, string $errorKey, string $staffId): array
                         'message' => 'Gmail is not fully configured. In Configuration → Operations, Queue & Email, save both Gmail address and App Password, then try Fix again.',
                     ];
                 }
-                if (clearStaleEmailConfigFailureAlert($pdo)) {
+                if (clearStaleEmailConfigFailureAlert($pdo) || clearStaleEmailDeliveryFailureAlert($pdo)) {
                     resolveSystemError($pdo, $errorKey, $staffId);
                     break;
                 }
-                clearReminderSchedulerLock();
-                $fixStarted = date('Y-m-d H:i:s');
-                sendDueAppointmentReminders($pdo);
-                touchReminderSchedulerTick();
-                $newFailures = recentDeliveryFailureSummary($pdo, 'email_logs', 1, $fixStarted, true);
-                if ($newFailures !== null) {
-                    $reason = $newFailures['reason'] !== ''
-                        ? ' Reason: ' . $newFailures['reason']
-                        : '';
+                $testTo = trim(getSetting('smtp_user', getSetting('notification_email', '')));
+                if ($testTo === '' || !filter_var($testTo, FILTER_VALIDATE_EMAIL)) {
                     return [
                         'ok'      => false,
-                        'message' => 'Email is still failing after retry.' . $reason . ' Open Configuration and verify Gmail SMTP credentials.',
+                        'message' => 'Set a valid Gmail address in Configuration before running Fix.',
+                    ];
+                }
+                $testSubject = 'ALCROS Gmail SMTP test';
+                $testBody = 'This message confirms Gmail SMTP is working in ALCROS. You can ignore or delete it.';
+                $testOk = sendSmtpEmail($testTo, $testSubject, $testBody);
+                logEmailDelivery(
+                    $testTo,
+                    $testSubject,
+                    'smtp_test',
+                    null,
+                    $testOk,
+                    $testOk ? null : citizenEmailFailureReason()
+                );
+                if (!$testOk) {
+                    return [
+                        'ok'      => false,
+                        'message' => 'Gmail still cannot send mail. Double-check the Gmail address and 16-character App Password in Configuration (not your normal Gmail password), then save and try Fix again.',
                     ];
                 }
                 acknowledgeEmailLogFailuresThrough($pdo, 24);

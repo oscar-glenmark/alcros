@@ -4595,10 +4595,10 @@ function syncAppointmentToDocumentRequest(PDO $pdo, int $appointmentId, string $
         return;
     }
 
-    updateDocumentRequestStatus($pdo, $requestId, $targetAction, false, true);
+    updateDocumentRequestStatus($pdo, $requestId, $targetAction, true);
 }
 
-function updateDocumentRequestStatus(PDO $pdo, int $id, string $status, bool $deferNotifications = false, bool $skipNotifications = false): bool
+function updateDocumentRequestStatus(PDO $pdo, int $id, string $status, bool $skipNotifications = false): bool
 {
     if ($id <= 0) {
         return false;
@@ -4647,27 +4647,17 @@ function updateDocumentRequestStatus(PDO $pdo, int $id, string $status, bool $de
     }
 
     if (!$skipNotifications) {
-        $runNotifications = static function () use ($pdo, $id, $saveStatus, $staffAction): void {
-            try {
-                notifyRequestStatusChange($pdo, $id, $saveStatus, $staffAction);
-            } catch (Throwable $e) {
-                // Status is already saved; email failure should not block staff.
-            }
+        try {
+            notifyRequestStatusChange($pdo, $id, $saveStatus, $staffAction);
+        } catch (Throwable $e) {
+            // Status is already saved; email failure should not block staff.
+        }
 
-            try {
-                require_once __DIR__ . '/sms.php';
-                notifyRequestStatusSms($pdo, $id, $saveStatus, $staffAction);
-            } catch (Throwable $e) {
-                // Status is already saved; SMS failure should not block staff.
-            }
-        };
-
-        if ($deferNotifications) {
-            register_shutdown_function(static function () use ($runNotifications): void {
-                $runNotifications();
-            });
-        } else {
-            $runNotifications();
+        try {
+            require_once __DIR__ . '/sms.php';
+            notifyRequestStatusSms($pdo, $id, $saveStatus, $staffAction);
+        } catch (Throwable $e) {
+            // Status is already saved; SMS failure should not block staff.
         }
     }
 
@@ -4682,7 +4672,7 @@ function updateDocumentRequestStatus(PDO $pdo, int $id, string $status, bool $de
     return true;
 }
 
-function updateAppointmentStatus(PDO $pdo, int $id, string $status, bool $deferNotifications = false): bool
+function updateAppointmentStatus(PDO $pdo, int $id, string $status): bool
 {
     if ($id <= 0) {
         return false;
@@ -4721,27 +4711,17 @@ function updateAppointmentStatus(PDO $pdo, int $id, string $status, bool $deferN
         // Status is already saved; request sync failure should not block staff.
     }
 
-    $runNotifications = static function () use ($pdo, $id, $status): void {
-        try {
-            notifyAppointmentStatusChange($pdo, $id, $status);
-        } catch (Throwable $e) {
-            // Status is already saved; email failure should not block staff.
-        }
+    try {
+        notifyAppointmentStatusChange($pdo, $id, $status);
+    } catch (Throwable $e) {
+        // Status is already saved; email failure should not block staff.
+    }
 
-        try {
-            require_once __DIR__ . '/sms.php';
-            notifyAppointmentStatusSms($pdo, $id, $status);
-        } catch (Throwable $e) {
-            // Status is already saved; SMS failure should not block staff.
-        }
-    };
-
-    if ($deferNotifications) {
-        register_shutdown_function(static function () use ($runNotifications): void {
-            $runNotifications();
-        });
-    } else {
-        $runNotifications();
+    try {
+        require_once __DIR__ . '/sms.php';
+        notifyAppointmentStatusSms($pdo, $id, $status);
+    } catch (Throwable $e) {
+        // Status is already saved; SMS failure should not block staff.
     }
 
     $actor = function_exists('staffId') ? staffId() : 'system';

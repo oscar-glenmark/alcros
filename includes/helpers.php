@@ -2941,6 +2941,92 @@ function sendStaffPasswordOtp(PDO $pdo, string $staffId): array
     ];
 }
 
+function sendStaffLoginLockoutAlert(PDO $pdo, string $staffId, int $windowSeconds = 900): bool
+{
+    ensureExtendedSchema($pdo);
+    $staff = staffRowById($pdo, $staffId);
+    if (!$staff) {
+        return false;
+    }
+
+    $email = normalizeStaffEmail((string) ($staff['email'] ?? ''));
+    if ($email === '') {
+        return false;
+    }
+
+    if ((int) ($staff['recovery_gmail_2sv_confirmed'] ?? 0) !== 1) {
+        return false;
+    }
+
+    $site = getSiteSettings()['name'];
+    $displayName = personNameFromRow($staff);
+    $staffIdDisplay = (string) $staff['staff_id'];
+    $when = date('F j, Y \a\t g:i A');
+    $ip = clientIpAddress();
+    $resetUrl = appBaseUrl() . '/forgot_password.php';
+    $windowMinutes = (int) max(1, round($windowSeconds / 60));
+
+    $subject = $site . ' — Sign-in attempts on your staff account';
+    $plain = "Hello {$displayName},\n\n"
+        . "Someone tried to sign in to the ALCROS staff portal using your Staff ID ({$staffIdDisplay}) "
+        . "with incorrect passwords several times.\n\n"
+        . "When: {$when}\n"
+        . "Source IP: {$ip}\n"
+        . "Sign-in for this Staff ID was temporarily paused for about {$windowMinutes} minutes.\n\n"
+        . "If this was you, wait for the pause to end or reset your password:\n{$resetUrl}\n\n"
+        . "If this was not you, contact your administrator immediately and consider resetting your password.";
+    $html = '<p>Hello <strong>' . htmlspecialchars($displayName) . '</strong>,</p>'
+        . '<p>Someone tried to sign in to the ALCROS staff portal using your Staff ID '
+        . '(<strong>' . htmlspecialchars($staffIdDisplay) . '</strong>) with incorrect passwords several times.</p>'
+        . '<p><strong>When:</strong> ' . htmlspecialchars($when) . '<br>'
+        . '<strong>Source IP:</strong> ' . htmlspecialchars($ip) . '<br>'
+        . 'Sign-in for this Staff ID was temporarily paused for about <strong>' . $windowMinutes . ' minutes</strong>.</p>'
+        . '<p>If this was you, wait for the pause to end or <a href="' . htmlspecialchars($resetUrl) . '">reset your password</a>.</p>'
+        . '<p style="color:#64748b;font-size:13px;">If this was not you, contact your administrator immediately and consider resetting your password.</p>';
+
+    if (!sendCitizenEmail($email, $subject, $plain, $html)) {
+        logEmailDelivery($email, $subject, 'staff_login_lockout_alert', $staffIdDisplay, false, citizenEmailFailureReason());
+
+        return false;
+    }
+
+    logEmailDelivery($email, $subject, 'staff_login_lockout_alert', $staffIdDisplay, true);
+    logActivity(
+        $staffIdDisplay,
+        'Login lockout alert',
+        'Recovery email sent after repeated failed sign-in attempts (IP ' . $ip . ')'
+    );
+
+    return true;
+}
+
+function notifyStaffLoginLockoutIfNeeded(
+    PDO $pdo,
+    string $staffId,
+    string $rateLimitKey,
+    int $maxAttempts,
+    int $windowSeconds
+): void {
+    $staffId = strtoupper(trim($staffId));
+    if ($staffId === '' || $rateLimitKey === '') {
+        return;
+    }
+
+    if (!rateLimitIsBlocked($rateLimitKey, $maxAttempts, $windowSeconds)) {
+        return;
+    }
+
+    if (rateLimitLockoutAlertAlreadySent($rateLimitKey, $windowSeconds)) {
+        return;
+    }
+
+    if (!sendStaffLoginLockoutAlert($pdo, $staffId, $windowSeconds)) {
+        return;
+    }
+
+    rateLimitMarkLockoutAlertSent($rateLimitKey, $windowSeconds);
+}
+
 function resetStaffPasswordWithOtp(PDO $pdo, string $staffId, string $otp, string $newPassword): array
 {
     ensureExtendedSchema($pdo);

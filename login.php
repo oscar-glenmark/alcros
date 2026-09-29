@@ -74,25 +74,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $submittedStaffId = strtoupper(trim($_POST['staff_id'] ?? ''));
 
-    $loginRateKey = rateLimitKey('login', $submittedStaffId);
+    $password = $_POST['password'] ?? '';
 
-    if (!rateLimitCheck($loginRateKey, LOGIN_RATE_MAX, LOGIN_RATE_WINDOW)) {
+    $csrf = $_POST['csrf_token'] ?? '';
 
+    $loginRateKey = $submittedStaffId !== '' ? rateLimitKey('login', $submittedStaffId) : '';
+
+    $applyLoginLockout = static function () use ($loginRateKey, &$loginLocked, &$loginRetryAfter): void {
+        if ($loginRateKey === '') {
+            return;
+        }
         http_response_code(429);
-
         $loginLocked = true;
-
         $loginRetryAfter = rateLimitRetryAfterSeconds($loginRateKey, LOGIN_RATE_MAX, LOGIN_RATE_WINDOW) ?? LOGIN_RATE_WINDOW;
+    };
 
-    } else {
+    if ($loginRateKey !== '' && rateLimitIsBlocked($loginRateKey, LOGIN_RATE_MAX, LOGIN_RATE_WINDOW)) {
 
-    $password          = $_POST['password'] ?? '';
+        $applyLoginLockout();
 
-    $csrf               = $_POST['csrf_token'] ?? '';
+        try {
+            $pdo = getDB();
+            notifyStaffLoginLockoutIfNeeded($pdo, $submittedStaffId, $loginRateKey, LOGIN_RATE_MAX, LOGIN_RATE_WINDOW);
+        } catch (PDOException $e) {
+            // Lockout UI still applies.
+        }
 
-
-
-    if (!validateCsrf($csrf)) {
+    } elseif (!validateCsrf($csrf)) {
 
         $error = 'Your session expired. Please try again.';
 
@@ -106,15 +114,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo = getDB();
 
-            $stmt = $pdo->prepare('SELECT staff_id, first_name, middle_name, last_name, password_hash, role FROM staff WHERE staff_id = ?');
+            $staff = staffRowById($pdo, $submittedStaffId);
 
-            $stmt->execute([$submittedStaffId]);
-
-            $staff = $stmt->fetch();
-
-
-
-            if ($staff && password_verify($password, $staff['password_hash'])) {
+            if ($staff && password_verify($password, (string) $staff['password_hash'])) {
 
                 staffSessionLogin($staff, true);
 
@@ -132,19 +134,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             }
 
+            if ($staff) {
+
+                $attempt = rateLimitRecordFailedAttempt($loginRateKey, LOGIN_RATE_MAX, LOGIN_RATE_WINDOW);
+
+                if (!$attempt['allowed']) {
+
+                    $applyLoginLockout();
+
+                }
+
+                if ($attempt['limit_reached']) {
+
+                    notifyStaffLoginLockoutIfNeeded($pdo, $submittedStaffId, $loginRateKey, LOGIN_RATE_MAX, LOGIN_RATE_WINDOW);
+
+                }
+
+            }
+
         } catch (PDOException $e) {
 
             $error = dbConnectionHelpMessage();
 
         }
 
-        if ($error === '') {
+        if ($error === '' && !$loginLocked) {
 
             $error = 'Invalid Staff ID or password.';
 
         }
-
-    }
 
     }
 

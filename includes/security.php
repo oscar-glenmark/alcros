@@ -290,6 +290,111 @@ function clientIpAddress(): string
     return (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
 }
 
+function rateLimitStorageFile(string $key): string
+{
+    $dir = securityStoragePath('rate_limits');
+    if (!is_dir($dir)) {
+        mkdir($dir, 0755, true);
+    }
+
+    return $dir . '/' . hash('sha256', $key) . '.json';
+}
+
+/** @return array{count: int, reset: int, lockout_alert_sent: int} */
+function rateLimitReadState(string $key, int $windowSeconds): array
+{
+    $now = time();
+    $defaults = [
+        'count'               => 0,
+        'reset'               => $now + $windowSeconds,
+        'lockout_alert_sent'  => 0,
+    ];
+
+    $file = rateLimitStorageFile($key);
+    if (!is_readable($file)) {
+        return $defaults;
+    }
+
+    $decoded = json_decode((string) file_get_contents($file), true);
+    if (!is_array($decoded)) {
+        return $defaults;
+    }
+
+    if ((int) ($decoded['reset'] ?? 0) <= $now) {
+        return $defaults;
+    }
+
+    return [
+        'count'              => (int) ($decoded['count'] ?? 0),
+        'reset'              => (int) ($decoded['reset'] ?? ($now + $windowSeconds)),
+        'lockout_alert_sent' => !empty($decoded['lockout_alert_sent']) ? 1 : 0,
+    ];
+}
+
+/** @param array{count?: int, reset?: int, lockout_alert_sent?: int} $data */
+function rateLimitWriteState(string $key, array $data): void
+{
+    file_put_contents(
+        rateLimitStorageFile($key),
+        json_encode([
+            'count'              => (int) ($data['count'] ?? 0),
+            'reset'              => (int) ($data['reset'] ?? (time() + 900)),
+            'lockout_alert_sent' => !empty($data['lockout_alert_sent']) ? 1 : 0,
+        ]),
+        LOCK_EX
+    );
+}
+
+function rateLimitIsBlocked(string $key, int $maxAttempts, int $windowSeconds): bool
+{
+    $data = rateLimitReadState($key, $windowSeconds);
+
+    return $data['count'] >= $maxAttempts;
+}
+
+/**
+ * Record a failed login for a valid Staff ID (wrong password). Matches rateLimitCheck counting semantics.
+ *
+ * @return array{allowed: bool, count: int, limit_reached: bool}
+ */
+function rateLimitRecordFailedAttempt(string $key, int $maxAttempts, int $windowSeconds): array
+{
+    $data = rateLimitReadState($key, $windowSeconds);
+    $count = $data['count'];
+
+    if ($count >= $maxAttempts) {
+        return [
+            'allowed'       => false,
+            'count'         => $count,
+            'limit_reached' => true,
+        ];
+    }
+
+    $data['count'] = $count + 1;
+    rateLimitWriteState($key, $data);
+    $newCount = (int) $data['count'];
+
+    return [
+        'allowed'       => true,
+        'count'         => $newCount,
+        'limit_reached' => $newCount >= $maxAttempts,
+    ];
+}
+
+function rateLimitLockoutAlertAlreadySent(string $key, int $windowSeconds): bool
+{
+    $data = rateLimitReadState($key, $windowSeconds);
+
+    return $data['lockout_alert_sent'] === 1;
+}
+
+function rateLimitMarkLockoutAlertSent(string $key, int $windowSeconds): void
+{
+    $data = rateLimitReadState($key, $windowSeconds);
+    $data['lockout_alert_sent'] = 1;
+    rateLimitWriteState($key, $data);
+}
+
 function rateLimitCheck(string $key, int $maxAttempts, int $windowSeconds): bool
 {
     $dir = securityStoragePath('rate_limits');

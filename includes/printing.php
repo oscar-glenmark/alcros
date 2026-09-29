@@ -2083,7 +2083,9 @@ function renderPrintOverlayHtml(array $printData, array $options = []): string
             ? strtoupper(str_replace('_', ' ', $name))
             : (string) ($values[$name] ?? '');
 
-        $editable = !empty($options['editable']) && !$testMode && !printIsRecordRegistryField($name);
+        $isRegistryIndexField = printIsRecordRegistryField($name);
+        $editable = !empty($options['editable']) && !$testMode
+            && (!$isRegistryIndexField || $isCertification);
 
         if (!$testMode && !$calibrationPreview && trim($text) === '' && !$editable) {
             continue;
@@ -2122,9 +2124,16 @@ function renderPrintOverlayHtml(array $printData, array $options = []): string
         $fieldPadding = $isCertification ? 'padding:0 0.2rem;' : '';
 
         $certClass = $isCertification ? ' print-field--certification' : '';
+        $emptyHint = '';
+        if ($editable && $isCertification) {
+            $hintLabel = trim((string) ($field['label'] ?? ''));
+            if ($hintLabel !== '') {
+                $emptyHint = ' data-empty-hint="' . htmlspecialchars($hintLabel, ENT_QUOTES, 'UTF-8') . '"';
+            }
+        }
         $html .= '<div class="print-field' . $certClass . $editableClass . '"'
             . ' data-field="' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '"'
-            . ' data-field-id="' . (int) ($field['id'] ?? 0) . '" style="'
+            . ' data-field-id="' . (int) ($field['id'] ?? 0) . '"' . $emptyHint . ' style="'
             . 'position:absolute;left:' . $x . 'mm;top:' . $y . 'mm;width:' . $pos['width'] . 'mm;height:' . $pos['height'] . 'mm;'
             . 'display:flex;align-items:' . $alignItems . ';justify-content:' . $justify . ';'
             . 'font-family:' . htmlspecialchars((string) $field['font_family'], ENT_QUOTES, 'UTF-8') . ',sans-serif;'

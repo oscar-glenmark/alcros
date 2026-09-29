@@ -162,6 +162,10 @@ if ($isCertificationDoc) {
     $showBackground = !empty($_GET['background']) || $isPreview || $autoPrint;
 }
 $printWithBackground = $showBackground && $isCertificationDoc;
+if ($isCertificationDoc) {
+    $printData['template']['paper_width_mm'] = $paperW;
+    $printData['template']['paper_height_mm'] = $paperH;
+}
 $overlayHtml = renderPrintOverlayHtml($printData, [
     'mode'                         => $mode,
     'test_mode'                    => $testMode,
@@ -170,10 +174,11 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
     'prefer_scan_background'       => $showBackground,
     'calibration_preview'          => $calibrationPreview,
     'use_effective_positions'      => !empty($printData['use_effective_positions']),
-    'hide_record_registry_fields'  => !$isCertificationDoc && $isPreview && !$autoPrint && !$calibrationPreview,
+    // Certificates: book/page live on the civil record only — never overlay them on print/preview (certification unchanged).
+    'hide_record_registry_fields'  => !$isCertificationDoc && !$calibrationPreview,
 ]);
 ?><!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="print-render-root">
 <head>
     <meta charset="UTF-8">
     <?= faviconLinkTag() ?>
@@ -181,8 +186,12 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
     <?= $printerSetupCss ?>
     <style>
         @page {
+            <?php if ($isCertificationDoc): ?>
+            size: A4 portrait;
+            <?php else: ?>
             size: <?= htmlspecialchars($pageSizeFallback) ?>;
             size: <?= htmlspecialchars($pageCssSize) ?> portrait;
+            <?php endif; ?>
             margin: 0;
         }
         html, body {
@@ -252,33 +261,58 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
             margin-top: 1rem;
         }
         @media print {
+            <?php if ($isCertificationDoc): ?>
+            @page {
+                size: A4 portrait;
+                margin: 0;
+            }
+            <?php endif; ?>
             .print-setup-notice {
                 display: none !important;
             }
-            html, body {
-                width: <?= $paperW ?>mm !important;
-                height: <?= $paperH ?>mm !important;
+            html.print-render-root,
+            html.print-render-root body {
                 margin: 0 !important;
                 padding: 0 !important;
+                width: auto !important;
+                height: auto !important;
+                min-height: 0 !important;
+                max-height: none !important;
                 overflow: hidden !important;
             }
-            body.print-render--preview {
-                background: #fff;
-                padding: 0;
+            body.print-render--preview,
+            body.print-render--autoprint {
+                background: #fff !important;
+                padding: 0 !important;
+                min-height: 0 !important;
             }
-            .print-render-wrap {
-                margin: 0 !important;
+            body.print-render--autoprint .print-render-wrap,
+            body.print-render--preview .print-render-wrap {
+                box-shadow: none !important;
+            }
+            html.print-render-root .print-render-wrap {
+                margin: 0 auto !important;
+                padding: 0 !important;
                 width: <?= $paperW ?>mm !important;
-                height: <?= $paperH ?>mm !important;
-                overflow: hidden !important;
-                page-break-after: avoid;
-                page-break-inside: avoid;
-                break-inside: avoid;
-            }
-            .print-sheet {
+                height: auto !important;
+                max-height: none !important;
+                overflow: visible !important;
                 page-break-after: avoid !important;
                 page-break-inside: avoid !important;
                 break-inside: avoid !important;
+                break-after: avoid-page !important;
+            }
+            html.print-render-root .print-sheet {
+                width: <?= $paperW ?>mm !important;
+                height: <?= $paperH ?>mm !important;
+                max-height: <?= $paperH ?>mm !important;
+                overflow: hidden !important;
+                margin: 0 !important;
+                page-break-before: avoid !important;
+                page-break-after: avoid !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+                break-after: avoid-page !important;
             }
             .print-test-marker {
                 display: none !important;
@@ -300,6 +334,11 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
         body.print-render--certification .print-field {
             font-weight: 700 !important;
             text-transform: none !important;
+        }
+        body.print-render--certification .print-field--editable[data-empty-hint]:empty::before {
+            content: attr(data-empty-hint);
+            font-weight: 400;
+            font-size: 9pt;
         }
         .print-field--editable:empty::before {
             font-weight: 400;
@@ -403,6 +442,15 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
                 }
             }
 
+            function pageSizeCssRule(widthMm, heightMm) {
+                if (lockTemplatePaper && Math.abs(widthMm - 210) < 1 && Math.abs(heightMm - 297) < 1) {
+                    return '@page { size: A4 portrait; margin: 0; }';
+                }
+                var widthIn = mmToIn(widthMm);
+                var heightIn = mmToIn(heightMm);
+                return '@page { size: ' + widthIn + 'in ' + heightIn + 'in portrait; margin: 0; }';
+            }
+
             function applyPaperSize(persistPrefs) {
                 var widthMm = lockTemplatePaper
                     ? Number(templatePaper.width_mm || 0)
@@ -414,12 +462,12 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
                     return false;
                 }
 
-                var widthIn = mmToIn(widthMm);
-                var heightIn = mmToIn(heightMm);
-                var css = '@page { size: ' + widthIn + 'in ' + heightIn + 'in portrait; margin: 0; }' +
-                    'html, body { width: ' + widthMm + 'mm !important; height: ' + heightMm + 'mm !important; }' +
-                    '.print-render-wrap { width: ' + widthMm + 'mm !important; height: ' + heightMm + 'mm !important; }' +
-                    '.print-sheet { width: ' + widthMm + 'mm !important; height: ' + heightMm + 'mm !important; max-height: ' + heightMm + 'mm !important; }';
+                var css = pageSizeCssRule(widthMm, heightMm) +
+                    '@media print { html.print-render-root, html.print-render-root body { margin:0!important;padding:0!important;width:auto!important;height:auto!important;min-height:0!important;overflow:hidden!important; }' +
+                    'html.print-render-root .print-render-wrap { margin:0 auto!important;padding:0!important;width:' + widthMm + 'mm!important;height:auto!important;overflow:visible!important;page-break-after:avoid!important; }' +
+                    'html.print-render-root .print-sheet { width:' + widthMm + 'mm!important;height:' + heightMm + 'mm!important;max-height:' + heightMm + 'mm!important;overflow:hidden!important;page-break-after:avoid!important; } }' +
+                    '@media screen { html.print-render-root .print-render-wrap { width:' + widthMm + 'mm; }' +
+                    'html.print-render-root .print-sheet { width:' + widthMm + 'mm!important;height:' + heightMm + 'mm!important;max-height:' + heightMm + 'mm!important; } }';
 
                 if (!dynamicStyle) {
                     dynamicStyle = document.createElement('style');

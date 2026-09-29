@@ -105,6 +105,25 @@ function certificationVerticalCoordScale(?string $certificateType = null): float
     return $paper['paper_height_mm'] / certificationLegacyPaperHeightMm();
 }
 
+/** Y positions for amount / O.R. / date lines — kept inside A4 certification paper. */
+function certificationFooterPaymentLinePositions(?string $certificateType = null): array
+{
+    $paperH = (float) certificationPaperSize($certificateType)['paper_height_mm'];
+    $gap = 7.0;
+    $lineH = 4.8;
+    $bottomPad = 5.0;
+    $dateY = round($paperH - $bottomPad - $lineH, 2);
+    $orY = round($dateY - $gap, 2);
+    $amountY = round($orY - $gap, 2);
+
+    return [
+        'amount_paid'        => $amountY,
+        'or_number'          => $orY,
+        'certification_date' => $dateY,
+        'date_printed'       => $dateY,
+    ];
+}
+
 function certificationPaperSize(?string $certificateType = null): array
 {
     $a4 = printPaperPresets()['a4'];
@@ -417,7 +436,7 @@ function ensureCertificationDatePrintedFields(PDO $pdo): void
                 'date_printed',
                 'Date Paid',
                 (float) ($source['x_mm'] ?? $preset['x_mm'] ?? 42.0),
-                (float) ($source['y_mm'] ?? $preset['y_mm'] ?? 316.0),
+                (float) ($source['y_mm'] ?? $preset['y_mm'] ?? certificationFooterPaymentLinePositions($type)['date_printed']),
                 (float) ($source['width_mm'] ?? $preset['width_mm'] ?? 55.0),
                 (float) ($source['height_mm'] ?? $preset['height_mm'] ?? 4.8),
                 $source['font_family'] ?? 'Arial',
@@ -442,6 +461,47 @@ function ensureCertificationDatePrintedFields(PDO $pdo): void
     }
 
     setSetting('certification_date_printed_version', '1');
+    bumpPrintCalibrationRevision();
+}
+
+function ensureCertificationFooterWithinA4(PDO $pdo): void
+{
+    if (getSetting('certification_footer_a4_v1', '') === '1') {
+        return;
+    }
+
+    $update = $pdo->prepare('UPDATE print_fields SET y_mm = ?, updated_at = NOW() WHERE id = ?');
+    $select = $pdo->prepare(
+        'SELECT id, field_name, y_mm FROM print_fields
+         WHERE template_id = ? AND field_name = ? LIMIT 1'
+    );
+
+    foreach (printCertificateTypes() as $type) {
+        $template = getPrintTemplate($pdo, $type, 'front', 'certification');
+        if (!$template) {
+            continue;
+        }
+
+        $templateId = (int) $template['id'];
+        $paperH = (float) ($template['paper_height_mm'] ?? certificationPaperSize($type)['paper_height_mm']);
+        $targets = certificationFooterPaymentLinePositions($type);
+
+        foreach ($targets as $fieldName => $targetY) {
+            $select->execute([$templateId, $fieldName]);
+            $row = $select->fetch(PDO::FETCH_ASSOC);
+            if (!$row) {
+                continue;
+            }
+
+            $currentY = (float) ($row['y_mm'] ?? 0);
+            $offPage = $currentY + 4.8 > $paperH + 0.05;
+            if ($offPage || abs($currentY - $targetY) > 0.05) {
+                $update->execute([$targetY, (int) $row['id']]);
+            }
+        }
+    }
+
+    setSetting('certification_footer_a4_v1', '1');
     bumpPrintCalibrationRevision();
 }
 
@@ -508,17 +568,18 @@ function certificationFieldCoordinatePresets(): array
     $value = static fn (float $y, float $w = 165.0): array => $line(74, $y, $w, 4.8);
     $issuedTo = $line(58, 152.0, 118, 5);
     $remarks = $line(22, 168.0, 210, 28);
+    $payY = certificationFooterPaymentLinePositions();
     $sharedFooter = [
-        'amount_paid'    => $line(42, 302.0, 55, 4.8),
-        'or_number'      => $line(42, 309.0, 55, 4.8),
+        'amount_paid'    => $line(42, $payY['amount_paid'], 55, 4.8),
+        'or_number'      => $line(42, $payY['or_number'], 55, 4.8),
         'registrar_name' => $line(138, 268.0, 95, 5),
         'verified_by'    => $line(22, 268.0, 88, 5),
     ];
     $birthFooter = $sharedFooter + [
-        'certification_date' => $line(42, 316.0, 55, 4.8),
+        'certification_date' => $line(42, $payY['certification_date'], 55, 4.8),
     ];
     $deathMarriageFooter = $sharedFooter + [
-        'date_printed' => $line(42, 316.0, 55, 4.8),
+        'date_printed' => $line(42, $payY['date_printed'], 55, 4.8),
     ];
 
     return [
@@ -744,6 +805,7 @@ function seedCertificationPrintTemplates(PDO $pdo): void
     ensureCertificationPaperA4($pdo);
     ensureCertificationIntroFieldAlignment($pdo);
     ensureCertificationDatePrintedFields($pdo);
+    ensureCertificationFooterWithinA4($pdo);
 
     foreach (printCertificateTypes() as $type) {
         $paper = certificationPaperSize($type);

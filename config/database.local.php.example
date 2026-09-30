@@ -1,11 +1,17 @@
 <?php
 /**
- * Production MySQL — copy to database.local.php on SmarterASP.NET (or any host).
- * File is gitignored; upload via FTP / File Manager and keep it on the server only.
- *
- * SmarterASP.NET Premium: Hosting Control Panel → MySQL → create database → copy host/name/user/password.
+ * Remote MySQL — copy to database.local.php on the server (File Manager / FTP).
+ * Not in git. Local XAMPP does not need this file (uses localhost / root in config/database.php).
  */
-define('DB_HOST', 'mysqlXXXX.smarterasp.net');
-define('DB_NAME', 'DB_name_from_control_panel');
-define('DB_USER', 'DB_user_from_control_panel');
+
+/* --- InfinityFree (e.g. alcros.42web.io) --- */
+define('DB_HOST', 'sql123.infinityfree.com');
+define('DB_NAME', 'if0_12345678_alcros');
+define('DB_USER', 'if0_12345678');
 define('DB_PASS', 'your_mysql_password');
+
+/* --- SmarterASP.NET Premium (use instead of the block above on that host) --- */
+// define('DB_HOST', 'mysqlXXXX.smarterasp.net');
+// define('DB_NAME', 'DB_name_from_control_panel');
+// define('DB_USER', 'DB_user_from_control_panel');
+// define('DB_PASS', 'your_mysql_password');

@@ -37,6 +37,20 @@ function alcrosIsHostedEnvironment(): bool
     return !alcrosIsLocalOfficeInstall();
 }
 
+/** Human-readable hint for install / DB error pages on free hosts. */
+function alcrosHostedDatabaseSetupHint(): string
+{
+    $host = strtolower((string) ($_SERVER['HTTP_HOST'] ?? ''));
+    if (str_contains($host, 'infinityfree') || str_contains($host, '42web.io') || str_contains($host, 'rf.gd') || str_contains($host, 'epizy.com')) {
+        return 'InfinityFree: hPanel → <strong>MySQL Databases</strong> → create a database, then copy <strong>config/database.local.php.example</strong> to <strong>config/database.local.php</strong> with hostname (e.g. <code class="bg-white px-1 rounded">sql###.infinityfree.com</code>), database name, username, and password.';
+    }
+    if (str_contains($host, 'smarterasp.net') || str_contains($host, 'aspnethost.com')) {
+        return 'SmarterASP.NET: control panel → <strong>MySQL</strong> → copy credentials into <strong>config/database.local.php</strong>.';
+    }
+
+    return 'Copy <strong>config/database.local.php.example</strong> to <strong>config/database.local.php</strong> on the server and set your host MySQL hostname, database name, username, and password.';
+}
+
 /**
  * Whether install.php may be opened in a browser on a live host.
  * After setup, production should return false (see alcrosInstallWebBlocked()).

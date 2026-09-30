@@ -107,7 +107,7 @@ $dbLabel = htmlspecialchars(DB_NAME, ENT_QUOTES, 'UTF-8');
         <div class="mb-4 p-3 bg-amber-50 border border-amber-100 text-amber-800 text-sm rounded-lg">
             <?= alcrosIsLocalOfficeInstall()
                 ? 'Start <strong>MySQL</strong> in XAMPP Control Panel first.'
-                : 'Configure <strong>config/database.local.php</strong> and ensure your SmarterASP MySQL database is online.' ?>
+                : alcrosHostedDatabaseSetupHint() ?>
         </div>
         <?php endif; ?>
         <form method="POST">

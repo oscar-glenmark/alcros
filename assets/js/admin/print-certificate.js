@@ -8,7 +8,7 @@
     var refreshTimer = null;
     var syncingPreview = false;
     var lastCalibrationStamp = '';
-    var previewZoomLevel = 0.84;
+    var previewZoomLevel = 1;
     var previewViewMode = 'front';
 
     var CALIBRATION_STAMP_KEY = 'alcros-print-cal-updated';
@@ -211,6 +211,20 @@
         return view === side;
     }
 
+    function hasScaledPreviewViewport() {
+        return !!document.querySelector('[data-preview-viewport]');
+    }
+
+    function computePreviewFitScale(naturalWidth, naturalHeight, availableWidth, availableHeight) {
+        var widthScale = availableWidth / naturalWidth;
+        var heightScale = availableHeight / naturalHeight;
+        // Cover the gray viewport (like object-fit: cover); edges may clip slightly.
+        var fitScale = Math.max(widthScale, heightScale);
+        var scale = fitScale * previewZoomLevel;
+        scale = Math.min(Math.max(scale, 0.05), 2);
+        return Math.round(scale * 50) / 50;
+    }
+
     function fitLocalPreviewFrame(side) {
         if (!isLocalPreviewSideVisible(side)) return;
 
@@ -224,32 +238,32 @@
         var naturalHeight = iframe.offsetHeight;
         if (!naturalWidth || !naturalHeight) return;
 
-        var availableWidth = Math.max(viewport.clientWidth - 24, 240);
-        var widthScale = availableWidth / naturalWidth;
-        var scale;
+        var availableWidth = Math.max(viewport.clientWidth, 120);
+        var availableHeight = Math.max(viewport.clientHeight, 120);
+        var scale = computePreviewFitScale(naturalWidth, naturalHeight, availableWidth, availableHeight);
+        var scaledWidth = Math.round(naturalWidth * scale);
+        var scaledHeight = Math.round(naturalHeight * scale);
 
-        if (previewViewMode === 'both') {
-            var availableHeight = Math.max(viewport.clientHeight - 24, 240);
-            var heightScale = availableHeight / naturalHeight;
-            var fitScale = Math.min(widthScale, heightScale);
-            scale = Math.min(Math.max(fitScale, 0.9), 2) * previewZoomLevel;
+        scaler.style.transform = 'none';
+        scaler.style.overflow = 'hidden';
+        scaler.style.width = scaledWidth + 'px';
+        scaler.style.height = scaledHeight + 'px';
+        scaler.style.flexShrink = '0';
+
+        iframe.style.width = naturalWidth + 'px';
+        iframe.style.height = naturalHeight + 'px';
+        iframe.style.transform = 'scale(' + scale.toFixed(2) + ') translateZ(0)';
+        iframe.style.transformOrigin = 'top left';
+
+        if (scaledWidth <= availableWidth && scaledHeight <= availableHeight) {
+            scaler.style.margin = 'auto';
         } else {
-            scale = Math.min(Math.max(widthScale, 0.9), 2) * previewZoomLevel;
-        }
-
-        scale = Math.round(scale * 50) / 50;
-        scaler.style.transform = 'scale(' + scale.toFixed(2) + ') translateZ(0)';
-        scaler.style.width = naturalWidth + 'px';
-        scaler.style.height = (naturalHeight * scale) + 'px';
-
-        if (previewViewMode === 'both') {
-            viewport.scrollLeft = 0;
-            viewport.scrollTop = 0;
+            scaler.style.margin = '0';
         }
     }
 
     function fitLocalPreviewFrames() {
-        if (!isLocalCertificate()) return;
+        if (!hasScaledPreviewViewport()) return;
         applyLocalPaperCssVars();
         fitLocalPreviewFrame('front');
         fitLocalPreviewFrame('back');
@@ -344,7 +358,7 @@
             AlcrosPrintFitText.fitAll(doc);
         }
 
-        if (isLocalCertificate()) {
+        if (hasScaledPreviewViewport()) {
             window.requestAnimationFrame(fitLocalPreviewFrames);
         }
 
@@ -382,7 +396,7 @@
     }
 
     function syncPreviewFrameSize() {
-        if (isLocalCertificate()) {
+        if (hasScaledPreviewViewport()) {
             fitLocalPreviewFrames();
             return;
         }

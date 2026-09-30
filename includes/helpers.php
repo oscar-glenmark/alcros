@@ -2129,7 +2129,7 @@ function gmailExistsViaFirebase(string $email): ?bool
     }
 
     $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $scheme = function_exists('alcrosRequestScheme') ? alcrosRequestScheme() : (((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http'));
     $continueUri = $scheme . '://' . $host . '/';
 
     $url = 'https://identitytoolkit.googleapis.com/v1/accounts:createAuthUri?key=' . urlencode($apiKey);
@@ -4148,7 +4148,7 @@ function alcrosWebBasePath(): string
 
 function appBaseUrl(): string
 {
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $scheme = function_exists('alcrosRequestScheme') ? alcrosRequestScheme() : (((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http'));
     $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
     $path   = alcrosWebBasePath();
     if ($path === '') {

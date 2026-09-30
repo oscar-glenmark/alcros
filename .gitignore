@@ -5,6 +5,7 @@
 .env
 .env.*
 config/database.local.php
+config/hosting.local.php
 
 # Runtime / secrets (generated on server)
 storage/*

@@ -50,10 +50,8 @@ function alcrosDuplicatiEnsureBackupDir(): string
         throw new RuntimeException('Could not create backup files directory.');
     }
 
-    $htaccess = dirname($dir) . DIRECTORY_SEPARATOR . '.htaccess';
-    if (!is_file($htaccess)) {
-        file_put_contents($htaccess, "Require all denied\n");
-    }
+    require_once __DIR__ . '/hosting.php';
+    alcrosWriteWebAccessDeny(dirname($dir));
 
     return $dir;
 }

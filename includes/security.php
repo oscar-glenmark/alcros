@@ -59,8 +59,10 @@ function bootstrapSecurity(): void
     $booted = true;
 
     if (session_status() === PHP_SESSION_NONE) {
-        $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-            || (isset($_SERVER['SERVER_PORT']) && (int) $_SERVER['SERVER_PORT'] === 443);
+        if (!function_exists('alcrosRequestIsHttps')) {
+            require_once __DIR__ . '/hosting.php';
+        }
+        $secure = alcrosRequestIsHttps();
 
         session_set_cookie_params([
             'lifetime' => 0,

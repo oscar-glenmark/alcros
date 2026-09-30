@@ -2,6 +2,9 @@
 /**
  * Sends Gmail reminders for visits and appointments at 5, 3, and 1 hour before start.
  * Requires cron secret — use storage/cron_secret.txt value.
+ *
+ * SmarterASP.NET Premium Schedule Task (every 15 min, HTTP GET):
+ *   https://YOUR-DOMAIN.com/api/appointment_reminders.php?cron_secret=SECRET
  */
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/api_helpers.php';

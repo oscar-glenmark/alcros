@@ -5,20 +5,7 @@
  */
 
 require_once __DIR__ . '/duplicati_backup.php';
-
-function alcrosIsLocalOfficeInstall(): bool
-{
-    if (PHP_OS_FAMILY === 'Windows' && is_dir('C:\\xampp')) {
-        return true;
-    }
-
-    $host = strtolower((string) ($_SERVER['HTTP_HOST'] ?? ''));
-    if ($host === '' || $host === 'localhost' || str_starts_with($host, '127.0.0.1')) {
-        return true;
-    }
-
-    return false;
-}
+require_once __DIR__ . '/hosting.php';
 
 function alcrosCloudBackupEnabled(): bool
 {
@@ -32,10 +19,7 @@ function alcrosEnsureSecretsDir(): string
         throw new RuntimeException('Could not create secrets directory.');
     }
 
-    $htaccess = $dir . DIRECTORY_SEPARATOR . '.htaccess';
-    if (!is_file($htaccess)) {
-        file_put_contents($htaccess, "Require all denied\n");
-    }
+    alcrosWriteWebAccessDeny($dir);
 
     return $dir;
 }
@@ -92,7 +76,7 @@ function alcrosCloudBackupPublicBaseUrl(): string
     }
 
     if (!empty($_SERVER['HTTP_HOST'])) {
-        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $scheme = alcrosRequestScheme();
         $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '/system_settings.php'));
         $dir = rtrim(str_replace('\\', '/', dirname($script)), '/');
         foreach (['/api', '/cron', '/includes'] as $suffix) {

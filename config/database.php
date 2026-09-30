@@ -2,11 +2,27 @@
 /**
  * ALCROS MySQL connection
  */
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'alcros_db');
-define('DB_USER', 'root');
-define('DB_PASS', '');
-define('DB_CHARSET', 'utf8mb4');
+require_once __DIR__ . '/environment.php';
+
+if (!defined('DB_HOST')) {
+    define('DB_HOST', 'localhost');
+}
+if (!defined('DB_NAME')) {
+    define('DB_NAME', 'alcros_db');
+}
+if (!defined('DB_USER')) {
+    define('DB_USER', 'root');
+}
+if (!defined('DB_PASS')) {
+    define('DB_PASS', '');
+}
+if (!defined('DB_CHARSET')) {
+    define('DB_CHARSET', 'utf8mb4');
+}
+
+if (is_file(__DIR__ . '/database.local.php')) {
+    require __DIR__ . '/database.local.php';
+}
 
 function dbUnavailablePage(string $title, string $help, string $msg): never
 {
@@ -54,21 +70,31 @@ function databaseIsInstalled(): bool
 function dbConnectionHelpMessage(): string
 {
     if (!mysqlServerUp()) {
-        return 'MySQL is not running. Start it in the XAMPP Control Panel, then refresh this page.';
+        return alcrosIsLocalOfficeInstall()
+            ? 'MySQL is not running. Start it in the XAMPP Control Panel, then refresh this page.'
+            : 'Cannot reach the MySQL server. Check DB_HOST and credentials in config/database.local.php and your SmarterASP MySQL database status.';
     }
     if (!databaseIsInstalled()) {
-        return 'Database not installed yet. Open install.php once while MySQL is running.';
+        return alcrosIsLocalOfficeInstall()
+            ? 'Database not installed yet. Open install.php once while MySQL is running.'
+            : 'Database not installed yet. Import database/alcros.sql in phpMyAdmin or run install.php once, then remove/block public access to install.php.';
     }
-    return 'Database error. Check that MySQL is running in XAMPP.';
+
+    return alcrosIsLocalOfficeInstall()
+        ? 'Database error. Check that MySQL is running in XAMPP.'
+        : 'Database error. Verify config/database.local.php matches your SmarterASP MySQL database.';
 }
 
 function createDBConnection(): PDO
 {
     if (!mysqlServerUp()) {
+        $help = alcrosIsLocalOfficeInstall()
+            ? 'Start <strong>MySQL</strong> in the XAMPP Control Panel, then refresh this page. You do <em>not</em> need to run install.php again if you already installed before.'
+            : 'Check <strong>config/database.local.php</strong> (MySQL host, database name, user, password) and that your SmarterASP MySQL database is online.';
         dbUnavailablePage(
-            'MySQL Is Not Running',
-            'Start <strong>MySQL</strong> in the XAMPP Control Panel, then refresh this page. You do <em>not</em> need to run install.php again if you already installed before.',
-            'Connection refused (MySQL service stopped).'
+            alcrosIsLocalOfficeInstall() ? 'MySQL Is Not Running' : 'MySQL Connection Failed',
+            $help,
+            'Connection refused or access denied.'
         );
     }
 
@@ -89,11 +115,19 @@ function createDBConnection(): PDO
         if (str_contains($msg, 'Unknown database')) {
             dbUnavailablePage(
                 'Database Not Installed Yet',
-                'Open <a href="install.php" class="text-blue-600 font-bold">install.php</a> <strong>once</strong> while MySQL is running. After that, you only need install.php again if the database was deleted.',
+                alcrosIsLocalOfficeInstall()
+                    ? 'Open <a href="install.php" class="text-blue-600 font-bold">install.php</a> <strong>once</strong> while MySQL is running. After that, you only need install.php again if the database was deleted.'
+                    : 'Import <code class="bg-gray-100 px-1 rounded">database/alcros.sql</code> in phpMyAdmin or run <a href="install.php" class="text-blue-600 font-bold">install.php</a> once.',
                 $msg
             );
         }
-        dbUnavailablePage('Database Error', 'Check config/database.php and that MySQL is running.', $msg);
+        dbUnavailablePage(
+            'Database Error',
+            alcrosIsLocalOfficeInstall()
+                ? 'Check config/database.php and that MySQL is running.'
+                : 'Check config/database.local.php and SmarterASP MySQL settings.',
+            $msg
+        );
     }
 }
 

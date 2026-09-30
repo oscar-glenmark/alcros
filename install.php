@@ -7,6 +7,12 @@ require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 
+if (alcrosInstallWebBlocked()) {
+    http_response_code(404);
+    header('Content-Type: text/html; charset=UTF-8');
+    exit('<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not Found</title></head><body><p>Not found.</p></body></html>');
+}
+
 $sqlFile = __DIR__ . '/database/alcros.sql';
 $messages = [];
 $error = null;
@@ -18,7 +24,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         try {
             if (!mysqlServerUp()) {
-                throw new RuntimeException('MySQL is not running. Start it in the XAMPP Control Panel first.');
+                throw new RuntimeException(
+                    alcrosIsLocalOfficeInstall()
+                        ? 'MySQL is not running. Start it in the XAMPP Control Panel first.'
+                        : 'Cannot connect to MySQL. Check config/database.local.php and your hosting MySQL database.'
+                );
             }
             if (!is_file($sqlFile)) {
                 throw new RuntimeException('SQL file not found: database/alcros.sql');
@@ -80,7 +90,7 @@ $dbLabel = htmlspecialchars(DB_NAME, ENT_QUOTES, 'UTF-8');
         <?php if ($alreadyInstalled && $_SERVER['REQUEST_METHOD'] !== 'POST'): ?>
         <div class="mb-4 p-4 bg-green-50 border border-green-100 rounded-xl">
             <p class="text-sm font-bold text-green-800 mb-1">Already installed</p>
-            <p class="text-xs text-green-700">Database <code class="bg-white px-1 rounded"><?= $dbLabel ?></code> is ready. You do <strong>not</strong> need to install again when restarting XAMPP — just start MySQL.</p>
+            <p class="text-xs text-green-700">Database <code class="bg-white px-1 rounded"><?= $dbLabel ?></code> is ready.<?= alcrosIsLocalOfficeInstall() ? ' You do <strong>not</strong> need to install again when restarting XAMPP — just start MySQL.' : ' On production, block public access to <code class="bg-white px-1 rounded">install.php</code> after setup.' ?></p>
         </div>
         <a href="index.php" class="back-home back-home--primary block mb-3">Go to ALCROS Home</a>
         <a href="login.php" class="block w-full text-center border border-gray-200 text-gray-600 rounded-xl py-3 text-sm font-bold">Staff Login</a>
@@ -95,7 +105,9 @@ $dbLabel = htmlspecialchars(DB_NAME, ENT_QUOTES, 'UTF-8');
         <?php if (empty($messages)): ?>
         <?php if (!mysqlServerUp()): ?>
         <div class="mb-4 p-3 bg-amber-50 border border-amber-100 text-amber-800 text-sm rounded-lg">
-            Start <strong>MySQL</strong> in XAMPP Control Panel first.
+            <?= alcrosIsLocalOfficeInstall()
+                ? 'Start <strong>MySQL</strong> in XAMPP Control Panel first.'
+                : 'Configure <strong>config/database.local.php</strong> and ensure your SmarterASP MySQL database is online.' ?>
         </div>
         <?php endif; ?>
         <form method="POST">

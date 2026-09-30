@@ -1,0 +1,11 @@
+<?php
+/**
+ * SmarterASP.NET Premium (and similar IIS hosts) — copy to hosting.local.php on the server.
+ * Not tracked in git (optional; you may commit hosting.local.php on the server only via FTP).
+ *
+ * Recommended for SmarterASP.NET with free SSL:
+ */
+define('ALCROS_TRUST_PROXY_HTTPS', true);
+
+/** Set false on production if you ever copy this file from a XAMPP dev machine. */
+// define('ALCROS_LOCAL_OFFICE', false);

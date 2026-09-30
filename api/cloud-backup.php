@@ -1,9 +1,11 @@
 <?php
 /**
- * Hostinger / live-site scheduled backup endpoint.
+ * Live-site scheduled backup endpoint.
  *
- * hPanel → Cron Jobs → every hour:
- *   curl -s "https://YOUR-DOMAIN.com/api/cloud-backup.php?token=YOUR_TOKEN"
+ * SmarterASP.NET Premium Schedule Task (every 60 min, HTTP GET):
+ *   https://YOUR-DOMAIN.com/api/cloud-backup.php?token=YOUR_TOKEN
+ *
+ * Hostinger hPanel cron (curl) uses the same URL.
  */
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/helpers.php';

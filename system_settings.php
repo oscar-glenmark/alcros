@@ -492,6 +492,8 @@ $cloudBackupLastUploadStatus = $isAdmin ? getSetting('cloud_backup_last_upload_s
 $cloudBackupLastUploadMessage = $isAdmin ? getSetting('cloud_backup_last_upload_message', '') : '';
 $cloudBackupCronUrl = $isAdmin ? alcrosCloudBackupCronUrl() : '';
 $cloudBackupCronToken = $isAdmin ? alcrosCloudBackupCronToken() : '';
+$appointmentRemindersCronUrl = $isAdmin ? alcrosAppointmentRemindersCronUrl() : '';
+$showHostedScheduleTasks = $isAdmin && function_exists('alcrosIsHostedEnvironment') && alcrosIsHostedEnvironment();
 $cloudBackupFileList = ['ok' => true, 'items' => [], 'message' => ''];
 if ($isAdmin) {
     $cloudBackupFileList = alcrosCloudFetchBackupFileList();
@@ -1496,6 +1498,25 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                             <button type="submit" class="text-xs font-bold text-slate-500 hover:text-red-600">Regenerate cron URL token</button>
                                         </form>
                                     </div>
+
+                                    <?php if ($showHostedScheduleTasks): ?>
+                                    <div class="rounded-xl border border-violet-200 bg-violet-50/40 p-4 mt-4">
+                                        <p class="text-sm font-bold text-slate-900 mb-2">SmarterASP.NET Premium — Schedule Tasks</p>
+                                        <p class="text-xs text-slate-600 mb-3">Hosting Control Panel → <strong>Advance</strong> → <strong>Schedule Tasks</strong>. Use <strong>Call URL</strong> (HTTP GET). Minimum interval: <strong>15 minutes</strong>. Default quota: 3 tasks.</p>
+                                        <div class="space-y-4">
+                                            <div>
+                                                <p class="text-[11px] font-bold uppercase text-slate-500 mb-1">Task 1 — Appointment &amp; visit reminders (every 15 min)</p>
+                                                <div class="rounded-lg border border-violet-100 bg-white px-3 py-2 font-mono text-[11px] text-slate-800 break-all"><?= htmlspecialchars($appointmentRemindersCronUrl) ?></div>
+                                            </div>
+                                            <div>
+                                                <p class="text-[11px] font-bold uppercase text-slate-500 mb-1">Task 2 — Cloud backup (every 60 min, if cloud backup is enabled)</p>
+                                                <div class="rounded-lg border border-violet-100 bg-white px-3 py-2 font-mono text-[11px] text-slate-800 break-all"><?= htmlspecialchars($cloudBackupCronUrl) ?></div>
+                                            </div>
+                                        </div>
+                                        <p class="text-[11px] text-slate-500 mt-3">These URLs are secret. Do not share them publicly. Full deployment steps: <code class="bg-white px-1 rounded border border-slate-200">deploy/SMARTERASP.md</code> in your project files.</p>
+                                        <p class="text-[11px] text-slate-500 mt-2">Also copy <code class="bg-white px-1 rounded border border-slate-200">config/hosting.local.php.example</code> to <code class="bg-white px-1 rounded">config/hosting.local.php</code> on the server and set <code class="bg-white px-1 rounded">ALCROS_TRUST_PROXY_HTTPS</code> to <code class="bg-white px-1 rounded">true</code> if staff login cookies fail over HTTPS.</p>
+                                    </div>
+                                    <?php endif; ?>
                                 </div>
 
                                 <?php if ($backupIsLocalOffice): ?>

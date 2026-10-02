@@ -6,12 +6,14 @@ require_once __DIR__ . '/scripts.php';
 require_once __DIR__ . '/lucide_icons.php';
 
 $sidebarManageApptQuery = [];
-try {
-    $sidebarPdo = getDB();
-    runReminderSchedulerIfDue($sidebarPdo);
-    $sidebarManageApptQuery = ['date' => resolveAppointmentsManageDate($sidebarPdo, null)];
-} catch (Throwable $e) {
-    // Non-fatal when reminders cannot run.
+if (!isAdmin()) {
+    try {
+        $sidebarPdo = getDB();
+        runReminderSchedulerIfDue($sidebarPdo);
+        $sidebarManageApptQuery = ['date' => resolveAppointmentsManageDate($sidebarPdo, null)];
+    } catch (Throwable $e) {
+        // Non-fatal when reminders cannot run.
+    }
 }
 
 $activePage = $activePage ?? basename($_SERVER['PHP_SELF']);
@@ -67,12 +69,16 @@ function sidebarSectionLabel(string $label): string
     <nav class="admin-sidebar-nav px-4 py-4 space-y-1" id="sidebarNavScroll">
         <?= sidebarSectionLabel('Operations') ?>
         <?= sidebarLink('dashboard.php', 'Dashboard', 'layout-dashboard', $activePage) ?>
-        <?= sidebarLink('notifications.php', 'Notifications', 'bell', $activePage, false, 'sidebar-notif-badge') ?>
+        <?= sidebarLink('notifications.php', staffPortalInboxLabel(), 'bell', $activePage, false, 'sidebar-notif-badge') ?>
+        <?php if (!isAdmin()): ?>
         <?= sidebarLink('manage_request.php', 'Manage Requests', 'file-text', $activePage, false, 'sidebar-request-badge') ?>
         <?= sidebarLink('appointment.php', 'Manage Appointments', 'calendar', $activePage, false, 'sidebar-appt-badge', $sidebarManageApptQuery) ?>
+        <?php endif; ?>
         <?= sidebarLink('records.php', 'Records', 'book-open', $activePage) ?>
         <?= sidebarLink('report.php', 'Reports', 'bar-chart-2', $activePage) ?>
+        <?php if (!isAdmin()): ?>
         <?= sidebarLink('live-queue.php', 'Manage live queue', 'users', $activePage, true) ?>
+        <?php endif; ?>
         <?= sidebarLink('documents.php', 'Documents', 'files', $activePage) ?>
         <?php if (isAdmin()): ?>
         <?= sidebarSectionLabel('Administration') ?>

@@ -1137,6 +1137,32 @@ function formatDateDisplay(string $date): string
     return $ts ? date('m/d/Y', $ts) : $date;
 }
 
+/** Citizen email dates (e.g. September 12, 2026). */
+function formatDateEmailDisplay(string $date): string
+{
+    $dateOnly = trim($date);
+    if (preg_match('/^(\d{4}-\d{2}-\d{2})/', $dateOnly, $match)) {
+        $dateOnly = $match[1];
+    }
+    $ts = strtotime($dateOnly);
+
+    return $ts ? date('F j, Y', $ts) : $date;
+}
+
+function formatAppointmentEmailDisplay(?string $date, ?string $time): string
+{
+    if (!$date) {
+        return '';
+    }
+    $out = formatDateEmailDisplay($date);
+    if ($time) {
+        $ts = strtotime(trim($time));
+        $out .= $ts ? ' · ' . date('g:i A', $ts) : '';
+    }
+
+    return $out;
+}
+
 function getDocumentTypes(): array
 {
     return [
@@ -4070,15 +4096,18 @@ function publicRequestStatusLabel(string $status): string
     };
 }
 
-function publicRequestStatusMessage(string $status, ?array $appointment = null): string
+function publicRequestStatusMessage(string $status, ?array $appointment = null, bool $emailDateFormat = false): string
 {
     $status = normalizeRequestStatus($status);
 
     if ($status === 'verified' || $status === 'ready') {
         $visit = '';
         if ($appointment && !empty($appointment['appointment_date'])) {
+            $schedule = $emailDateFormat
+                ? formatAppointmentEmailDisplay($appointment['appointment_date'], $appointment['appointment_time'] ?? null)
+                : formatAppointmentDisplay($appointment['appointment_date'], $appointment['appointment_time'] ?? null);
             $visit = ' Your confirmed visit is on '
-                . formatAppointmentDisplay($appointment['appointment_date'], $appointment['appointment_time'] ?? null)
+                . $schedule
                 . '.';
         }
 
@@ -4511,8 +4540,10 @@ function notifyRequestSubmitted(array $data): bool
         'Current status' => 'Pending review',
     ];
     if (!empty($data['appointment_date']) && !empty($data['appointment_time'])) {
-        $details['Preferred visit'] = formatDateDisplay($data['appointment_date'])
-            . ' at ' . date('g:i A', strtotime($data['appointment_time']));
+        $details['Preferred visit'] = formatAppointmentEmailDisplay(
+            $data['appointment_date'],
+            $data['appointment_time']
+        );
     }
 
     return sendCitizenNotice(
@@ -4831,7 +4862,7 @@ function notifyRequestStatusChange(PDO $pdo, int $requestId, string $newStatus, 
 
     $status = $staffAction === 'verified' ? 'verified' : normalizeRequestStatus($newStatus);
     $appointment = fetchDocumentRequestAppointment($pdo, (string) $row['tracking_code']);
-    $visitSchedule = formatAppointmentDisplay(
+    $visitSchedule = formatAppointmentEmailDisplay(
         $appointment['appointment_date'] ?? $row['appointment_date'] ?? null,
         $appointment['appointment_time'] ?? $row['appointment_time'] ?? null
     );
@@ -4879,7 +4910,7 @@ function notifyRequestStatusChange(PDO $pdo, int $requestId, string $newStatus, 
         'code_label'   => 'Tracking code',
         'code'         => $row['tracking_code'],
         'details'      => $details,
-        'note'         => publicRequestStatusMessage($newStatus, $appointment),
+        'note'         => publicRequestStatusMessage($newStatus, $appointment, true),
         'button_label' => 'View full details',
         'button_url'   => trackRequestUrl($row['tracking_code']),
         'accent'       => $accent,
@@ -4903,7 +4934,7 @@ function notifyAppointmentBooked(array $data): bool
             'code'         => $data['appointment_code'],
             'details'      => [
                 'Service'  => (string) ($data['service_label'] ?? ''),
-                'Schedule' => formatAppointmentDisplay($data['appointment_date'] ?? null, $data['appointment_time'] ?? null),
+                'Schedule' => formatAppointmentEmailDisplay($data['appointment_date'] ?? null, $data['appointment_time'] ?? null),
                 'Status'   => 'Awaiting confirmation',
             ],
             'note'         => 'Your preferred date and time are saved, but staff must still confirm your visit. We will email this Gmail address when the status changes and at 5 hours, 3 hours, and 1 hour before a confirmed appointment.',
@@ -4946,7 +4977,7 @@ function notifyAppointmentStatusChange(PDO $pdo, int $appointmentId, string $new
             'code'         => $row['appointment_code'],
             'details'      => [
                 'Service'    => appointmentServiceLabel((string) $row['service_type']),
-                'Schedule'   => formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
+                'Schedule'   => formatAppointmentEmailDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
                 'New status' => appointmentStatusLabel($newStatus),
             ],
             'note'         => appointmentStatusMessage($newStatus),
@@ -5026,7 +5057,7 @@ function notifyAppointmentReminder(array $row, int $hoursBefore): bool
             'code'         => $row['appointment_code'],
             'details'      => [
                 'Service'  => appointmentServiceLabel((string) ($row['service_type'] ?? '')),
-                'Schedule' => formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
+                'Schedule' => formatAppointmentEmailDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
             ],
             'note'         => 'Please arrive on time and bring a valid ID.',
             'button_label' => 'View appointment',
@@ -5056,7 +5087,7 @@ function notifyRequestVisitReminder(array $row, int $hoursBefore): bool
             'details'      => [
                 'Document'        => documentTypeLabel((string) ($row['document_type'] ?? '')),
                 'Current status'  => requestStatusLabel((string) ($row['status'] ?? 'pending')),
-                'Preferred visit' => formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
+                'Preferred visit' => formatAppointmentEmailDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
             ],
             'note'         => 'Please arrive on time and bring your tracking code and a valid ID.',
             'button_label' => 'Track your request',
@@ -5147,7 +5178,7 @@ function notifyRequestVisitSoon(array $row): bool
             'details'      => [
                 'Document'        => documentTypeLabel((string) ($row['document_type'] ?? '')),
                 'Current status'  => requestStatusLabel((string) ($row['status'] ?? 'pending')),
-                'Preferred visit' => formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
+                'Preferred visit' => formatAppointmentEmailDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
             ],
             'note'         => 'Bring your tracking code and a valid ID. Staff may still need a short time to review your request when you arrive.',
             'button_label' => 'Track your request',
@@ -5182,7 +5213,7 @@ function notifyAppointmentVisitSoon(array $row): bool
             'code'         => $row['appointment_code'],
             'details'      => [
                 'Service'  => appointmentServiceLabel((string) ($row['service_type'] ?? '')),
-                'Schedule' => formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
+                'Schedule' => formatAppointmentEmailDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
                 'Status'   => appointmentStatusLabel((string) ($row['status'] ?? 'scheduled')),
             ],
             'note'         => 'Please arrive on time and bring a valid ID.',
@@ -5470,6 +5501,43 @@ function arePublicRequestsAllowed(): bool
     return getSetting('allow_public_requests', '1') === '1';
 }
 
+function countOperationalPrintJobs(PDO $pdo, string $documentKind): int
+{
+    if (!in_array($documentKind, ['certification', 'certificate'], true)) {
+        return 0;
+    }
+
+    try {
+        $stmt = $pdo->prepare(
+            'SELECT COUNT(*)
+             FROM print_jobs pj
+             INNER JOIN print_templates pt ON pt.id = pj.template_id
+             WHERE pt.document_kind = ?'
+        );
+        $stmt->execute([$documentKind]);
+
+        return (int) $stmt->fetchColumn();
+    } catch (Throwable $e) {
+        return 0;
+    }
+}
+
+function deleteOperationalPrintJobs(PDO $pdo, string $documentKind): int
+{
+    if (!in_array($documentKind, ['certification', 'certificate'], true)) {
+        return 0;
+    }
+
+    $stmt = $pdo->prepare(
+        'DELETE pj FROM print_jobs pj
+         INNER JOIN print_templates pt ON pt.id = pj.template_id
+         WHERE pt.document_kind = ?'
+    );
+    $stmt->execute([$documentKind]);
+
+    return $stmt->rowCount();
+}
+
 function getSystemStats(PDO $pdo): array
 {
     $tables = [
@@ -5491,12 +5559,29 @@ function getSystemStats(PDO $pdo): array
             $stats[$table] = ['label' => $label, 'count' => 0];
         }
     }
+
+    $stats['certification_prints'] = [
+        'label' => 'Certification prints',
+        'count' => countOperationalPrintJobs($pdo, 'certification'),
+    ];
+    $stats['certificate_prints'] = [
+        'label' => 'Certificate prints',
+        'count' => countOperationalPrintJobs($pdo, 'certificate'),
+    ];
+
     return $stats;
 }
 
 function clearOperationalData(PDO $pdo, array $types, string $staffId): array
 {
-    $allowed = ['appointments', 'document_requests', 'civil_records', 'queue_tickets'];
+    $allowed = [
+        'appointments',
+        'document_requests',
+        'civil_records',
+        'queue_tickets',
+        'certification_prints',
+        'certificate_prints',
+    ];
     $types = array_values(array_unique(array_intersect($allowed, $types)));
     if ($types === []) {
         throw new InvalidArgumentException('Select at least one data type to clear.');
@@ -5515,11 +5600,13 @@ function clearOperationalData(PDO $pdo, array $types, string $staffId): array
     }
 
     $results = [
-        'appointments'       => 0,
-        'document_requests'  => 0,
-        'civil_records'      => 0,
-        'queue_tickets'      => 0,
-        'queue_announcements' => 0,
+        'appointments'          => 0,
+        'document_requests'     => 0,
+        'civil_records'         => 0,
+        'queue_tickets'         => 0,
+        'queue_announcements'   => 0,
+        'certification_prints'  => 0,
+        'certificate_prints'    => 0,
     ];
 
     $pdo->beginTransaction();
@@ -5567,6 +5654,14 @@ function clearOperationalData(PDO $pdo, array $types, string $staffId): array
             $results['queue_announcements'] = (int) $pdo->exec('DELETE FROM queue_announcements');
         }
 
+        if (in_array('certification_prints', $types, true)) {
+            $results['certification_prints'] = deleteOperationalPrintJobs($pdo, 'certification');
+        }
+
+        if (in_array('certificate_prints', $types, true)) {
+            $results['certificate_prints'] = deleteOperationalPrintJobs($pdo, 'certificate');
+        }
+
         if ($pdo->inTransaction()) {
             $pdo->commit();
         }
@@ -5590,6 +5685,12 @@ function clearOperationalData(PDO $pdo, array $types, string $staffId): array
     if ($clearAllQueue) {
         $clearedLabels[] = 'queue tickets';
     }
+    if (in_array('certification_prints', $types, true)) {
+        $clearedLabels[] = 'certification print logs';
+    }
+    if (in_array('certificate_prints', $types, true)) {
+        $clearedLabels[] = 'certificate print logs';
+    }
 
     $detailParts = [];
     if ($results['document_requests'] > 0) {
@@ -5606,6 +5707,12 @@ function clearOperationalData(PDO $pdo, array $types, string $staffId): array
     }
     if ($results['queue_announcements'] > 0) {
         $detailParts[] = $results['queue_announcements'] . ' queue announcement(s)';
+    }
+    if ($results['certification_prints'] > 0) {
+        $detailParts[] = $results['certification_prints'] . ' certification print log(s)';
+    }
+    if ($results['certificate_prints'] > 0) {
+        $detailParts[] = $results['certificate_prints'] . ' certificate print log(s)';
     }
 
     $summary = implode(', ', $clearedLabels);

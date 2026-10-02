@@ -38,12 +38,12 @@ $pageHeaderMeta = $pageHeaderMeta ?? '';
 
     <div class="admin-header__toolbar flex items-center min-w-0">
         <div class="admin-header__actions flex items-center shrink-0">
-            <div class="relative admin-header__notif" id="notif-wrapper" data-staff-id="<?= htmlspecialchars(staffId()) ?>">
+            <div class="relative admin-header__notif" id="notif-wrapper" data-staff-id="<?= htmlspecialchars(staffId()) ?>" data-staff-portal-role="<?= isAdmin() ? 'administrator' : 'staff' ?>">
                 <button
                 type="button"
                 id="notif-bell-btn"
                 class="admin-header__notif-btn"
-                aria-label="Notifications"
+                aria-label="<?= htmlspecialchars(staffPortalInboxLabel()) ?>"
                 aria-expanded="false"
                 aria-haspopup="true"
             >

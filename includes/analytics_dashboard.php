@@ -46,7 +46,7 @@ function analyticsMonthSeries(PDO $pdo, string $sql): array
     ];
 }
 
-function analyticsCertificationStats(PDO $pdo): array
+function analyticsPrintJobStats(PDO $pdo, string $documentKind): array
 {
     $empty = [
         'total'       => 0,
@@ -57,6 +57,10 @@ function analyticsCertificationStats(PDO $pdo): array
         'available'   => false,
     ];
 
+    if (!in_array($documentKind, ['certification', 'certificate'], true)) {
+        return $empty;
+    }
+
     try {
         $pdo->query('SELECT document_kind FROM print_templates LIMIT 1');
         $pdo->query('SELECT id FROM print_jobs LIMIT 1');
@@ -64,7 +68,7 @@ function analyticsCertificationStats(PDO $pdo): array
         return $empty;
     }
 
-    $baseWhere = "pt.document_kind = 'certification'
+    $baseWhere = "pt.document_kind = '{$documentKind}'
         AND pj.print_mode = 'production'
         AND pj.status = 'completed'";
 
@@ -122,6 +126,16 @@ function analyticsCertificationStats(PDO $pdo): array
         'monthSeries' => $monthSeries,
         'available'   => true,
     ];
+}
+
+function analyticsCertificationStats(PDO $pdo): array
+{
+    return analyticsPrintJobStats($pdo, 'certification');
+}
+
+function analyticsCertificateStats(PDO $pdo): array
+{
+    return analyticsPrintJobStats($pdo, 'certificate');
 }
 
 function fetchAnalyticsDashboard(PDO $pdo): array
@@ -214,6 +228,7 @@ function fetchAnalyticsDashboard(PDO $pdo): array
     $maxRecordMonth = max($recordMonthCounts ?: [0]);
 
     $certStats = analyticsCertificationStats($pdo);
+    $certificateStats = analyticsCertificateStats($pdo);
     $maxCertMonth = $certStats['monthSeries']['max'];
 
     $recordTypeChart = [
@@ -308,9 +323,12 @@ function fetchAnalyticsDashboard(PDO $pdo): array
         'birthRecords'    => $birthRecords,
         'deathRecords'    => $deathRecords,
         'marriageRecords' => $marriageRecords,
-        'certTotal'       => $certStats['total'],
-        'certToday'       => $certStats['today'],
-        'certWeek'        => $certStats['week'],
+        'certTotal'          => $certStats['total'],
+        'certToday'          => $certStats['today'],
+        'certWeek'           => $certStats['week'],
+        'certificateTotal'   => $certificateStats['total'],
+        'certificateToday'   => $certificateStats['today'],
+        'certificateWeek'    => $certificateStats['week'],
         'maxMonth'        => $maxMonth,
         'maxRecordMonth'  => $maxRecordMonth,
         'maxCertMonth'    => $maxCertMonth,

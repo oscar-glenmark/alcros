@@ -24,7 +24,7 @@ $notifySite = $site ?? getSiteSettings();
             <ul class="list-disc pl-5 space-y-1.5">
                 <li>Gmail updates when you submit a request, when staff confirm your visit, and when your status changes.</li>
                 <li>Email reminders at 5 hours, 3 hours, and 1 hour before a confirmed visit or appointment.</li>
-                <li>Optional SMS text updates to your cellphone when a request is accepted, ready for pickup.</li>
+                <li>Optional SMS text updates when a request is accepted, ready for pickup, and 1 hour before a confirmed visit.</li>
             </ul>
             <p class="text-[11px] text-gray-500">Please visit the LGU office during business hours once notified.</p>
         </div>

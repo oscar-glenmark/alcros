@@ -199,6 +199,13 @@
                 ? '<p class="text-[10px] text-gray-400 font-mono truncate mt-0.5">' + escapeHtml(n.detail) + '</p>'
                 : '';
 
+            var linkLabel = n.link_label
+                ? '<p class="text-[10px] font-bold text-blue-600 mt-1.5">' + escapeHtml(n.link_label) + '</p>'
+                : '';
+            var roleNote = n.role_note
+                ? '<p class="text-[10px] text-slate-400 mt-0.5 leading-snug">' + escapeHtml(n.role_note) + '</p>'
+                : '';
+
             var deleteBtn = '<button type="button" class="notif-delete p-1.5 rounded-lg text-gray-300 hover:text-red-500 self-start" data-id="' + escapeHtml(n.id) + '" title="Remove">' +
                     '<i data-lucide="x" class="w-3.5 h-3.5"></i></button>';
 
@@ -210,6 +217,8 @@
                 '<p class="text-xs font-bold text-slate-800 truncate">' + escapeHtml(n.title) + '</p>' +
                 '<p class="text-[11px] text-gray-500 line-clamp-2">' + escapeHtml(n.message) + '</p>' +
                 detail +
+                linkLabel +
+                roleNote +
                 '</div>' +
                 '<span class="text-[9px] text-gray-400 shrink-0 self-start pt-0.5">' + formatTime(n.created_at) + '</span>' +
                 '</a>' +
@@ -223,7 +232,8 @@
         document.querySelectorAll('.alcros-notif-list').forEach(function (listEl) {
             var isPage = listEl.id === 'notif-page-list';
             if (isPage && all.length >= 0) {
-                listEl.setAttribute('data-notif-empty', 'No notifications');
+                var idleEmpty = listEl.getAttribute('data-notif-empty-idle') || 'No notifications';
+                listEl.setAttribute('data-notif-empty', idleEmpty);
             }
             renderListEl(listEl, all, { showDetail: isPage });
         });
@@ -265,7 +275,9 @@
                     flashButton(btn, 'Cleared');
                 }
                 if (window.AlcrosConfirm) {
-                    window.AlcrosConfirm.ask('Clear all notifications from this list?')
+                    var panel = btn.closest('.alcros-notif-panel');
+                    var clearPrompt = (panel && panel.getAttribute('data-notif-clear-prompt')) || 'Clear all notifications from this list?';
+                    window.AlcrosConfirm.ask(clearPrompt)
                         .then(function (ok) { if (ok) proceed(); });
                     return;
                 }

@@ -16,10 +16,19 @@ try {
     $limit = isset($_GET['limit']) ? max(1, min(100, (int) $_GET['limit'])) : 20;
     $notifications = fetchNotifications($pdo, $limit);
     foreach ($notifications as $notification) {
+        $type = (string) ($notification['type'] ?? '');
+        if ($type === 'system' && !isAdmin()) {
+            continue;
+        }
+        if ($type !== 'system' && isAdmin()) {
+            continue;
+        }
         upsertStaffNotification($notification);
     }
 
-    $counts = fetchSidebarActionCounts($pdo);
+    $counts = isAdmin()
+        ? ['pending_requests' => 0, 'pending_appointments' => 0]
+        : fetchSidebarActionCounts($pdo);
 
     apiJsonResponse([
         'notifications' => $notifications,

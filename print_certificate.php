@@ -95,7 +95,7 @@ $printModeSetting = printMode();
                 <div>
                     <strong>Cannot open print preview</strong>
                     <p><?= htmlspecialchars($printError) ?></p>
-                    <a href="<?= htmlspecialchars(buildAuthUrl(!empty($isCertification) ? 'records.php' : 'manage_request.php')) ?>" class="print-cert-link">Back</a>
+                    <a href="<?= htmlspecialchars(!empty($isCertification) ? buildAuthUrl('records.php') : buildStaffOperationalUrl('manage_request.php')) ?>" class="print-cert-link">Back</a>
                 </div>
             </div>
         <?php else: ?>
@@ -187,7 +187,7 @@ $printModeSetting = printMode();
                         <p class="print-cert-hint">Change values before printing. You can also click text directly in the preview on the right.</p>
                     </div>
                     <div class="print-cert-fill-actions">
-                        <a href="<?= htmlspecialchars(buildAuthUrl($request ? 'manage_request.php' : 'records.php')) ?>" class="print-cert-btn print-cert-btn--ghost">Cancel</a>
+                        <a href="<?= htmlspecialchars($request ? buildStaffOperationalUrl('manage_request.php') : buildAuthUrl('records.php')) ?>" class="print-cert-btn print-cert-btn--ghost">Cancel</a>
                         <button type="button" class="print-cert-btn print-cert-btn--ghost" id="resetFillData">Reset to record data</button>
                     </div>
                 </div>

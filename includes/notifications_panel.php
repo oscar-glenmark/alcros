@@ -21,16 +21,29 @@ $prefix = $notifPanel['toolbarPrefix'];
 $isPage = ($notifPanel['context'] === 'page');
 $headerBg = $isPage ? 'bg-slate-50' : 'bg-white';
 $listClass = trim('alcros-notif-list ' . $notifPanel['listClass']);
+$notifIsAdmin = function_exists('isAdmin') && isAdmin();
+$notifHelpText = $notifIsAdmin
+    ? 'System and maintenance alerts only (email/SMS, cron, configuration). Citizen queue and requests are notified to Staff accounts.'
+    : 'Citizen operations: pending requests, queue, and appointments. Tap an item to open the page where you can take action.';
+$notifInboxLabel = function_exists('staffPortalInboxLabel') ? staffPortalInboxLabel() : 'Notifications';
+$notifPageHeading = $notifIsAdmin ? 'All alerts' : 'All notifications';
+$notifEmptyLoading = $notifIsAdmin ? 'Loading alerts...' : 'Loading notifications...';
+$notifViewAllLabel = $notifIsAdmin ? 'View all alerts' : 'View all notifications';
+$notifEmptyIdle = $notifIsAdmin ? 'No alerts' : 'No notifications';
+$notifClearPrompt = $notifIsAdmin ? 'Clear all alerts from this list?' : 'Clear all notifications from this list?';
 ?>
-<div class="alcros-notif-panel" data-notif-context="<?= htmlspecialchars($notifPanel['context']) ?>">
+<div class="alcros-notif-panel" data-notif-context="<?= htmlspecialchars($notifPanel['context']) ?>" data-notif-clear-prompt="<?= htmlspecialchars($notifClearPrompt) ?>">
     <div class="px-4 py-3 border-b border-gray-50 flex justify-between items-center <?= $headerBg ?> gap-2">
         <?php if ($isPage): ?>
         <div>
-            <p class="text-xs font-bold uppercase tracking-wider text-slate-800">All alerts</p>
-            <p class="text-[11px] text-slate-500 mt-0.5">Pending requests, queue, appointments, and system errors</p>
+            <p class="text-xs font-bold uppercase tracking-wider text-slate-800"><?= htmlspecialchars($notifPageHeading) ?></p>
+            <p class="text-[11px] text-slate-500 mt-0.5"><?= htmlspecialchars($notifHelpText) ?></p>
         </div>
         <?php else: ?>
-        <p class="text-xs font-bold uppercase tracking-wider text-slate-800">Notifications</p>
+        <div>
+            <p class="text-xs font-bold uppercase tracking-wider text-slate-800"><?= htmlspecialchars($notifInboxLabel) ?></p>
+            <p class="text-[10px] text-slate-500 mt-0.5 leading-snug"><?= htmlspecialchars($notifIsAdmin ? 'Maintenance & system health only' : 'Tap to open and take action') ?></p>
+        </div>
         <?php endif; ?>
 
         <div class="flex items-center gap-3 shrink-0">
@@ -54,9 +67,10 @@ $listClass = trim('alcros-notif-list ' . $notifPanel['listClass']);
     <div
         id="<?= htmlspecialchars($notifPanel['listId']) ?>"
         class="<?= htmlspecialchars($listClass) ?> bg-white"
-        data-notif-empty="Loading notifications..."
+        data-notif-empty="<?= htmlspecialchars($notifEmptyLoading) ?>"
+        data-notif-empty-idle="<?= htmlspecialchars($notifEmptyIdle) ?>"
     >
-        <p class="text-gray-300 text-xs italic p-8 text-center">Loading notifications...</p>
+        <p class="text-gray-300 text-xs italic p-8 text-center"><?= htmlspecialchars($notifEmptyLoading) ?></p>
     </div>
 
     <?php if ($notifPanel['showFooter']): ?>
@@ -66,7 +80,7 @@ $listClass = trim('alcros-notif-list ' . $notifPanel['listClass']);
             href="<?= htmlspecialchars(buildAuthUrl('notifications.php')) ?>"
             class="text-[10px] font-bold text-blue-600 hover:text-blue-700 uppercase tracking-wide"
         >
-            View all notifications
+            <?= htmlspecialchars($notifViewAllLabel) ?>
         </a>
     </div>
     <?php endif; ?>

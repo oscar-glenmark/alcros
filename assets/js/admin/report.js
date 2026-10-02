@@ -99,4 +99,45 @@
 
     syncRecordsTypeFilterVisibility();
     bindDropdown('reportExportMenu', 'reportExportBtn', 'reportExportPanel');
+
+    var exportDirectBtn = document.getElementById('reportExportDirectBtn');
+
+    function exportCurrentDetailSection() {
+        if (!exportDirectBtn || !exportForm || !exportSectionsField || !exportRecordsTypeField) {
+            return;
+        }
+
+        var section = String(exportDirectBtn.getAttribute('data-export-section') || '').trim();
+        if (!section) {
+            return;
+        }
+
+        exportSectionsField.value = section;
+        exportRecordsTypeField.value = 'all';
+        exportForm.submit();
+    }
+
+    if (exportDirectBtn) {
+        exportDirectBtn.addEventListener('click', exportCurrentDetailSection);
+    }
+
+    var customRangeForm = document.getElementById('reportCustomRangeForm');
+    var rangeFrom = document.getElementById('reportRangeFrom');
+    var rangeTo = document.getElementById('reportRangeTo');
+
+    function submitCustomRange() {
+        if (!customRangeForm) return;
+        if (typeof customRangeForm.requestSubmit === 'function') {
+            customRangeForm.requestSubmit();
+        } else {
+            customRangeForm.submit();
+        }
+    }
+
+    if (rangeFrom) {
+        rangeFrom.addEventListener('change', submitCustomRange);
+    }
+    if (rangeTo) {
+        rangeTo.addEventListener('change', submitCustomRange);
+    }
 })();

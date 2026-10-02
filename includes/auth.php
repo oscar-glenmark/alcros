@@ -350,6 +350,71 @@ function isAdmin(): bool
     return staffRole() === 'Administrator';
 }
 
+/** Sidebar / header label for notifications.php (Administrator = system alerts only). */
+function staffPortalInboxLabel(): string
+{
+    return isAdmin() ? 'Alerts' : 'Notifications';
+}
+
+/** Day-to-day counter pages — Staff only (Administrators use Reports for oversight). */
+function staffOperationalPages(): array
+{
+    return [
+        'manage_request.php',
+        'appointment.php',
+        'live-queue.php',
+    ];
+}
+
+function isStaffOperationalPage(string $page): bool
+{
+    return in_array($page, staffOperationalPages(), true);
+}
+
+/** @return array{0: string, 1: array<string, string>} */
+function staffOperationalReportTarget(string $page): array
+{
+    return match ($page) {
+        'manage_request.php' => ['report.php', ['section' => 'requests']],
+        'appointment.php'    => ['report.php', ['section' => 'appointments']],
+        'live-queue.php'     => ['report.php', ['section' => 'queue']],
+        default              => ['report.php', []],
+    };
+}
+
+/**
+ * @param array<string, mixed> $query
+ * @return array{0: string, 1: array<string, mixed>}
+ */
+function resolveStaffOperationalNav(string $page, array $query = []): array
+{
+    if (isAdmin() && isStaffOperationalPage($page)) {
+        return staffOperationalReportTarget($page);
+    }
+
+    return [$page, $query];
+}
+
+/** @param array<string, mixed> $query */
+function buildStaffOperationalUrl(string $page, array $query = []): string
+{
+    [$page, $query] = resolveStaffOperationalNav($page, $query);
+
+    return buildAuthUrl($page, $query);
+}
+
+function denyAdministratorStaffOperations(string $page = ''): never
+{
+    if (isJsonApiRequest()) {
+        jsonClientError(403, 'forbidden', 'This page is for Staff accounts. Administrators can use Reports and Settings.');
+    }
+    if ($page !== '' && isStaffOperationalPage($page)) {
+        [$reportPage, $query] = staffOperationalReportTarget($page);
+        redirectWithAuth($reportPage, $query);
+    }
+    redirectWithAuth('dashboard.php');
+}
+
 function staffMenuPages(): array
 {
     return [
@@ -381,6 +446,10 @@ function requirePageAccess(string $page): void
 {
     requireStaffLogin();
     if (isAdmin()) {
+        if (isStaffOperationalPage($page)) {
+            denyAdministratorStaffOperations($page);
+        }
+
         return;
     }
     if (!in_array($page, staffMenuPages(), true)) {

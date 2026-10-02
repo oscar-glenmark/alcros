@@ -554,6 +554,13 @@ function queueDisplayTokenKey(): string
 function requireQueueAnnouncementAccess(): void
 {
     if (function_exists('getAuthenticatedStaff') && getAuthenticatedStaff()) {
+        if (function_exists('isAdmin') && isAdmin()) {
+            http_response_code(403);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => false, 'error' => 'Forbidden']);
+            exit;
+        }
+
         return;
     }
 

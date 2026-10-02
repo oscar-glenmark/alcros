@@ -122,11 +122,6 @@ $periodMetrics = [
     ['label' => 'Queue Served', 'value' => $summary['queue_served'], 'hint' => 'Tickets completed in period', 'icon' => 'users', 'iconBg' => 'bg-green-50', 'iconText' => 'text-green-600'],
 ];
 
-$liveSnapshot = [
-    ['label' => 'Pending Review', 'value' => $summary['pending_requests'], 'hint' => 'Needs staff action now', 'icon' => 'clock', 'iconBg' => 'bg-amber-50', 'iconText' => 'text-amber-600'],
-    ['label' => 'Ready for Pickup', 'value' => $summary['ready_for_pickup'], 'hint' => 'Awaiting citizen release', 'icon' => 'package', 'iconBg' => 'bg-teal-50', 'iconText' => 'text-teal-600'],
-];
-
 $reportTabs = [
     'overview'     => ['label' => 'Overview',     'icon' => 'layout-dashboard', 'count' => null],
     'analytics'    => ['label' => 'Analytics',    'icon' => 'bar-chart-2',      'count' => null, 'export' => false],
@@ -139,10 +134,12 @@ $reportTabs = [
 
 $rangeOptions = [
     'today' => 'Today',
-    'week' => 'Last 7 Days',
-    'month' => 'This Month',
+    'week' => 'Last 7 days',
+    'month' => 'This month',
     'custom' => 'Custom',
 ];
+
+$reportDetailSection = !in_array($section, ['overview', 'analytics'], true);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -165,8 +162,34 @@ $rangeOptions = [
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
 
         <div class="p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto admin-page-wrap space-y-5">
-            <?php if ($section !== 'analytics'): ?>
-            <div class="no-print flex flex-wrap gap-2 justify-end mb-2">
+            <?php
+            ob_start();
+            ?>
+                        <form id="reportExportForm" method="GET" action="<?= htmlspecialchars(buildAuthUrl('report.php')) ?>" class="hidden">
+                            <input type="hidden" name="action" value="export">
+                            <input type="hidden" name="format" value="csv">
+                            <input type="hidden" name="sections" id="reportExportSectionsField" value="">
+                            <input type="hidden" name="records_type" id="reportExportRecordsTypeField" value="all">
+                            <?php if ($range !== 'today'): ?>
+                            <input type="hidden" name="range" value="<?= htmlspecialchars($range) ?>">
+                            <?php endif; ?>
+                            <?php if ($range === 'custom'): ?>
+                            <input type="hidden" name="from" value="<?= htmlspecialchars($fromDate) ?>">
+                            <input type="hidden" name="to" value="<?= htmlspecialchars($toDate) ?>">
+                            <?php endif; ?>
+                            <?php if ($section !== 'overview'): ?>
+                            <input type="hidden" name="section" value="<?= htmlspecialchars($section) ?>">
+                            <?php endif; ?>
+                            <?php if ($reportYear !== (int) date('Y')): ?>
+                            <input type="hidden" name="year" value="<?= (int) $reportYear ?>">
+                            <?php endif; ?>
+                        </form>
+            <?php
+            $reportExportFormHtml = ob_get_clean();
+
+            ob_start();
+            if ($section === 'overview'):
+            ?>
                         <div class="relative" id="reportExportMenu">
                             <button type="button" id="reportExportBtn" class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg text-xs font-bold">
                                 <i data-lucide="download" class="w-3.5 h-3.5"></i> Export CSV
@@ -180,12 +203,12 @@ $rangeOptions = [
                                     <label class="flex items-center gap-2.5 cursor-pointer text-slate-700 font-medium">
                                         <input type="checkbox" class="report-export-check rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                                                value="<?= htmlspecialchars($tabKey) ?>"
-                                               <?= $section === $tabKey ? 'checked' : '' ?>>
+                                               <?= $tabKey === 'overview' ? 'checked' : '' ?>>
                                         <span><?= htmlspecialchars($tab['label']) ?><?= $tabKey === 'records' ? ' (' . (int) $reportYear . ')' : '' ?></span>
                                     </label>
                                     <?php endforeach; ?>
                                 </div>
-                                <div id="reportExportRecordsFilter" class="mb-3 pt-3 border-t border-gray-100 <?= $section === 'records' ? '' : 'hidden' ?>">
+                                <div id="reportExportRecordsFilter" class="mb-3 pt-3 border-t border-gray-100 hidden">
                                     <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Civil records type</p>
                                     <div class="space-y-1.5">
                                         <?php
@@ -215,54 +238,56 @@ $rangeOptions = [
                                 </button>
                             </div>
                         </div>
-                        <form id="reportExportForm" method="GET" action="<?= htmlspecialchars(buildAuthUrl('report.php')) ?>" class="hidden">
-                            <input type="hidden" name="action" value="export">
-                            <input type="hidden" name="format" value="csv">
-                            <input type="hidden" name="sections" id="reportExportSectionsField" value="">
-                            <input type="hidden" name="records_type" id="reportExportRecordsTypeField" value="all">
-                            <?php if ($range !== 'today'): ?>
-                            <input type="hidden" name="range" value="<?= htmlspecialchars($range) ?>">
-                            <?php endif; ?>
-                            <?php if ($range === 'custom'): ?>
-                            <input type="hidden" name="from" value="<?= htmlspecialchars($fromDate) ?>">
-                            <input type="hidden" name="to" value="<?= htmlspecialchars($toDate) ?>">
-                            <?php endif; ?>
-                            <?php if ($section !== 'overview'): ?>
-                            <input type="hidden" name="section" value="<?= htmlspecialchars($section) ?>">
-                            <?php endif; ?>
-                            <?php if ($reportYear !== (int) date('Y')): ?>
-                            <input type="hidden" name="year" value="<?= (int) $reportYear ?>">
-                            <?php endif; ?>
-                        </form>
-            </div>
+            <?php
+            elseif ($reportDetailSection):
+                $detailExportLabel = $reportTabs[$section]['label'] ?? ucfirst($section);
+            ?>
+                        <button type="button"
+                                id="reportExportDirectBtn"
+                                class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg text-xs font-bold"
+                                data-export-section="<?= htmlspecialchars($section) ?>"
+                                data-loading-text="Exporting…">
+                            <i data-lucide="download" class="w-3.5 h-3.5"></i> Export CSV
+                        </button>
+            <?php endif;
+            $reportExportControlHtml = ob_get_clean();
+            $reportExportToolbarHtml = $reportExportControlHtml . $reportExportFormHtml;
+            ?>
 
-            <div class="no-print admin-toolbar flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                <div class="flex flex-wrap gap-1.5 shrink-0">
-                    <?php foreach ($rangeOptions as $key => $label): ?>
-                    <a href="<?= htmlspecialchars(reportPageUrl($key, $fromDate, $toDate, $section, $section === 'records' ? $reportYear : null)) ?>"
-                       class="px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors whitespace-nowrap <?= $range === $key ? 'bg-blue-600 border-blue-600 text-white' : 'bg-gray-50 border-gray-200 text-slate-600 hover:border-blue-200' ?>">
-                        <?= htmlspecialchars($label) ?>
-                    </a>
-                    <?php endforeach; ?>
-                </div>
-                <form method="GET" class="flex flex-wrap items-center gap-2 shrink-0">
-                    <?php if ($token = staffAuthToken()): ?>
-                    <input type="hidden" name="alcros_auth" value="<?= htmlspecialchars($token) ?>">
-                    <?php endif; ?>
-                    <?php if ($section !== 'overview'): ?>
-                    <input type="hidden" name="section" value="<?= htmlspecialchars($section) ?>">
-                    <?php endif; ?>
-                    <?php if ($section === 'records' && $reportYear !== (int) date('Y')): ?>
-                    <input type="hidden" name="year" value="<?= (int) $reportYear ?>">
-                    <?php endif; ?>
-                    <input type="hidden" name="range" value="custom">
-                    <input type="date" name="from" value="<?= htmlspecialchars($fromDate) ?>" aria-label="From date" class="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs">
-                    <span class="text-gray-300 text-xs">to</span>
-                    <input type="date" name="to" value="<?= htmlspecialchars($toDate) ?>" aria-label="To date" class="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs">
-                    <button type="submit" class="bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-bold">Apply</button>
-                </form>
+            <?php if ($section === 'overview'): ?>
+            <div class="no-print flex flex-wrap gap-2 justify-end mb-2">
+                <?= $reportExportToolbarHtml ?>
             </div>
-            <?php else: ?>
+            <?php elseif ($reportDetailSection): ?>
+            <div class="no-print report-toolbar-row flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-2">
+                <div class="admin-toolbar report-range-toolbar !mb-0 !rounded-xl !border !border-slate-100 !shadow-sm min-w-0 flex-1">
+                    <div class="admin-toolbar-filters !flex-1 min-w-0">
+                        <?php foreach ($rangeOptions as $key => $label): ?>
+                        <a href="<?= htmlspecialchars(reportPageUrl($key, $fromDate, $toDate, $section, $section === 'records' ? $reportYear : null)) ?>"
+                           class="range-pill px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 whitespace-nowrap shrink-0 <?= $range === $key ? 'is-active' : '' ?>">
+                            <?= htmlspecialchars($label) ?>
+                        </a>
+                        <?php endforeach; ?>
+                    </div>
+                    <form id="reportCustomRangeForm" method="GET" action="<?= htmlspecialchars(buildAuthUrl('report.php')) ?>" class="flex flex-wrap items-center gap-2 shrink-0 <?= $range === 'custom' ? '' : 'hidden' ?>">
+                        <?php if ($token = staffAuthToken()): ?>
+                        <input type="hidden" name="alcros_auth" value="<?= htmlspecialchars($token) ?>">
+                        <?php endif; ?>
+                        <input type="hidden" name="section" value="<?= htmlspecialchars($section) ?>">
+                        <?php if ($section === 'records' && $reportYear !== (int) date('Y')): ?>
+                        <input type="hidden" name="year" value="<?= (int) $reportYear ?>">
+                        <?php endif; ?>
+                        <input type="hidden" name="range" value="custom">
+                        <input type="date" name="from" id="reportRangeFrom" value="<?= htmlspecialchars($fromDate) ?>" aria-label="From date" class="border border-slate-200 rounded-lg px-2.5 py-2 text-xs bg-white">
+                        <span class="text-slate-300 text-xs font-bold">to</span>
+                        <input type="date" name="to" id="reportRangeTo" value="<?= htmlspecialchars($toDate) ?>" aria-label="To date" class="border border-slate-200 rounded-lg px-2.5 py-2 text-xs bg-white">
+                    </form>
+                </div>
+                <div class="shrink-0 flex justify-end">
+                    <?= $reportExportToolbarHtml ?>
+                </div>
+            </div>
+            <?php elseif ($section === 'analytics'): ?>
             <div class="no-print flex flex-wrap gap-2 justify-end mb-2">
                 <a href="<?= htmlspecialchars(reportPageUrl($range, $fromDate, $toDate, 'overview')) ?>"
                    class="inline-flex items-center gap-2 bg-white border border-gray-200 hover:border-gray-300 text-slate-700 px-3.5 py-2 rounded-lg text-xs font-bold">
@@ -283,7 +308,7 @@ $rangeOptions = [
             <div class="report-panel" <?= $section !== 'overview' ? 'hidden' : '' ?>>
                 <div class="space-y-5">
                     <section class="report-section">
-                        <h2 class="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-3">Activity in this period</h2>
+                        <h2 class="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-3">System Activities</h2>
                         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
                             <?php foreach ($periodMetrics as $card): ?>
                             <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
@@ -298,29 +323,6 @@ $rangeOptions = [
                             </div>
                             <?php endforeach; ?>
                         </div>
-                    </section>
-
-                    <section class="report-section bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-                        <h2 class="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-3">Live snapshot (right now)</h2>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                            <?php foreach ($liveSnapshot as $card): ?>
-                            <div class="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
-                                <div class="p-2 <?= $card['iconBg'] ?> rounded-lg shrink-0">
-                                    <i data-lucide="<?= $card['icon'] ?>" class="w-4 h-4 <?= $card['iconText'] ?>"></i>
-                                </div>
-                                <div class="min-w-0 flex-1">
-                                    <p class="text-xs font-bold text-slate-700"><?= htmlspecialchars($card['label']) ?></p>
-                                    <p class="text-[10px] text-gray-400"><?= htmlspecialchars($card['hint']) ?></p>
-                                </div>
-                                <p class="text-xl font-black text-slate-900"><?= (int) $card['value'] ?></p>
-                            </div>
-                            <?php endforeach; ?>
-                        </div>
-                        <p class="text-xs text-gray-500 pt-3 border-t border-gray-100">
-                            Civil registry records on file: <strong class="text-slate-800"><?= number_format((int) $summary['total_records']) ?></strong>
-                            · Registered in <?= (int) $reportYear ?>: <strong class="text-slate-800"><?= number_format((int) $recordsReport['year_totals']['total']) ?></strong>
-                            <a href="<?= htmlspecialchars(reportPageUrl($range, $fromDate, $toDate, 'records', $reportYear)) ?>" class="text-blue-600 font-semibold hover:underline ml-1">View quarterly breakdown</a>
-                        </p>
                     </section>
 
                     <section class="report-section no-print">
@@ -368,39 +370,16 @@ $rangeOptions = [
                     <div class="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 flex flex-wrap items-center gap-2 text-sm">
                         <span class="font-semibold text-amber-900 mr-1">Needs attention:</span>
                         <?php if ($analytics['pendingCount'] > 0): ?>
-                        <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php', ['status' => 'pending'])) ?>" class="text-xs font-bold bg-white border border-amber-200 text-amber-800 px-2.5 py-1 rounded-lg hover:bg-amber-100"><?= (int) $analytics['pendingCount'] ?> pending</a>
+                        <a href="<?= htmlspecialchars(buildStaffOperationalUrl('manage_request.php', ['status' => 'pending'])) ?>" class="text-xs font-bold bg-white border border-amber-200 text-amber-800 px-2.5 py-1 rounded-lg hover:bg-amber-100"><?= (int) $analytics['pendingCount'] ?> pending</a>
                         <?php endif; ?>
                         <?php if ($analytics['readyCount'] > 0): ?>
-                        <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php', ['status' => 'ready'])) ?>" class="text-xs font-bold bg-white border border-amber-200 text-amber-800 px-2.5 py-1 rounded-lg hover:bg-amber-100"><?= (int) $analytics['readyCount'] ?> ready</a>
+                        <a href="<?= htmlspecialchars(buildStaffOperationalUrl('manage_request.php', ['status' => 'ready'])) ?>" class="text-xs font-bold bg-white border border-amber-200 text-amber-800 px-2.5 py-1 rounded-lg hover:bg-amber-100"><?= (int) $analytics['readyCount'] ?> ready</a>
                         <?php endif; ?>
                         <?php if ($analytics['queueWaiting'] > 0): ?>
-                        <a href="<?= htmlspecialchars(buildAuthUrl('live-queue.php')) ?>" class="text-xs font-bold bg-white border border-amber-200 text-amber-800 px-2.5 py-1 rounded-lg hover:bg-amber-100"><?= (int) $analytics['queueWaiting'] ?> in queue</a>
+                        <a href="<?= htmlspecialchars(buildStaffOperationalUrl('live-queue.php')) ?>" class="text-xs font-bold bg-white border border-amber-200 text-amber-800 px-2.5 py-1 rounded-lg hover:bg-amber-100"><?= (int) $analytics['queueWaiting'] ?> in queue</a>
                         <?php endif; ?>
                     </div>
                     <?php endif; ?>
-
-                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                        <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="stat-card bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 block">
-                            <p class="text-[10px] font-bold uppercase text-gray-400">Requests & walk-ins</p>
-                            <p class="text-2xl font-black text-slate-900 mt-1"><?= (int) $analytics['totalIntake'] ?></p>
-                            <p class="text-[11px] text-gray-400 mt-0.5"><?= (int) $analytics['todayIntake'] ?> today · <?= (int) $analytics['totalRequests'] ?> online · <?= (int) $analytics['walkInTotal'] ?> walk-in</p>
-                        </a>
-                        <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php')) ?>" class="stat-card bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 block">
-                            <p class="text-[10px] font-bold uppercase text-gray-400">Appointments today</p>
-                            <p class="text-2xl font-black text-slate-900 mt-1"><?= (int) $analytics['apptToday'] ?></p>
-                            <p class="text-[11px] text-gray-400 mt-0.5"><?= (int) $analytics['apptTotal'] ?> all-time</p>
-                        </a>
-                        <a href="<?= htmlspecialchars(buildAuthUrl('records.php')) ?>" class="stat-card bg-white rounded-xl border border-gray-100 p-4 hover:border-violet-200 block">
-                            <p class="text-[10px] font-bold uppercase text-gray-400">Certifications</p>
-                            <p class="text-2xl font-black text-slate-900 mt-1"><?= (int) $analytics['certTotal'] ?></p>
-                            <p class="text-[11px] text-gray-400 mt-0.5"><?= (int) $analytics['certToday'] ?> today · <?= (int) $analytics['certWeek'] ?> this week</p>
-                        </a>
-                        <a href="<?= htmlspecialchars(buildAuthUrl('records.php')) ?>" class="stat-card bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 block">
-                            <p class="text-[10px] font-bold uppercase text-gray-400">Civil records</p>
-                            <p class="text-2xl font-black text-slate-900 mt-1"><?= (int) $analytics['recordsTotal'] ?></p>
-                            <p class="text-[11px] text-gray-400 mt-0.5"><?= (int) $analytics['birthRecords'] ?> birth · <?= (int) $analytics['deathRecords'] ?> death · <?= (int) $analytics['marriageRecords'] ?> marriage</p>
-                        </a>
-                    </div>
 
                     <div class="analytics-charts">
                         <div class="analytics-chart-card analytics-chart-card--featured">

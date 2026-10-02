@@ -162,6 +162,7 @@
     }
 
     function closeAllModals() {
+        closeRecordUpdatesModal();
         var entryModal = document.getElementById('entryModal');
         var entryWasOpen = entryModal && !entryModal.classList.contains('hidden');
         document.querySelectorAll('#entryModal, #importModal, #viewModal').forEach(function (el) {
@@ -227,6 +228,22 @@
         marriage: 'border-pink-400 bg-pink-50 text-pink-700'
     };
     var recordTypeIdle = 'border-gray-200 text-gray-500 hover:border-gray-300';
+
+    function entryTypeLabel(type) {
+        var labels = { birth: 'Birth', death: 'Death', marriage: 'Marriage' };
+        return labels[type] || (type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Birth');
+    }
+
+    function updateEntryModalTitle(type) {
+        if (cfg.editRecordId || cfg.lockRecordType) {
+            return;
+        }
+        var titleEl = document.getElementById('entryModalTitle');
+        if (!titleEl || !type) {
+            return;
+        }
+        titleEl.textContent = 'Add ' + entryTypeLabel(type) + ' Record';
+    }
 
     function syncNamePartsAcrossPanels(sourcePrefix, targetPrefix) {
         ['FirstName', 'MiddleName', 'LastName'].forEach(function (part) {
@@ -298,6 +315,7 @@
             if (el) el.required = type === 'death';
         });
         if (type === 'birth') syncSingleBirthDetails();
+        updateEntryModalTitle(type);
         refreshIcons();
     }
 
@@ -748,6 +766,48 @@
         }, true);
     }
 
+    function openRecordUpdatesModal() {
+        var modal = document.getElementById('recordUpdatesModal');
+        if (!modal) return;
+        modal.classList.remove('hidden');
+        modal.setAttribute('aria-hidden', 'false');
+        refreshIcons();
+    }
+
+    function closeRecordUpdatesModal() {
+        var modal = document.getElementById('recordUpdatesModal');
+        if (!modal) return;
+        modal.classList.add('hidden');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+
+    function bindRecordUpdatesModal() {
+        var openBtn = document.getElementById('recordUpdatesInfoBtn');
+        var modal = document.getElementById('recordUpdatesModal');
+        if (!openBtn || !modal) return;
+
+        openBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            openRecordUpdatesModal();
+        });
+
+        modal.querySelectorAll('[data-record-updates-close]').forEach(function (el) {
+            el.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                closeRecordUpdatesModal();
+            });
+        });
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key !== 'Escape') return;
+            if (modal.classList.contains('hidden')) return;
+            e.stopPropagation();
+            closeRecordUpdatesModal();
+        });
+    }
+
     function bindModalClose() {
         document.querySelectorAll('.close-modal').forEach(function (btn) {
             btn.addEventListener('click', closeAllModals);
@@ -1134,6 +1194,7 @@
         bindEntryPrintFillTabs();
         bindImportForm();
         bindModalClose();
+        bindRecordUpdatesModal();
         bindViewRecordButtons();
         bindRecordsPrintMenus();
 

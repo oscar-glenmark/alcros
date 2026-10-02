@@ -270,10 +270,12 @@
                 };
             }, 45000, function (data) {
             var s = data.stats;
-            AlcrosPoll.setText('stat-pending', s.pending_count);
-            AlcrosPoll.setText('stat-queue', s.queue_count);
-            AlcrosPoll.setText('stat-appts', s.today_appts);
-            AlcrosPoll.setText('stat-ready', s.ready_count);
+            if (document.getElementById('stat-pending')) {
+                AlcrosPoll.setText('stat-pending', s.pending_count);
+                AlcrosPoll.setText('stat-queue', s.queue_count);
+                AlcrosPoll.setText('stat-appts', s.today_appts);
+                AlcrosPoll.setText('stat-ready', s.ready_count);
+            }
             AlcrosPoll.setText('header-queue-count', s.queue_count);
             AlcrosPoll.setText('header-appts-count', s.today_appts);
             AlcrosPoll.setText('header-completed-count', s.completed_today);

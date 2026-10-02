@@ -399,9 +399,162 @@ function scheduleVisitHref(array $row, string $scheduleDate): string
 
 function attachScheduleVisitMeta(array $row, string $scheduleDate): array
 {
-    $row['href'] = scheduleVisitHref($row, $scheduleDate);
+    [$path, $query] = scheduleVisitLinkParams($row, $scheduleDate);
+    if (function_exists('resolveStaffOperationalNav')) {
+        [$path, $query] = resolveStaffOperationalNav($path, $query);
+    }
+    $row['href'] = $path . '?' . http_build_query($query);
 
     return $row;
+}
+
+function staffOperationalNotificationHref(string $href): string
+{
+    if (!function_exists('isAdmin') || !isAdmin()) {
+        return $href;
+    }
+
+    $path = strtok($href, '?') ?: $href;
+    if (function_exists('isStaffOperationalPage') && isStaffOperationalPage($path)) {
+        [$reportPath, $query] = staffOperationalReportTarget($path);
+
+        return $reportPath . ($query !== [] ? '?' . http_build_query($query) : '');
+    }
+
+    return $href;
+}
+
+/** Staff bell links — open the filtered Manage Requests / Appointments view for each alert type. */
+function staffPortalNotificationHref(string $type, array $context = []): string
+{
+    $page = 'dashboard.php';
+    $query = [];
+
+    switch ($type) {
+        case 'pending_request':
+            $page = 'manage_request.php';
+            $query['status'] = 'pending';
+            break;
+        case 'ready_pickup':
+            $page = 'manage_request.php';
+            $query['status'] = 'ready';
+            break;
+        case 'queue':
+            $page = 'live-queue.php';
+            break;
+        case 'appointment':
+            $page = 'appointment.php';
+            $date = (string) ($context['appointment_date'] ?? '');
+            if ($date === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+                $date = date('Y-m-d');
+            }
+            $query['date'] = $date;
+            $apptStatus = strtolower(trim((string) ($context['appointment_status'] ?? 'scheduled')));
+            $query['status'] = $apptStatus === 'confirmed' ? 'confirmed' : 'scheduled';
+            break;
+        default:
+            $fallback = trim((string) ($context['href'] ?? ''));
+            if ($fallback !== '') {
+                return staffOperationalNotificationHref($fallback);
+            }
+            if (function_exists('buildAuthUrl')) {
+                return buildAuthUrl('dashboard.php');
+            }
+
+            return 'dashboard.php';
+    }
+
+    $tracking = trim((string) ($context['tracking_code'] ?? ''));
+    if ($tracking !== '' && in_array($type, ['pending_request', 'ready_pickup'], true)) {
+        $query['q'] = $tracking;
+    }
+
+    $apptCode = trim((string) ($context['appointment_code'] ?? ''));
+    if ($apptCode !== '' && $type === 'appointment') {
+        $query['q'] = $apptCode;
+    }
+
+    if (function_exists('buildStaffOperationalUrl')) {
+        return buildStaffOperationalUrl($page, $query);
+    }
+
+    $relative = $page . ($query !== [] ? '?' . http_build_query($query) : '');
+
+    return function_exists('buildAuthUrl')
+        ? buildAuthUrl($page, $query)
+        : staffOperationalNotificationHref($relative);
+}
+
+function staffPortalNotificationHrefForItem(array $item): string
+{
+    $type = (string) ($item['type'] ?? '');
+    if ($type === 'system') {
+        $href = trim((string) ($item['href'] ?? ''));
+
+        return $href !== ''
+            ? staffOperationalNotificationHref($href)
+            : (function_exists('buildAuthUrl') ? buildAuthUrl('dashboard.php') : 'dashboard.php');
+    }
+
+    return staffPortalNotificationHref($type, [
+        'tracking_code'      => (string) ($item['detail'] ?? ''),
+        'appointment_date'   => (string) ($item['appointment_date'] ?? ''),
+        'appointment_code'   => (string) ($item['detail'] ?? ''),
+        'appointment_status' => (string) ($item['appointment_status'] ?? ''),
+        'href'               => (string) ($item['href'] ?? ''),
+    ]);
+}
+
+/** Clear labels for bell / Notifications page (Staff vs Administrator). */
+function enrichStaffPortalNotification(array $item): array
+{
+    $type = (string) ($item['type'] ?? '');
+    $isAdmin = function_exists('isAdmin') && isAdmin();
+
+    if (!$isAdmin) {
+        $item['href'] = staffPortalNotificationHrefForItem($item);
+    }
+
+    if ($isAdmin) {
+        $item['link_label'] = match ($type) {
+            'pending_request' => 'View in Reports → Requests',
+            'ready_pickup'    => 'View in Reports → Requests',
+            'queue'           => 'View in Reports → Queue',
+            'appointment'     => 'View in Reports → Appointments',
+            'system'          => 'Open Settings or Activity log',
+            default           => 'View in Reports',
+        };
+        $item['role_note'] = match ($type) {
+            'pending_request' => 'Not processed yet — Staff must review this in Manage Requests.',
+            'ready_pickup'    => 'Ready for pickup — Staff completes handoff in Manage Requests.',
+            'queue'           => 'Still waiting — Staff call the next ticket in Live queue.',
+            'appointment'     => 'Staff update appointment status when the citizen arrives.',
+            'system'          => 'Administrator action may be required in Settings.',
+            default           => 'Staff handle day-to-day processing; you can monitor in Reports.',
+        };
+
+        if ($type === 'pending_request') {
+            $item['title'] = 'Pending document request';
+            $item['detail'] = trim(($item['detail'] ?? '') . ' · Awaiting staff action');
+        } elseif ($type === 'queue') {
+            $item['title'] = 'Citizens waiting in line';
+            $item['detail'] = 'No staff action yet today until someone is called';
+        } elseif ($type === 'appointment') {
+            $item['detail'] = trim(($item['detail'] ?? '') . ' · Upcoming or newly booked');
+        }
+    } else {
+        $item['link_label'] = match ($type) {
+            'pending_request' => 'Open Manage Requests →',
+            'ready_pickup'    => 'Open Manage Requests →',
+            'queue'           => 'Open Live queue →',
+            'appointment'     => 'Open Appointments →',
+            'system'          => 'View details →',
+            default           => 'Open →',
+        };
+        $item['role_note'] = '';
+    }
+
+    return $item;
 }
 
 function fetchScheduleVisits(PDO $pdo, string $date, int $limit = 8): array
@@ -526,13 +679,28 @@ function fetchNotifications(PDO $pdo, int $limit = 20): array
     ensureCitizenNotifyColumns($pdo);
 
     $items = [];
+    $viewerIsAdmin = function_exists('isAdmin') && isAdmin();
 
-    if (function_exists('systemErrorsAsNotifications')) {
-        try {
-            $items = array_merge($items, systemErrorsAsNotifications($pdo));
-        } catch (Throwable $e) {
-            // Keep citizen alerts available even if system error sync fails.
+    try {
+        if ($viewerIsAdmin) {
+            if (function_exists('systemErrorsAsNotifications')) {
+                $items = array_merge($items, systemErrorsAsNotifications($pdo));
+            }
+        } elseif (function_exists('syncSystemErrors')) {
+            // Record system issues for admins without showing maintenance alerts to Staff.
+            syncSystemErrors($pdo);
         }
+    } catch (Throwable $e) {
+        // Non-fatal if system error sync fails.
+    }
+
+    if ($viewerIsAdmin) {
+        usort($items, static function (array $a, array $b): int {
+            return strtotime($b['created_at']) <=> strtotime($a['created_at']);
+        });
+        $items = array_map('enrichStaffPortalNotification', $items);
+
+        return array_slice($items, 0, $limit);
     }
 
     $docLabels = documentTypeLabelsMap();
@@ -552,7 +720,9 @@ function fetchNotifications(PDO $pdo, int $limit = 20): array
             'message'    => $row['citizen_name'] . ' · ' . ($docLabels[$row['document_type']] ?? $row['document_type']),
             'detail'     => $row['tracking_code'],
             'created_at' => $row['submitted_at'],
-            'href'       => 'manage_request.php',
+            'href'       => staffPortalNotificationHref('pending_request', [
+                'tracking_code' => (string) $row['tracking_code'],
+            ]),
         ];
     }
 
@@ -572,13 +742,13 @@ function fetchNotifications(PDO $pdo, int $limit = 20): array
             'message'    => $queueCount . ' citizen(s) waiting in line',
             'detail'     => 'Live queue',
             'created_at' => $latestQueue ?: date('Y-m-d H:i:s'),
-            'href'       => 'live-queue.php',
+            'href'       => staffOperationalNotificationHref('live-queue.php'),
         ];
     }
 
     $appts = enrichCitizenNameRows($pdo->query(
         "SELECT appointment_code, first_name, middle_name, last_name, service_type,
-                appointment_time, appointment_date, created_at
+                appointment_time, appointment_date, status, created_at
          FROM appointments
          WHERE status IN ('scheduled', 'confirmed')
            AND COALESCE(source, 'standalone') = 'standalone'
@@ -596,19 +766,27 @@ function fetchNotifications(PDO $pdo, int $limit = 20): array
         $isRecent = strtotime($row['created_at']) >= strtotime('-48 hours');
         $isToday = $row['appointment_date'] === date('Y-m-d');
         $items[] = [
-            'id'         => 'appt-' . $row['appointment_code'],
-            'type'       => 'appointment',
-            'title'      => $isRecent ? 'New appointment booked' : ($isToday ? 'Today\'s appointment' : 'Upcoming appointment'),
-            'message'    => $row['citizen_name'] . ' · ' . appointmentServiceLabel($row['service_type']) . ' · ' . $dateLabel . ' ' . $timeLabel,
-            'detail'     => $row['appointment_code'],
-            'created_at' => $row['created_at'],
-            'href'       => 'appointment.php?date=' . rawurlencode((string) $row['appointment_date']) . '&status=all_appointments',
+            'id'                  => 'appt-' . $row['appointment_code'],
+            'type'                => 'appointment',
+            'title'               => $isRecent ? 'New appointment booked' : ($isToday ? 'Today\'s appointment' : 'Upcoming appointment'),
+            'message'             => $row['citizen_name'] . ' · ' . appointmentServiceLabel($row['service_type']) . ' · ' . $dateLabel . ' ' . $timeLabel,
+            'detail'              => $row['appointment_code'],
+            'appointment_date'    => (string) $row['appointment_date'],
+            'appointment_status'  => (string) ($row['status'] ?? 'scheduled'),
+            'created_at'          => $row['created_at'],
+            'href'                => staffPortalNotificationHref('appointment', [
+                'appointment_date'   => (string) $row['appointment_date'],
+                'appointment_code'   => (string) $row['appointment_code'],
+                'appointment_status' => (string) ($row['status'] ?? 'scheduled'),
+            ]),
         ];
     }
 
     usort($items, static function (array $a, array $b): int {
         return strtotime($b['created_at']) <=> strtotime($a['created_at']);
     });
+
+    $items = array_map('enrichStaffPortalNotification', $items);
 
     return array_slice($items, 0, $limit);
 }

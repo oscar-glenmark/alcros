@@ -7,9 +7,12 @@ requireStaffLogin();
 requirePageAccess('notifications.php');
 
 $activePage = 'notifications.php';
+$notifIsAdmin = isAdmin();
 
-$pageTitle = 'Notifications';
-$pageSubtitle = 'Alerts for pending requests, ready pickups, queue, and appointments.';
+$pageTitle = staffPortalInboxLabel();
+$pageSubtitle = $notifIsAdmin
+    ? 'System and maintenance issues that need an administrator (not citizen queue or document requests).'
+    : 'Alerts when citizens need help: review requests, serve the queue, or manage appointments.';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -17,7 +20,7 @@ $pageSubtitle = 'Alerts for pending requests, ready pickups, queue, and appointm
     <meta charset="UTF-8">
     <link rel="icon" type="image/png" href="images/favicon.png?v=2">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Notifications - ALCROS</title>
+    <title><?= htmlspecialchars(staffPortalInboxLabel()) ?> - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= interFontTags() ?>
     <?= adminLayoutHeadStyles() ?>
@@ -41,8 +44,12 @@ $pageSubtitle = 'Alerts for pending requests, ready pickups, queue, and appointm
                 ?>
             </div>
 
-            <p class="mt-4 text-center text-xs text-slate-400">
-                Notifications refresh automatically every minute. Use the bell icon for quick access from any page.
+            <p class="mt-4 text-center text-xs text-slate-500 max-w-lg mx-auto leading-relaxed">
+                <?php if ($notifIsAdmin): ?>
+                The list updates while you work (about every 15 seconds). You only see <strong>system and maintenance</strong> alerts here (configuration, reminders, server health). Citizen requests, queue, and appointments are sent to <strong>Staff</strong> accounts. Use <strong>Reports</strong> for read-only oversight of office activity.
+                <?php else: ?>
+                The list updates while you work (about every 15 seconds). Tap an alert to open the right screen and help the citizen. The bell icon shows the same list on every page.
+                <?php endif; ?>
             </p>
         </div>
     </main>

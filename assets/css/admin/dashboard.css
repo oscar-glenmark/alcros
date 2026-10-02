@@ -1,3 +1,5 @@
+@import url('analytics.css');
+
 .dash-brand-logo {
     width: 4rem;
     height: 4rem;
@@ -257,4 +259,13 @@
     outline: 2px solid #2563eb;
     outline-offset: -2px;
     background-color: #eff6ff;
+}
+
+/* Administrator analytics */
+.dash-admin-kpi {
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dash-admin-pulse {
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }

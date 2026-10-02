@@ -4,6 +4,7 @@ require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/api_helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
+require_once __DIR__ . '/includes/analytics_dashboard.php';
 requireStaffLogin();
 requirePageAccess('dashboard.php');
 releaseSessionLock();
@@ -20,48 +21,45 @@ $todayLabel = date('l, F j, Y');
 
 $pageTitle = 'Dashboard';
 $pageSubtitle = $isAdminUser
-    ? 'Overview of requests, queue activity, and appointments for your office.'
+    ? 'Registry oversight, reports, and system configuration.'
     : 'Your daily queue, requests, and appointment summary.';
 
 $todayDate = alcrosTodayDate();
-$pendingCount  = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status IN ('pending','verified')")->fetchColumn();
-$queueCount    = (int) $pdo->query("SELECT COUNT(*) FROM queue_tickets WHERE status = 'waiting' AND DATE(created_at) = CURDATE()")->fetchColumn();
-$todayAppts    = countTodaySpecialAppointments($pdo);
-$readyCount    = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'ready'")->fetchColumn();
-
-$recentRequests = enrichCitizenNameRows($pdo->query(
-    "SELECT tracking_code, first_name, middle_name, last_name, document_type, status, submitted_at
-     FROM document_requests ORDER BY submitted_at DESC LIMIT 6"
-)->fetchAll());
+$adminAnalytics = null;
+$recentRequests = [];
+$scheduleMonth = date('Y-m');
+$scheduleDate = $todayDate;
+$scheduleCalendar = ['appointments' => [], 'dates' => []];
+$incomingDate = incomingAppointmentsDate();
+$incomingAppointments = [];
 
 if ($isAdminUser) {
+    $adminAnalytics = fetchAnalyticsDashboard($pdo);
     $activities = $pdo->query(
         "SELECT staff_id, action, details, created_at FROM activity_logs ORDER BY created_at DESC LIMIT 6"
     )->fetchAll();
 } else {
+    $recentRequests = enrichCitizenNameRows($pdo->query(
+        "SELECT tracking_code, first_name, middle_name, last_name, document_type, status, submitted_at
+         FROM document_requests ORDER BY submitted_at DESC LIMIT 6"
+    )->fetchAll());
     $activityStmt = $pdo->prepare(
         "SELECT staff_id, action, details, created_at FROM activity_logs WHERE staff_id = ? ORDER BY created_at DESC LIMIT 6"
     );
     $activityStmt->execute([staffId()]);
     $activities = $activityStmt->fetchAll();
+    $scheduleCalendar = fetchDashboardSchedule($pdo, $scheduleDate, $scheduleMonth);
+    $incomingAppointments = fetchIncomingAppointments($pdo, 8);
 }
 
-$scheduleMonth = date('Y-m');
-$scheduleDate = $todayDate;
-$scheduleCalendar = fetchDashboardSchedule($pdo, $scheduleDate, $scheduleMonth);
-$incomingDate = incomingAppointmentsDate();
-$incomingAppointments = fetchIncomingAppointments($pdo, 8);
-
-$quickActions = [
-    ['href' => 'manage_request.php', 'label' => 'Manage Requests', 'desc' => 'Review & update statuses', 'icon' => 'file-text', 'color' => 'bg-blue-50 text-blue-600'],
-    ['href' => 'live-queue.php',     'label' => 'Live Queue',     'desc' => 'Serve waiting citizens',  'icon' => 'users',      'color' => 'bg-purple-50 text-purple-600'],
-    ['href' => 'appointment.php',   'label' => 'Appointments',   'desc' => "Today's schedule",        'icon' => 'calendar',   'color' => 'bg-teal-50 text-teal-600', 'query' => ['date' => $todayDate]],
-    ['href' => 'records.php',        'label' => 'Civil Records',  'desc' => 'Search registry files',   'icon' => 'book-open',  'color' => 'bg-orange-50 text-orange-600'],
-];
-
+$quickActions = [];
 if ($isAdminUser) {
-    $quickActions[] = ['href' => 'report.php', 'label' => 'Reports', 'desc' => 'Charts, stats & exports', 'icon' => 'bar-chart-2', 'color' => 'bg-slate-100 text-slate-600', 'query' => ['section' => 'analytics']];
-    $quickActions[] = ['href' => 'system_settings.php', 'label' => 'Settings', 'desc' => 'System config', 'icon' => 'settings', 'color' => 'bg-slate-100 text-slate-600'];
+    $quickActions = [
+        ['href' => 'records.php', 'label' => 'Civil Records', 'desc' => 'Search registry files', 'icon' => 'book-open', 'color' => 'bg-orange-50 text-orange-600'],
+        ['href' => 'documents.php', 'label' => 'Documents', 'desc' => 'Certification library', 'icon' => 'files', 'color' => 'bg-violet-50 text-violet-600'],
+        ['href' => 'report.php', 'label' => 'Reports', 'desc' => 'Charts, stats & exports', 'icon' => 'bar-chart-2', 'color' => 'bg-blue-50 text-blue-600'],
+        ['href' => 'system_settings.php', 'label' => 'Settings', 'desc' => 'System config', 'icon' => 'settings', 'color' => 'bg-slate-100 text-slate-600'],
+    ];
 }
 
 function dashboardCountBetween(PDO $pdo, string $sql, string $start, string $end): int
@@ -86,63 +84,71 @@ function dashboardTrendPercent(int $current, int $previous): array
     return ['pct' => max(0, (int) round(abs($change))), 'up' => $change >= 0];
 }
 
-$periodCurStart = date('Y-m-d 00:00:00', strtotime('-7 days'));
-$periodCurEnd = date('Y-m-d 00:00:00', strtotime('+1 day'));
-$periodPrevStart = date('Y-m-d 00:00:00', strtotime('-14 days'));
-$periodPrevEnd = $periodCurStart;
-$weekAgoDate = date('Y-m-d', strtotime($todayDate . ' -7 days'));
+$statCards = [];
+if (!$isAdminUser) {
+    $periodCurStart = date('Y-m-d 00:00:00', strtotime('-7 days'));
+    $periodCurEnd = date('Y-m-d 00:00:00', strtotime('+1 day'));
+    $periodPrevStart = date('Y-m-d 00:00:00', strtotime('-14 days'));
+    $periodPrevEnd = $periodCurStart;
+    $weekAgoDate = date('Y-m-d', strtotime($todayDate . ' -7 days'));
 
-$statCards = [
-    [
-        'id' => 'stat-pending',
-        'label' => 'Needs Review',
-        'value' => $pendingCount,
-        'icon' => 'clipboard-list',
-        'tone' => 'amber',
-        'page' => 'manage_request.php',
-        'query' => ['status' => 'pending'],
-        'trend' => dashboardTrendPercent(
-            dashboardCountBetween($pdo, 'SELECT COUNT(*) FROM document_requests WHERE submitted_at >= ? AND submitted_at < ?', $periodCurStart, $periodCurEnd),
-            dashboardCountBetween($pdo, 'SELECT COUNT(*) FROM document_requests WHERE submitted_at >= ? AND submitted_at < ?', $periodPrevStart, $periodPrevEnd)
-        ),
-    ],
-    [
-        'id' => 'stat-queue',
-        'label' => 'Queue Waiting',
-        'value' => $queueCount,
-        'icon' => 'users',
-        'tone' => 'blue',
-        'page' => 'live-queue.php',
-        'query' => [],
-        'trend' => dashboardTrendPercent(
-            dashboardCountBetween($pdo, 'SELECT COUNT(*) FROM queue_tickets WHERE created_at >= ? AND created_at < ?', $periodCurStart, $periodCurEnd),
-            dashboardCountBetween($pdo, 'SELECT COUNT(*) FROM queue_tickets WHERE created_at >= ? AND created_at < ?', $periodPrevStart, $periodPrevEnd)
-        ),
-    ],
-    [
-        'id' => 'stat-appts',
-        'label' => "Today's Appointments",
-        'value' => $todayAppts,
-        'icon' => 'calendar',
-        'tone' => 'violet',
-        'page' => 'appointment.php',
-        'query' => ['date' => $todayDate, 'status' => 'all_appointments'],
-        'trend' => dashboardTrendPercent($todayAppts, countSpecialAppointmentsOnDate($pdo, $weekAgoDate)),
-    ],
-    [
-        'id' => 'stat-ready',
-        'label' => 'Ready for Pickup',
-        'value' => $readyCount,
-        'icon' => 'package',
-        'tone' => 'emerald',
-        'page' => 'manage_request.php',
-        'query' => ['status' => 'ready'],
-        'trend' => dashboardTrendPercent(
-            dashboardCountBetween($pdo, "SELECT COUNT(*) FROM document_requests WHERE status = 'ready' AND updated_at >= ? AND updated_at < ?", $periodCurStart, $periodCurEnd),
-            dashboardCountBetween($pdo, "SELECT COUNT(*) FROM document_requests WHERE status = 'ready' AND updated_at >= ? AND updated_at < ?", $periodPrevStart, $periodPrevEnd)
-        ),
-    ],
-];
+    $pendingCount = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status IN ('pending','verified')")->fetchColumn();
+    $queueCount = (int) $pdo->query("SELECT COUNT(*) FROM queue_tickets WHERE status = 'waiting' AND DATE(created_at) = CURDATE()")->fetchColumn();
+    $todayAppts = countTodaySpecialAppointments($pdo);
+    $readyCount = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'ready'")->fetchColumn();
+
+    $statCards = [
+        [
+            'id' => 'stat-pending',
+            'label' => 'Pending Request',
+            'value' => $pendingCount,
+            'icon' => 'clipboard-list',
+            'tone' => 'amber',
+            'page' => 'manage_request.php',
+            'query' => ['status' => 'pending'],
+            'trend' => dashboardTrendPercent(
+                dashboardCountBetween($pdo, 'SELECT COUNT(*) FROM document_requests WHERE submitted_at >= ? AND submitted_at < ?', $periodCurStart, $periodCurEnd),
+                dashboardCountBetween($pdo, 'SELECT COUNT(*) FROM document_requests WHERE submitted_at >= ? AND submitted_at < ?', $periodPrevStart, $periodPrevEnd)
+            ),
+        ],
+        [
+            'id' => 'stat-queue',
+            'label' => 'Queue Waiting',
+            'value' => $queueCount,
+            'icon' => 'users',
+            'tone' => 'blue',
+            'page' => 'live-queue.php',
+            'query' => [],
+            'trend' => dashboardTrendPercent(
+                dashboardCountBetween($pdo, 'SELECT COUNT(*) FROM queue_tickets WHERE created_at >= ? AND created_at < ?', $periodCurStart, $periodCurEnd),
+                dashboardCountBetween($pdo, 'SELECT COUNT(*) FROM queue_tickets WHERE created_at >= ? AND created_at < ?', $periodPrevStart, $periodPrevEnd)
+            ),
+        ],
+        [
+            'id' => 'stat-appts',
+            'label' => "Today's Appointments",
+            'value' => $todayAppts,
+            'icon' => 'calendar',
+            'tone' => 'violet',
+            'page' => 'appointment.php',
+            'query' => ['date' => $todayDate, 'status' => 'all_appointments'],
+            'trend' => dashboardTrendPercent($todayAppts, countSpecialAppointmentsOnDate($pdo, $weekAgoDate)),
+        ],
+        [
+            'id' => 'stat-ready',
+            'label' => 'Ready for Pickup',
+            'value' => $readyCount,
+            'icon' => 'package',
+            'tone' => 'emerald',
+            'page' => 'manage_request.php',
+            'query' => ['status' => 'ready'],
+            'trend' => dashboardTrendPercent(
+                dashboardCountBetween($pdo, "SELECT COUNT(*) FROM document_requests WHERE status = 'ready' AND updated_at >= ? AND updated_at < ?", $periodCurStart, $periodCurEnd),
+                dashboardCountBetween($pdo, "SELECT COUNT(*) FROM document_requests WHERE status = 'ready' AND updated_at >= ? AND updated_at < ?", $periodPrevStart, $periodPrevEnd)
+            ),
+        ],
+    ];
+}
 
 function activityIcon(string $action): string
 {
@@ -168,6 +174,9 @@ function activityIcon(string $action): string
     <?= interFontTags() ?>
     <?= adminLayoutHeadStyles('dashboard') ?>
     <?= vendorScriptTag('lucide.min.js') ?>
+    <?php if ($isAdminUser): ?>
+    <?= vendorScriptTag('chart.umd.min.js') ?>
+    <?php endif; ?>
 </head>
 <body class="flex min-h-screen" data-realtime="dashboard" data-admin="<?= $isAdminUser ? '1' : '0' ?>">
 
@@ -183,18 +192,19 @@ function activityIcon(string $action): string
                 <div class="flex items-start gap-4">
                     <?= alcrosFaviconImg(64, 'dash-brand-logo shrink-0') ?>
                     <div>
-                        <p class="text-[10px] font-bold uppercase tracking-widest text-blue-600 mb-1"><?= $isAdminUser ? 'Registry Admin' : 'Staff Portal' ?></p>
+                        <p class="text-[10px] font-bold uppercase tracking-widest text-blue-600 mb-1"><?= $isAdminUser ? 'Registry Admin' : 'Registry Staff' ?></p>
                         <h1 class="text-2xl lg:text-3xl font-black text-slate-900">Good day, <?= htmlspecialchars(explode(' ', $staffDisplayName)[0]) ?>!</h1>
                         <p class="text-gray-500 text-sm mt-1"><?= htmlspecialchars($todayLabel) ?> · <?= htmlspecialchars(staffId()) ?> · <?= htmlspecialchars($staffRole) ?></p>
                     </div>
                 </div>
             </div>
 
-            <!-- Stats -->
+            <?php if (!$isAdminUser && $statCards !== []): ?>
+            <!-- Stats (Staff operational counters) -->
             <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
                 <?php foreach ($statCards as $card): ?>
                 <?php $trend = $card['trend']; ?>
-                <a href="<?= htmlspecialchars(buildAuthUrl($card['page'], $card['query'])) ?>"
+                <a href="<?= htmlspecialchars(buildStaffOperationalUrl($card['page'], $card['query'])) ?>"
                    class="dash-stat-card dash-stat-card--<?= htmlspecialchars($card['tone']) ?>">
                     <div class="dash-stat-card__head">
                         <span class="dash-stat-card__icon">
@@ -212,24 +222,26 @@ function activityIcon(string $action): string
                 </a>
                 <?php endforeach; ?>
             </div>
+            <?php endif; ?>
 
-            <!-- Quick actions -->
-            <div>
-                <h2 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Quick Actions</h2>
-                <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
-                    <?php foreach ($quickActions as $action): ?>
-                    <a href="<?= htmlspecialchars(buildAuthUrl($action['href'], $action['query'] ?? [])) ?>" class="dash-card bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 flex items-start gap-3">
-                        <div class="p-2 rounded-lg shrink-0 <?= $action['color'] ?>">
-                            <i data-lucide="<?= $action['icon'] ?>" class="w-4 h-4"></i>
-                        </div>
-                        <div class="min-w-0">
-                            <p class="text-sm font-bold text-slate-800 truncate"><?= htmlspecialchars($action['label']) ?></p>
-                            <p class="text-[10px] text-gray-400 mt-0.5"><?= htmlspecialchars($action['desc']) ?></p>
-                        </div>
-                    </a>
-                    <?php endforeach; ?>
-                </div>
+            <?php if ($isAdminUser): ?>
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                <?php foreach ($quickActions as $action): ?>
+                <a href="<?= htmlspecialchars(buildAuthUrl($action['href'], $action['query'] ?? [])) ?>" class="dash-card bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 flex items-start gap-3">
+                    <div class="p-2 rounded-lg shrink-0 <?= htmlspecialchars($action['color']) ?>">
+                        <i data-lucide="<?= htmlspecialchars($action['icon']) ?>" class="w-4 h-4"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <p class="text-sm font-bold text-slate-800 truncate"><?= htmlspecialchars($action['label']) ?></p>
+                        <p class="text-[10px] text-gray-400 mt-0.5"><?= htmlspecialchars($action['desc']) ?></p>
+                    </div>
+                </a>
+                <?php endforeach; ?>
             </div>
+
+            <?php require __DIR__ . '/includes/admin_dashboard_analytics.php'; ?>
+
+            <?php else: ?>
 
             <!-- Main content grid -->
             <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -241,7 +253,7 @@ function activityIcon(string $action): string
                             <h2 class="font-bold text-sm text-slate-900">Recent Requests</h2>
                             <p class="text-[10px] text-gray-400 mt-0.5">Latest citizen document submissions</p>
                         </div>
-                        <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="text-blue-600 text-[10px] font-bold uppercase hover:underline">View all</a>
+                        <a href="<?= htmlspecialchars(buildStaffOperationalUrl('manage_request.php')) ?>" class="text-blue-600 text-[10px] font-bold uppercase hover:underline">View all</a>
                     </div>
                     <?php if (empty($recentRequests)): ?>
                     <div class="p-12 text-center">
@@ -278,7 +290,7 @@ function activityIcon(string $action): string
                             <h2 class="font-bold text-sm text-slate-900">Today's Schedule</h2>
                             <p class="text-[10px] text-gray-400 mt-0.5"><span id="dash-schedule-count"><?= count($scheduleCalendar['appointments']) ?></span> scheduled visit(s) · <span id="dash-schedule-date-label"><?= formatDateDisplay($scheduleDate) ?></span></p>
                         </div>
-                        <a id="dash-schedule-open-link" href="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $scheduleDate])) ?>" class="text-blue-600 text-[10px] font-bold uppercase hover:underline">Open</a>
+                        <a id="dash-schedule-open-link" href="<?= htmlspecialchars(buildStaffOperationalUrl('appointment.php', ['date' => $scheduleDate])) ?>" class="text-blue-600 text-[10px] font-bold uppercase hover:underline">Open</a>
                     </div>
 
                     <div class="px-4 pt-4 pb-3 border-b border-gray-50">
@@ -314,7 +326,7 @@ function activityIcon(string $action): string
                         <?php foreach ($scheduleCalendar['appointments'] as $ap): ?>
                         <?php
                         $isCertificate = ($ap['schedule_kind'] ?? '') === 'certificate';
-                        [$visitPath, $visitQuery] = scheduleVisitLinkParams($ap, $scheduleDate);
+                        [$visitPath, $visitQuery] = resolveStaffOperationalNav(...scheduleVisitLinkParams($ap, $scheduleDate));
                         ?>
                         <a href="<?= htmlspecialchars(buildAuthUrl($visitPath, $visitQuery)) ?>" class="dash-schedule-row px-5 py-3 flex items-center gap-3">
                             <div class="w-10 h-10 rounded-lg <?= $isCertificate ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-600' ?> flex flex-col items-center justify-center shrink-0 leading-none">
@@ -338,7 +350,7 @@ function activityIcon(string $action): string
                             <h2 class="font-bold text-sm text-slate-900">Incoming Appointments</h2>
                             <p class="text-[10px] text-gray-400 mt-0.5"><span id="incoming-appts-count"><?= count($incomingAppointments) ?></span> appointment(s) · Tomorrow · <span id="incoming-appts-date"><?= formatDateDisplay($incomingDate) ?></span></p>
                         </div>
-                        <a id="incoming-appts-open-link" href="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $incomingDate, 'status' => 'all_appointments'])) ?>" class="text-blue-600 text-[10px] font-bold uppercase hover:underline">Open</a>
+                        <a id="incoming-appts-open-link" href="<?= htmlspecialchars(buildStaffOperationalUrl('appointment.php', ['date' => $incomingDate, 'status' => 'all_appointments'])) ?>" class="text-blue-600 text-[10px] font-bold uppercase hover:underline">Open</a>
                     </div>
 
                     <?php if (empty($incomingAppointments)): ?>
@@ -356,7 +368,7 @@ function activityIcon(string $action): string
                         <?php foreach ($incomingAppointments as $ap): ?>
                         <?php
                         $isCertificate = ($ap['schedule_kind'] ?? '') === 'certificate';
-                        [$visitPath, $visitQuery] = scheduleVisitLinkParams($ap, $incomingDate);
+                        [$visitPath, $visitQuery] = resolveStaffOperationalNav(...scheduleVisitLinkParams($ap, $incomingDate));
                         ?>
                         <a href="<?= htmlspecialchars(buildAuthUrl($visitPath, $visitQuery)) ?>" class="dash-schedule-row px-5 py-3 flex items-center gap-3">
                             <div class="w-10 h-10 rounded-lg <?= $isCertificate ? 'bg-amber-50 text-amber-700' : 'bg-violet-50 text-violet-600' ?> flex flex-col items-center justify-center shrink-0 leading-none">
@@ -375,6 +387,8 @@ function activityIcon(string $action): string
                 </div>
                 </div>
             </div>
+
+            <?php endif; ?>
 
             <!-- Activity -->
             <div class="bg-white rounded-2xl border border-gray-100 dash-card overflow-hidden">
@@ -414,15 +428,20 @@ function activityIcon(string $action): string
         </div>
     </main>
 
+    <?= scriptTag('core/page-config.js') ?>
+    <?php if ($isAdminUser && $adminAnalytics !== null): ?>
+    <?= pageConfigJson($adminAnalytics['chartPayload'], 'analytics-config') ?>
+    <?= scriptTag('admin/analytics.js') ?>
+    <?php else: ?>
     <?= pageConfigJson([
         'scheduleMonth'     => $scheduleMonth,
         'scheduleDate'      => $scheduleDate,
         'todayDate'         => $todayDate,
         'appointmentDates'  => $scheduleCalendar['dates'],
-        'appointmentPage'   => buildAuthUrl('appointment.php'),
+        'appointmentPage'   => buildStaffOperationalUrl('appointment.php'),
     ], 'dashboard-schedule-config') ?>
-    <?= scriptTag('core/page-config.js') ?>
     <?= scriptTag('admin/dashboard.js') ?>
+    <?php endif; ?>
     <?= lucideInitScript() ?>
 </body>
 </html>

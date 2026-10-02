@@ -353,6 +353,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($results['queue_announcements'] > 0) {
                 $parts[] = $results['queue_announcements'] . ' queue announcement(s)';
             }
+            if ($results['certification_prints'] > 0) {
+                $parts[] = $results['certification_prints'] . ' certification print log(s)';
+            }
+            if ($results['certificate_prints'] > 0) {
+                $parts[] = $results['certificate_prints'] . ' certificate print log(s)';
+            }
 
             settingsFlashSet(
                 'success',
@@ -941,7 +947,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                         <?php else: ?>
                                         <p class="font-semibold text-slate-700">SMS is off until you subscribe at <a href="https://www.iprogsms.com" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">iprogsms.com</a> and enter your API token below.</p>
                                         <?php endif; ?>
-                                        <p class="mt-1.5">Citizens who opt in receive text messages when a request is accepted, when it is ready for pickup, and 3 hours and 1 hour before a confirmed visit.</p>
+                                        <p class="mt-1.5">Citizens who opt in receive text messages when a request is accepted, when it is ready for pickup, and 1 hour before a confirmed visit.</p>
                                     </div>
                                     <label class="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-100 cursor-pointer">
                                         <div>
@@ -1794,10 +1800,12 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                                 <legend class="block text-[10px] font-bold text-red-900/70 uppercase mb-1">Data to clear</legend>
                                                 <?php
                                                 $clearDataOptions = [
-                                                    'appointments'      => ['label' => 'Appointment data', 'stat' => 'appointments'],
-                                                    'document_requests' => ['label' => 'Request document data', 'stat' => 'document_requests'],
-                                                    'civil_records'     => ['label' => 'Civil records', 'stat' => 'civil_records'],
-                                                    'queue_tickets'     => ['label' => 'Queue tickets', 'stat' => 'queue_tickets', 'hint' => 'Includes walk-in, appointment, and document claim tickets plus speaker announcements.'],
+                                                    'appointments'          => ['label' => 'Appointment data', 'stat' => 'appointments'],
+                                                    'document_requests'     => ['label' => 'Request document data', 'stat' => 'document_requests'],
+                                                    'civil_records'         => ['label' => 'Civil records', 'stat' => 'civil_records'],
+                                                    'queue_tickets'         => ['label' => 'Queue tickets', 'stat' => 'queue_tickets', 'hint' => 'Includes walk-in, appointment, and document claim tickets plus speaker announcements.'],
+                                                    'certification_prints'  => ['label' => 'Certifications printed', 'stat' => 'certification_prints', 'hint' => 'Removes logged certification print jobs only. Templates and calibration are kept. Resets the dashboard Certifications printed counter.'],
+                                                    'certificate_prints'    => ['label' => 'Certificates printed', 'stat' => 'certificate_prints', 'hint' => 'Removes logged certificate print jobs only. Templates and calibration are kept. Resets the dashboard Certificates printed counter.'],
                                                 ];
                                                 foreach ($clearDataOptions as $typeKey => $option):
                                                     $count = (int) ($systemStats[$option['stat']]['count'] ?? 0);

@@ -10,6 +10,7 @@ require_once __DIR__ . '/includes/cascading_location.php';
 require_once __DIR__ . '/includes/print_fill_controls.php';
 require_once __DIR__ . '/includes/records_form.php';
 require_once __DIR__ . '/includes/records_csv_import.php';
+require_once __DIR__ . '/includes/civil_record_audit.php';
 requireStaffLogin();
 requirePageAccess('records.php');
 releaseSessionLock();
@@ -563,14 +564,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         if ($action === 'create') {
             $data = normalizeRecordInput(prepareCivilRecordFormInput($_POST));
-            insertCivilRecord($pdo, $data);
+            $newRecordId = saveCivilRecord($pdo, $data, null);
+            recordCivilRecordAudit($pdo, $newRecordId, 'created', [], $data);
             logActivity(staffId(), 'Record Created', 'New ' . $data['record_type'] . ' record: ' . civilRecordDisplayName($data));
             recordsFlashSet('success', 'Record saved successfully.');
         } elseif ($action === 'update' && !empty($_POST['record_id'])) {
             $data = normalizeRecordInput(prepareCivilRecordFormInput($_POST));
             $id = (int) $_POST['record_id'];
             assertCivilRecordEditableByStaff($pdo, $id, staffId());
+            $recordBefore = fetchFullCivilRecord($pdo, $id);
             saveCivilRecord($pdo, $data, $id);
+            if ($recordBefore) {
+                recordCivilRecordAudit($pdo, $id, 'updated', $recordBefore, $data);
+            }
             releaseCivilRecordEditLock($pdo, $id, staffId());
             logActivity(staffId(), 'Record Updated', "Updated record #$id: " . civilRecordDisplayName($data));
             recordsFlashSet('success', 'Record updated successfully.');
@@ -993,12 +999,28 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
     $submitAction = $editRecord ? 'update' : 'create';
     $defaultRecordType = $modalRecord['record_type'] ?? ($type !== 'all' ? $type : 'birth');
     $entryFormEditMode = (bool) $editRecord;
+    $recordUpdateHistory = $editRecord
+        ? fetchCivilRecordUpdateHistory($pdo, (int) $editRecord['id'], 15)
+        : [];
     ?>
     <div class="records-entry-modal hidden" id="entryModal">
         <div class="records-entry-dialog">
             <div class="records-entry-header">
-                <h2 class="text-lg font-black text-slate-900" id="entryModalTitle"><?= htmlspecialchars($modalTitle) ?></h2>
-                <button type="button" class="text-gray-400 hover:text-gray-600 close-modal"><i data-lucide="x" class="w-5 h-5"></i></button>
+                <h2 class="text-lg font-black text-slate-900 min-w-0 flex-1" id="entryModalTitle"><?= htmlspecialchars($modalTitle) ?></h2>
+                <div class="records-entry-header__actions shrink-0">
+                    <?php if ($entryFormEditMode): ?>
+                    <button type="button"
+                            id="recordUpdatesInfoBtn"
+                            class="records-updates-info-btn"
+                            aria-label="Information — recent updates to this record"
+                            title="Information — recent updates">
+                        <?= lucideSvg('info', 'w-4 h-4') ?>
+                    </button>
+                    <?php endif; ?>
+                    <button type="button" class="records-entry-header__close close-modal" aria-label="Close">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
             </div>
             <form method="POST" class="records-entry-form" id="entryForm">
                 <?= authFormField() ?>
@@ -1593,6 +1615,60 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
             </form>
         </div>
     </div>
+
+    <?php if ($entryFormEditMode): ?>
+    <div id="recordUpdatesModal" class="records-updates-modal hidden" aria-hidden="true">
+        <div class="records-updates-modal__backdrop" data-record-updates-close tabindex="-1" aria-hidden="true"></div>
+        <div class="records-updates-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="recordUpdatesModalTitle">
+            <div class="records-updates-modal__header">
+                <div>
+                    <h2 id="recordUpdatesModalTitle" class="records-updates-modal__title">Recent updates</h2>
+                    <p class="records-updates-modal__subtitle">Staff and administrator edits to this registry entry</p>
+                </div>
+                <button type="button" class="records-updates-modal__close" data-record-updates-close aria-label="Close recent updates">
+                    <?= lucideSvg('x', 'w-5 h-5') ?>
+                </button>
+            </div>
+            <div class="records-updates-modal__body">
+                <?php if ($recordUpdateHistory === []): ?>
+                <p class="records-recent-updates__empty">No edit history yet for this record. Changes will appear here after the next save.</p>
+                <?php else: ?>
+                <div class="records-recent-updates__list">
+                    <?php foreach ($recordUpdateHistory as $update): ?>
+                    <article class="records-recent-updates__item">
+                        <header class="records-recent-updates__item-head">
+                            <time class="records-recent-updates__when"><?= htmlspecialchars(formatCivilRecordAuditTimestamp($update['created_at'])) ?></time>
+                            <p class="records-recent-updates__who">
+                                <strong><?= htmlspecialchars($update['event_type'] === 'created' ? 'Created by' : 'Updated by') ?>:</strong>
+                                <?= htmlspecialchars($update['staff_name']) ?>
+                                (<span class="font-mono text-[10px]"><?= htmlspecialchars($update['staff_id']) ?></span>)
+                                · <?= htmlspecialchars($update['staff_role']) ?>
+                            </p>
+                            <p class="records-recent-updates__summary"><?= htmlspecialchars($update['summary']) ?></p>
+                        </header>
+                        <?php if (!empty($update['changes'])): ?>
+                        <div class="records-recent-updates__changes">
+                            <p class="records-recent-updates__changes-label">Changes</p>
+                            <ul class="records-recent-updates__changes-list">
+                                <?php foreach ($update['changes'] as $change): ?>
+                                <li>
+                                    <span class="records-recent-updates__field"><?= htmlspecialchars((string) ($change['label'] ?? 'Field')) ?>:</span>
+                                    <span class="records-recent-updates__from"><?= htmlspecialchars((string) ($change['old'] ?? '')) ?></span>
+                                    <span class="records-recent-updates__arrow" aria-hidden="true">→</span>
+                                    <span class="records-recent-updates__to"><?= htmlspecialchars((string) ($change['new'] ?? '')) ?></span>
+                                </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                        <?php endif; ?>
+                    </article>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <div id="viewModal" class="records-view-modal hidden" aria-hidden="true">
         <div class="records-view-modal__backdrop close-modal" aria-hidden="true"></div>

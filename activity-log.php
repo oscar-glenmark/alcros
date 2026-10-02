@@ -13,13 +13,19 @@ $pdo = getDB();
 
 $search = trim($_GET['q'] ?? '');
 $staffFilter = trim($_GET['staff'] ?? '');
-$range = $_GET['range'] ?? '30d';
+$range = $_GET['range'] ?? '7d';
 $page = max(1, (int) ($_GET['page'] ?? 1));
 $perPage = 50;
 
-$validRanges = ['today', '7d', '30d', '90d', 'all'];
+$rangeOptions = [
+    'today' => 'Today',
+    '7d'    => 'Last 7 days',
+    'all'   => 'All time',
+];
+
+$validRanges = array_keys($rangeOptions);
 if (!in_array($range, $validRanges, true)) {
-    $range = '30d';
+    $range = '7d';
 }
 
 function activityLogFilters(): array
@@ -28,33 +34,43 @@ function activityLogFilters(): array
     return [$search, $staffFilter, $range];
 }
 
-function activityLogWhereClause(): array
+function activityLogWhereClause(string $columnPrefix = ''): array
 {
     [$search, $staffFilter, $range] = activityLogFilters();
     $where = [];
     $params = [];
+    $col = static fn (string $name) => ($columnPrefix !== '' ? $columnPrefix . '.' : '') . $name;
 
     if ($search !== '') {
-        $where[] = '(action LIKE ? OR details LIKE ? OR staff_id LIKE ?)';
+        $logStaffCol = $columnPrefix !== '' ? $columnPrefix . '.staff_id' : 'activity_logs.staff_id';
+        $where[] = '(' . $col('action') . ' LIKE ? OR ' . $col('details') . ' LIKE ? OR ' . $col('staff_id') . ' LIKE ?'
+            . ' OR EXISTS (
+                SELECT 1 FROM staff s
+                WHERE s.staff_id = ' . $logStaffCol . '
+                  AND (
+                    s.first_name LIKE ? OR s.middle_name LIKE ? OR s.last_name LIKE ?
+                    OR CONCAT_WS(\' \', s.first_name, s.middle_name, s.last_name) LIKE ?
+                  )
+            ))';
         $like = '%' . $search . '%';
+        $params[] = $like;
+        $params[] = $like;
+        $params[] = $like;
+        $params[] = $like;
         $params[] = $like;
         $params[] = $like;
         $params[] = $like;
     }
 
     if ($staffFilter !== '') {
-        $where[] = 'staff_id = ?';
+        $where[] = $col('staff_id') . ' = ?';
         $params[] = $staffFilter;
     }
 
     if ($range === 'today') {
-        $where[] = 'DATE(created_at) = CURDATE()';
+        $where[] = 'DATE(' . $col('created_at') . ') = CURDATE()';
     } elseif ($range === '7d') {
-        $where[] = 'created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
-    } elseif ($range === '30d') {
-        $where[] = 'created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
-    } elseif ($range === '90d') {
-        $where[] = 'created_at >= DATE_SUB(NOW(), INTERVAL 90 DAY)';
+        $where[] = $col('created_at') . ' >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
     }
 
     $whereSql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
@@ -68,14 +84,84 @@ function activityLogPageUrl(array $overrides = []): string
     $params = array_filter(array_merge([
         'q' => $search !== '' ? $search : null,
         'staff' => $staffFilter !== '' ? $staffFilter : null,
-        'range' => $range !== '30d' ? $range : null,
+        'range' => $range !== '7d' ? $range : null,
         'page' => $page > 1 ? (string) $page : null,
     ], $overrides), static fn ($value) => $value !== null && $value !== '');
 
     return buildAuthUrl('activity-log.php', $params);
 }
 
+function activityLogExportUrl(): string
+{
+    global $search, $staffFilter, $range;
+
+    $params = array_filter([
+        'export' => 'csv',
+        'q' => $search !== '' ? $search : null,
+        'staff' => $staffFilter !== '' ? $staffFilter : null,
+        'range' => $range !== '7d' ? $range : null,
+    ], static fn ($value) => $value !== null && $value !== '');
+
+    return buildAuthUrl('activity-log.php', $params);
+}
+
 [$whereSql, $params] = activityLogWhereClause();
+
+if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+    [$exportWhereSql, $exportParams] = activityLogWhereClause('al');
+    $exportLimit = 10000;
+    $exportStmt = $pdo->prepare(
+        "SELECT al.created_at, al.staff_id, al.action, al.details,
+                s.first_name, s.middle_name, s.last_name
+         FROM activity_logs al
+         LEFT JOIN staff s ON s.staff_id = al.staff_id
+         $exportWhereSql
+         ORDER BY al.created_at DESC
+         LIMIT $exportLimit"
+    );
+    $exportStmt->execute($exportParams);
+    $exportRows = $exportStmt->fetchAll();
+
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="alcros_activity_log_' . date('Y-m-d') . '.csv"');
+    $out = fopen('php://output', 'w');
+    if ($out === false) {
+        http_response_code(500);
+        exit;
+    }
+    fwrite($out, "\xEF\xBB\xBF");
+    fputcsv($out, ['ALCROS Activity Log']);
+    fputcsv($out, ['Office', getSetting('office_name', 'Local Civil Registrar Office')]);
+    fputcsv($out, ['Range', $rangeOptions[$range] ?? $range]);
+    if ($search !== '') {
+        fputcsv($out, ['Search', $search]);
+    }
+    if ($staffFilter !== '') {
+        fputcsv($out, ['Staff filter', $staffFilter]);
+    }
+    fputcsv($out, ['Exported', date('Y-m-d H:i:s')]);
+    fputcsv($out, ['Row limit', (string) $exportLimit]);
+    fputcsv($out, []);
+    fputcsv($out, ['created_at', 'staff_id', 'staff_name', 'action', 'details']);
+    foreach ($exportRows as $row) {
+        $staffName = personNameFromRow($row);
+        if ($staffName === '' && !empty($row['staff_id'])) {
+            $staffName = (string) $row['staff_id'];
+        }
+        if ($staffName === '') {
+            $staffName = 'System';
+        }
+        fputcsv($out, [
+            $row['created_at'],
+            $row['staff_id'] ?? '',
+            $staffName,
+            $row['action'],
+            $row['details'] ?? '',
+        ]);
+    }
+    fclose($out);
+    exit;
+}
 
 $countStmt = $pdo->prepare("SELECT COUNT(*) FROM activity_logs $whereSql");
 $countStmt->execute($params);
@@ -107,14 +193,6 @@ if ($logStaffIds !== []) {
 
 $staffList = $pdo->query("SELECT DISTINCT staff_id FROM activity_logs WHERE staff_id IS NOT NULL AND staff_id != '' ORDER BY staff_id")->fetchAll(PDO::FETCH_COLUMN);
 
-$rangeOptions = [
-    'today' => 'Today',
-    '7d'    => 'Last 7 days',
-    '30d'   => 'Last 30 days',
-    '90d'   => 'Last 90 days',
-    'all'   => 'All time',
-];
-
 $showingFrom = $totalCount === 0 ? 0 : $offset + 1;
 $showingTo = min($offset + $perPage, $totalCount);
 ?>
@@ -136,36 +214,28 @@ $showingTo = min($offset + $perPage, $totalCount);
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
         <div class="p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto admin-page-wrap">
             <div class="admin-page-head mb-6">
-                <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 no-print">
+                <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
                     <div class="flex flex-wrap gap-2">
-                        <button type="button" id="activityLogPrintBtn"
-                                class="inline-flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold shrink-0">
-                            <i data-lucide="printer" class="w-4 h-4"></i> Print Report
-                        </button>
+                        <a href="<?= htmlspecialchars(activityLogExportUrl()) ?>"
+                           class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold shrink-0 shadow-sm transition">
+                            <i data-lucide="download" class="w-4 h-4"></i> Export CSV
+                        </a>
                     </div>
                 </div>
             </div>
 
-            <div class="print-report-header">
-                <h1 class="print-report-header__title">Staff Activity Log</h1>
-                <p class="print-report-header__meta"><?= htmlspecialchars(getSetting('office_name', 'Local Civil Registrar Office')) ?></p>
-                <p class="print-report-header__meta">
-                    Range: <?= htmlspecialchars($rangeOptions[$range] ?? $range) ?>
-                    <?= $search !== '' ? ' · Search: ' . htmlspecialchars($search) : '' ?>
-                    <?= $staffFilter !== '' ? ' · Staff: ' . htmlspecialchars($staffFilter) : '' ?>
-                    · Generated <?= date('M j, Y g:i A') ?>
-                </p>
-                <p class="print-report-header__meta">Showing page <?= (int) $page ?> of <?= (int) $totalPages ?> (<?= number_format($totalCount) ?> matching entries).</p>
-            </div>
-
-            <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden mb-5 print-report-body">
-                <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('activity-log.php')) ?>" class="admin-toolbar !mb-0 !rounded-none !border-0 !shadow-none border-b border-slate-100">
+            <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden mb-5">
+                <form id="activityLogFilterForm" method="GET" action="activity-log.php" class="admin-toolbar !mb-0 !rounded-none !border-0 !shadow-none border-b border-slate-100" data-no-loading>
+                    <?= authFormField() ?>
+                    <?php if ($range !== '7d'): ?>
+                    <input type="hidden" name="range" value="<?= htmlspecialchars($range) ?>">
+                    <?php endif; ?>
                     <div class="relative flex-1 admin-toolbar-search">
-                        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
-                        <input type="search" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search action, details, or staff ID…"
-                               class="w-full pl-10 pr-4 py-2 bg-gray-50 border-none rounded-lg text-sm focus:ring-0 text-slate-600 placeholder-gray-400">
+                        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                        <input type="search" name="q" id="activityLogSearch" value="<?= htmlspecialchars($search) ?>" placeholder="Search action, details, staff ID, or name…"
+                               class="w-full pl-10 pr-4 py-2 bg-gray-50 border-none rounded-lg text-sm focus:ring-0 text-slate-600 placeholder-gray-400" autocomplete="off">
                     </div>
-                    <select name="staff" class="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white min-w-[10rem] shrink-0">
+                    <select name="staff" id="activityLogStaff" class="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white min-w-[10rem] shrink-0">
                         <option value="">All staff</option>
                         <?php foreach ($staffList as $sid): ?>
                         <option value="<?= htmlspecialchars($sid) ?>" <?= $staffFilter === $sid ? 'selected' : '' ?>><?= htmlspecialchars($sid) ?></option>
@@ -173,13 +243,12 @@ $showingTo = min($offset + $perPage, $totalCount);
                     </select>
                     <div class="admin-toolbar-filters !flex-1 xl:!flex-none">
                         <?php foreach ($rangeOptions as $rangeKey => $rangeLabel): ?>
-                        <a href="<?= htmlspecialchars(activityLogPageUrl(['range' => $rangeKey === '30d' ? null : $rangeKey, 'page' => null])) ?>"
+                        <a href="<?= htmlspecialchars(activityLogPageUrl(['range' => $rangeKey === '7d' ? null : $rangeKey, 'page' => null])) ?>"
                            class="range-pill px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 whitespace-nowrap shrink-0 <?= $range === $rangeKey ? 'is-active' : '' ?>">
                             <?= htmlspecialchars($rangeLabel) ?>
                         </a>
                         <?php endforeach; ?>
                     </div>
-                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-bold shrink-0">Apply</button>
                 </form>
                 <?php if ($search !== '' || $staffFilter !== ''): ?>
                 <div class="px-4 py-2 border-b border-slate-100 bg-slate-50/50 text-right">
@@ -217,14 +286,14 @@ $showingTo = min($offset + $perPage, $totalCount);
                     <p class="text-xs text-slate-400 mt-1">Try widening the date range or clearing your search.</p>
                 </div>
                 <?php else: ?>
-                <div class="overflow-x-auto print-table-wrap print-landscape">
-                    <table class="w-full text-sm print-table">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
                         <thead>
                             <tr class="text-left text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 bg-white">
                                 <th class="px-4 sm:px-5 py-3 font-bold">When</th>
                                 <th class="px-4 sm:px-5 py-3 font-bold">Staff</th>
                                 <th class="px-4 sm:px-5 py-3 font-bold">Action</th>
-                                <th class="px-4 sm:px-5 py-3 font-bold hidden md:table-cell print-details-col">Details</th>
+                                <th class="px-4 sm:px-5 py-3 font-bold hidden md:table-cell">Details</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-50">
@@ -262,7 +331,7 @@ $showingTo = min($offset + $perPage, $totalCount);
                                     <p class="text-xs text-slate-500 mt-1 md:hidden"><?= htmlspecialchars($log['details']) ?></p>
                                     <?php endif; ?>
                                 </td>
-                                <td class="px-4 sm:px-5 py-3.5 text-xs text-slate-500 hidden md:table-cell print-details-col align-top max-w-md">
+                                <td class="px-4 sm:px-5 py-3.5 text-xs text-slate-500 hidden md:table-cell align-top max-w-md">
                                     <?= htmlspecialchars($log['details'] ?? '—') ?>
                                 </td>
                             </tr>
@@ -274,7 +343,27 @@ $showingTo = min($offset + $perPage, $totalCount);
             </div>
         </div>
     </main>
-    <?= scriptTag('admin/activity-log.js') ?>
+    <script>
+    (function () {
+        var form = document.getElementById('activityLogFilterForm');
+        var staff = document.getElementById('activityLogStaff');
+        if (!form) return;
+
+        function submitFilter() {
+            var pageInput = form.querySelector('input[name="page"]');
+            if (pageInput) {
+                pageInput.remove();
+            }
+            // requestSubmit() does nothing when the form has no submit button (Apply was removed).
+            form.submit();
+        }
+
+        if (staff) {
+            staff.addEventListener('change', submitFilter);
+        }
+    })();
+    </script>
+    <?= scriptTag('core/admin-search.js') ?>
     <?= lucideInitScript() ?>
 </body>
 </html>

@@ -1,5 +1,19 @@
 @import url('analytics.css');
 
+.range-pill {
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.range-pill.is-active {
+    background: #2563eb;
+    color: #fff;
+    border-color: #2563eb;
+}
+
+.report-range-toolbar.admin-toolbar {
+    padding: 0.75rem 1rem;
+}
+
 .stat-row {
     display: flex;
     align-items: center;

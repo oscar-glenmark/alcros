@@ -320,19 +320,24 @@ function smsCitizenGreeting(array $row): string
     return 'Hi ' . $short . ',';
 }
 
-/** Compact visit line for SMS character limits. */
+/** Visit date/time line for SMS (month spelled out, e.g. September 12, 2026). */
 function smsVisitShort(?string $date, ?string $time): string
 {
     if ($date === null || trim($date) === '') {
         return '';
     }
 
-    $ts = strtotime(trim($date));
+    $dateOnly = trim($date);
+    if (preg_match('/^(\d{4}-\d{2}-\d{2})/', $dateOnly, $match)) {
+        $dateOnly = $match[1];
+    }
+
+    $ts = strtotime($dateOnly);
     if ($ts === false) {
         return '';
     }
 
-    $out = date('n/j/y', $ts);
+    $out = date('F j, Y', $ts);
     if ($time !== null && trim($time) !== '') {
         $timeTs = strtotime(trim($time));
         if ($timeTs !== false) {
@@ -439,7 +444,7 @@ function notifyRequestStatusSms(PDO $pdo, int $requestId, string $newStatus, ?st
 
 function smsReminderLeadTimes(): array
 {
-    return [3, 1];
+    return [1];
 }
 
 function smsReminderSentColumn(int $hours): string
@@ -464,9 +469,6 @@ function nextDueSmsReminderLeadTime(int $minutesUntil): ?int
     if ($minutesUntil <= 60) {
         return 1;
     }
-    if ($minutesUntil <= 180) {
-        return 3;
-    }
 
     return null;
 }
@@ -489,7 +491,7 @@ function markEarlierSmsRemindersSkipped(PDO $pdo, string $table, int $id, int $s
     }
 }
 
-function notifyRequestVisitSmsReminder(array $row, int $hoursBefore = 3): bool
+function notifyRequestVisitSmsReminder(array $row, int $hoursBefore = 1): bool
 {
     if (!citizenWantsSmsNotify($row)) {
         return false;
@@ -514,7 +516,7 @@ function notifyRequestVisitSmsReminder(array $row, int $hoursBefore = 3): bool
     );
 }
 
-function notifyAppointmentSmsReminder(array $row, int $hoursBefore = 3): bool
+function notifyAppointmentSmsReminder(array $row, int $hoursBefore = 1): bool
 {
     if (!citizenWantsSmsNotify($row)) {
         return false;
@@ -670,7 +672,7 @@ function sendDueDocumentRequestSmsReminders(PDO $pdo): int
     $stmt = $pdo->query(
         "SELECT id, tracking_code, first_name, middle_name, last_name, phone, document_type, status,
                 appointment_date, appointment_time, notify_sms,
-                sms_reminder_3h_sent_at, sms_reminder_1h_sent_at
+                sms_reminder_1h_sent_at
          FROM document_requests
          WHERE notify_sms = 1
            AND phone IS NOT NULL AND phone != ''
@@ -678,8 +680,8 @@ function sendDueDocumentRequestSmsReminders(PDO $pdo): int
            AND appointment_date IS NOT NULL
            AND appointment_time IS NOT NULL
            AND TIMESTAMP(appointment_date, appointment_time) > NOW()
-           AND TIMESTAMP(appointment_date, appointment_time) <= DATE_ADD(NOW(), INTERVAL 3 HOUR)
-           AND (sms_reminder_3h_sent_at IS NULL OR sms_reminder_1h_sent_at IS NULL)"
+           AND TIMESTAMP(appointment_date, appointment_time) <= DATE_ADD(NOW(), INTERVAL 1 HOUR)
+           AND sms_reminder_1h_sent_at IS NULL"
     );
     $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
     $sent = 0;
@@ -710,15 +712,15 @@ function sendDueStandaloneAppointmentSmsReminders(PDO $pdo): int
     $stmt = $pdo->query(
         "SELECT id, appointment_code, first_name, middle_name, last_name, phone, service_type, status,
                 appointment_date, appointment_time, notify_sms,
-                sms_reminder_3h_sent_at, sms_reminder_1h_sent_at
+                sms_reminder_1h_sent_at
          FROM appointments a
          WHERE notify_sms = 1
            AND phone IS NOT NULL AND phone != ''
            AND " . appointmentStandaloneSql('a') . "
            AND a.status = 'confirmed'
            AND TIMESTAMP(a.appointment_date, a.appointment_time) > NOW()
-           AND TIMESTAMP(a.appointment_date, a.appointment_time) <= DATE_ADD(NOW(), INTERVAL 3 HOUR)
-           AND (a.sms_reminder_3h_sent_at IS NULL OR a.sms_reminder_1h_sent_at IS NULL)"
+           AND TIMESTAMP(a.appointment_date, a.appointment_time) <= DATE_ADD(NOW(), INTERVAL 1 HOUR)
+           AND a.sms_reminder_1h_sent_at IS NULL"
     );
     $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
     $sent = 0;

@@ -10,6 +10,9 @@ session_start();
 
 require_once __DIR__ . '/includes/helpers.php';
 
+require_once __DIR__ . '/includes/appointment_service_requirements.php';
+require_once __DIR__ . '/includes/appointment_notice_requirements.php';
+
 require_once __DIR__ . '/includes/scripts.php';
 
 
@@ -19,6 +22,7 @@ $site = getSiteSettings();
 $documentTypes = getDocumentTypes();
 
 $appointmentServices = getAppointmentServices();
+$requirementsModalMeta = appointmentServiceRequirementsModalMeta();
 
 $isStaffLoggedIn = isset($_SESSION['staff_id']);
 
@@ -208,11 +212,14 @@ $year = date('Y');
 
             <p class="text-white/65 text-xs mb-8 italic">Schedule an appointment for record updates and civil registry consultations.</p>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 special-services-grid">
 
-                <?php foreach ($appointmentServices as $svc): ?>
+                <?php foreach ($appointmentServices as $svc):
+                    $reqMeta = getAppointmentServiceRequirements($svc['slug'], $svc['label']);
+                    $scheduleUrl = 'book_appointment.php?service=' . rawurlencode($svc['slug']);
+                ?>
 
-                <div class="citizen-service-card p-6 flex flex-col items-start text-left relative">
+                <div class="citizen-service-card citizen-service-card--appointment p-6 flex flex-col items-start text-left relative<?= $svc['slug'] === 'request-psa-documents' ? ' citizen-service-card--psa-center' : '' ?>">
 
                     <span class="absolute top-4 right-4 text-[9px] font-bold text-amber-700 border border-amber-200 bg-amber-50 px-2 py-0.5 rounded uppercase">Appointment</span>
 
@@ -226,11 +233,24 @@ $year = date('Y');
 
                     <p class="text-gray-500 text-[10px] mb-4 flex-1"><?= htmlspecialchars($svc['desc']) ?></p>
 
-                    <a href="book_appointment.php?service=<?= urlencode($svc['slug']) ?>" class="citizen-link-gold">
+                    <div class="citizen-service-card__actions w-full pt-3 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
 
-                        Schedule Appointment <i data-lucide="chevron-right" class="w-3 h-3"></i>
+                        <a href="<?= htmlspecialchars($scheduleUrl) ?>" class="citizen-service-card__btn citizen-service-card__btn--primary">
 
-                    </a>
+                            Schedule Appointment <i data-lucide="calendar-plus" class="w-3.5 h-3.5"></i>
+
+                        </a>
+
+                        <button type="button"
+                                class="citizen-service-card__btn citizen-service-card__btn--secondary"
+                                data-open-service-requirements="<?= htmlspecialchars($svc['slug'], ENT_QUOTES) ?>"
+                                data-req-title="<?= htmlspecialchars($reqMeta['title'], ENT_QUOTES) ?>"
+                                data-req-subtitle="<?= htmlspecialchars($reqMeta['subtitle'], ENT_QUOTES) ?>"
+                                data-schedule-url="<?= htmlspecialchars($scheduleUrl, ENT_QUOTES) ?>">
+                            Requirements <i data-lucide="clipboard-list" class="w-3.5 h-3.5"></i>
+                        </button>
+
+                    </div>
 
                 </div>
 
@@ -302,9 +322,47 @@ $year = date('Y');
 
 
 
+    <script type="application/json" id="serviceRequirementsMeta"><?= json_encode($requirementsModalMeta, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
+
+    <?php foreach ($appointmentServices as $svc): ?>
+    <template id="svc-req-<?= htmlspecialchars($svc['slug'], ENT_QUOTES) ?>">
+        <?= renderAppointmentServiceRequirementsHtml($svc['slug']) ?>
+    </template>
+    <?php endforeach; ?>
+
+    <div id="serviceRequirementsModal" class="svc-req-modal hidden" aria-hidden="true">
+        <div id="serviceRequirementsBackdrop" class="svc-req-modal__backdrop" tabindex="-1" aria-hidden="true"></div>
+        <div class="svc-req-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="serviceRequirementsTitle" aria-describedby="serviceRequirementsBody">
+            <div class="svc-req-modal__header">
+                <div class="svc-req-modal__header-icon" aria-hidden="true">
+                    <i data-lucide="clipboard-list" class="w-5 h-5"></i>
+                </div>
+                <div class="svc-req-modal__header-text min-w-0">
+                    <p id="serviceRequirementsSubtitle" class="svc-req-modal__kicker hidden"></p>
+                    <h2 id="serviceRequirementsTitle" class="svc-req-modal__title"></h2>
+                </div>
+                <button type="button" id="serviceRequirementsClose" class="svc-req-modal__close" aria-label="Close">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div id="serviceRequirementsBody" class="svc-req-modal__body"></div>
+            <div class="svc-req-modal__footer">
+                <p class="svc-req-modal__hint">Prepare these documents before your visit. Originals may be requested for verification.</p>
+                <div class="svc-req-modal__footer-actions">
+                    <button type="button" id="serviceRequirementsDismiss" class="svc-req-modal__btn svc-req-modal__btn--ghost">Close</button>
+                    <a id="serviceRequirementsSchedule" href="book_appointment.php" class="svc-req-modal__btn svc-req-modal__btn--primary">
+                        Schedule Appointment <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <?php require __DIR__ . '/includes/track_floating.php'; ?>
 
     <?= scriptTag('public/track-floating.js') ?>
+
+    <?= scriptTag('public/service-requirements-modal.js') ?>
 
     <?= scriptTag('public/citizen-site.js') ?>
 

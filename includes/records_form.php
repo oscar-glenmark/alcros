@@ -75,6 +75,66 @@ function applyCsvDateNormalization(array $input): array
     return $input;
 }
 
+/** First / middle / last for marriage entry form (matches print fill field names). */
+function civilRecordSpouseNamePartsForForm(array $record, string $prefix): array
+{
+    $parts = personNamePartsFromInput($record, $prefix);
+    if ($parts['first_name'] !== '' && $parts['last_name'] !== '') {
+        return $parts;
+    }
+
+    $full = trim((string) ($record[$prefix . '_name'] ?? ''));
+    if ($full === '') {
+        return ['first_name' => '', 'middle_name' => null, 'last_name' => ''];
+    }
+
+    $split = splitFullName($full);
+
+    return [
+        'first_name'  => $split['first'],
+        'middle_name' => $split['middle'] !== '' ? $split['middle'] : null,
+        'last_name'   => $split['last'],
+    ];
+}
+
+function normalizeMarriageSpouseNames(array $input): array
+{
+    if (trim((string) ($input['husband_name'] ?? '')) === '') {
+        $husbandParts = personNamePartsFromInput($input, 'husband_');
+        $built = formatPersonName($husbandParts['first_name'], $husbandParts['middle_name'], $husbandParts['last_name']);
+        if ($built !== '') {
+            $input['husband_name'] = $built;
+        }
+    }
+    if (trim((string) ($input['wife_name'] ?? '')) === '') {
+        $wifeParts = personNamePartsFromInput($input, 'wife_');
+        $built = formatPersonName($wifeParts['first_name'], $wifeParts['middle_name'], $wifeParts['last_name']);
+        if ($built !== '') {
+            $input['wife_name'] = $built;
+        }
+    }
+
+    foreach (['husband', 'wife'] as $role) {
+        $parts = personNamePartsFromInput($input, $role . '_');
+        if ($parts['first_name'] === '' || $parts['last_name'] === '') {
+            $fullKey = $role . '_name';
+            if (trim((string) ($input[$fullKey] ?? '')) !== '') {
+                $parts = parsePersonNameToParts(trim((string) $input[$fullKey]));
+            }
+        }
+        if ($parts['first_name'] === '' || $parts['last_name'] === '') {
+            $label = $role === 'husband' ? 'Husband' : 'Wife';
+            throw new InvalidArgumentException($label . ' first name and last name are required for marriage records.');
+        }
+        $input[$role . '_name'] = formatPersonName($parts['first_name'], $parts['middle_name'], $parts['last_name']);
+        $input[$role . '_first_name'] = $parts['first_name'];
+        $input[$role . '_middle_name'] = $parts['middle_name'];
+        $input[$role . '_last_name'] = $parts['last_name'];
+    }
+
+    return $input;
+}
+
 function normalizeRecordInput(array $input, bool $fromCsvImport = false): array
 {
     $validTypes = ['birth', 'death', 'marriage'];
@@ -86,10 +146,8 @@ function normalizeRecordInput(array $input, bool $fromCsvImport = false): array
     }
 
     if ($type === 'marriage') {
+        $input = normalizeMarriageSpouseNames($input);
         $nameParts = ['first_name' => null, 'middle_name' => null, 'last_name' => null];
-        if (trim($input['husband_name'] ?? '') === '' || trim($input['wife_name'] ?? '') === '') {
-            throw new InvalidArgumentException('Husband and wife names are required for marriage records.');
-        }
     } else {
         $nameParts = personNamePartsFromInput($input);
         if (($nameParts['first_name'] === '' || $nameParts['last_name'] === '') && trim($input['person_name'] ?? '') !== '') {
@@ -98,6 +156,10 @@ function normalizeRecordInput(array $input, bool $fromCsvImport = false): array
         if ($nameParts['first_name'] === '' || $nameParts['last_name'] === '') {
             throw new InvalidArgumentException('First name and last name are required.');
         }
+    }
+
+    if (!$fromCsvImport) {
+        assertCivilRecordManualEntryComplete($input, $type);
     }
 
     $data = array_merge([

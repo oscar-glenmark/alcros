@@ -5,12 +5,9 @@ require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/scripts.php';
 require_once __DIR__ . '/lucide_icons.php';
 
-$sidebarManageApptQuery = [];
 if (!isAdmin()) {
     try {
-        $sidebarPdo = getDB();
-        runReminderSchedulerIfDue($sidebarPdo);
-        $sidebarManageApptQuery = ['date' => resolveAppointmentsManageDate($sidebarPdo, null)];
+        runReminderSchedulerIfDue(getDB());
     } catch (Throwable $e) {
         // Non-fatal when reminders cannot run.
     }
@@ -72,7 +69,7 @@ function sidebarSectionLabel(string $label): string
         <?= sidebarLink('notifications.php', staffPortalInboxLabel(), 'bell', $activePage, false, 'sidebar-notif-badge') ?>
         <?php if (!isAdmin()): ?>
         <?= sidebarLink('manage_request.php', 'Manage Requests', 'file-text', $activePage, false, 'sidebar-request-badge') ?>
-        <?= sidebarLink('appointment.php', 'Manage Appointments', 'calendar', $activePage, false, 'sidebar-appt-badge', $sidebarManageApptQuery) ?>
+        <?= sidebarLink('appointment.php', 'Manage Appointments', 'calendar', $activePage, false, 'sidebar-appt-badge') ?>
         <?php endif; ?>
         <?= sidebarLink('records.php', 'Records', 'book-open', $activePage) ?>
         <?= sidebarLink('report.php', 'Reports', 'bar-chart-2', $activePage) ?>

@@ -1179,9 +1179,55 @@ function getAppointmentServices(): array
         ['slug' => 'report-correction',   'label' => 'Report Correction',   'desc' => 'Correct clerical errors in names, dates, or typos.',          'icon' => 'search',         'iconBg' => 'bg-purple-100 text-purple-500'],
         ['slug' => 'legitimation',        'label' => 'Legitimation',        'desc' => 'Update child status to legitimate after parents marry.',     'icon' => 'users',          'iconBg' => 'bg-blue-100 text-blue-500'],
         ['slug' => 'acknowledgement',     'label' => 'Acknowledgement',     'desc' => 'Official parent acknowledgement of a child.',                'icon' => 'shield-check',   'iconBg' => 'bg-teal-100 text-teal-500'],
-        ['slug' => 'certified-true-copy', 'label' => 'Certified True Copy', 'desc' => 'Request an official certified copy of any record.',          'icon' => 'copy',           'iconBg' => 'bg-gray-100 text-gray-600'],
+        ['slug' => 'delayed-registration-birth', 'label' => 'Delayed Registration of Birth', 'desc' => 'Register a birth beyond the standard reporting period with required affidavit and documents.', 'icon' => 'baby', 'iconBg' => 'bg-sky-100 text-sky-600'],
         ['slug' => 'cenomar',             'label' => 'CENOMAR',             'desc' => 'Certificate of No Marriage — schedule an appointment.',        'icon' => 'file-text',      'iconBg' => 'bg-green-100 text-green-600'],
+        ['slug' => 'request-psa-documents', 'label' => 'Request PSA Documents', 'desc' => 'Schedule an appointment to request PSA birth, death, or marriage certificates.', 'icon' => 'file-badge', 'iconBg' => 'bg-indigo-100 text-indigo-600'],
     ];
+}
+
+/** @return array<string, string> option value => label stored on appointments.service_type */
+function getPsaDocumentAppointmentTypes(): array
+{
+    return [
+        'psa-birth'    => 'PSA Birth',
+        'psa-death'    => 'PSA Death',
+        'psa-marriage' => 'PSA Marriage Certificates',
+    ];
+}
+
+function isPsaDocumentsAppointmentService(string $serviceSlug): bool
+{
+    return trim($serviceSlug) === 'request-psa-documents';
+}
+
+function normalizePsaAppointmentServiceType(string $value): string
+{
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+
+    foreach (getPsaDocumentAppointmentTypes() as $key => $label) {
+        if ($value === $key || strcasecmp($label, $value) === 0) {
+            return $label;
+        }
+    }
+
+    static $legacyPsaLabels = [
+        'PSA Birth Certificate'    => 'PSA Birth',
+        'PSA Death Certificate'    => 'PSA Death',
+        'PSA Marriage Certificate' => 'PSA Marriage Certificates',
+    ];
+    if (isset($legacyPsaLabels[$value])) {
+        return $legacyPsaLabels[$value];
+    }
+
+    return $value;
+}
+
+function isAllowedPsaAppointmentServiceType(string $label): bool
+{
+    return in_array($label, array_values(getPsaDocumentAppointmentTypes()), true);
 }
 
 function appointmentServiceLabel(string $value): string
@@ -1189,6 +1235,24 @@ function appointmentServiceLabel(string $value): string
     $value = trim($value);
     if ($value === '') {
         return '';
+    }
+
+    static $legacyLabels = [
+        'certified-true-copy' => 'Delayed Registration of Birth',
+        'Certified True Copy' => 'Delayed Registration of Birth',
+    ];
+    if (isset($legacyLabels[$value])) {
+        return $legacyLabels[$value];
+    }
+
+    $psaNormalized = normalizePsaAppointmentServiceType($value);
+    if ($psaNormalized !== $value && $psaNormalized !== '') {
+        return $psaNormalized;
+    }
+    foreach (getPsaDocumentAppointmentTypes() as $psaLabel) {
+        if ($value === $psaLabel || strcasecmp($value, $psaLabel) === 0) {
+            return $psaLabel;
+        }
     }
 
     foreach (getAppointmentServices() as $svc) {
@@ -2292,6 +2356,64 @@ function validatePersonNameParts(array $parts): ?string
     return null;
 }
 
+/** Match registry name to citizen input; middle name is optional when the citizen leaves it blank. */
+function personNamePartsMatchOptionalMiddle(
+    string $inputFirst,
+    ?string $inputMiddle,
+    string $inputLast,
+    string $recordFirst,
+    ?string $recordMiddle,
+    string $recordLast
+): bool {
+    $inputFirst = trim($inputFirst);
+    $inputLast = trim($inputLast);
+    $recordFirst = trim($recordFirst);
+    $recordLast = trim($recordLast);
+    if ($inputFirst === '' || $inputLast === '' || $recordFirst === '' || $recordLast === '') {
+        return false;
+    }
+
+    if (normalizePersonName($inputFirst) !== normalizePersonName($recordFirst)) {
+        return false;
+    }
+    if (normalizePersonName($inputLast) !== normalizePersonName($recordLast)) {
+        return false;
+    }
+
+    $inputMiddle = trim((string) ($inputMiddle ?? ''));
+    $recordMiddle = trim((string) ($recordMiddle ?? ''));
+    if ($inputMiddle === '') {
+        return true;
+    }
+
+    return normalizePersonName($inputMiddle) === normalizePersonName($recordMiddle);
+}
+
+function normalizeCitizenNameParts(array $parts): array
+{
+    return [
+        'first_name'  => trim((string) ($parts['first_name'] ?? '')),
+        'middle_name' => trim((string) ($parts['middle_name'] ?? '')) ?: null,
+        'last_name'   => trim((string) ($parts['last_name'] ?? '')),
+    ];
+}
+
+function verifiedSessionNameMatches(string $verifiedNormalized, array $parts): bool
+{
+    $parts = normalizeCitizenNameParts($parts);
+    $full = normalizePersonName(formatPersonName($parts['first_name'], $parts['middle_name'], $parts['last_name']));
+    if ($full === $verifiedNormalized) {
+        return true;
+    }
+    if (trim((string) ($parts['middle_name'] ?? '')) === '') {
+        $withoutMiddle = normalizePersonName(formatPersonName($parts['first_name'], null, $parts['last_name']));
+
+        return $withoutMiddle === $verifiedNormalized;
+    }
+
+    return false;
+}
+
 function personNameFromRow(array $row): string
 {
     if (isset($row['first_name']) || isset($row['middle_name']) || isset($row['last_name'])) {
@@ -2497,11 +2619,15 @@ function normalizePersonName(string $name): string
     return $name;
 }
 
-function findMarriageCivilRecordMatch(PDO $pdo, string $citizenName, string $dateOfBirth, ?string $dateOfMarriage = null): ?array
+function findMarriageCivilRecordMatch(PDO $pdo, array $nameParts, string $dateOfBirth, ?string $dateOfMarriage = null): ?array
 {
-    $normalized = normalizePersonName($citizenName);
-    if ($normalized === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfBirth)) {
+    $nameParts = normalizeCitizenNameParts($nameParts);
+    if ($nameParts['first_name'] === '' || $nameParts['last_name'] === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfBirth)) {
         return null;
+    }
+
+    if (!function_exists('splitFullName')) {
+        require_once __DIR__ . '/printing.php';
     }
 
     $sql = 'SELECT id, record_type, husband_name, wife_name, husband_birth_date, wife_birth_date, event_date, registry_number
@@ -2517,17 +2643,34 @@ function findMarriageCivilRecordMatch(PDO $pdo, string $citizenName, string $dat
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $husbandName = normalizePersonName((string) ($row['husband_name'] ?? ''));
-        $wifeName = normalizePersonName((string) ($row['wife_name'] ?? ''));
         $husbandDob = (string) ($row['husband_birth_date'] ?? '');
         $wifeDob = (string) ($row['wife_birth_date'] ?? '');
 
-        if ($normalized === $husbandName && $dateOfBirth === $husbandDob) {
+        $husband = splitFullName((string) ($row['husband_name'] ?? ''));
+        if ($dateOfBirth === $husbandDob && personNamePartsMatchOptionalMiddle(
+            $nameParts['first_name'],
+            $nameParts['middle_name'],
+            $nameParts['last_name'],
+            $husband['first'],
+            $husband['middle'] !== '' ? $husband['middle'] : null,
+            $husband['last']
+        )) {
             $row['matched_sex'] = 'male';
+
             return $row;
         }
-        if ($normalized === $wifeName && $dateOfBirth === $wifeDob) {
+
+        $wife = splitFullName((string) ($row['wife_name'] ?? ''));
+        if ($dateOfBirth === $wifeDob && personNamePartsMatchOptionalMiddle(
+            $nameParts['first_name'],
+            $nameParts['middle_name'],
+            $nameParts['last_name'],
+            $wife['first'],
+            $wife['middle'] !== '' ? $wife['middle'] : null,
+            $wife['last']
+        )) {
             $row['matched_sex'] = 'female';
+
             return $row;
         }
     }
@@ -2535,14 +2678,20 @@ function findMarriageCivilRecordMatch(PDO $pdo, string $citizenName, string $dat
     return null;
 }
 
-function findCivilRecordMatch(PDO $pdo, string $citizenName, string $dateOfBirth, string $documentType = '', ?string $dateOfMarriage = null): ?array
+/**
+ * @param array<string, mixed>|string $citizenNameOrParts Name parts array, or legacy full-name string
+ */
+function findCivilRecordMatch(PDO $pdo, array|string $citizenNameOrParts, string $dateOfBirth, string $documentType = '', ?string $dateOfMarriage = null): ?array
 {
+    $nameParts = is_array($citizenNameOrParts)
+        ? normalizeCitizenNameParts($citizenNameOrParts)
+        : normalizeCitizenNameParts(parsePersonNameToParts(trim((string) $citizenNameOrParts)));
+
     if ($documentType === 'marriage') {
-        return findMarriageCivilRecordMatch($pdo, $citizenName, $dateOfBirth, $dateOfMarriage);
+        return findMarriageCivilRecordMatch($pdo, $nameParts, $dateOfBirth, $dateOfMarriage);
     }
 
-    $normalized = normalizePersonName($citizenName);
-    if ($normalized === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfBirth)) {
+    if ($nameParts['first_name'] === '' || $nameParts['last_name'] === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfBirth)) {
         return null;
     }
 
@@ -2563,18 +2712,22 @@ function findCivilRecordMatch(PDO $pdo, string $citizenName, string $dateOfBirth
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        if (normalizePersonNameParts(
+        if (!personNamePartsMatchOptionalMiddle(
+            $nameParts['first_name'],
+            $nameParts['middle_name'],
+            $nameParts['last_name'],
             (string) ($row['first_name'] ?? ''),
             $row['middle_name'] ?? null,
             (string) ($row['last_name'] ?? '')
-        ) === $normalized) {
-            if (!function_exists('hydrateCivilRecordRow')) {
-                require_once __DIR__ . '/civil_record_schema.php';
-            }
-            ensureCivilRecordTypeTables($pdo);
-
-            return hydrateCivilRecordRow($pdo, $row);
+        )) {
+            continue;
         }
+        if (!function_exists('hydrateCivilRecordRow')) {
+            require_once __DIR__ . '/civil_record_schema.php';
+        }
+        ensureCivilRecordTypeTables($pdo);
+
+        return hydrateCivilRecordRow($pdo, $row);
     }
 
     return null;
@@ -2650,7 +2803,8 @@ function isCivilRecordVerifiedInSession(string $citizenName, string $dateOfBirth
     if (!$verified) {
         return false;
     }
-    if (normalizePersonName($citizenName) !== ($verified['name'] ?? '')
+    $parts = parsePersonNameToParts($citizenName);
+    if (!verifiedSessionNameMatches((string) ($verified['name'] ?? ''), $parts)
         || $dateOfBirth !== ($verified['dob'] ?? '')) {
         return false;
     }
@@ -2671,12 +2825,13 @@ function isCivilRecordVerifiedInSession(string $citizenName, string $dateOfBirth
     return true;
 }
 
-function verifyCitizenCivilRecord(PDO $pdo, string $citizenName, string $dateOfBirth, string $documentType = '', ?string $dateOfMarriage = null): array
+function verifyCitizenCivilRecord(PDO $pdo, array $nameParts, string $dateOfBirth, string $documentType = '', ?string $dateOfMarriage = null): array
 {
-    $citizenName = trim($citizenName);
-    if ($citizenName === '') {
-        return ['ok' => false, 'error' => 'Enter your first name, middle name (if any), and last name on record first.'];
+    $nameParts = normalizeCitizenNameParts($nameParts);
+    if ($nameParts['first_name'] === '' || $nameParts['last_name'] === '') {
+        return ['ok' => false, 'error' => 'Enter your first name and last name on record first.'];
     }
+    $citizenName = formatPersonName($nameParts['first_name'], $nameParts['middle_name'], $nameParts['last_name']);
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfBirth)) {
         return ['ok' => false, 'error' => 'Enter your date of birth first.'];
     }
@@ -2686,7 +2841,7 @@ function verifyCitizenCivilRecord(PDO $pdo, string $citizenName, string $dateOfB
         }
     }
 
-    $row = findCivilRecordMatch($pdo, $citizenName, $dateOfBirth, $documentType, $dateOfMarriage);
+    $row = findCivilRecordMatch($pdo, $nameParts, $dateOfBirth, $documentType, $dateOfMarriage);
     if ($row) {
         markCivilRecordVerified(
             $citizenName,
@@ -4252,6 +4407,10 @@ function citizenEmailPlain(array $mail): string
         $lines[] = $label . ': ' . $value;
     }
     $lines[] = '';
+    if (!empty($mail['requirements_plain'])) {
+        $lines[] = trim((string) $mail['requirements_plain']);
+        $lines[] = '';
+    }
     if (!empty($mail['note'])) {
         $lines[] = trim((string) $mail['note']);
         $lines[] = '';
@@ -4342,6 +4501,7 @@ function citizenEmailHtml(array $mail): string
         . '<tr><td style="padding:18px 20px;">' . $codeBlock
         . ($detailRows !== '' ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">' . $detailRows . '</table>' : '')
         . '</td></tr></table>'
+        . ($mail['requirements_html'] ?? '')
         . $noteHtml
         . $button
         . '</td></tr>'
@@ -4923,25 +5083,39 @@ function notifyAppointmentBooked(array $data): bool
         return false;
     }
 
+    require_once __DIR__ . '/appointment_notice_requirements.php';
+
+    $serviceType = (string) ($data['service_type'] ?? $data['service_label'] ?? '');
+    $row = [
+        'service_type'   => $serviceType,
+        'source'         => (string) ($data['source'] ?? 'standalone'),
+        'tracking_code'  => (string) ($data['tracking_code'] ?? ''),
+    ];
+
+    $mail = [
+        'heading'      => 'Appointment booked',
+        'name'         => personNameFromRow($data),
+        'intro'        => 'Your appointment was booked successfully.',
+        'code_label'   => 'Appointment code',
+        'code'         => $data['appointment_code'],
+        'details'      => [
+            'Service'  => appointmentServiceLabel($serviceType),
+            'Schedule' => formatAppointmentEmailDisplay($data['appointment_date'] ?? null, $data['appointment_time'] ?? null),
+            'Status'   => 'Awaiting confirmation',
+        ],
+        'note'         => isStandaloneSpecialServiceAppointmentRow($row)
+            ? 'Your preferred date and time are saved. Staff must still confirm your visit. Prepare the documents listed below before you come. We will email you when the status changes and at 5 hours, 3 hours, and 1 hour before a confirmed appointment.'
+            : 'Your preferred date and time are saved, but staff must still confirm your visit. We will email this Gmail address when the status changes and at 5 hours, 3 hours, and 1 hour before a confirmed appointment.',
+        'button_label' => 'Track appointment',
+        'button_url'   => trackRequestUrl($data['appointment_code']),
+        'accent'       => '#2563eb',
+    ];
+    $mail = appendSpecialServiceRequirementsToCitizenMail($mail, $row);
+
     return sendCitizenNotice(
         $data['email'],
         'ALCROS — Appointment booked (' . $data['appointment_code'] . ')',
-        [
-            'heading'      => 'Appointment booked',
-            'name'         => personNameFromRow($data),
-            'intro'        => 'Your appointment was booked successfully.',
-            'code_label'   => 'Appointment code',
-            'code'         => $data['appointment_code'],
-            'details'      => [
-                'Service'  => (string) ($data['service_label'] ?? ''),
-                'Schedule' => formatAppointmentEmailDisplay($data['appointment_date'] ?? null, $data['appointment_time'] ?? null),
-                'Status'   => 'Awaiting confirmation',
-            ],
-            'note'         => 'Your preferred date and time are saved, but staff must still confirm your visit. We will email this Gmail address when the status changes and at 5 hours, 3 hours, and 1 hour before a confirmed appointment.',
-            'button_label' => 'Track appointment',
-            'button_url'   => trackRequestUrl($data['appointment_code']),
-            'accent'       => '#2563eb',
-        ],
+        $mail,
         'appointment_booked'
     );
 }
@@ -4950,7 +5124,8 @@ function notifyAppointmentStatusChange(PDO $pdo, int $appointmentId, string $new
 {
     ensureCitizenNotifyColumns($pdo);
     $stmt = $pdo->prepare(
-        'SELECT appointment_code, first_name, middle_name, last_name, email, service_type, appointment_date, appointment_time, notify_email
+        'SELECT appointment_code, first_name, middle_name, last_name, email, service_type, appointment_date, appointment_time,
+                notify_email, source, tracking_code
          FROM appointments WHERE id = ? LIMIT 1'
     );
     $stmt->execute([$appointmentId]);
@@ -4959,6 +5134,8 @@ function notifyAppointmentStatusChange(PDO $pdo, int $appointmentId, string $new
         return;
     }
 
+    require_once __DIR__ . '/appointment_notice_requirements.php';
+
     $accent = match ($newStatus) {
         'completed' => '#16a34a',
         'cancelled', 'no_show' => '#dc2626',
@@ -4966,25 +5143,33 @@ function notifyAppointmentStatusChange(PDO $pdo, int $appointmentId, string $new
         default => '#2563eb',
     };
 
+    $mail = [
+        'heading'      => 'Appointment update',
+        'name'         => personNameFromRow($row),
+        'intro'        => 'There is an update on your appointment.',
+        'code_label'   => 'Appointment code',
+        'code'         => $row['appointment_code'],
+        'details'      => [
+            'Service'    => appointmentServiceLabel((string) $row['service_type']),
+            'Schedule'   => formatAppointmentEmailDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
+            'New status' => appointmentStatusLabel($newStatus),
+        ],
+        'note'         => appointmentStatusMessage($newStatus),
+        'button_label' => 'View full details',
+        'button_url'   => trackRequestUrl($row['appointment_code']),
+        'accent'       => $accent,
+    ];
+    if ($newStatus === 'confirmed') {
+        if (isStandaloneSpecialServiceAppointmentRow($row)) {
+            $mail['note'] = 'Your appointment has been confirmed by our office. Please arrive on time and prepare the documents listed below.';
+        }
+        $mail = appendSpecialServiceRequirementsToCitizenMail($mail, $row);
+    }
+
     sendCitizenNotice(
         $row['email'],
         'ALCROS — Appointment update (' . $row['appointment_code'] . ')',
-        [
-            'heading'      => 'Appointment update',
-            'name'         => personNameFromRow($row),
-            'intro'        => 'There is an update on your appointment.',
-            'code_label'   => 'Appointment code',
-            'code'         => $row['appointment_code'],
-            'details'      => [
-                'Service'    => appointmentServiceLabel((string) $row['service_type']),
-                'Schedule'   => formatAppointmentEmailDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
-                'New status' => appointmentStatusLabel($newStatus),
-            ],
-            'note'         => appointmentStatusMessage($newStatus),
-            'button_label' => 'View full details',
-            'button_url'   => trackRequestUrl($row['appointment_code']),
-            'accent'       => $accent,
-        ],
+        $mail,
         'appointment_' . $newStatus
     );
 }
@@ -5044,26 +5229,34 @@ function notifyAppointmentReminder(array $row, int $hoursBefore): bool
         return false;
     }
 
+    require_once __DIR__ . '/appointment_notice_requirements.php';
+
     $hoursLabel = reminderHoursLabel($hoursBefore);
+
+    $mail = [
+        'heading'      => 'Appointment reminder',
+        'name'         => personNameFromRow($row),
+        'intro'        => 'This is a reminder that your appointment is in about ' . $hoursLabel . '.',
+        'code_label'   => 'Appointment code',
+        'code'         => $row['appointment_code'],
+        'details'      => [
+            'Service'  => appointmentServiceLabel((string) ($row['service_type'] ?? '')),
+            'Schedule' => formatAppointmentEmailDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
+        ],
+        'note'         => isStandaloneSpecialServiceAppointmentRow($row)
+            ? 'Please arrive on time and prepare the documents listed below.'
+            : 'Please arrive on time and bring a valid ID.',
+        'button_label' => 'View appointment',
+        'button_url'   => trackRequestUrl((string) $row['appointment_code']),
+        'accent'       => '#d97706',
+    ];
+    $mail = appendSpecialServiceRequirementsToCitizenMail($mail, $row);
 
     return sendCitizenNotice(
         (string) $row['email'],
         'ALCROS — Appointment in ' . $hoursLabel . ' (' . $row['appointment_code'] . ')',
-        [
-            'heading'      => 'Appointment reminder',
-            'name'         => personNameFromRow($row),
-            'intro'        => 'This is a reminder that your appointment is in about ' . $hoursLabel . '.',
-            'code_label'   => 'Appointment code',
-            'code'         => $row['appointment_code'],
-            'details'      => [
-                'Service'  => appointmentServiceLabel((string) ($row['service_type'] ?? '')),
-                'Schedule' => formatAppointmentEmailDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
-            ],
-            'note'         => 'Please arrive on time and bring a valid ID.',
-            'button_label' => 'View appointment',
-            'button_url'   => trackRequestUrl((string) $row['appointment_code']),
-            'accent'       => '#d97706',
-        ]
+        $mail,
+        'appointment_reminder_' . $hoursBefore . 'h'
     );
 }
 
@@ -5202,25 +5395,32 @@ function notifyAppointmentVisitSoon(array $row): bool
 
     $soonLabel = formatVisitSoonLabel($minutesUntil);
 
+    require_once __DIR__ . '/appointment_notice_requirements.php';
+
+    $mail = [
+        'heading'      => 'Your appointment is coming up soon',
+        'name'         => personNameFromRow($row),
+        'intro'        => 'Your LCRO appointment is in about ' . $soonLabel . '. Please head to the office if you are not already on your way.',
+        'code_label'   => 'Appointment code',
+        'code'         => $row['appointment_code'],
+        'details'      => [
+            'Service'  => appointmentServiceLabel((string) ($row['service_type'] ?? '')),
+            'Schedule' => formatAppointmentEmailDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
+            'Status'   => appointmentStatusLabel((string) ($row['status'] ?? 'scheduled')),
+        ],
+        'note'         => isStandaloneSpecialServiceAppointmentRow($row)
+            ? 'Please arrive on time and prepare the documents listed below.'
+            : 'Please arrive on time and bring a valid ID.',
+        'button_label' => 'View appointment',
+        'button_url'   => trackRequestUrl((string) $row['appointment_code']),
+        'accent'       => '#d97706',
+    ];
+    $mail = appendSpecialServiceRequirementsToCitizenMail($mail, $row);
+
     return sendCitizenNotice(
         (string) $row['email'],
         'ALCROS — Appointment today in ' . $soonLabel . ' (' . $row['appointment_code'] . ')',
-        [
-            'heading'      => 'Your appointment is coming up soon',
-            'name'         => personNameFromRow($row),
-            'intro'        => 'Your LCRO appointment is in about ' . $soonLabel . '. Please head to the office if you are not already on your way.',
-            'code_label'   => 'Appointment code',
-            'code'         => $row['appointment_code'],
-            'details'      => [
-                'Service'  => appointmentServiceLabel((string) ($row['service_type'] ?? '')),
-                'Schedule' => formatAppointmentEmailDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
-                'Status'   => appointmentStatusLabel((string) ($row['status'] ?? 'scheduled')),
-            ],
-            'note'         => 'Please arrive on time and bring a valid ID.',
-            'button_label' => 'View appointment',
-            'button_url'   => trackRequestUrl((string) $row['appointment_code']),
-            'accent'       => '#d97706',
-        ],
+        $mail,
         'visit_soon'
     );
 }
@@ -5256,7 +5456,7 @@ function maybeSendVisitSoonEmail(PDO $pdo, string $table, int $id): bool
     if ($table === 'appointments') {
         $stmt = $pdo->prepare(
             'SELECT id, appointment_code, first_name, middle_name, last_name, email, phone, service_type, status,
-                    appointment_date, appointment_time, notify_email, notify_sms, reminder_1h_sent_at
+                    appointment_date, appointment_time, notify_email, notify_sms, source, tracking_code, reminder_1h_sent_at
              FROM appointments WHERE id = ? LIMIT 1'
         );
         $stmt->execute([$id]);
@@ -5392,10 +5592,11 @@ function sendDueStandaloneAppointmentEmailReminders(PDO $pdo): int
 {
     $stmt = $pdo->query(
         "SELECT id, appointment_code, first_name, middle_name, last_name, email, service_type,
-                appointment_date, appointment_time, notify_email,
+                appointment_date, appointment_time, notify_email, source, tracking_code,
                 reminder_5h_sent_at, reminder_3h_sent_at, reminder_1h_sent_at
-         FROM appointments
+         FROM appointments a
          WHERE notify_email = 1
+           AND " . appointmentStandaloneSql('a') . "
            AND email IS NOT NULL AND email != ''
            AND status IN ('scheduled', 'confirmed')
            AND TIMESTAMP(appointment_date, appointment_time) > NOW()
@@ -5483,11 +5684,12 @@ function formatAppointmentDisplay(?string $date, ?string $time): string
     if (!$date) {
         return '';
     }
-    $out = formatDateDisplay($date);
+    $out = formatDateEmailDisplay($date);
     if ($time) {
-        $ts = strtotime($time);
+        $ts = strtotime(trim($time));
         $out .= $ts ? ' · ' . date('g:i A', $ts) : '';
     }
+
     return $out;
 }
 

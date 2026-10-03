@@ -153,6 +153,10 @@
         return cfg.documentKind !== 'certification';
     }
 
+    function isCertificationDocument() {
+        return cfg.documentKind === 'certification';
+    }
+
     function localPreviewSection() {
         return document.querySelector('.print-cert-previews--local');
     }
@@ -178,10 +182,17 @@
         bothBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
     }
 
+    function isBackFillTabActive() {
+        return !!(
+            document.querySelector('.print-cert-fill-tab[data-fill-tab="back"].is-active')
+            || document.querySelector('.records-entry-print-fill__tab[data-entry-fill-tab="back"].is-active')
+        );
+    }
+
     function syncBackPageOptionsVisibility() {
         var section = document.getElementById('backPageOptions');
         if (!section) return;
-        section.hidden = previewViewMode === 'front';
+        section.hidden = !isBackFillTabActive();
     }
 
     function setPreviewView(mode) {
@@ -215,17 +226,146 @@
         return !!document.querySelector('[data-preview-viewport]');
     }
 
-    function computePreviewFitScale(naturalWidth, naturalHeight, availableWidth, availableHeight) {
+    function localPreviewPaperPixels() {
+        var section = document.querySelector('.print-cert-previews');
+        var defaultW = cfg.documentKind === 'certification' ? '210' : '215.9';
+        var defaultH = cfg.documentKind === 'certification' ? '297' : '358.9';
+        var paperW = parseFloat((section && section.getAttribute('data-paper-w')) || cfg.paperWidthMm || defaultW);
+        var paperH = parseFloat((section && section.getAttribute('data-paper-h')) || cfg.paperHeightMm || defaultH);
+        var pxPerMm = 96 / 25.4;
+        return {
+            width: Math.max(Math.round(paperW * pxPerMm), 1),
+            height: Math.max(Math.round(paperH * pxPerMm), 1)
+        };
+    }
+
+    function localPreviewContentSize(iframe) {
+        var size = localPreviewPaperPixels();
+        var width = size.width;
+        var height = size.height;
+        try {
+            var doc = iframe.contentDocument;
+            if (doc && doc.body) {
+                var root = doc.documentElement;
+                var body = doc.body;
+                var sheet = doc.querySelector('.print-sheet');
+                var contentW = Math.ceil(Math.max(
+                    sheet ? sheet.scrollWidth : 0,
+                    sheet ? sheet.offsetWidth : 0,
+                    root ? root.scrollWidth : 0,
+                    root ? root.offsetWidth : 0,
+                    body.scrollWidth,
+                    body.offsetWidth
+                ));
+                var contentH = Math.ceil(Math.max(
+                    sheet ? sheet.scrollHeight : 0,
+                    sheet ? sheet.offsetHeight : 0,
+                    root ? root.scrollHeight : 0,
+                    root ? root.offsetHeight : 0,
+                    body.scrollHeight,
+                    body.offsetHeight
+                ));
+                if (contentW > 0) width = contentW;
+                if (contentH > 0) height = contentH;
+            }
+        } catch (err) {
+            // ignore
+        }
+        return { width: width, height: height };
+    }
+
+    function bindPreviewViewportWheel(iframe) {
+        if (!iframe || iframe.dataset.viewportWheelBound === '1') return;
+        var viewport = iframe.closest('[data-preview-viewport]');
+        if (!viewport) return;
+        iframe.dataset.viewportWheelBound = '1';
+
+        function forwardWheel(e) {
+            var maxScrollTop = viewport.scrollHeight - viewport.clientHeight;
+            var maxScrollLeft = viewport.scrollWidth - viewport.clientWidth;
+            if (maxScrollTop <= 0 && maxScrollLeft <= 0) return;
+            if (e.deltaY && maxScrollTop > 0) {
+                viewport.scrollTop = Math.min(maxScrollTop, Math.max(0, viewport.scrollTop + e.deltaY));
+            }
+            if (e.deltaX && maxScrollLeft > 0) {
+                viewport.scrollLeft = Math.min(maxScrollLeft, Math.max(0, viewport.scrollLeft + e.deltaX));
+            }
+            e.preventDefault();
+        }
+
+        iframe.addEventListener('wheel', forwardWheel, { passive: false });
+        try {
+            var doc = iframe.contentDocument;
+            if (doc) {
+                doc.addEventListener('wheel', forwardWheel, { passive: false });
+            }
+        } catch (err) {
+            // ignore
+        }
+    }
+
+    function computePreviewFitScale(naturalWidth, naturalHeight, availableWidth, availableHeight, coverGray) {
         var widthScale = availableWidth / naturalWidth;
         var heightScale = availableHeight / naturalHeight;
-        // Cover the gray viewport (like object-fit: cover); edges may clip slightly.
-        var fitScale = Math.max(widthScale, heightScale);
+        var fitScale;
+        if (coverGray) {
+            fitScale = Math.max(widthScale, heightScale);
+        } else {
+            // Bond certificates: fit width so tall forms (e.g. death) stay fully scrollable vertically.
+            fitScale = widthScale;
+            if (!isFinite(fitScale) || fitScale <= 0) {
+                fitScale = Math.min(widthScale, heightScale);
+            }
+        }
         var scale = fitScale * previewZoomLevel;
         scale = Math.min(Math.max(scale, 0.05), 2);
         return Math.round(scale * 50) / 50;
     }
 
-    function fitLocalPreviewFrame(side) {
+    function fitCertificationPreviewFrame(side) {
+        var viewport = document.querySelector('[data-preview-viewport="' + side + '"]');
+        var scaler = document.querySelector('[data-preview-scaler="' + side + '"]');
+        var iframe = side === 'back' ? document.getElementById('previewBack') : document.getElementById('previewFront');
+        if (!viewport || !scaler || !iframe) return;
+
+        scaler.style.transform = 'none';
+        iframe.style.position = '';
+        iframe.style.top = '';
+        iframe.style.left = '';
+        iframe.style.transform = 'none';
+        iframe.style.width = '';
+        iframe.style.height = '';
+
+        var paperPx = localPreviewPaperPixels();
+        var contentSize = localPreviewContentSize(iframe);
+        var naturalWidth = Math.max(paperPx.width, contentSize.width);
+        var naturalHeight = Math.max(paperPx.height, contentSize.height);
+
+        var availableWidth = Math.max(viewport.clientWidth, 120);
+        var availableHeight = Math.max(viewport.clientHeight, 120);
+        var scale = computePreviewFitScale(paperPx.width, paperPx.height, availableWidth, availableHeight, true);
+        var scaledWidth = Math.ceil(naturalWidth * scale);
+        var scaledHeight = Math.ceil(naturalHeight * scale) + 4;
+
+        viewport.style.overflowX = 'hidden';
+        viewport.style.overflowY = 'auto';
+
+        scaler.style.transform = 'none';
+        scaler.style.overflow = 'hidden';
+        scaler.style.width = scaledWidth + 'px';
+        scaler.style.height = scaledHeight + 'px';
+        scaler.style.flexShrink = '0';
+        scaler.style.position = 'relative';
+        scaler.style.margin = '0 auto';
+
+        iframe.style.width = naturalWidth + 'px';
+        iframe.style.height = naturalHeight + 'px';
+        iframe.style.position = 'static';
+        iframe.style.transform = 'scale(' + scale.toFixed(2) + ') translateZ(0)';
+        iframe.style.transformOrigin = 'top left';
+    }
+
+    function fitBondCertificatePreviewFrame(side) {
         if (!isLocalPreviewSideVisible(side)) return;
 
         var viewport = document.querySelector('[data-preview-viewport="' + side + '"]');
@@ -234,24 +374,41 @@
         if (!viewport || !scaler || !iframe) return;
 
         scaler.style.transform = 'none';
-        var naturalWidth = iframe.offsetWidth;
-        var naturalHeight = iframe.offsetHeight;
-        if (!naturalWidth || !naturalHeight) return;
+        iframe.style.position = 'static';
+        iframe.style.transform = 'none';
+        iframe.style.width = '';
+        iframe.style.height = '';
+        iframe.style.top = '';
+        iframe.style.left = '';
+
+        var contentSize = localPreviewContentSize(iframe);
+        var naturalWidth = contentSize.width;
+        var naturalHeight = contentSize.height;
+        var layoutW = iframe.offsetWidth;
+        var layoutH = iframe.offsetHeight;
+        if (layoutW > naturalWidth) naturalWidth = layoutW;
+        if (layoutH > naturalHeight) naturalHeight = layoutH;
 
         var availableWidth = Math.max(viewport.clientWidth, 120);
         var availableHeight = Math.max(viewport.clientHeight, 120);
-        var scale = computePreviewFitScale(naturalWidth, naturalHeight, availableWidth, availableHeight);
-        var scaledWidth = Math.round(naturalWidth * scale);
-        var scaledHeight = Math.round(naturalHeight * scale);
+        var scale = computePreviewFitScale(naturalWidth, naturalHeight, availableWidth, availableHeight, false);
+        var scaledWidth = Math.ceil(naturalWidth * scale);
+        var scaledHeight = Math.ceil(naturalHeight * scale) + 4;
+
+        viewport.style.overflow = 'auto';
 
         scaler.style.transform = 'none';
-        scaler.style.overflow = 'hidden';
+        scaler.style.overflow = 'visible';
         scaler.style.width = scaledWidth + 'px';
         scaler.style.height = scaledHeight + 'px';
         scaler.style.flexShrink = '0';
+        scaler.style.position = 'relative';
 
         iframe.style.width = naturalWidth + 'px';
         iframe.style.height = naturalHeight + 'px';
+        iframe.style.position = 'absolute';
+        iframe.style.top = '0';
+        iframe.style.left = '0';
         iframe.style.transform = 'scale(' + scale.toFixed(2) + ') translateZ(0)';
         iframe.style.transformOrigin = 'top left';
 
@@ -262,11 +419,35 @@
         }
     }
 
+    function fitLocalPreviewFrame(side) {
+        if (isCertificationDocument()) {
+            fitCertificationPreviewFrame(side);
+            return;
+        }
+        fitBondCertificatePreviewFrame(side);
+    }
+
     function fitLocalPreviewFrames() {
         if (!hasScaledPreviewViewport()) return;
         applyLocalPaperCssVars();
         fitLocalPreviewFrame('front');
         fitLocalPreviewFrame('back');
+    }
+
+    function bindPreviewViewportResizeObservers() {
+        if (!hasScaledPreviewViewport() || typeof window.ResizeObserver !== 'function') {
+            return;
+        }
+        document.querySelectorAll('[data-preview-viewport]').forEach(function (viewport) {
+            if (viewport.dataset.resizeObserved === '1') {
+                return;
+            }
+            viewport.dataset.resizeObserved = '1';
+            var ro = new ResizeObserver(function () {
+                window.requestAnimationFrame(fitLocalPreviewFrames);
+            });
+            ro.observe(viewport);
+        });
     }
 
     function applyQueryParams(url, extra) {
@@ -314,6 +495,9 @@
         parsed.searchParams.set('page', page);
         if (opts.preview !== false) {
             parsed.searchParams.set('preview', '1');
+            if (hasScaledPreviewViewport() && (isLocalCertificate() || isCertificationDocument())) {
+                parsed.searchParams.set('embedded', '1');
+            }
             if (cfg.documentKind === 'certification') {
                 if (showBackgroundEnabled()) {
                     parsed.searchParams.set('background', '1');
@@ -338,11 +522,32 @@
         return parsed.pathname + parsed.search;
     }
 
+    function isPrintFillInFormBackPanel(el) {
+        if (!el || !el.closest) return false;
+        return !!(
+            el.closest('.print-cert-fill-grid[data-fill-panel="back"]')
+            || el.closest('.records-entry-print-fill__panel[data-entry-fill-panel="back"]')
+        );
+    }
+
+    function optionalSectionEnabled(group, flags) {
+        if (!group) {
+            return true;
+        }
+        return !!flags[group];
+    }
+
+    /** Back-page fill panels: visible on Back tab; optional sections also require Back Page Options checkboxes. */
     function syncAffidavitFillFields() {
         var flags = optionFlags();
+        var backFillActive = isBackFillTabActive();
         document.querySelectorAll('[data-fill-group]').forEach(function (el) {
             var group = el.getAttribute('data-fill-group');
-            el.hidden = !flags[group];
+            if (isPrintFillInFormBackPanel(el)) {
+                el.hidden = !backFillActive || !optionalSectionEnabled(group, flags);
+                return;
+            }
+            el.hidden = !optionalSectionEnabled(group, flags);
         });
     }
 
@@ -359,7 +564,13 @@
         }
 
         if (hasScaledPreviewViewport()) {
-            window.requestAnimationFrame(fitLocalPreviewFrames);
+            if (!isCertificationDocument()) {
+                bindPreviewViewportWheel(iframe);
+            }
+            window.requestAnimationFrame(function () {
+                fitLocalPreviewFrames();
+                window.requestAnimationFrame(fitLocalPreviewFrames);
+            });
         }
 
         doc.querySelectorAll('.print-field--editable').forEach(function (el) {
@@ -598,18 +809,25 @@
             }
         }
 
-        document.querySelectorAll('[data-fill-tab]').forEach(function (btn) {
+        document.querySelectorAll('.print-cert-fill [data-fill-tab]').forEach(function (btn) {
             btn.addEventListener('click', function () {
+                var fillRoot = btn.closest('.print-cert-fill');
+                if (!fillRoot) return;
                 var side = btn.getAttribute('data-fill-tab');
+                if (!side) return;
                 syncCalibrationLink(side);
-                document.querySelectorAll('[data-fill-tab]').forEach(function (tab) {
+                fillRoot.querySelectorAll('[data-fill-tab]').forEach(function (tab) {
                     var active = tab.getAttribute('data-fill-tab') === side;
                     tab.classList.toggle('is-active', active);
                     tab.setAttribute('aria-selected', active ? 'true' : 'false');
                 });
-                document.querySelectorAll('[data-fill-panel]').forEach(function (panel) {
-                    panel.hidden = panel.getAttribute('data-fill-panel') !== side;
+                fillRoot.querySelectorAll('[data-fill-panel]').forEach(function (panel) {
+                    var isActive = panel.getAttribute('data-fill-panel') === side;
+                    panel.hidden = !isActive;
+                    panel.setAttribute('aria-hidden', isActive ? 'false' : 'true');
                 });
+                syncAffidavitFillFields();
+                syncBackPageOptionsVisibility();
                 if (isLocalCertificate()) {
                     setPreviewView(side);
                 }
@@ -750,7 +968,11 @@
 
         ['optPaternity', 'optDelayedBirth', 'optDelayedMarriage', 'optDelayedDeath', 'optInfantSection', 'optPostmortem', 'optShowBackground'].forEach(function (id) {
             var el = document.getElementById(id);
-            if (el) el.addEventListener('change', refreshPreviews);
+            if (!el) return;
+            el.addEventListener('change', function () {
+                syncAffidavitFillFields();
+                refreshPreviews();
+            });
         });
     }
 
@@ -774,7 +996,10 @@
     bindActions();
     applyLocalPaperCssVars();
     setPreviewView('front');
+    syncAffidavitFillFields();
+    syncBackPageOptionsVisibility();
     syncPreviewFrameSize();
+    bindPreviewViewportResizeObservers();
     window.addEventListener('resize', syncPreviewFrameSize);
     window.addEventListener('pageshow', function (e) {
         if (e.persisted) {

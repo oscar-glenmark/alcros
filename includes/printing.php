@@ -783,7 +783,7 @@ function resolveCivilRecordForRequest(PDO $pdo, array $request): ?array
         }
     }
 
-    $name = personNameFromRow($request);
+    $nameParts = personNamePartsFromInput($request);
     $dob = (string) ($request['date_of_birth'] ?? '');
     $type = (string) ($request['document_type'] ?? '');
     $dom = $request['date_of_marriage'] ?? null;
@@ -792,7 +792,7 @@ function resolveCivilRecordForRequest(PDO $pdo, array $request): ?array
         return null;
     }
 
-    $match = findCivilRecordMatch($pdo, $name, $dob, $type, $dom);
+    $match = findCivilRecordMatch($pdo, $nameParts, $dob, $type, $dom);
     if ($match) {
         return fetchFullCivilRecord($pdo, (int) $match['id']);
     }
@@ -1678,6 +1678,46 @@ function printFillFieldGroup(string $fieldName): string
     return '';
 }
 
+function printOptionalSectionOptionKey(string $group): ?string
+{
+    return match ($group) {
+        'paternity'        => 'include_paternity_affidavit',
+        'delayed_birth'    => 'include_delayed_birth_affidavit',
+        'delayed_marriage' => 'include_delayed_marriage_affidavit',
+        'delayed_death'    => 'include_delayed_death_affidavit',
+        'infant_section'   => 'include_infant_section',
+        'postmortem'       => 'include_postmortem',
+        default            => null,
+    };
+}
+
+/** Whether an optional back-page section is enabled for print/preview (Back Page Options checkboxes). */
+function printFieldOptionalSectionEnabled(string $fieldName, array $options): bool
+{
+    $group = printFillFieldGroup($fieldName);
+    if ($group === '') {
+        return true;
+    }
+    $optionKey = printOptionalSectionOptionKey($group);
+    if ($optionKey === null) {
+        return true;
+    }
+
+    return !empty($options[$optionKey]);
+}
+
+/** @param array<string, mixed> $values @param array<string, mixed> $options */
+function printStripExcludedOptionalSections(array $values, array $options): array
+{
+    foreach (array_keys($values) as $fieldName) {
+        if (!printFieldOptionalSectionEnabled($fieldName, $options)) {
+            unset($values[$fieldName]);
+        }
+    }
+
+    return $values;
+}
+
 /** @return array<string, string> Catalog + custom calibration field labels for front and back pages. */
 function printFillFieldLabelsForType(PDO $pdo, string $certificateType): array
 {
@@ -1995,6 +2035,7 @@ function printCertificate(
 
     $fields = getPrintFields($pdo, (int) $template['id'], empty($options['include_disabled_fields']));
     $values = printBuildFieldValues($record, $certificateType, $options);
+    $values = printStripExcludedOptionalSections($values, $options);
     $templateCalibration = getPrintCalibration($pdo, (int) $template['id']);
     $globalCalibration = printGlobalCalibration();
 
@@ -2076,6 +2117,9 @@ function renderPrintOverlayHtml(array $printData, array $options = []): string
     foreach ($fields as $field) {
         $name = (string) $field['field_name'];
         if (!empty($options['hide_record_registry_fields']) && printIsRecordRegistryField($name)) {
+            continue;
+        }
+        if (!$calibrationPreview && !printFieldOptionalSectionEnabled($name, $options)) {
             continue;
         }
 
@@ -2715,6 +2759,23 @@ function civilRecordExpandPrintFieldInput(array $input, string $type): array
     } elseif ($type === 'marriage') {
         csvAssignIfEmpty($input, 'husband_name', csvPersonNameFromParts($input, 'husband_'));
         csvAssignIfEmpty($input, 'wife_name', csvPersonNameFromParts($input, 'wife_'));
+        foreach (['husband', 'wife'] as $role) {
+            $parts = personNamePartsFromInput($input, $role . '_');
+            if ($parts['first_name'] !== '' || $parts['last_name'] !== '') {
+                csvAssignIfEmpty($input, $role . '_first_name', $parts['first_name']);
+                csvAssignIfEmpty($input, $role . '_middle_name', $parts['middle_name'] ?? '');
+                csvAssignIfEmpty($input, $role . '_last_name', $parts['last_name']);
+                continue;
+            }
+            $full = trim((string) ($input[$role . '_name'] ?? ''));
+            if ($full === '') {
+                continue;
+            }
+            $split = splitFullName($full);
+            csvAssignIfEmpty($input, $role . '_first_name', $split['first']);
+            csvAssignIfEmpty($input, $role . '_middle_name', $split['middle']);
+            csvAssignIfEmpty($input, $role . '_last_name', $split['last']);
+        }
         csvAssignDateIfEmpty($input, 'husband_birth_date', csvDateFromPrintParts($input, 'husband_birth'));
         csvAssignDateIfEmpty($input, 'wife_birth_date', csvDateFromPrintParts($input, 'wife_birth'));
         csvAssignIfEmpty($input, 'husband_age', $printFill['husband_age'] ?? '');

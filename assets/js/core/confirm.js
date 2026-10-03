@@ -327,6 +327,14 @@
             var submitter = resolveSubmitter(form, e.submitter);
             if (shouldSkipForm(form, submitter)) return;
 
+            if (form.id === 'entryForm' && typeof global.__alcrosValidateEntryForm === 'function') {
+                if (global.__alcrosValidateEntryForm(form)) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    return;
+                }
+            }
+
             e.preventDefault();
             e.stopImmediatePropagation();
 

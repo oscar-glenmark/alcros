@@ -259,6 +259,21 @@ $stmt->execute($params);
 $appointments = $stmt->fetchAll();
 $resultCount = count($appointments);
 
+// Stale sidebar/bookmarks may pin an old ?date= with no visits; jump to the nearest awaiting day.
+if (
+    $filterStatus === 'all'
+    && $search === ''
+    && $resultCount === 0
+    && $requestedViewDate !== null
+    && ($appointmentStats['total'] ?? 0) === 0
+    && countPendingAppointments($pdo) > 0
+) {
+    $suggestedDate = appointmentsManageSuggestedDate($pdo, alcrosTodayDate());
+    if ($suggestedDate !== $viewDate) {
+        redirectWithAuth('appointment.php', ['date' => $suggestedDate]);
+    }
+}
+
 $pageTitle = 'Appointments';
 $pageSubtitle = 'Review, confirm, and complete citizen visits and special service bookings.';
 $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecialchars(formatDateDisplay($viewDate)) . '</strong></p>';
@@ -429,7 +444,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                             <th>Citizen</th>
                             <th>Service</th>
                             <?php if ($isSearchMode): ?><th>Date</th><?php endif; ?>
-                            <th>Time</th>
+                            <th>Visit</th>
                             <?php if ($isRecentlyDeletedView): ?><th>Deleted</th><?php endif; ?>
                             <th>Status</th>
                             <th class="manage-cell-actions">Actions</th>
@@ -458,9 +473,9 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                             </td>
                             <td><span class="manage-doc-type"><?= htmlspecialchars(appointmentServiceLabel($ap['service_type'])) ?></span></td>
                             <?php if ($isSearchMode): ?>
-                            <td><span class="manage-date"><?= htmlspecialchars(formatDateDisplay($ap['appointment_date'])) ?></span></td>
+                            <td><span class="manage-date"><?= htmlspecialchars(formatDateEmailDisplay($ap['appointment_date'])) ?></span></td>
                             <?php endif; ?>
-                            <td><span class="manage-date"><?= date('g:i A', strtotime($ap['appointment_time'])) ?></span></td>
+                            <td><span class="manage-date"><?= htmlspecialchars(formatAppointmentDisplay($ap['appointment_date'] ?? null, $ap['appointment_time'] ?? null) ?: '—') ?></span></td>
                             <?php if ($isRecentlyDeletedView): ?>
                             <td><span class="manage-date"><?= !empty($ap['deleted_at']) ? htmlspecialchars(formatReportDateTime($ap['deleted_at'])) : '—' ?></span></td>
                             <?php endif; ?>

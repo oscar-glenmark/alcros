@@ -125,6 +125,142 @@ function civilRecordViewFieldLabel(string $field): string
     return ucwords(str_replace('_', ' ', $field));
 }
 
+/** @return list<string> */
+function civilRecordBirthChildEntryRequiredKeys(): array
+{
+    return [
+        'first_name',
+        'last_name',
+        'birth_date',
+        'birth_time',
+        'sex',
+        'place',
+        'birth_type',
+        'birth_order',
+        'birth_weight',
+        'registration_date',
+    ];
+}
+
+/** @return list<string> */
+function civilRecordDeathDeceasedEntryRequiredKeys(): array
+{
+    return [
+        'first_name',
+        'last_name',
+        'birth_date',
+        'registration_date',
+        'sex',
+        'residence_deceased',
+        'residence_length_place',
+        'residence_length_ph',
+        'nationality',
+        'civil_status',
+        'religion',
+        'place',
+        'age_death_years',
+        'age_death_months',
+        'age_death_days',
+        'age_death_hours',
+        'age_death_minutes',
+        'occupation',
+        'place_of_burial',
+        'surviving_spouse_name',
+        'surviving_spouse_address',
+    ];
+}
+
+/** @return list<string> */
+function civilRecordMarriageSpouseEntryRequiredKeys(string $prefix): array
+{
+    if (!in_array($prefix, ['husband', 'wife'], true)) {
+        return [];
+    }
+
+    return [
+        $prefix . '_first_name',
+        $prefix . '_last_name',
+        $prefix . '_birth_date',
+        $prefix . '_age',
+        $prefix . '_birth_place',
+        $prefix . '_citizenship',
+        $prefix . '_religion',
+        $prefix . '_civil_status',
+        $prefix . '_residence',
+        $prefix . '_father_name',
+        $prefix . '_mother_maiden_name',
+        $prefix . '_father_citizenship',
+        $prefix . '_mother_citizenship',
+        $prefix . '_consent_person_name',
+        $prefix . '_consent_relationship',
+        $prefix . '_consent_residence',
+    ];
+}
+
+function civilRecordInputFieldEmpty(array $input, string $key): bool
+{
+    if (!array_key_exists($key, $input)) {
+        return true;
+    }
+
+    $val = $input[$key];
+    if ($val === null) {
+        return true;
+    }
+
+    if (is_string($val)) {
+        return trim($val) === '';
+    }
+
+    if (is_int($val) || is_float($val)) {
+        return false;
+    }
+
+    return trim((string) $val) === '';
+}
+
+/** @return array<string, list<array{key: string, label: string}>> */
+function civilRecordManualEntryRequiredFieldsForJs(): array
+{
+    $mapKeys = static function (array $keys): array {
+        $out = [];
+        foreach ($keys as $key) {
+            $out[] = ['key' => $key, 'label' => civilRecordViewFieldLabel($key)];
+        }
+
+        return $out;
+    };
+
+    return [
+        'birth' => $mapKeys(civilRecordBirthChildEntryRequiredKeys()),
+        'death' => $mapKeys(civilRecordDeathDeceasedEntryRequiredKeys()),
+        'marriage' => $mapKeys(array_merge(
+            civilRecordMarriageSpouseEntryRequiredKeys('husband'),
+            civilRecordMarriageSpouseEntryRequiredKeys('wife')
+        )),
+    ];
+}
+
+/** Manual add/edit form — child, deceased, and spouse blocks (not CSV import). */
+function assertCivilRecordManualEntryComplete(array $input, string $type): void
+{
+    $keys = match ($type) {
+        'birth' => civilRecordBirthChildEntryRequiredKeys(),
+        'death' => civilRecordDeathDeceasedEntryRequiredKeys(),
+        'marriage' => array_merge(
+            civilRecordMarriageSpouseEntryRequiredKeys('husband'),
+            civilRecordMarriageSpouseEntryRequiredKeys('wife')
+        ),
+        default => [],
+    };
+
+    foreach ($keys as $key) {
+        if (civilRecordInputFieldEmpty($input, $key)) {
+            throw new InvalidArgumentException(civilRecordViewFieldLabel($key) . ' is required.');
+        }
+    }
+}
+
 /** @return list<array{title: string, fields: list<array{key: string, label: string, format?: string, full?: bool}>}> */
 function civilRecordViewSections(string $type): array
 {

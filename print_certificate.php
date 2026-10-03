@@ -149,12 +149,12 @@ $printModeSetting = printMode();
                     <h2 class="print-cert-section-title">Back Page Options</h2>
                     <div class="print-cert-checks">
                         <?php if ($certificateType === 'birth'): ?>
-                            <label><input type="checkbox" id="optPaternity"> Paternity affidavit</label>
+                            <label><input type="checkbox" id="optPaternity" checked> Paternity affidavit</label>
                             <label><input type="checkbox" id="optDelayedBirth"> Delayed birth affidavit</label>
                         <?php elseif ($certificateType === 'marriage'): ?>
-                            <label><input type="checkbox" id="optDelayedMarriage"> Delayed marriage affidavit</label>
+                            <label><input type="checkbox" id="optDelayedMarriage" checked> Delayed marriage affidavit</label>
                         <?php elseif ($certificateType === 'death'): ?>
-                            <label><input type="checkbox" id="optInfantSection"> Infant 0–7 days</label>
+                            <label><input type="checkbox" id="optInfantSection" checked> Infant 0–7 days</label>
                             <label><input type="checkbox" id="optPostmortem"> Postmortem (autopsy)</label>
                             <label><input type="checkbox" id="optDelayedDeath"> Delayed death affidavit</label>
                         <?php endif; ?>
@@ -173,43 +173,37 @@ $printModeSetting = printMode();
                 <p class="print-cert-hint print-cert-hint--compact">When checked, the form background is included in the preview and print. When unchecked, only the filled-in data is printed — load blank A4 certification paper.</p>
             </section>
             <?php endif; ?>
-            <?php if (!$isCertification): ?>
-            <p class="print-cert-hint print-cert-hint--compact no-print">
-                The preview and print setup screen show the form for alignment. The printer receives <strong>data only</strong> — load pre-printed bond paper before printing.
-            </p>
-            <?php endif; ?>
-
             <div class="print-cert-workspace">
             <section class="print-cert-fill no-print">
-                <div class="print-cert-fill-head">
-                    <div>
-                        <h2 class="print-cert-section-title">Edit Fill-in Data</h2>
-                        <p class="print-cert-hint">Change values before printing. You can also click text directly in the preview on the right.</p>
+                <div class="print-cert-fill-chrome">
+                    <div class="print-cert-fill-chrome__top">
+                        <h2 class="print-cert-fill-chrome__title">Edit Fill-in Data</h2>
+                        <div class="print-cert-fill-chrome__actions">
+                            <a href="<?= htmlspecialchars($request ? buildStaffOperationalUrl('manage_request.php') : buildAuthUrl('records.php')) ?>" class="print-cert-btn print-cert-btn--ghost print-cert-fill-chrome__btn">Cancel</a>
+                            <button type="button" class="print-cert-btn print-cert-btn--ghost print-cert-fill-chrome__btn" id="resetFillData">Reset to record data</button>
+                        </div>
                     </div>
-                    <div class="print-cert-fill-actions">
-                        <a href="<?= htmlspecialchars($request ? buildStaffOperationalUrl('manage_request.php') : buildAuthUrl('records.php')) ?>" class="print-cert-btn print-cert-btn--ghost">Cancel</a>
-                        <button type="button" class="print-cert-btn print-cert-btn--ghost" id="resetFillData">Reset to record data</button>
+                    <div class="print-cert-fill-chrome__body">
+                        <p class="print-cert-hint print-cert-fill-chrome__hint">Change values before printing. Use <strong>Back page</strong> for affidavit sections. Back Page Options checkboxes control print output only.</p>
                     </div>
+                    <?php if (!$isCertification): ?>
+                    <div class="print-cert-fill-chrome__footer">
+                        <div class="print-cert-fill-tabs print-cert-fill-tabs--page" role="tablist" aria-label="Fill-in page">
+                            <button type="button" class="print-cert-fill-tab is-active" data-fill-tab="front" role="tab" aria-selected="true">Front page</button>
+                            <button type="button" class="print-cert-fill-tab" data-fill-tab="back" role="tab" aria-selected="false">Back page</button>
+                        </div>
+                        <button type="button" class="print-cert-fill-tab print-cert-fill-tab--both print-cert-fill-chrome__both" id="previewViewBoth" data-preview-view="both">Both pages</button>
+                    </div>
+                    <?php endif; ?>
                 </div>
-                <?php if (!$isCertification): ?>
-                <div class="print-cert-fill-tabs" role="tablist" aria-label="Fill-in page">
-                    <button type="button" class="print-cert-fill-tab is-active" data-fill-tab="front" role="tab" aria-selected="true">Front page fields</button>
-                    <button type="button" class="print-cert-fill-tab" data-fill-tab="back" role="tab" aria-selected="false">Back page fields</button>
-                    <button type="button" class="print-cert-fill-tab print-cert-fill-tab--both" id="previewViewBoth" data-preview-view="both">Both pages</button>
-                </div>
-                <?php endif; ?>
+                <?php $printFillGrouped = groupPrintFillFieldsForEntryForm($certificateType, $fillEditorFields); ?>
                 <?php foreach ($isCertification ? ['front'] : ['front', 'back'] as $fillSide): ?>
-                <div class="print-cert-fill-grid" id="fillFields<?= ucfirst($fillSide) ?>" data-fill-panel="<?= $fillSide ?>" role="tabpanel"<?= $fillSide === 'back' ? ' hidden' : '' ?>>
-                    <?php foreach ($fillEditorFields as $fillField):
-                        if ($fillField['page_side'] !== $fillSide) {
-                            continue;
-                        }
-                    ?>
-                    <label class="print-cert-fill-field"<?= ($fillGroup = printFillFieldGroup($fillField['field_name'])) !== '' ? ' data-fill-group="' . htmlspecialchars($fillGroup) . '"' : '' ?>>
-                        <span><?= htmlspecialchars($fillField['label']) ?></span>
-                        <?php renderPrintFillFieldInput($fillField); ?>
-                    </label>
-                    <?php endforeach; ?>
+                <div class="print-cert-fill-grid<?= $isCertification ? '' : ' print-cert-fill-grid--sectioned' ?>" id="fillFields<?= ucfirst($fillSide) ?>" data-fill-panel="<?= $fillSide ?>" role="tabpanel"<?= $fillSide === 'back' ? ' hidden' : '' ?>>
+                    <?php if ($isCertification): ?>
+                        <?php renderPrintFillWorkspaceClassicList($fillEditorFields, $fillSide); ?>
+                    <?php else: ?>
+                        <?php renderPrintFillGroupedSectionPanels($certificateType, $printFillGrouped, $fillSide, 'workspace'); ?>
+                    <?php endif; ?>
                 </div>
                 <?php endforeach; ?>
             </section>

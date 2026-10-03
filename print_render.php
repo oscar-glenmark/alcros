@@ -119,6 +119,7 @@ $fillOverrides = printDecodeFillOverrides($_GET['fill'] ?? null);
 if ($fillOverrides !== []) {
     $printData['values'] = printApplyFillOverrides($printData['values'], $fillOverrides);
 }
+$printData['values'] = printStripExcludedOptionalSections($printData['values'], $printOptions);
 
 if (!empty($_GET['log']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     requireStaffPostCsrf();
@@ -155,6 +156,7 @@ $printerSetupCss = printPrinterSetupStylesheet();
 $printPaperPrefs = printPaperPreferences();
 $printCsrfToken = csrfToken();
 $isPreview = !empty($_GET['preview']);
+$embeddedPreview = $isPreview && !empty($_GET['embedded']);
 $autoPrint = !empty($_GET['autoprint']);
 if ($isCertificationDoc) {
     $showBackground = !empty($_GET['background']);
@@ -166,7 +168,7 @@ if ($isCertificationDoc) {
     $printData['template']['paper_width_mm'] = $paperW;
     $printData['template']['paper_height_mm'] = $paperH;
 }
-$overlayHtml = renderPrintOverlayHtml($printData, [
+$overlayHtml = renderPrintOverlayHtml($printData, array_merge($printOptions, [
     'mode'                         => $mode,
     'test_mode'                    => $testMode,
     'show_background'              => $showBackground,
@@ -176,9 +178,9 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
     'use_effective_positions'      => !empty($printData['use_effective_positions']),
     // Certificates: book/page live on the civil record only — never overlay them on print/preview (certification unchanged).
     'hide_record_registry_fields'  => !$isCertificationDoc && !$calibrationPreview,
-]);
+]));
 ?><!DOCTYPE html>
-<html lang="en" class="print-render-root">
+<html lang="en" class="print-render-root<?= $embeddedPreview ? ' print-render--embedded' : '' ?>">
 <head>
     <meta charset="UTF-8">
     <?= faviconLinkTag() ?>
@@ -205,6 +207,19 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
             padding: 12mm 0;
             min-height: 100vh;
             box-sizing: border-box;
+        }
+        html.print-render-root.print-render--embedded,
+        html.print-render-root.print-render--embedded body {
+            margin: 0;
+            padding: 0;
+            min-height: 0;
+            height: auto;
+            overflow: visible;
+            background: #fff;
+        }
+        html.print-render-root.print-render--embedded body.print-render--preview {
+            padding: 0;
+            min-height: 0;
         }
         body.print-render--autoprint .print-render-wrap {
             box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18);
@@ -394,6 +409,7 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
             var skipSetupDialog = <?= $documentKind === 'certification' ? 'true' : 'false' ?>;
             var savePaperPrefs = !lockTemplatePaper;
             var csrfToken = <?= json_encode($printCsrfToken) ?>;
+            var apiPrintUrl = <?= json_encode(buildAuthUrl('api/print.php')) ?>;
             var notice = document.getElementById('printSetupNotice');
             var btn = document.getElementById('printSetupContinue');
             var presetEl = document.querySelector('[data-print-paper-preset]');
@@ -483,7 +499,7 @@ $overlayHtml = renderPrintOverlayHtml($printData, [
                     form.append('preset', presetEl ? presetEl.value : 'custom');
                     form.append('width_mm', String(widthMm));
                     form.append('height_mm', String(heightMm));
-                    fetch('api/print.php', { method: 'POST', body: form, credentials: 'same-origin' }).catch(function () {});
+                    fetch(apiPrintUrl, { method: 'POST', body: form, credentials: 'same-origin' }).catch(function () {});
                 }
 
                 return true;

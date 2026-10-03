@@ -349,11 +349,12 @@ function smsVisitShort(?string $date, ?string $time): string
 }
 
 /**
- * Single-paragraph SMS — no URLs; capped at SMS_BODY_MAX_LENGTH (IPROG header is separate).
+ * Single-paragraph SMS — capped at SMS_BODY_MAX_LENGTH (IPROG header is separate).
+ * Pass $pinnedTail (e.g. requirements URL) to always keep it and trim earlier segments.
  *
  * @param list<string|null> $segments
  */
-function smsComposeCitizenMessage(array $segments): string
+function smsComposeCitizenMessage(array $segments, ?string $pinnedTail = null): string
 {
     $parts = [];
     foreach ($segments as $segment) {
@@ -361,6 +362,25 @@ function smsComposeCitizenMessage(array $segments): string
         if ($segment !== '') {
             $parts[] = $segment;
         }
+    }
+
+    $pinnedTail = trim(preg_replace('/\s+/u', ' ', (string) ($pinnedTail ?? '')));
+    if ($pinnedTail !== '') {
+        $suffix = ' ' . $pinnedTail;
+        $budget = SMS_BODY_MAX_LENGTH - mb_strlen($suffix);
+        if ($budget < 20) {
+            return mb_substr($pinnedTail, 0, SMS_BODY_MAX_LENGTH);
+        }
+        $body = implode(' ', $parts);
+        while ($parts !== [] && mb_strlen($body) > $budget) {
+            array_pop($parts);
+            $body = implode(' ', $parts);
+        }
+        if (mb_strlen($body) > $budget) {
+            $body = mb_substr($body, 0, max(0, $budget - 1)) . '…';
+        }
+
+        return trim($body . $suffix);
     }
 
     while ($parts !== [] && mb_strlen(implode(' ', $parts)) > SMS_BODY_MAX_LENGTH) {
@@ -373,6 +393,23 @@ function smsComposeCitizenMessage(array $segments): string
     }
 
     return $message;
+}
+
+/** @param list<string|null> $segments */
+function smsComposeStandaloneAppointmentMessage(array $row, array $segments): string
+{
+    require_once __DIR__ . '/appointment_notice_requirements.php';
+    $tail = smsTailForStandaloneAppointment($row);
+    if ($tail === 'Bring valid ID.') {
+        $segments[] = $tail;
+
+        return smsComposeCitizenMessage($segments);
+    }
+    if ($tail === '') {
+        return smsComposeCitizenMessage($segments);
+    }
+
+    return smsComposeCitizenMessage($segments, $tail);
 }
 
 function notifyRequestSubmittedSms(array $data): bool
@@ -525,12 +562,11 @@ function notifyAppointmentSmsReminder(array $row, int $hoursBefore = 1): bool
     $code = (string) $row['appointment_code'];
     $hoursLabel = smsReminderHoursLabel($hoursBefore);
     $visit = smsVisitShort($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
-    $message = smsComposeCitizenMessage([
+    $message = smsComposeStandaloneAppointmentMessage($row, [
         smsCitizenGreeting($row),
-        'Appointment in ' . $hoursLabel . '.',
+        'Appt in ' . $hoursLabel . '.',
         'Code ' . $code . '.',
         $visit !== '' ? $visit . '.' : '',
-        'Bring valid ID.',
     ]);
 
     return sendCitizenSms(
@@ -579,9 +615,9 @@ function notifyAppointmentVisitSoonSms(array $row): bool
     $code = (string) ($row['appointment_code'] ?? '');
     $soonLabel = formatVisitSoonLabel($minutesUntil);
     $visit = smsVisitShort($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
-    $message = smsComposeCitizenMessage([
+    $message = smsComposeStandaloneAppointmentMessage($row, [
         smsCitizenGreeting($row),
-        'Appointment in ' . $soonLabel . '.',
+        'Appt in ' . $soonLabel . '.',
         'Code ' . $code . '.',
         $visit !== '' ? $visit . '.' : '',
     ]);
@@ -598,7 +634,7 @@ function notifyAppointmentStatusSms(PDO $pdo, int $appointmentId, string $newSta
     ensureCitizenNotifyColumns($pdo);
     $stmt = $pdo->prepare(
         'SELECT appointment_code, first_name, middle_name, last_name, phone, service_type,
-                appointment_date, appointment_time, notify_sms
+                appointment_date, appointment_time, notify_sms, source, tracking_code
          FROM appointments WHERE id = ? LIMIT 1'
     );
     $stmt->execute([$appointmentId]);
@@ -613,12 +649,11 @@ function notifyAppointmentStatusSms(PDO $pdo, int $appointmentId, string $newSta
 
     $code = (string) ($row['appointment_code'] ?? '');
     $visit = smsVisitShort($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
-    $message = smsComposeCitizenMessage([
+    $message = smsComposeStandaloneAppointmentMessage($row, [
         smsCitizenGreeting($row),
-        'Appointment confirmed.',
+        'Appt confirmed.',
         'Code ' . $code . '.',
         $visit !== '' ? $visit . '.' : '',
-        'Bring valid ID.',
     ]);
 
     return sendCitizenSms((string) $row['phone'], $message, 'appointment_confirmed', $code);
@@ -711,7 +746,7 @@ function sendDueStandaloneAppointmentSmsReminders(PDO $pdo): int
 {
     $stmt = $pdo->query(
         "SELECT id, appointment_code, first_name, middle_name, last_name, phone, service_type, status,
-                appointment_date, appointment_time, notify_sms,
+                appointment_date, appointment_time, notify_sms, source, tracking_code,
                 sms_reminder_1h_sent_at
          FROM appointments a
          WHERE notify_sms = 1

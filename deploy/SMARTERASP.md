@@ -1,6 +1,6 @@
 # ALCROS on SmarterASP.NET Premium
 
-This guide deploys the full ALCROS stack (PHP + MySQL, queue, requests, printing, email/SMS reminders, cloud backup) on **.NET PREMIUM** without removing features.
+This guide deploys the full ALCROS stack (PHP + MySQL, queue, requests, printing, email/SMS reminders) on **.NET PREMIUM** without removing features.
 
 ## 1. Plan requirements
 
@@ -28,7 +28,7 @@ In **Hosting Control Panel → PHP**, set (match `.user.ini` in the project root
 | post_max_size | 128M |
 | max_input_vars | 10000 |
 | max_execution_time | 300 |
-| memory_limit | 256M (512M if cloud backup zips fail) |
+| memory_limit | 256M (512M if large exports or imports fail) |
 
 Confirm extensions: **PDO MySQL**, **curl**, **openssl**, **zip** (ZipArchive).
 
@@ -64,14 +64,38 @@ Apache `.htaccess` remains for XAMPP; production on SmarterASP uses `web.config`
 
 **Hosting Control Panel → Advance → Schedule Tasks → Call URL**
 
-| Task | Interval | URL |
-|------|----------|-----|
-| Appointment / visit reminders | **15** minutes | Copy from **System Settings → Admin Tools → Cloud Backup** (SmarterASP box), or `api/appointment_reminders.php?cron_secret=...` |
-| Cloud backup (optional) | **60** minutes | `api/cloud-backup.php?token=...` |
+SmarterASP sends **HTTP GET** only. Copy exact URLs from **System Settings → Admin Tools → Backup** (violet SmarterASP box).
 
-Secrets are generated on first use in `storage/cron_secret.txt` and in system settings for cloud backup.
+| Task | Interval | Endpoint |
+|------|----------|----------|
+| Appointment / visit reminders | **15** minutes | `api/appointment_reminders.php?cron_secret=...` |
+| Registry backup (civil records, staff, print) | **Once daily** (e.g. 2:00 AM) | `api/registry_backup.php?token=...` |
 
-SmarterASP sends **HTTP GET** only — ALCROS endpoints already support GET with query parameters.
+The reminder secret is generated on first use in `storage/cron_secret.txt`.
+
+### 6.1 Registry backup setup (recommended)
+
+This backs up **only registry data** (same scope as the green “What gets backed up” list in ALCROS): civil records, staff, print templates/calibrations/settings, staff photos, and print form files. It does **not** include requests, appointments, queue, or activity logs.
+
+1. Sign in as **Administrator** → **System Settings** → **Admin Tools** → **Backup**.
+2. Under **Automatic registry backup (hosted / SmarterASP)**:
+   - Check **Enable scheduled registry backup**.
+   - Set **Keep zip files on server** (default 14 — older zips are deleted automatically).
+   - If the cron URL shows the wrong domain, set **Public site URL** to `https://yourdomain.com` (no trailing slash) and save.
+3. Click **Run registry backup now** once. Confirm **Status** is success and a file appears under **Stored archives**.
+4. Optional test: paste the **Registry backup** URL into a browser (you do not need to be logged in). Expect JSON like `{"ok":true,"filename":"alcros-registry-....zip",...}`.
+5. In SmarterASP **Schedule Tasks**:
+   - **Task type:** Call URL  
+   - **URL:** copy **Registry backup — once daily** from the Backup page  
+   - **Interval:** daily at off-peak time (backup can take up to 5 minutes; `max_execution_time` should be 300 in PHP settings)  
+   - Save the task.
+6. **Download copies off the server** (do not rely on zips staying on hosting forever):
+   - **File Manager / FTP:** `storage/backups/registry/` → download `alcros-registry-*.zip` files, or  
+   - **Admin UI:** **Download** link next to each archive on the Backup page (requires staff login).
+
+Zips are **not** served publicly (`storage/` is denied in `web.config`). Treat the backup URL token like a password — use **Regenerate URL token** if it is exposed.
+
+Inside each zip: `alcros-backup.sql`, `manifest.json`, and `files/` (uploaded assets from the bundle step).
 
 ## 7. Post-deploy checks
 
@@ -79,7 +103,8 @@ SmarterASP sends **HTTP GET** only — ALCROS endpoints already support GET with
 2. Staff login over **HTTPS** (session cookie must be secure)
 3. SMTP / SMS test from System Settings
 4. Trigger reminder URL once in browser (should return JSON `{"sent":...}`)
-5. Optional: cloud backup test + schedule task
+5. Confirm SmarterASP **Schedule Task** for reminders is saved (15-minute interval)
+6. Enable registry backup, run once manually, then confirm the daily **Schedule Task** for `api/registry_backup.php` is saved
 
 ## 8. Security — restrict `install.php` after setup
 
@@ -125,7 +150,7 @@ Pick one or more:
 4. **SmarterASP File Manager** — remove `install.php` from the site root after you confirm login works.
 
 - Do not commit `config/database.local.php` or `config/hosting.local.php`
-- Treat cron URLs as passwords
+- Treat cron URLs and registry backup `token=` as passwords
 
 ## 9. Local XAMPP unchanged
 

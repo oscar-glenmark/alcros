@@ -12,7 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 rateLimitOrAbort(rateLimitKey('civil_record_check'), 20, 900, 'Too many verification attempts. Please try again later.');
 
-$citizenName = citizenNameFromPost($_POST);
+$nameParts = personNamePartsFromInput($_POST);
 $dateOfBirth = trim($_POST['date_of_birth'] ?? '');
 $documentType = trim($_POST['document_type'] ?? '');
 $dateOfMarriage = trim($_POST['date_of_marriage'] ?? '');
@@ -21,7 +21,7 @@ try {
     $pdo = getDB();
     apiJsonResponse(verifyCitizenCivilRecord(
         $pdo,
-        $citizenName,
+        $nameParts,
         $dateOfBirth,
         $documentType,
         $dateOfMarriage !== '' ? $dateOfMarriage : null

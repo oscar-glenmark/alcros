@@ -253,6 +253,124 @@
         });
     }
 
+    /** Server validates section fields; avoid HTML5 required on hidden/inactive panels (blocks submit). */
+    function clearEntrySectionHtmlRequired() {
+        document.querySelectorAll('#entryForm input, #entryForm select, #entryForm textarea').forEach(function (el) {
+            el.required = false;
+        });
+    }
+
+    function enabledEntryField(form, name) {
+        if (!form || !name) return null;
+        var els = form.elements[name];
+        if (!els) return null;
+        if (typeof els.length === 'number' && els.length > 0) {
+            for (var i = 0; i < els.length; i++) {
+                if (!els[i].disabled) return els[i];
+            }
+            return null;
+        }
+        return els.disabled ? null : els;
+    }
+
+    function entryFieldIsEmpty(el) {
+        if (!el) return true;
+        var val = el.value;
+        if (val === null || val === undefined) return true;
+        return String(val).trim() === '';
+    }
+
+    function entryFieldContainer(el) {
+        if (!el) return null;
+        if (el.closest('.grid')) {
+            return el.closest('.grid').parentElement;
+        }
+        return el.parentElement;
+    }
+
+    function ensureEntryFieldErrorEl(container) {
+        if (!container) return null;
+        var err = container.querySelector('.records-field-error');
+        if (!err) {
+            err = document.createElement('p');
+            err.className = 'records-field-error hidden';
+            err.setAttribute('role', 'alert');
+            container.appendChild(err);
+        }
+        return err;
+    }
+
+    function clearEntryFormValidation(form) {
+        if (!form) return;
+        form.querySelectorAll('.is-invalid').forEach(function (el) {
+            el.classList.remove('is-invalid');
+            el.removeAttribute('aria-invalid');
+        });
+        form.querySelectorAll('.records-field-error').forEach(function (el) {
+            el.textContent = '';
+            el.classList.add('hidden');
+        });
+    }
+
+    function setEntryFieldError(el, message) {
+        if (!el || !message) return;
+        el.classList.add('is-invalid');
+        el.setAttribute('aria-invalid', 'true');
+        var container = entryFieldContainer(el);
+        var err = ensureEntryFieldErrorEl(container);
+        if (err) {
+            err.textContent = message;
+            err.classList.remove('hidden');
+        }
+    }
+
+    function entryFieldErrorMessage(el, label) {
+        label = label || 'This field';
+        if (el.tagName === 'SELECT') {
+            return 'Select ' + label.toLowerCase() + '.';
+        }
+        return 'Enter ' + label.toLowerCase() + '.';
+    }
+
+    function scrollEntryFormToFirstError(form) {
+        var invalid = form.querySelector('.is-invalid');
+        if (!invalid) return;
+        if (typeof invalid.scrollIntoView === 'function') {
+            invalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        if (typeof invalid.focus === 'function') {
+            invalid.focus();
+        }
+    }
+
+    function validateEntryFormBeforeConfirm(form) {
+        readPageConfig();
+        clearEntryFormValidation(form);
+
+        var requiredByType = cfg.manualEntryRequiredFields || {};
+        var typeInput = form.querySelector('#recordTypeInput');
+        var type = typeInput ? String(typeInput.value || '').trim() : '';
+        var required = requiredByType[type];
+        if (!required || !required.length) return false;
+
+        var blocked = false;
+        required.forEach(function (spec) {
+            var el = enabledEntryField(form, spec.key);
+            if (!entryFieldIsEmpty(el)) return;
+            blocked = true;
+            if (el) {
+                setEntryFieldError(el, entryFieldErrorMessage(el, spec.label || spec.key));
+            }
+        });
+
+        if (!blocked) return false;
+
+        scrollEntryFormToFirstError(form);
+        return true;
+    }
+
+    window.__alcrosValidateEntryForm = validateEntryFormBeforeConfirm;
+
     function syncSingleBirthDetails() {
         var panel = document.getElementById('singleBirthDetails');
         var select = document.getElementById('birthTypeSelect');
@@ -306,14 +424,7 @@
             });
         });
 
-        ['birthFirstName', 'birthMiddleName', 'birthLastName'].forEach(function (id) {
-            var el = document.getElementById(id);
-            if (el) el.required = type === 'birth';
-        });
-        ['deathFirstName', 'deathMiddleName', 'deathLastName'].forEach(function (id) {
-            var el = document.getElementById(id);
-            if (el) el.required = type === 'death';
-        });
+        clearEntrySectionHtmlRequired();
         if (type === 'birth') syncSingleBirthDetails();
         updateEntryModalTitle(type);
         refreshIcons();
@@ -442,7 +553,15 @@
                         tab.setAttribute('aria-selected', active ? 'true' : 'false');
                     });
                     section.querySelectorAll('[data-entry-fill-panel]').forEach(function (panel) {
-                        panel.hidden = panel.getAttribute('data-entry-fill-panel') !== side;
+                        var isActive = panel.getAttribute('data-entry-fill-panel') === side;
+                        panel.hidden = !isActive;
+                        panel.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+                    });
+                    var backFillActive = side === 'back';
+                    section.querySelectorAll('[data-fill-group]').forEach(function (el) {
+                        if (el.closest('[data-entry-fill-panel="back"]')) {
+                            el.hidden = !backFillActive;
+                        }
                     });
                 });
             });
@@ -480,7 +599,21 @@
 
         var entryForm = document.getElementById('entryForm');
         if (entryForm) {
+            entryForm.addEventListener('input', function (e) {
+                var el = e.target;
+                if (!el || !el.matches('input, select, textarea')) return;
+                el.classList.remove('is-invalid');
+                el.removeAttribute('aria-invalid');
+                var container = entryFieldContainer(el);
+                if (!container) return;
+                var err = container.querySelector('.records-field-error');
+                if (err) {
+                    err.textContent = '';
+                    err.classList.add('hidden');
+                }
+            });
             entryForm.addEventListener('submit', function () {
+                clearEntrySectionHtmlRequired();
                 entryFormSubmitting = true;
                 clearRecordLockTimer();
                 var type = document.getElementById('recordTypeInput');

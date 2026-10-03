@@ -322,6 +322,7 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                             <th>Request ID</th>
                             <th>Citizen</th>
                             <th>Certificate</th>
+                            <th>Visit</th>
                             <th>Submitted</th>
                             <?php if ($isRecentlyDeletedView): ?><th>Deleted</th><?php endif; ?>
                             <th>Status</th>
@@ -352,6 +353,7 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                                 <p class="manage-citizen-meta"><?= htmlspecialchars($req['phone'] ?: 'No phone on file') ?></p>
                             </td>
                             <td><span class="manage-doc-type"><?= htmlspecialchars(documentTypeLabel($req['document_type'])) ?></span></td>
+                            <td><span class="manage-date"><?= htmlspecialchars(formatAppointmentDisplay($req['appointment_date'] ?? null, $req['appointment_time'] ?? null) ?: '—') ?></span></td>
                             <td><span class="manage-date"><?= htmlspecialchars(formatReportDateTime($req['submitted_at'])) ?></span></td>
                             <?php if ($isRecentlyDeletedView): ?>
                             <td><span class="manage-date"><?= !empty($req['deleted_at']) ? htmlspecialchars(formatReportDateTime($req['deleted_at'])) : '—' ?></span></td>

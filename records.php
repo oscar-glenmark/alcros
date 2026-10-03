@@ -705,62 +705,6 @@ $typeBadgeClass = [
 $showModal = isset($_GET['new']);
 $flash = recordsFlashGet();
 
-function recordEntryPrintFillSource(string $type, array $modalRecord): array
-{
-    if (($modalRecord['record_type'] ?? '') === $type && $modalRecord !== []) {
-        return $modalRecord;
-    }
-
-    return ['record_type' => $type];
-}
-
-function renderRecordEntryPrintFillSection(PDO $pdo, string $type, array $modalRecord, bool $active): void
-{
-    $fields = printFillEditorFields($type, recordEntryPrintFillSource($type, $modalRecord), [
-        'exclude_record_registry_fields' => true,
-    ], $pdo);
-    $panelId = $type . 'PrintFillPanel';
-    ?>
-    <div id="<?= htmlspecialchars($panelId) ?>" class="records-entry-print-fill <?= $active ? '' : 'hidden' ?>">
-        <div class="records-entry-print-fill__head">
-            <div>
-                <p class="records-entry-print-fill__title">Print Certificate Fields</p>
-                <p class="records-entry-print-fill__hint">Additional values for the municipal form (attendant, informant, registrar, LCRO, affidavits, etc.). Use <strong>Back page</strong> for affidavit and optional sections. Custom textboxes from Print Calibration appear here automatically.</p>
-            </div>
-        </div>
-        <div class="records-entry-print-fill__tabs" role="tablist" aria-label="<?= htmlspecialchars(ucfirst($type)) ?> fill-in page">
-            <button type="button" class="records-entry-print-fill__tab is-active" data-entry-fill-tab="front" role="tab" aria-selected="true">Front page</button>
-            <button type="button" class="records-entry-print-fill__tab" data-entry-fill-tab="back" role="tab" aria-selected="false">Back page</button>
-        </div>
-        <?php foreach (['front', 'back'] as $fillSide): ?>
-        <?php
-        $sideFields = array_values(array_filter(
-            $fields,
-            static fn (array $fillField): bool => ($fillField['page_side'] ?? '') === $fillSide
-        ));
-        ?>
-        <div class="records-entry-print-fill__grid" data-entry-fill-panel="<?= $fillSide ?>" role="tabpanel"<?= $fillSide === 'back' ? ' hidden' : '' ?>>
-            <?php if ($sideFields === []): ?>
-            <p class="records-entry-print-fill__empty">No <?= $fillSide === 'back' ? 'back page' : 'front page' ?> fields configured yet.</p>
-            <?php else: ?>
-            <?php foreach ($sideFields as $fillField):
-                $fillGroup = printFillFieldGroup($fillField['field_name']);
-            ?>
-            <label class="records-entry-print-fill__field"<?= $fillGroup !== '' ? ' data-fill-group="' . htmlspecialchars($fillGroup) . '"' : '' ?>>
-                <span><?= htmlspecialchars($fillField['label']) ?></span>
-                <?php renderPrintFillFieldInput($fillField, [
-                    'name'       => 'print_fill[' . $fillField['field_name'] . ']',
-                    'lcro_class' => 'records-entry-print-fill__field--lcro',
-                ]); ?>
-            </label>
-            <?php endforeach; ?>
-            <?php endif; ?>
-        </div>
-        <?php endforeach; ?>
-    </div>
-    <?php
-}
-
 function sortUrl(string $column): string
 {
     global $sort, $dir;
@@ -1022,7 +966,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                     </button>
                 </div>
             </div>
-            <form method="POST" class="records-entry-form" id="entryForm">
+            <form method="POST" class="records-entry-form" id="entryForm" novalidate>
                 <?= authFormField() ?>
                 <input type="hidden" name="action" id="entryAction" value="<?= $submitAction ?>">
                 <?php if ($editRecord): ?><input type="hidden" name="record_id" value="<?= (int) $editRecord['id'] ?>"><?php endif; ?>
@@ -1058,20 +1002,6 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                     <div id="birthFieldsPanel" class="entry-detail-panel space-y-5 <?= $defaultRecordType === 'birth' ? '' : 'hidden' ?>">
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div>
-                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">First Name *</label>
-                                <input type="text" name="first_name" id="birthFirstName" value="<?= htmlspecialchars($birthPanelRecord['first_name'] ?? '') ?>" placeholder="Juan" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Middle Name</label>
-                                <input type="text" name="middle_name" id="birthMiddleName" value="<?= htmlspecialchars($birthPanelRecord['middle_name'] ?? '') ?>" placeholder="Dela" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Last Name *</label>
-                                <input type="text" name="last_name" id="birthLastName" value="<?= htmlspecialchars($birthPanelRecord['last_name'] ?? '') ?>" placeholder="Cruz" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Registry Number</label>
                                 <input type="text" name="registry_number" value="<?= htmlspecialchars($birthPanelRecord['registry_number'] ?? '') ?>" placeholder="e.g. 2024-0001" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
@@ -1084,18 +1014,36 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                 <input type="text" name="page_number" value="<?= htmlspecialchars($birthPanelRecord['page_number'] ?? '') ?>" placeholder="e.g. 45" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
                         </div>
+                        <div id="birthChildEntrySection" class="rounded-xl border border-blue-100 bg-blue-50/40 p-4 space-y-4">
+                            <p class="text-[10px] font-black text-blue-700 uppercase tracking-wider flex items-center gap-2">
+                                <i data-lucide="baby" class="w-4 h-4"></i> Child's Information
+                            </p>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">First Name *</label>
+                                <input type="text" name="first_name" id="birthFirstName" value="<?= htmlspecialchars($birthPanelRecord['first_name'] ?? '') ?>" placeholder="Juan" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Middle Name</label>
+                                <input type="text" name="middle_name" id="birthMiddleName" value="<?= htmlspecialchars($birthPanelRecord['middle_name'] ?? '') ?>" placeholder="Optional" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Last Name *</label>
+                                <input type="text" name="last_name" id="birthLastName" value="<?= htmlspecialchars($birthPanelRecord['last_name'] ?? '') ?>" placeholder="Cruz" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            </div>
+                        </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Date of Birth</label>
-                                <input type="date" name="birth_date" value="<?= htmlspecialchars($birthPanelRecord['birth_date'] ?? '') ?>" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                <input type="date" name="birth_date" value="<?= htmlspecialchars($birthPanelRecord['birth_date'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Time of Birth</label>
-                                <input type="text" name="birth_time" value="<?= htmlspecialchars($birthPanelRecord['birth_time'] ?? '') ?>" placeholder="e.g. 10:30 AM" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                <input type="text" name="birth_time" value="<?= htmlspecialchars($birthPanelRecord['birth_time'] ?? '') ?>" placeholder="e.g. 10:30 AM" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Sex</label>
-                                <select name="sex" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                <select name="sex" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                                     <?php foreach (['Male', 'Female'] as $sex): ?>
                                     <option value="<?= $sex ?>" <?= ($birthPanelRecord['sex'] ?? 'Male') === $sex ? 'selected' : '' ?>><?= $sex ?></option>
                                     <?php endforeach; ?>
@@ -1104,12 +1052,12 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Place of Birth</label>
-                            <input type="text" name="place" value="<?= htmlspecialchars($birthPanelRecord['place'] ?? '') ?>" placeholder="Barangay, City/Municipality, Province" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>" data-location-mode="ph_birth_place">
+                            <input type="text" name="place" value="<?= htmlspecialchars($birthPanelRecord['place'] ?? '') ?>" placeholder="Barangay, City/Municipality, Province" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>" data-location-mode="ph_birth_place">
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Type of Birth</label>
-                                <select name="birth_type" id="birthTypeSelect" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                <select name="birth_type" id="birthTypeSelect" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                                     <?php foreach (['Single', 'Twin', 'Triplet', 'Other'] as $birthType): ?>
                                     <option value="<?= $birthType ?>" <?= ($birthPanelRecord['birth_type'] ?? 'Single') === $birthType ? 'selected' : '' ?>><?= $birthType ?></option>
                                     <?php endforeach; ?>
@@ -1117,19 +1065,20 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                             </div>
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Birth Order</label>
-                                <input type="text" name="birth_order" value="<?= htmlspecialchars($birthPanelRecord['birth_order'] ?? '') ?>" placeholder="First" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                <input type="text" name="birth_order" value="<?= htmlspecialchars($birthPanelRecord['birth_order'] ?? '') ?>" placeholder="First" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
                         </div>
 
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Weight at Birth</label>
-                                <input type="text" name="birth_weight" value="<?= htmlspecialchars($birthPanelRecord['birth_weight'] ?? '') ?>" placeholder="e.g. 3.2 kg" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                <input type="text" name="birth_weight" value="<?= htmlspecialchars($birthPanelRecord['birth_weight'] ?? '') ?>" placeholder="e.g. 3.2 kg" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Date of Registration</label>
-                                <input type="date" name="registration_date" value="<?= htmlspecialchars($birthPanelRecord['registration_date'] ?? '') ?>" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                <input type="date" name="registration_date" value="<?= htmlspecialchars($birthPanelRecord['registration_date'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
+                        </div>
                         </div>
 
                         <div id="singleBirthDetails" class="space-y-4">
@@ -1239,20 +1188,6 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                     <div id="deathFieldsPanel" class="entry-detail-panel space-y-5 <?= $defaultRecordType === 'death' ? '' : 'hidden' ?>">
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div>
-                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">First Name *</label>
-                                <input type="text" name="first_name" id="deathFirstName" value="<?= htmlspecialchars($deathPanelRecord['first_name'] ?? '') ?>" placeholder="Maria" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Middle Name</label>
-                                <input type="text" name="middle_name" id="deathMiddleName" value="<?= htmlspecialchars($deathPanelRecord['middle_name'] ?? '') ?>" placeholder="Optional" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Last Name *</label>
-                                <input type="text" name="last_name" id="deathLastName" value="<?= htmlspecialchars($deathPanelRecord['last_name'] ?? '') ?>" placeholder="Santos" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Registry Number</label>
                                 <input type="text" name="registry_number" value="<?= htmlspecialchars($deathPanelRecord['registry_number'] ?? '') ?>" placeholder="e.g. 2024-0001" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
@@ -1265,18 +1200,36 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                 <input type="text" name="page_number" value="<?= htmlspecialchars($deathPanelRecord['page_number'] ?? '') ?>" placeholder="e.g. 45" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
                         </div>
+                        <div id="deathDeceasedEntrySection" class="rounded-xl border border-blue-100 bg-blue-50/40 p-4 space-y-4">
+                            <p class="text-[10px] font-black text-blue-700 uppercase tracking-wider flex items-center gap-2">
+                                <i data-lucide="user" class="w-4 h-4"></i> Deceased Information
+                            </p>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">First Name *</label>
+                                <input type="text" name="first_name" id="deathFirstName" value="<?= htmlspecialchars($deathPanelRecord['first_name'] ?? '') ?>" placeholder="Maria" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Middle Name</label>
+                                <input type="text" name="middle_name" id="deathMiddleName" value="<?= htmlspecialchars($deathPanelRecord['middle_name'] ?? '') ?>" placeholder="Optional" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Last Name *</label>
+                                <input type="text" name="last_name" id="deathLastName" value="<?= htmlspecialchars($deathPanelRecord['last_name'] ?? '') ?>" placeholder="Santos" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            </div>
+                        </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Date of Birth</label>
-                                <input type="date" name="birth_date" value="<?= htmlspecialchars($deathPanelRecord['birth_date'] ?? '') ?>" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                <input type="date" name="birth_date" value="<?= htmlspecialchars($deathPanelRecord['birth_date'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Date of Registration</label>
-                                <input type="date" name="registration_date" value="<?= htmlspecialchars($deathPanelRecord['registration_date'] ?? '') ?>" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                <input type="date" name="registration_date" value="<?= htmlspecialchars($deathPanelRecord['registration_date'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Sex</label>
-                                <select name="sex" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                <select name="sex" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                                     <?php foreach (['Male', 'Female'] as $sex): ?>
                                     <option value="<?= $sex ?>" <?= ($deathPanelRecord['sex'] ?? 'Male') === $sex ? 'selected' : '' ?>><?= $sex ?></option>
                                     <?php endforeach; ?>
@@ -1285,36 +1238,36 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Residence of Deceased</label>
-                            <input type="text" name="residence_deceased" value="<?= htmlspecialchars($deathPanelRecord['residence_deceased'] ?? '') ?>" placeholder="Barangay, City/Municipality, Province, Country" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>"<?= cascadingLocationDataAttributes('residence_deceased') ?>>
+                            <input type="text" name="residence_deceased" value="<?= htmlspecialchars($deathPanelRecord['residence_deceased'] ?? '') ?>" placeholder="Barangay, City/Municipality, Province, Country" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>"<?= cascadingLocationDataAttributes('residence_deceased') ?>>
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Length of Residence (Place of Death)</label>
-                                <input type="text" name="residence_length_place" value="<?= htmlspecialchars($deathPanelRecord['residence_length_place'] ?? '') ?>" placeholder="e.g. 5 years" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                <input type="text" name="residence_length_place" value="<?= htmlspecialchars($deathPanelRecord['residence_length_place'] ?? '') ?>" placeholder="e.g. 5 years" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Length of Residence (Philippines)</label>
-                                <input type="text" name="residence_length_ph" value="<?= htmlspecialchars($deathPanelRecord['residence_length_ph'] ?? '') ?>" placeholder="e.g. Lifetime" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                <input type="text" name="residence_length_ph" value="<?= htmlspecialchars($deathPanelRecord['residence_length_ph'] ?? '') ?>" placeholder="e.g. Lifetime" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Nationality</label>
-                                <input type="text" name="nationality" value="<?= htmlspecialchars($deathPanelRecord['nationality'] ?? 'Filipino') ?>" placeholder="e.g. Filipino" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                <input type="text" name="nationality" value="<?= htmlspecialchars($deathPanelRecord['nationality'] ?? 'Filipino') ?>" placeholder="e.g. Filipino" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Civil Status</label>
-                                <input type="text" name="civil_status" value="<?= htmlspecialchars($deathPanelRecord['civil_status'] ?? '') ?>" placeholder="e.g. Married, Single" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                <input type="text" name="civil_status" value="<?= htmlspecialchars($deathPanelRecord['civil_status'] ?? '') ?>" placeholder="e.g. Married, Single" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Religion</label>
-                                <input type="text" name="religion" value="<?= htmlspecialchars($deathPanelRecord['religion'] ?? '') ?>" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                <input type="text" name="religion" value="<?= htmlspecialchars($deathPanelRecord['religion'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Place of Death</label>
-                            <input type="text" name="place" value="<?= htmlspecialchars($deathPanelRecord['place'] ?? '') ?>" placeholder="Barangay, City/Municipality, Province" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>" data-location-mode="ph_death_place">
+                            <input type="text" name="place" value="<?= htmlspecialchars($deathPanelRecord['place'] ?? '') ?>" placeholder="Barangay, City/Municipality, Province" class="<?= htmlspecialchars(cascadingLocationInputClass('w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm')) ?>" data-location-mode="ph_death_place">
                         </div>
 
-                        <div class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 space-y-4">
+                        <div class="rounded-xl border border-white/80 bg-white/60 p-4 space-y-4">
                             <p class="text-[10px] font-black text-slate-700 uppercase tracking-wider">Age at Death</p>
                             <div class="grid grid-cols-2 sm:grid-cols-6 gap-3 items-end">
                                 <?php foreach (['years' => 'Years', 'months' => 'Months', 'days' => 'Days', 'hours' => 'Hours', 'minutes' => 'Min'] as $unit => $label): ?>
@@ -1335,20 +1288,21 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Occupation</label>
-                                <input type="text" name="occupation" value="<?= htmlspecialchars($deathPanelRecord['occupation'] ?? '') ?>" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                <input type="text" name="occupation" value="<?= htmlspecialchars($deathPanelRecord['occupation'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Place of Burial</label>
-                                <input type="text" name="place_of_burial" value="<?= htmlspecialchars($deathPanelRecord['place_of_burial'] ?? '') ?>" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                <input type="text" name="place_of_burial" value="<?= htmlspecialchars($deathPanelRecord['place_of_burial'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Name of Surviving Spouse</label>
-                                <input type="text" name="surviving_spouse_name" value="<?= htmlspecialchars($deathPanelRecord['surviving_spouse_name'] ?? '') ?>" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                <input type="text" name="surviving_spouse_name" value="<?= htmlspecialchars($deathPanelRecord['surviving_spouse_name'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Address of Surviving Spouse</label>
-                                <input type="text" name="surviving_spouse_address" value="<?= htmlspecialchars($deathPanelRecord['surviving_spouse_address'] ?? '') ?>" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                                <input type="text" name="surviving_spouse_address" value="<?= htmlspecialchars($deathPanelRecord['surviving_spouse_address'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
                             </div>
+                        </div>
                         </div>
 
                         <div class="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-4">
@@ -1484,14 +1438,25 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                             $themeClasses = $prefix === 'husband'
                                 ? 'border-blue-200 bg-blue-50/50 text-blue-800'
                                 : 'border-pink-200 bg-pink-50/50 text-pink-800';
+                            $spouseNameParts = civilRecordSpouseNamePartsForForm($marriagePanelRecord, $prefix);
                         ?>
-                        <div class="rounded-xl border p-4 space-y-4 <?= $themeClasses ?>">
+                        <div class="js-spouse-entry-section rounded-xl border p-4 space-y-4 <?= $themeClasses ?>">
                             <p class="text-[10px] font-black uppercase tracking-wider flex items-center gap-2">
                                 <i data-lucide="<?= $section['icon'] ?>" class="w-4 h-4"></i> <?= $section['label'] ?>
                             </p>
-                            <div>
-                                <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Full Name</label>
-                                <input type="text" name="<?= $prefix ?>_name" value="<?= htmlspecialchars($marriagePanelRecord[$prefix . '_name'] ?? '') ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm">
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">First Name *</label>
+                                    <input type="text" name="<?= $prefix ?>_first_name" value="<?= htmlspecialchars($spouseNameParts['first_name']) ?>" placeholder="<?= $prefix === 'husband' ? 'Juan' : 'Maria' ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm" autocomplete="off">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Middle Name</label>
+                                    <input type="text" name="<?= $prefix ?>_middle_name" value="<?= htmlspecialchars($spouseNameParts['middle_name'] ?? '') ?>" placeholder="Optional" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm" autocomplete="off">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-700 uppercase mb-1">Last Name *</label>
+                                    <input type="text" name="<?= $prefix ?>_last_name" value="<?= htmlspecialchars($spouseNameParts['last_name']) ?>" placeholder="<?= $prefix === 'husband' ? 'Cruz' : 'Santos' ?>" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm" autocomplete="off">
+                                </div>
                             </div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
@@ -1599,7 +1564,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                     </div>
 
                     <?php foreach ($validTypes as $fillType): ?>
-                        <?php renderRecordEntryPrintFillSection($pdo, $fillType, $modalRecord, $defaultRecordType === $fillType); ?>
+                        <?php renderRecordsEntryPrintFillSection($pdo, $fillType, $modalRecord, $defaultRecordType === $fillType); ?>
                     <?php endforeach; ?>
                 </fieldset>
                 </div>
@@ -1753,6 +1718,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
         'recordsLockApiUrl' => buildAuthUrl('api/records.php'),
         'recordsImportApiUrl' => buildAuthUrl('api/records_import.php'),
         'locationsApiUrl' => buildAuthUrl('api/locations.php'),
+        'manualEntryRequiredFields' => civilRecordManualEntryRequiredFieldsForJs(),
     ], 'records-config') ?>
     <?= scriptTag('core/page-config.js') ?>
     <?= scriptTag('core/admin-search.js') ?>

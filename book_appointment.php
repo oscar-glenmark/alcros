@@ -12,6 +12,8 @@ $currentPage = basename($_SERVER['PHP_SELF']);
 
 $service = $_GET['service'] ?? $_POST['service'] ?? '';
 $serviceLabel = appointmentServiceLabel($service);
+$isPsaDocumentsBooking = isPsaDocumentsAppointmentService($service);
+$psaDocumentTypes = getPsaDocumentAppointmentTypes();
 $success = null;
 $error = null;
 $appointmentCode = null;
@@ -24,7 +26,16 @@ $lastName = $nameParts['last_name'];
 $citizenName = formatPersonName($firstName, $middleName, $lastName);
 $email       = normalizeGmail(trim($_POST['email'] ?? ''));
 $phone       = trim($_POST['phone'] ?? '');
-$serviceType = appointmentServiceLabel(trim($_POST['service_type'] ?? $service));
+if ($isPsaDocumentsBooking) {
+    $serviceType = $_SERVER['REQUEST_METHOD'] === 'POST'
+        ? normalizePsaAppointmentServiceType(trim($_POST['service_type'] ?? ''))
+        : '';
+} else {
+    $serviceType = appointmentServiceLabel(trim($_POST['service_type'] ?? $service));
+}
+$postedPsaTypeKey = $isPsaDocumentsBooking && $_SERVER['REQUEST_METHOD'] === 'POST'
+    ? trim($_POST['service_type'] ?? '')
+    : '';
 $date        = $_POST['appointment_date'] ?? '';
 $time        = $_POST['appointment_time'] ?? '';
 $notifyEmail = isset($_POST['notify_email']) && (string) $_POST['notify_email'] === '1';
@@ -35,6 +46,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     requirePublicPostCsrf();
     if (($nameError = validatePersonNameParts($nameParts)) !== null || $serviceType === '' || $date === '' || $time === '') {
         $error = $nameError ?? 'Please complete all required fields.';
+    } elseif ($isPsaDocumentsBooking && !isAllowedPsaAppointmentServiceType($serviceType)) {
+        $error = 'Please select a PSA document type (birth, death, or marriage certificates).';
     } elseif (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
         $error = 'Please choose a valid appointment date.';
     } elseif ($date < date('Y-m-d')) {
@@ -118,6 +131,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'appointment_time'  => $time,
                             'notify_email'      => $notifyEmail ? 1 : 0,
                             'notify_sms'        => $notifySms ? 1 : 0,
+                            'source'            => 'standalone',
+                            'tracking_code'     => '',
                         ];
                         if ($notifyEmail) {
                             $emailSent = notifyAppointmentBooked($notifyPayload);
@@ -267,7 +282,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <div>
                 <label class="block text-[11px] font-bold mb-1">Service Type *</label>
+                <?php if ($isPsaDocumentsBooking): ?>
+                <select name="service_type" required class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
+                    <option value="" disabled <?= $serviceType === '' && $postedPsaTypeKey === '' ? 'selected' : '' ?>>Select PSA document</option>
+                    <?php foreach ($psaDocumentTypes as $typeKey => $typeLabel): ?>
+                    <?php
+                    $typeSelected = $postedPsaTypeKey === $typeKey
+                        || ($postedPsaTypeKey === '' && $serviceType === $typeLabel);
+                    ?>
+                    <option value="<?= htmlspecialchars($typeKey) ?>" <?= $typeSelected ? 'selected' : '' ?>><?= htmlspecialchars($typeLabel) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <p class="text-[10px] text-gray-500 mt-1">Request PSA Documents — choose birth, death, or marriage certificates.</p>
+                <?php else: ?>
                 <input type="text" name="service_type" value="<?= htmlspecialchars($serviceType !== '' ? $serviceType : $serviceLabel) ?>" required placeholder="Service type" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
+                <?php endif; ?>
             </div>
             <div class="grid grid-cols-2 gap-4">
                 <div>

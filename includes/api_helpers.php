@@ -235,6 +235,7 @@ function fetchDashboardStats(PDO $pdo, bool $isAdmin, string $staffId): array
         $stmt->execute([$staffId]);
         $activities = $stmt->fetchAll();
     }
+    $activities = enrichActivityLogsForDisplay($pdo, $activities, 'w-9 h-9 text-xs');
 
     $todayAppts = enrichCitizenNameRows($pdo->query(
         "SELECT first_name, middle_name, last_name, appointment_time, service_type, status FROM appointments

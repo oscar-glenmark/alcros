@@ -64,7 +64,7 @@ $pageSubtitle = 'One button per table — tap when you are ready for the next ci
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <link rel="icon" type="image/png" href="images/favicon.png?v=2">
+    <?= faviconLinkTag() ?>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Live Queue - ALCROS</title>
     <?= alcrosUiHead() ?>

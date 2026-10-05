@@ -35,9 +35,9 @@ $incomingAppointments = [];
 
 if ($isAdminUser) {
     $adminAnalytics = fetchAnalyticsDashboard($pdo);
-    $activities = $pdo->query(
+    $activities = enrichActivityLogsForDisplay($pdo, $pdo->query(
         "SELECT staff_id, action, details, created_at FROM activity_logs ORDER BY created_at DESC LIMIT 6"
-    )->fetchAll();
+    )->fetchAll());
 } else {
     $recentRequests = enrichCitizenNameRows($pdo->query(
         "SELECT tracking_code, first_name, middle_name, last_name, document_type, status, submitted_at
@@ -47,7 +47,7 @@ if ($isAdminUser) {
         "SELECT staff_id, action, details, created_at FROM activity_logs WHERE staff_id = ? ORDER BY created_at DESC LIMIT 6"
     );
     $activityStmt->execute([staffId()]);
-    $activities = $activityStmt->fetchAll();
+    $activities = enrichActivityLogsForDisplay($pdo, $activityStmt->fetchAll());
     $scheduleCalendar = fetchDashboardSchedule($pdo, $scheduleDate, $scheduleMonth);
     $incomingAppointments = fetchIncomingAppointments($pdo, 8);
 }
@@ -55,10 +55,10 @@ if ($isAdminUser) {
 $quickActions = [];
 if ($isAdminUser) {
     $quickActions = [
-        ['href' => 'records.php', 'label' => 'Civil Records', 'desc' => 'Search registry files', 'icon' => 'book-open', 'color' => 'bg-orange-50 text-orange-600'],
-        ['href' => 'documents.php', 'label' => 'Documents', 'desc' => 'Certification library', 'icon' => 'files', 'color' => 'bg-violet-50 text-violet-600'],
-        ['href' => 'report.php', 'label' => 'Reports', 'desc' => 'Charts, stats & exports', 'icon' => 'bar-chart-2', 'color' => 'bg-blue-50 text-blue-600'],
-        ['href' => 'system_settings.php', 'label' => 'Settings', 'desc' => 'System config', 'icon' => 'settings', 'color' => 'bg-slate-100 text-slate-600'],
+        ['href' => 'records.php', 'label' => 'Civil Records', 'desc' => 'Manage life event data', 'icon' => 'book-open', 'color' => 'bg-orange-50 text-orange-600'],
+        ['href' => 'documents.php', 'label' => 'Documents', 'desc' => 'Certification services', 'icon' => 'files', 'color' => 'bg-violet-50 text-violet-600'],
+        ['href' => 'report.php', 'label' => 'Reports', 'desc' => 'View charts, trends & reports', 'icon' => 'bar-chart-2', 'color' => 'bg-blue-50 text-blue-600', 'query' => ['section' => 'analytics']],
+        ['href' => 'system_settings.php', 'label' => 'Settings', 'desc' => 'System configuration', 'icon' => 'settings', 'color' => 'bg-slate-100 text-slate-600'],
     ];
 }
 
@@ -167,7 +167,7 @@ function activityIcon(string $action): string
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <link rel="icon" type="image/png" href="images/favicon.png?v=2">
+    <?= faviconLinkTag() ?>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
@@ -187,14 +187,14 @@ function activityIcon(string $action): string
 
         <div class="admin-content p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto admin-page-wrap space-y-6">
 
-            <!-- Header -->
-            <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-                <div class="flex items-start gap-4">
-                    <?= alcrosFaviconImg(64, 'dash-brand-logo shrink-0') ?>
-                    <div>
-                        <p class="text-[10px] font-bold uppercase tracking-widest text-blue-600 mb-1"><?= $isAdminUser ? 'Registry Admin' : 'Registry Staff' ?></p>
-                        <h1 class="text-2xl lg:text-3xl font-black text-slate-900">Good day, <?= htmlspecialchars(explode(' ', $staffDisplayName)[0]) ?>!</h1>
-                        <p class="text-gray-500 text-sm mt-1"><?= htmlspecialchars($todayLabel) ?> · <?= htmlspecialchars(staffId()) ?> · <?= htmlspecialchars($staffRole) ?></p>
+            <!-- Welcome -->
+            <div class="dash-welcome<?= $isAdminUser ? ' dash-welcome--admin' : '' ?>">
+                <div class="dash-welcome__brand">
+                    <?= alcrosFaviconImg($isAdminUser ? 72 : 64, 'dash-brand-logo shrink-0') ?>
+                    <div class="dash-welcome__text">
+                        <p class="dash-welcome__role"><?= $isAdminUser ? 'Registry Admin' : 'Registry Staff' ?></p>
+                        <h1 class="dash-welcome__greeting">Good day, <?= htmlspecialchars(explode(' ', $staffDisplayName)[0]) ?>!</h1>
+                        <p class="dash-welcome__meta"><?= htmlspecialchars(staffId()) ?> · <?= htmlspecialchars($staffRole) ?> · <?= htmlspecialchars($todayLabel) ?></p>
                     </div>
                 </div>
             </div>
@@ -225,9 +225,11 @@ function activityIcon(string $action): string
             <?php endif; ?>
 
             <?php if ($isAdminUser): ?>
-            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <section class="dash-admin-quick-wrap" aria-labelledby="dash-admin-quick-heading">
+                <p id="dash-admin-quick-heading" class="dash-admin-analytics__kicker">Quick access</p>
+            <div class="dash-admin-quick grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mt-2">
                 <?php foreach ($quickActions as $action): ?>
-                <a href="<?= htmlspecialchars(buildAuthUrl($action['href'], $action['query'] ?? [])) ?>" class="dash-card bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 flex items-start gap-3">
+                <a href="<?= htmlspecialchars(buildAuthUrl($action['href'], $action['query'] ?? [])) ?>" class="dash-admin-quick__card dash-card bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 flex items-start gap-3">
                     <div class="p-2 rounded-lg shrink-0 <?= htmlspecialchars($action['color']) ?>">
                         <i data-lucide="<?= htmlspecialchars($action['icon']) ?>" class="w-4 h-4"></i>
                     </div>
@@ -238,8 +240,12 @@ function activityIcon(string $action): string
                 </a>
                 <?php endforeach; ?>
             </div>
+            </section>
 
-            <?php require __DIR__ . '/includes/admin_dashboard_analytics.php'; ?>
+            <?php
+            $adminCalendarToday = $todayDate;
+            require __DIR__ . '/includes/admin_dashboard_analytics.php';
+            ?>
 
             <?php else: ?>
 
@@ -390,7 +396,8 @@ function activityIcon(string $action): string
 
             <?php endif; ?>
 
-            <!-- Activity -->
+            <?php if (!$isAdminUser): ?>
+            <!-- Activity (staff) -->
             <div class="bg-white rounded-2xl border border-gray-100 dash-card overflow-hidden">
                 <div class="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
                     <div>
@@ -424,6 +431,7 @@ function activityIcon(string $action): string
                 </div>
                 <?php endif; ?>
             </div>
+            <?php endif; ?>
 
         </div>
     </main>
@@ -432,6 +440,7 @@ function activityIcon(string $action): string
     <?php if ($isAdminUser && $adminAnalytics !== null): ?>
     <?= pageConfigJson($adminAnalytics['chartPayload'], 'analytics-config') ?>
     <?= scriptTag('admin/analytics.js') ?>
+    <?= scriptTag('admin/admin-simple-calendar.js') ?>
     <?php else: ?>
     <?= pageConfigJson([
         'scheduleMonth'     => $scheduleMonth,

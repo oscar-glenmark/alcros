@@ -65,20 +65,6 @@ function adminCount(PDO $pdo): int
     return (int) $pdo->query("SELECT COUNT(*) FROM staff WHERE role = 'Administrator'")->fetchColumn();
 }
 
-// Export activity logs (admin)
-if ($isAdmin && isset($_GET['action']) && $_GET['action'] === 'export_logs') {
-    $logs = $pdo->query('SELECT staff_id, action, details, created_at FROM activity_logs ORDER BY created_at DESC LIMIT 500')->fetchAll();
-    header('Content-Type: text/csv');
-    header('Content-Disposition: attachment; filename="alcros_activity_logs_' . date('Y-m-d') . '.csv"');
-    $out = fopen('php://output', 'w');
-    fputcsv($out, ['staff_id', 'action', 'details', 'created_at']);
-    foreach ($logs as $log) {
-        fputcsv($out, [$log['staff_id'], $log['action'], $log['details'], $log['created_at']]);
-    }
-    fclose($out);
-    exit;
-}
-
 if ($isAdmin && isset($_GET['action']) && $_GET['action'] === 'download_registry_backup') {
     $file = basename((string) ($_GET['file'] ?? ''));
     if ($file === '' || !preg_match('/^alcros-registry-\d{4}-\d{2}-\d{2}-\d{6}\.zip$/', $file)) {
@@ -541,7 +527,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <link rel="icon" type="image/png" href="images/favicon.png?v=2">
+    <?= faviconLinkTag() ?>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= $isAdmin ? 'System Settings' : 'My Settings' ?> - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
@@ -649,13 +635,13 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                         class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
                                 </div>
                             </div>
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-[min(100%,11rem)_minmax(0,1fr)] gap-4">
                                 <div>
                                     <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Staff ID</label>
                                     <input type="text" readonly value="<?= htmlspecialchars($currentStaffId) ?>"
                                         class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-500 font-mono">
                                 </div>
-                                <div class="sm:col-span-2">
+                                <div class="min-w-0">
                                     <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Recovery Gmail *</label>
                                     <input type="email" name="profile_email" id="profileEmail" required value="<?= htmlspecialchars($currentStaff['email'] ?? '') ?>" placeholder="you@gmail.com"
                                         data-original-email="<?= htmlspecialchars($currentStaff['email'] ?? '') ?>"
@@ -663,7 +649,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                         class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
                                     <p class="text-[10px] text-slate-400 mt-1">Must be a Gmail account with <strong>Google 2-Step Verification</strong> already enabled. Used for password reset codes.</p>
                                 </div>
-                                <div class="sm:col-span-2 recovery-2sv-field <?= $profileNeeds2svConfirmation ? '' : 'hidden' ?>" id="profile2svField">
+                                <div class="sm:col-span-2 col-span-full recovery-2sv-field <?= $profileNeeds2svConfirmation ? '' : 'hidden' ?>" id="profile2svField">
                                     <label class="flex items-start gap-3 cursor-pointer">
                                         <input type="checkbox" name="recovery_gmail_2sv_confirmed" value="1" class="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 recovery-2sv-checkbox" <?= $profileNeeds2svConfirmation ? 'required' : '' ?>>
                                         <span class="text-xs text-slate-600 leading-relaxed">I confirm this Gmail account already has Google 2-Step Verification turned on. <a href="https://myaccount.google.com/signinoptions/two-step-verification" target="_blank" rel="noopener noreferrer" class="text-blue-600 font-semibold hover:underline">Enable 2-Step Verification</a></span>
@@ -710,7 +696,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                 <input type="password" name="confirm_password" required minlength="<?= passwordMinLength() ?>" autocomplete="new-password"
                                     class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
                             </div>
-                            <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-6 py-2.5 rounded-xl text-sm font-semibold inline-flex items-center gap-2">
+                            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl text-sm font-semibold inline-flex items-center gap-2">
                                 <i data-lucide="key" class="w-4 h-4"></i> Update Password
                             </button>
                         </form>
@@ -745,14 +731,16 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     <input type="text" name="staff_last_name" required placeholder="Cruz" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
                                 </div>
                             </div>
-                            <div>
-                                <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Staff ID</label>
-                                <input type="text" name="staff_id_new" required placeholder="ALORAN-002" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm uppercase focus:outline-none focus:border-blue-500">
-                            </div>
-                            <div>
-                                <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Recovery Gmail *</label>
-                                <input type="email" name="staff_email" required placeholder="staff@gmail.com" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
-                                <p class="text-[10px] text-slate-400 mt-1">Gmail with Google 2-Step Verification required.</p>
+                            <div class="sm:col-span-2 grid grid-cols-1 sm:grid-cols-[min(100%,11rem)_minmax(0,1fr)] gap-4">
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Staff ID</label>
+                                    <input type="text" name="staff_id_new" required placeholder="ALORAN-002" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm uppercase focus:outline-none focus:border-blue-500">
+                                </div>
+                                <div class="min-w-0">
+                                    <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Recovery Gmail *</label>
+                                    <input type="email" name="staff_email" required placeholder="staff@gmail.com" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+                                    <p class="text-[10px] text-slate-400 mt-1">Gmail with Google 2-Step Verification required.</p>
+                                </div>
                             </div>
                             <div>
                                 <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Role</label>
@@ -772,7 +760,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                 </label>
                             </div>
                             <div class="sm:col-span-2">
-                                <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-6 py-2.5 rounded-xl text-sm font-semibold">Add Staff Member</button>
+                                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl text-sm font-semibold">Add Staff Member</button>
                             </div>
                         </form>
 
@@ -1486,9 +1474,6 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                 <h3 class="text-sm font-bold text-slate-900 mb-1">Exports & utilities</h3>
                                 <p class="text-xs text-slate-500 mb-4">Download data or open setup tools. These do not delete live records.</p>
                                 <div class="flex flex-wrap gap-3 mb-8">
-                                    <a href="<?= htmlspecialchars(buildAuthUrl('system_settings.php', ['action' => 'export_logs'])) ?>" class="inline-flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold">
-                                        <i data-lucide="download" class="w-4 h-4"></i> Export activity logs (CSV)
-                                    </a>
                                     <a href="install.php" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800 px-4 py-2.5 rounded-xl text-xs font-bold">
                                         <i data-lucide="database" class="w-4 h-4"></i> Database installer
                                     </a>
@@ -1632,7 +1617,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                     <input type="password" name="reset_password" required minlength="<?= passwordMinLength() ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
                 </div>
                 <div class="flex gap-3 pt-2">
-                    <button type="submit" class="flex-1 bg-amber-600 text-white rounded-xl py-3 text-sm font-bold">Reset Password</button>
+                    <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 text-sm font-bold">Reset Password</button>
                     <button type="button" class="flex-1 border border-slate-200 rounded-xl py-3 text-sm font-bold close-modal">Cancel</button>
                 </div>
             </form>

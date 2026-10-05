@@ -46,8 +46,8 @@
             }
         });
 
-        var emailCheckbox = document.getElementById('alcrosNotifyEmailCheckbox');
-        var smsCheckbox = document.getElementById('alcrosNotifySmsCheckbox');
+        var emailCheckbox = document.getElementById('alcros-notify-checkbox');
+        var smsCheckbox = document.getElementById('alcros-notify-sms-checkbox');
         if (emailCheckbox) {
             emailCheckbox.checked = !!emailAllowed;
         }

@@ -175,7 +175,7 @@
             var waitEl = slot.querySelector('.display-table-wait');
             if (numEl) {
                 numEl.textContent = info.serving || '—';
-                numEl.className = 'display-table-number ' + (info.serving ? 'text-3xl font-black text-white' : 'text-lg font-bold text-gray-600');
+                numEl.className = 'display-table-number' + (info.serving ? '' : ' is-empty');
             }
             if (waitEl) waitEl.textContent = (info.waiting ? info.waiting.length : 0) + ' waiting';
         });
@@ -291,11 +291,27 @@
 
             var actEl = document.getElementById('activity-feed-list');
             if (actEl && data.activities) {
-                actEl.innerHTML = data.activities.length ? data.activities.map(function (a) {
-                    var details = a.details ? '<p class="text-[10px] text-gray-500 mt-0.5 line-clamp-2">' + escapeHtml(a.details) + '</p>' : '';
-                    var who = isAdmin ? escapeHtml(a.staff_id || 'System') + ' · ' : '';
-                    return '<div class="flex items-start gap-3 p-3 rounded-xl bg-gray-50/80 border border-gray-100"><div class="bg-white p-2 rounded-lg text-blue-600 border border-gray-100 shrink-0"><i data-lucide="activity" class="w-4 h-4"></i></div><div class="min-w-0"><p class="text-xs font-bold text-slate-800">' + escapeHtml(a.action) + '</p>' + details + '<p class="text-[10px] text-gray-400 mt-1">' + who + escapeHtml(formatTimeAgo(a.created_at)) + '</p></div></div>';
-                }).join('') : '<div class="p-10 text-center text-gray-400 text-xs col-span-full">No activity recorded yet.</div>';
+                var adminFeed = actEl.tagName === 'UL' || actEl.classList.contains('dash-admin-activity__list');
+                if (!data.activities.length) {
+                    actEl.innerHTML = adminFeed
+                        ? ''
+                        : '<div class="p-10 text-center text-gray-400 text-xs col-span-full">No activity recorded yet.</div>';
+                } else if (adminFeed) {
+                    actEl.innerHTML = data.activities.map(function (a) {
+                        var details = a.details ? '<p class="dash-admin-activity__details">' + escapeHtml(a.details) + '</p>' : '';
+                        var avatar = a.staff_avatar_html || '';
+                        var name = a.staff_display_name || a.staff_id || 'System';
+                        var sid = (a.staff_id || '').trim();
+                        var meta = escapeHtml(name) + (sid && name !== sid ? ' · ' + escapeHtml(sid) : '') + ' · ' + escapeHtml(formatTimeAgo(a.created_at));
+                        return '<li class="dash-admin-activity__item"><span class="dash-admin-activity__avatar" aria-hidden="true">' + avatar + '</span><div class="min-w-0 flex-1"><p class="dash-admin-activity__action">' + escapeHtml(a.action) + '</p>' + details + '<p class="dash-admin-activity__meta">' + meta + '</p></div></li>';
+                    }).join('');
+                } else {
+                    actEl.innerHTML = data.activities.map(function (a) {
+                        var details = a.details ? '<p class="text-[10px] text-gray-500 mt-0.5 line-clamp-2">' + escapeHtml(a.details) + '</p>' : '';
+                        var who = isAdmin ? escapeHtml(a.staff_id || 'System') + ' · ' : '';
+                        return '<div class="flex items-start gap-3 p-3 rounded-xl bg-gray-50/80 border border-gray-100"><div class="bg-white p-2 rounded-lg text-blue-600 border border-gray-100 shrink-0"><i data-lucide="activity" class="w-4 h-4"></i></div><div class="min-w-0"><p class="text-xs font-bold text-slate-800">' + escapeHtml(a.action) + '</p>' + details + '<p class="text-[10px] text-gray-400 mt-1">' + who + escapeHtml(formatTimeAgo(a.created_at)) + '</p></div></div>';
+                    }).join('');
+                }
                 if (typeof lucide !== 'undefined') lucide.createIcons();
             }
 

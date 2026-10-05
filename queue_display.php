@@ -16,7 +16,7 @@ $purposeLabels = queuePurposeLabels();
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <link rel="icon" type="image/png" href="images/favicon.png?v=2">
+    <?= faviconLinkTag() ?>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ALCROS LIVE - Public Announcement Display</title>
     <?= alcrosUiHead() ?>
@@ -52,15 +52,15 @@ $purposeLabels = queuePurposeLabels();
         <?php foreach ($tables as $purpose => $cfg):
             $slot = $tableSlots[$purpose] ?? ['serving' => null, 'waiting' => []];
         ?>
-        <div class="display-table-slot rounded-2xl border border-gray-800 bg-[#0f172a]/60 p-4 text-center" data-purpose="<?= htmlspecialchars($purpose) ?>">
-            <p class="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Table <?= (int) $cfg['table'] ?></p>
-            <p class="text-xs font-bold text-gray-400 mb-2"><?= htmlspecialchars($cfg['label']) ?></p>
+        <div class="display-table-slot rounded-2xl border border-gray-800 bg-[#0f172a]/60 text-center" data-purpose="<?= htmlspecialchars($purpose) ?>">
+            <p class="display-table-slot__table">Table <?= (int) $cfg['table'] ?></p>
+            <p class="display-table-slot__label"><?= htmlspecialchars($cfg['label']) ?></p>
             <?php if (!empty($slot['serving'])): ?>
-            <p class="display-table-number text-3xl font-black text-white"><?= htmlspecialchars($slot['serving']) ?></p>
+            <p class="display-table-number"><?= htmlspecialchars($slot['serving']) ?></p>
             <?php else: ?>
-            <p class="display-table-number text-lg font-bold text-gray-600">—</p>
+            <p class="display-table-number is-empty">—</p>
             <?php endif; ?>
-            <p class="display-table-wait text-[9px] text-gray-600 mt-1"><?= count($slot['waiting'] ?? []) ?> waiting</p>
+            <p class="display-table-wait"><?= count($slot['waiting'] ?? []) ?> waiting</p>
         </div>
         <?php endforeach; ?>
     </div>

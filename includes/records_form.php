@@ -122,9 +122,12 @@ function normalizeMarriageSpouseNames(array $input): array
                 $parts = parsePersonNameToParts(trim((string) $input[$fullKey]));
             }
         }
-        if ($parts['first_name'] === '' || $parts['last_name'] === '') {
-            $label = $role === 'husband' ? 'Husband' : 'Wife';
-            throw new InvalidArgumentException($label . ' first name and last name are required for marriage records.');
+        if ($parts['first_name'] === '' && $parts['last_name'] === '') {
+            $input[$role . '_name'] = null;
+            $input[$role . '_first_name'] = null;
+            $input[$role . '_middle_name'] = null;
+            $input[$role . '_last_name'] = null;
+            continue;
         }
         $input[$role . '_name'] = formatPersonName($parts['first_name'], $parts['middle_name'], $parts['last_name']);
         $input[$role . '_first_name'] = $parts['first_name'];
@@ -135,7 +138,7 @@ function normalizeMarriageSpouseNames(array $input): array
     return $input;
 }
 
-function normalizeRecordInput(array $input, bool $fromCsvImport = false): array
+function normalizeRecordInput(array $input, bool $fromCsvImport = false, ?array $existingRecord = null): array
 {
     $validTypes = ['birth', 'death', 'marriage'];
     $providedFields = array_keys($input);
@@ -153,12 +156,16 @@ function normalizeRecordInput(array $input, bool $fromCsvImport = false): array
         if (($nameParts['first_name'] === '' || $nameParts['last_name'] === '') && trim($input['person_name'] ?? '') !== '') {
             $nameParts = parsePersonNameToParts(trim($input['person_name']));
         }
-        if ($nameParts['first_name'] === '' || $nameParts['last_name'] === '') {
-            throw new InvalidArgumentException('First name and last name are required.');
+        foreach (['first_name', 'middle_name', 'last_name'] as $nameKey) {
+            if ($nameParts[$nameKey] === '') {
+                $nameParts[$nameKey] = null;
+            }
         }
     }
 
-    if (!$fromCsvImport) {
+    if ($fromCsvImport) {
+        assertCivilRecordCsvImportComplete($input, $type);
+    } else {
         assertCivilRecordManualEntryComplete($input, $type);
     }
 
@@ -186,6 +193,10 @@ function normalizeRecordInput(array $input, bool $fromCsvImport = false): array
             : printParseFillData($input['print_fill_data']);
     } else {
         $submittedFill = [];
+    }
+
+    if (!$fromCsvImport && $submittedFill === [] && $existingRecord !== null) {
+        $submittedFill = printManualFillOverrides($existingRecord, $type);
     }
 
     if ($type === 'birth') {

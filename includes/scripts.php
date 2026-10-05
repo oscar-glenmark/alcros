@@ -50,6 +50,16 @@ function adminPageStyles(string $page): string
     return $html;
 }
 
+/** Tab icon: images/favicon.png (via faviconLinkTag()). */
+function alcrosDocumentIconTags(): string
+{
+    if (!function_exists('faviconLinkTag')) {
+        require_once __DIR__ . '/helpers.php';
+    }
+
+    return faviconLinkTag();
+}
+
 function adminLayoutHeadStyles(?string $page = null): string
 {
     $tags = [adminCoreStyles(), actionCoreStyles()];

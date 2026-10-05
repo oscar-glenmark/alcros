@@ -1,108 +1,344 @@
 <?php
 /**
- * Administrator dashboard — read-only office analytics (no staff operational panels).
+ * Administrator office analytics (read-only charts).
  *
  * Expects $adminAnalytics from fetchAnalyticsDashboard().
+ * Optional: $activities (array) for system activity on dashboard.
+ * Optional: $adminAnalyticsContext — 'dashboard' (default) or 'report'.
  */
 if (!isset($adminAnalytics) || !is_array($adminAnalytics)) {
     return;
 }
 $a = $adminAnalytics;
-$reportsOverviewUrl = buildAuthUrl('report.php');
+$adminAnalyticsContext = $adminAnalyticsContext ?? 'dashboard';
+$showDashboardAnalyticsHeader = $adminAnalyticsContext === 'dashboard';
+$showSystemActivityFeed = $adminAnalyticsContext === 'dashboard';
 $recordsUrl = buildAuthUrl('records.php');
+$printsDetailsUrl = buildAuthUrl('report.php', ['section' => 'prints', 'range' => 'month']);
+$growth = $a['recordsGrowth'] ?? ['pct' => 0, 'up' => true];
+$trend = $a['recordTypeTrend'] ?? ['max' => 0];
+$thisMo = $a['thisMonthTypes'] ?? ['birth' => 0, 'death' => 0, 'marriage' => 0];
+$lastMo = $a['lastMonthTypes'] ?? ['birth' => 0, 'death' => 0, 'marriage' => 0];
+$activities = $activities ?? [];
 ?>
-<section class="dash-admin-analytics space-y-5" aria-labelledby="dash-admin-analytics-heading">
-    <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+<section class="dash-admin-analytics" aria-labelledby="dash-admin-analytics-heading">
+    <?php if ($showDashboardAnalyticsHeader): ?>
+    <div class="dash-admin-analytics__head">
         <div>
-            <h2 id="dash-admin-analytics-heading" class="text-xs font-bold uppercase tracking-wider text-gray-400">Office analytics</h2>
+            <p class="dash-admin-analytics__kicker">Office analytics</p>
+            <h2 id="dash-admin-analytics-heading" class="dash-admin-analytics__title">Comprehensive view</h2>
         </div>
-        <a href="<?= htmlspecialchars($reportsOverviewUrl) ?>" class="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-blue-600 hover:text-blue-700 shrink-0">
+        <a href="<?= htmlspecialchars(buildAuthUrl('report.php', ['section' => 'analytics'])) ?>" class="dash-admin-analytics__reports-link">
             Full reports
             <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
         </a>
     </div>
+    <?php else: ?>
+    <h2 id="dash-admin-analytics-heading" class="sr-only">Office analytics</h2>
+    <?php endif; ?>
 
     <?php if ($a['pendingCount'] > 0 || $a['readyCount'] > 0 || $a['queueWaiting'] > 0): ?>
-    <div class="dash-admin-pulse bg-white border border-slate-200 rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-        <span class="font-semibold text-slate-800">Office pulse</span>
+    <div class="dash-admin-attention">
+        <span class="dash-admin-attention__label">Needs attention</span>
         <?php if ($a['pendingCount'] > 0): ?>
-        <span class="text-xs text-slate-600"><strong class="text-amber-700"><?= (int) $a['pendingCount'] ?></strong> requests need review</span>
+        <a href="<?= htmlspecialchars(buildStaffOperationalUrl('manage_request.php', ['status' => 'pending'])) ?>" class="dash-admin-attention__pill"><?= (int) $a['pendingCount'] ?> pending</a>
         <?php endif; ?>
         <?php if ($a['readyCount'] > 0): ?>
-        <span class="text-xs text-slate-600"><strong class="text-emerald-700"><?= (int) $a['readyCount'] ?></strong> ready for pickup</span>
+        <a href="<?= htmlspecialchars(buildStaffOperationalUrl('manage_request.php', ['status' => 'ready'])) ?>" class="dash-admin-attention__pill"><?= (int) $a['readyCount'] ?> ready</a>
         <?php endif; ?>
         <?php if ($a['queueWaiting'] > 0): ?>
-        <span class="text-xs text-slate-600"><strong class="text-blue-700"><?= (int) $a['queueWaiting'] ?></strong> waiting in queue today</span>
+        <a href="<?= htmlspecialchars(buildStaffOperationalUrl('live-queue.php')) ?>" class="dash-admin-attention__pill"><?= (int) $a['queueWaiting'] ?> in queue</a>
         <?php endif; ?>
-        <a href="<?= htmlspecialchars($reportsOverviewUrl) ?>" class="text-[10px] font-bold uppercase text-blue-600 hover:underline ml-auto">See in reports</a>
     </div>
     <?php endif; ?>
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
-        <a href="<?= htmlspecialchars($recordsUrl) ?>" class="dash-admin-kpi stat-card bg-white rounded-xl border border-gray-100 p-4 hover:border-orange-200 block">
-            <p class="text-[10px] font-bold uppercase text-gray-400">Civil records on file</p>
-            <p class="text-2xl font-black text-slate-900 mt-1"><?= number_format((int) $a['recordsTotal']) ?></p>
-            <p class="text-[11px] text-gray-500 mt-0.5"><?= (int) $a['birthRecords'] ?> birth · <?= (int) $a['deathRecords'] ?> death · <?= (int) $a['marriageRecords'] ?> marriage</p>
-        </a>
-        <a href="<?= htmlspecialchars($reportsOverviewUrl) ?>" class="dash-admin-kpi stat-card bg-white rounded-xl border border-gray-100 p-4 hover:border-violet-200 block">
-            <p class="text-[10px] font-bold uppercase text-gray-400">Certifications printed</p>
-            <p class="text-2xl font-black text-slate-900 mt-1"><?= number_format((int) $a['certTotal']) ?></p>
-            <p class="text-[11px] text-gray-500 mt-0.5"><?= (int) $a['certToday'] ?> today · <?= (int) $a['certWeek'] ?> this week</p>
-        </a>
-        <a href="<?= htmlspecialchars($reportsOverviewUrl) ?>" class="dash-admin-kpi stat-card bg-white rounded-xl border border-gray-100 p-4 hover:border-indigo-200 block">
-            <p class="text-[10px] font-bold uppercase text-gray-400">Certificates printed</p>
-            <p class="text-2xl font-black text-slate-900 mt-1"><?= number_format((int) $a['certificateTotal']) ?></p>
-            <p class="text-[11px] text-gray-500 mt-0.5"><?= (int) $a['certificateToday'] ?> today · <?= (int) $a['certificateWeek'] ?> this week</p>
-        </a>
-        <a href="<?= htmlspecialchars($reportsOverviewUrl) ?>" class="dash-admin-kpi stat-card bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 block">
-            <p class="text-[10px] font-bold uppercase text-gray-400">Citizen intake</p>
-            <p class="text-2xl font-black text-slate-900 mt-1"><?= number_format((int) $a['totalIntake']) ?></p>
-            <p class="text-[11px] text-gray-500 mt-0.5"><?= (int) $a['todayIntake'] ?> today · <?= (int) $a['totalRequests'] ?> online · <?= (int) $a['walkInTotal'] ?> walk-in</p>
-        </a>
-        <a href="<?= htmlspecialchars($reportsOverviewUrl) ?>" class="dash-admin-kpi stat-card bg-white rounded-xl border border-gray-100 p-4 hover:border-emerald-200 block">
-            <p class="text-[10px] font-bold uppercase text-gray-400">Queue today</p>
-            <p class="text-2xl font-black text-slate-900 mt-1"><?= number_format((int) $a['queueServed']) ?></p>
-            <p class="text-[11px] text-gray-500 mt-0.5"><?= (int) $a['queueWaiting'] ?> waiting · <?= (int) $a['queueServing'] ?> being served · <?= (int) $a['apptToday'] ?> appts today</p>
-        </a>
+    <div class="dash-admin-featured analytics-chart-card">
+        <div class="dash-admin-featured__head">
+            <div class="dash-admin-featured__metrics">
+                <a href="<?= htmlspecialchars($recordsUrl) ?>" class="dash-admin-featured__stat">
+                    <p class="dash-admin-featured__stat-label">Civil records on file</p>
+                    <div class="dash-admin-featured__stat-row">
+                        <span class="dash-admin-featured__stat-value"><?= number_format((int) $a['recordsTotal']) ?></span>
+                        <?php if ((int) $a['recordsTotal'] > 0): ?>
+                        <span class="dash-admin-featured__badge dash-admin-featured__badge--<?= !empty($growth['up']) ? 'up' : 'down' ?>">
+                            <?= !empty($growth['up']) ? '↑' : '↓' ?> <?= (int) ($growth['pct'] ?? 0) ?>%
+                        </span>
+                        <?php endif; ?>
+                    </div>
+                    <p class="dash-admin-featured__stat-hint">Total records · growth since 6-month period start</p>
+                </a>
+                <div class="dash-admin-micro-trend" aria-label="New entries this month">
+                    <p class="dash-admin-micro-trend__label">Micro-trend</p>
+                    <ul class="dash-admin-micro-trend__list">
+                        <li><span class="dash-admin-micro-trend__dot dash-admin-micro-trend__dot--birth"></span> <?= (int) $thisMo['birth'] ?> births</li>
+                        <li><span class="dash-admin-micro-trend__dot dash-admin-micro-trend__dot--death"></span> <?= (int) $thisMo['death'] ?> deaths</li>
+                        <li><span class="dash-admin-micro-trend__dot dash-admin-micro-trend__dot--marriage"></span> <?= (int) $thisMo['marriage'] ?> marriages</li>
+                    </ul>
+                    <p class="dash-admin-micro-trend__note">Added <?= date('F Y') ?></p>
+                </div>
+            </div>
+            <a href="<?= htmlspecialchars($recordsUrl) ?>" class="dash-admin-featured__details">View details</a>
+        </div>
+        <?php if (($trend['max'] ?? 0) === 0 && (int) $a['recordsTotal'] === 0): ?>
+        <div class="analytics-empty">No civil records yet.</div>
+        <?php elseif (($trend['max'] ?? 0) === 0): ?>
+        <div class="analytics-empty">No new registry entries in the last 6 months.</div>
+        <?php else: ?>
+        <div class="chart-box chart-box--featured"><canvas id="chartRecordsTrend"></canvas></div>
+        <?php endif; ?>
     </div>
 
-    <div class="analytics-charts">
-        <div class="analytics-chart-card analytics-chart-card--featured">
-            <div class="analytics-chart-head">
-                <h2>Monthly intake</h2>
-                <p>Online requests and walk-in queue · last 6 months</p>
+    <div class="dash-admin-split">
+        <div class="analytics-chart-card dash-admin-split__panel">
+            <div class="analytics-chart-head dash-admin-chart-head--split">
+                <div>
+                    <h3>Certificates printed</h3>
+                    <p>Certifications and bond certificates · today vs this month</p>
+                </div>
+                <?php if ($adminAnalyticsContext !== 'report'): ?>
+                <a href="<?= htmlspecialchars($printsDetailsUrl) ?>" class="dash-admin-featured__details shrink-0">View details</a>
+                <?php endif; ?>
             </div>
-            <?php if ($a['maxMonth'] === 0): ?>
-            <div class="analytics-empty">No request or walk-in data yet.</div>
+            <?php if ($a['certTotal'] === 0 && $a['certificateTotal'] === 0): ?>
+            <div class="analytics-empty">No print jobs logged yet.</div>
             <?php else: ?>
-            <div class="chart-box chart-box--tall"><canvas id="chartMonths"></canvas></div>
+            <div class="chart-box chart-box--compact"><canvas id="chartPrintVolume"></canvas></div>
+            <?php endif; ?>
+        </div>
+        <div class="analytics-chart-card dash-admin-split__panel">
+            <div class="analytics-chart-head">
+                <h3>Daily intake &amp; queue status</h3>
+                <p>Citizen intake (<?= (int) $a['todayRequests'] ?> online, <?= (int) $a['walkInToday'] ?> walk-in) · queue today</p>
+            </div>
+            <?php if ($a['todayIntake'] === 0 && $a['queueWaiting'] === 0 && $a['queueServing'] === 0 && $a['queueServed'] === 0): ?>
+            <div class="analytics-empty">No intake or queue activity today.</div>
+            <?php else: ?>
+            <div class="chart-box chart-box--compact"><canvas id="chartDailyIntakeQueue"></canvas></div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <?php if ($adminAnalyticsContext === 'report'):
+        $queueWaitChart = $a['queueWaitChart'] ?? [];
+        $queueWaitDetailsUrl = buildAuthUrl('report.php', ['section' => 'queue', 'range' => 'week']);
+    ?>
+    <div class="dash-admin-queue-wait">
+        <div class="dash-admin-queue-wait__head">
+            <div>
+                <p class="dash-admin-analytics__kicker">Queue performance</p>
+                <h3 class="dash-admin-queue-wait__title">Wait before first call</h3>
+                <p class="dash-admin-queue-wait__sub">Charts use the last 7 days · per-ticket breakdown on the queue report</p>
+            </div>
+            <a href="<?= htmlspecialchars($queueWaitDetailsUrl) ?>" class="dash-admin-featured__details">View details</a>
+        </div>
+    <div class="dash-admin-split">
+        <div class="analytics-chart-card dash-admin-split__panel">
+            <div class="analytics-chart-head">
+                <h3>Queue wait by line</h3>
+                <p>Average minutes before first call · called tickets only</p>
+            </div>
+            <?php if (empty($queueWaitChart['hasData'])): ?>
+            <div class="analytics-empty">No called queue tickets in the last 7 days.</div>
+            <?php else: ?>
+            <div class="chart-box chart-box--compact"><canvas id="chartQueueWaitByPurpose"></canvas></div>
+            <?php endif; ?>
+        </div>
+        <div class="analytics-chart-card dash-admin-split__panel">
+            <div class="analytics-chart-head">
+                <h3>Queue wait trend</h3>
+                <p>Daily average wait · last 7 days</p>
+            </div>
+            <?php if (empty($queueWaitChart['daily'])): ?>
+            <div class="analytics-empty"><?= !empty($queueWaitChart['hasData']) ? 'Need more than one day with called tickets for a trend line.' : 'No data yet.' ?></div>
+            <?php else: ?>
+            <div class="chart-box chart-box--compact"><canvas id="chartQueueWaitDaily"></canvas></div>
+            <?php endif; ?>
+        </div>
+    </div>
+    </div>
+
+    <?php
+        $requestsChart = $a['requestsReportChart'] ?? [];
+        $requestsDetailsUrl = buildAuthUrl('report.php', ['section' => 'requests', 'range' => 'month']);
+    ?>
+    <div class="dash-admin-queue-wait">
+        <div class="dash-admin-queue-wait__head">
+            <div>
+                <p class="dash-admin-analytics__kicker">Citizen requests</p>
+                <h3 class="dash-admin-queue-wait__title">Document requests</h3>
+                <p class="dash-admin-queue-wait__sub"><?= number_format((int) ($requestsChart['total'] ?? $a['totalRequests'] ?? 0)) ?> total · last 6 months of submissions</p>
+            </div>
+            <a href="<?= htmlspecialchars($requestsDetailsUrl) ?>" class="dash-admin-featured__details">View details</a>
+        </div>
+        <div class="dash-admin-split">
+            <div class="analytics-chart-card dash-admin-split__panel">
+                <div class="analytics-chart-head">
+                    <h3>Submissions by month</h3>
+                    <p>Online document requests · last 6 months</p>
+                </div>
+                <?php if (empty($requestsChart['hasData']) || empty($requestsChart['monthly']['totals']) || max($requestsChart['monthly']['totals']) === 0): ?>
+                <div class="analytics-empty">No document requests yet.</div>
+                <?php else: ?>
+                <div class="chart-box chart-box--compact"><canvas id="chartAnalyticsRequestsMonthly"></canvas></div>
+                <?php endif; ?>
+            </div>
+            <div class="analytics-chart-card dash-admin-split__panel">
+                <div class="analytics-chart-head">
+                    <h3>By document type</h3>
+                    <p>All requests on file</p>
+                </div>
+                <?php if (empty($requestsChart['byType']['labels'])): ?>
+                <div class="analytics-empty">No type breakdown yet.</div>
+                <?php else: ?>
+                <div class="chart-box chart-box--donut"><canvas id="chartAnalyticsRequestsByType"></canvas></div>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+
+    <?php
+        $apptChart = $a['appointmentsReportChart'] ?? [];
+        $appointmentsDetailsUrl = buildAuthUrl('report.php', ['section' => 'appointments', 'range' => 'month']);
+    ?>
+    <div class="dash-admin-queue-wait">
+        <div class="dash-admin-queue-wait__head">
+            <div>
+                <p class="dash-admin-analytics__kicker">Scheduling</p>
+                <h3 class="dash-admin-queue-wait__title">Appointments</h3>
+                <p class="dash-admin-queue-wait__sub"><?= number_format((int) ($apptChart['total'] ?? $a['apptTotal'] ?? 0)) ?> total · visits by appointment date</p>
+            </div>
+            <a href="<?= htmlspecialchars($appointmentsDetailsUrl) ?>" class="dash-admin-featured__details">View details</a>
+        </div>
+        <div class="dash-admin-split">
+            <div class="analytics-chart-card dash-admin-split__panel">
+                <div class="analytics-chart-head">
+                    <h3>Visits by month</h3>
+                    <p>Scheduled appointment dates · last 6 months</p>
+                </div>
+                <?php if (empty($apptChart['hasData']) || empty($apptChart['monthly']['totals']) || max($apptChart['monthly']['totals']) === 0): ?>
+                <div class="analytics-empty">No appointments yet.</div>
+                <?php else: ?>
+                <div class="chart-box chart-box--compact"><canvas id="chartAnalyticsAppointmentsMonthly"></canvas></div>
+                <?php endif; ?>
+            </div>
+            <div class="analytics-chart-card dash-admin-split__panel">
+                <div class="analytics-chart-head">
+                    <h3>By status</h3>
+                    <p>All appointments on file</p>
+                </div>
+                <?php if (empty($apptChart['byStatus']['labels'])): ?>
+                <div class="analytics-empty">No status breakdown yet.</div>
+                <?php else: ?>
+                <div class="chart-box chart-box--donut"><canvas id="chartAnalyticsAppointmentsByStatus"></canvas></div>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+
+    <?php
+        $printsChart = $a['printsReportChart'] ?? [];
+    ?>
+    <div class="dash-admin-queue-wait">
+        <div class="dash-admin-queue-wait__head">
+            <div>
+                <p class="dash-admin-analytics__kicker">Registry printing</p>
+                <h3 class="dash-admin-queue-wait__title">Print volume</h3>
+                <p class="dash-admin-queue-wait__sub">
+                    <?= number_format((int) ($printsChart['total'] ?? ((int) ($a['certTotal'] ?? 0) + (int) ($a['certificateTotal'] ?? 0)))) ?> completed production jobs · last 6 months of print activity
+                </p>
+            </div>
+            <a href="<?= htmlspecialchars($printsDetailsUrl) ?>" class="dash-admin-featured__details">View details</a>
+        </div>
+        <div class="dash-admin-split">
+            <div class="analytics-chart-card dash-admin-split__panel">
+                <div class="analytics-chart-head">
+                    <h3>Print jobs by month</h3>
+                    <p>Certifications and certificates · last 6 months</p>
+                </div>
+                <?php if (empty($printsChart['hasData']) || empty($printsChart['monthly']['totals']) || max($printsChart['monthly']['totals']) === 0): ?>
+                <div class="analytics-empty">No print jobs logged yet.</div>
+                <?php else: ?>
+                <div class="chart-box chart-box--compact"><canvas id="chartAnalyticsPrintsMonthly"></canvas></div>
+                <?php endif; ?>
+            </div>
+            <div class="analytics-chart-card dash-admin-split__panel">
+                <div class="analytics-chart-head">
+                    <h3>By document kind</h3>
+                    <p>All completed production jobs on file</p>
+                </div>
+                <?php if (empty($printsChart['byKind']['labels'])): ?>
+                <div class="analytics-empty">No print breakdown yet.</div>
+                <?php else: ?>
+                <div class="chart-box chart-box--donut"><canvas id="chartAnalyticsPrintsByKind"></canvas></div>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <?php if ($showSystemActivityFeed):
+        $adminCalendarToday = $adminCalendarToday ?? alcrosTodayDate();
+    ?>
+    <div class="dash-admin-bottom">
+        <div class="dash-admin-activity analytics-chart-card dash-admin-bottom__panel">
+            <div class="dash-admin-activity__head">
+                <div>
+                    <h3 class="dash-admin-activity__title">System activity</h3>
+                    <p class="dash-admin-activity__sub">Latest actions across the registry office</p>
+                </div>
+                <a href="<?= htmlspecialchars(buildAuthUrl('activity-log.php')) ?>" class="dash-admin-activity__link">Full log</a>
+            </div>
+            <?php if ($activities === []): ?>
+            <div class="analytics-empty">No activity recorded yet.</div>
+            <?php else: ?>
+            <ul id="activity-feed-list" class="dash-admin-activity__list">
+                <?php foreach ($activities as $act): ?>
+                <?php
+                $actStaffName = (string) ($act['staff_display_name'] ?? ($act['staff_id'] ?? 'System'));
+                $actStaffId = trim((string) ($act['staff_id'] ?? ''));
+                ?>
+                <li class="dash-admin-activity__item">
+                    <span class="dash-admin-activity__avatar" aria-hidden="true">
+                        <?= $act['staff_avatar_html'] ?? renderStaffAvatar($act['staff_photo_path'] ?? null, $actStaffName, 'w-9 h-9 text-xs') ?>
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <p class="dash-admin-activity__action"><?= htmlspecialchars($act['action']) ?></p>
+                        <?php if (!empty($act['details'])): ?>
+                        <p class="dash-admin-activity__details"><?= htmlspecialchars($act['details']) ?></p>
+                        <?php endif; ?>
+                        <p class="dash-admin-activity__meta">
+                            <?= htmlspecialchars($actStaffName) ?><?= ($actStaffId !== '' && $actStaffName !== $actStaffId) ? ' · ' . htmlspecialchars($actStaffId) : '' ?> · <?= formatTimeAgo($act['created_at']) ?>
+                        </p>
+                    </div>
+                </li>
+                <?php endforeach; ?>
+            </ul>
             <?php endif; ?>
         </div>
 
-        <div class="analytics-chart-grid">
-            <div class="analytics-chart-card">
-                <div class="analytics-chart-head">
-                    <h2>Registry composition</h2>
-                    <p>Birth, death, and marriage records on file</p>
+        <div class="dash-admin-calendar analytics-chart-card dash-admin-bottom__panel">
+            <div class="dash-admin-activity__head">
+                <div>
+                    <h3 class="dash-admin-activity__title">Calendar</h3>
+                    <p class="dash-admin-activity__sub"><?= htmlspecialchars(date('l, F j, Y', strtotime($adminCalendarToday))) ?></p>
                 </div>
-                <?php if ($a['recordsTotal'] === 0): ?>
-                <div class="analytics-empty">No civil records yet.</div>
-                <?php else: ?>
-                <div class="chart-box chart-box--compact"><canvas id="chartRecordsType"></canvas></div>
-                <?php endif; ?>
             </div>
-
-            <div class="analytics-chart-card">
-                <div class="analytics-chart-head">
-                    <h2>New registry entries</h2>
-                    <p>Civil records added · last 6 months</p>
+            <div class="dash-schedule-calendar" id="dashAdminCalendar" data-today="<?= htmlspecialchars($adminCalendarToday) ?>">
+                <div class="dash-cal-head">
+                    <button type="button" id="dashAdminCalPrev" class="dash-cal-nav" aria-label="Previous month">
+                        <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                    </button>
+                    <p id="dashAdminCalMonthLabel" class="dash-cal-month"></p>
+                    <button type="button" id="dashAdminCalNext" class="dash-cal-nav" aria-label="Next month">
+                        <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                    </button>
                 </div>
-                <?php if ($a['maxRecordMonth'] === 0): ?>
-                <div class="analytics-empty">No new registry entries in this period.</div>
-                <?php else: ?>
-                <div class="chart-box chart-box--compact"><canvas id="chartRecordsMonths"></canvas></div>
-                <?php endif; ?>
+                <div class="dash-cal-weekdays">
+                    <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                </div>
+                <div id="dashAdminCalGrid" class="dash-cal-grid" role="grid" aria-label="Calendar"></div>
             </div>
         </div>
     </div>
+    <?php endif; ?>
 </section>

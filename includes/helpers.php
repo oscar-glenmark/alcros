@@ -86,6 +86,8 @@ function queueAdvanceNext(PDO $pdo, string $purpose, int $tableNum, string $staf
         throw new InvalidArgumentException('Invalid queue purpose.');
     }
 
+    ensureQueueTicketTimingColumns($pdo);
+
     $day = queueTodaySql('created_at');
     $pdo->beginTransaction();
     try {
@@ -112,7 +114,12 @@ function queueAdvanceNext(PDO $pdo, string $purpose, int $tableNum, string $staf
         $calledTicket = null;
         if ($nextRow) {
             $pdo->prepare(
-                "UPDATE queue_tickets SET status = 'serving', called_at = NOW(), window_number = ? WHERE id = ?"
+                "UPDATE queue_tickets
+                 SET status = 'serving',
+                     called_at = NOW(),
+                     first_called_at = COALESCE(first_called_at, NOW()),
+                     window_number = ?
+                 WHERE id = ?"
             )->execute([$tableNum, (int) $nextRow['id']]);
             $calledTicket = (string) $nextRow['ticket_number'];
             logActivity($staffId, 'Queue', "Table $tableNum: called {$nextRow['ticket_number']}");
@@ -270,6 +277,242 @@ function ensureQueuePerformanceIndexes(PDO $pdo): void
         } catch (Throwable $ignored) {
         }
     }
+
+    ensureQueueTicketTimingColumns($pdo);
+}
+
+/** First call time (unchanged by “Call again”); used for wait-before-called reports. */
+function ensureQueueTicketTimingColumns(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+
+    try {
+        $pdo->query('SELECT first_called_at FROM queue_tickets LIMIT 1');
+    } catch (Throwable $e) {
+        try {
+            $pdo->exec('ALTER TABLE queue_tickets ADD COLUMN first_called_at TIMESTAMP NULL DEFAULT NULL AFTER called_at');
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    try {
+        $pdo->exec(
+            'UPDATE queue_tickets SET first_called_at = called_at
+             WHERE first_called_at IS NULL AND called_at IS NOT NULL'
+        );
+    } catch (Throwable $ignored) {
+    }
+}
+
+/** Seconds from ticket issue until first call; null if never called. */
+function queueWaitSecondsBeforeFirstCall(?string $createdAt, ?string $firstCalledAt, ?string $calledAtFallback = null): ?int
+{
+    $called = trim((string) ($firstCalledAt ?? ''));
+    if ($called === '') {
+        $called = trim((string) ($calledAtFallback ?? ''));
+    }
+    if ($called === '') {
+        return null;
+    }
+
+    $created = trim((string) ($createdAt ?? ''));
+    if ($created === '') {
+        return null;
+    }
+
+    $start = strtotime($created);
+    $end = strtotime($called);
+    if ($start === false || $end === false || $end < $start) {
+        return null;
+    }
+
+    return $end - $start;
+}
+
+function formatQueueWaitDuration(?int $seconds): string
+{
+    if ($seconds === null) {
+        return '—';
+    }
+    if ($seconds < 0) {
+        return '—';
+    }
+    if ($seconds < 60) {
+        return $seconds . ' sec';
+    }
+    if ($seconds < 3600) {
+        $mins = (int) round($seconds / 60);
+
+        return $mins . ' min';
+    }
+
+    $hours = intdiv($seconds, 3600);
+    $mins = (int) round(($seconds % 3600) / 60);
+    if ($mins === 0) {
+        return $hours . 'h';
+    }
+
+    return $hours . 'h ' . $mins . ' min';
+}
+
+/** @param list<array<string, mixed>> $rows */
+function enrichQueueTicketsWithWaitMetrics(array $rows): array
+{
+    $enriched = [];
+    foreach ($rows as $row) {
+        $waitSeconds = queueWaitSecondsBeforeFirstCall(
+            $row['created_at'] ?? null,
+            $row['first_called_at'] ?? null,
+            $row['called_at'] ?? null
+        );
+        $row['wait_seconds'] = $waitSeconds;
+        $row['wait_label'] = formatQueueWaitDuration($waitSeconds);
+        $enriched[] = $row;
+    }
+
+    return $enriched;
+}
+
+/** @param list<array<string, mixed>> $rows */
+function buildQueueWaitSummary(array $rows): array
+{
+    $byPurpose = [];
+    $allWaits = [];
+
+    foreach ($rows as $row) {
+        $wait = $row['wait_seconds'] ?? null;
+        if ($wait === null) {
+            continue;
+        }
+        $allWaits[] = (int) $wait;
+        $purpose = (string) ($row['purpose'] ?? 'unknown');
+        if (!isset($byPurpose[$purpose])) {
+            $byPurpose[$purpose] = [];
+        }
+        $byPurpose[$purpose][] = (int) $wait;
+    }
+
+    $avg = static function (array $values): ?int {
+        if ($values === []) {
+            return null;
+        }
+
+        return (int) round(array_sum($values) / count($values));
+    };
+
+    $purposeSummary = [];
+    foreach ($byPurpose as $purpose => $values) {
+        $purposeSummary[$purpose] = [
+            'called_count' => count($values),
+            'avg_seconds'  => $avg($values),
+        ];
+    }
+
+    return [
+        'called_count' => count($allWaits),
+        'avg_seconds'  => $avg($allWaits),
+        'by_purpose'   => $purposeSummary,
+    ];
+}
+
+/**
+ * Chart.js payload for Reports → Queue wait-time graphs.
+ *
+ * @param list<array<string, mixed>> $queueTickets
+ * @param array<string, string> $purposeLabels
+ */
+function buildQueueWaitChartPayload(array $queueTickets, array $purposeLabels, string $from, string $to): array
+{
+    $summary = buildQueueWaitSummary($queueTickets);
+    $purposeOrder = ['walk_in', 'appointment', 'document_claim'];
+    $purposeColors = [
+        'walk_in'        => 'rgba(37, 99, 235, 0.88)',
+        'appointment'    => 'rgba(124, 58, 237, 0.88)',
+        'document_claim' => 'rgba(20, 184, 166, 0.88)',
+    ];
+
+    $byPurposeLabels = [];
+    $byPurposeMinutes = [];
+    $byPurposeColors = [];
+    foreach ($purposeOrder as $purposeKey) {
+        $stats = $summary['by_purpose'][$purposeKey] ?? null;
+        if ($stats === null || ($stats['avg_seconds'] ?? null) === null) {
+            continue;
+        }
+        $byPurposeLabels[] = $purposeLabels[$purposeKey] ?? ucfirst(str_replace('_', ' ', $purposeKey));
+        $byPurposeMinutes[] = round(((int) $stats['avg_seconds']) / 60, 1);
+        $byPurposeColors[] = $purposeColors[$purposeKey] ?? 'rgba(100, 116, 139, 0.88)';
+    }
+
+    $dailyBuckets = [];
+    foreach ($queueTickets as $row) {
+        $wait = $row['wait_seconds'] ?? null;
+        if ($wait === null) {
+            continue;
+        }
+        $created = (string) ($row['created_at'] ?? '');
+        $day = strlen($created) >= 10 ? substr($created, 0, 10) : '';
+        if ($day === '') {
+            continue;
+        }
+        if (!isset($dailyBuckets[$day])) {
+            $dailyBuckets[$day] = [];
+        }
+        $dailyBuckets[$day][] = (int) $wait;
+    }
+    ksort($dailyBuckets);
+
+    $dailyLabels = [];
+    $dailyMinutes = [];
+    foreach ($dailyBuckets as $day => $waits) {
+        $ts = strtotime($day);
+        $dailyLabels[] = $ts ? date('M j', $ts) : $day;
+        $dailyMinutes[] = round(array_sum($waits) / count($waits) / 60, 1);
+    }
+
+    $showDailyTrend = $from !== $to && count($dailyMinutes) > 1;
+
+    return [
+        'hasData' => (int) ($summary['called_count'] ?? 0) > 0,
+        'byPurpose' => [
+            'labels'  => $byPurposeLabels,
+            'minutes' => $byPurposeMinutes,
+            'colors'  => $byPurposeColors,
+        ],
+        'daily' => $showDailyTrend ? [
+            'labels'  => $dailyLabels,
+            'minutes' => $dailyMinutes,
+        ] : null,
+    ];
+}
+
+/** Queue wait charts for analytics (default: last 7 calendar days). */
+function fetchQueueWaitChartAnalytics(PDO $pdo, int $days = 7): array
+{
+    $days = max(1, $days);
+    $to = date('Y-m-d');
+    $from = date('Y-m-d', strtotime('-' . ($days - 1) . ' days'));
+
+    ensureQueueTicketTimingColumns($pdo);
+
+    $stmt = $pdo->prepare(
+        "SELECT ticket_number, purpose, status, first_name, middle_name, last_name, reference_code, window_number,
+                created_at, called_at, first_called_at
+         FROM queue_tickets
+         WHERE DATE(created_at) BETWEEN ? AND ?"
+    );
+    $stmt->execute([$from, $to]);
+    $tickets = enrichQueueTicketsWithWaitMetrics($stmt->fetchAll());
+
+    return buildQueueWaitChartPayload($tickets, [
+        'walk_in' => 'Walk-in',
+        'appointment' => 'Appointment',
+        'document_claim' => 'Document claim',
+    ], $from, $to);
 }
 
 function logActivity(?string $staffId, string $action, string $details = ''): void
@@ -3317,6 +3560,18 @@ function staffPhotoExists(?string $photoPath): bool
     return is_file(__DIR__ . '/../' . ltrim($photoPath, '/'));
 }
 
+/** Cache-busted web path to images/favicon.png (tab icon + in-app logo). */
+function alcrosFaviconVersionQuery(): string
+{
+    $full = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'images' . DIRECTORY_SEPARATOR . 'favicon.png';
+
+    return is_file($full) ? ('?v=' . filemtime($full)) : '?v=2';
+}
+
+/**
+ * URL for images/favicon.png — root-relative from the ALCROS folder (/alcros/images/… under XAMPP).
+ * Avoids plain "images/…" (breaks on some URLs) and "/images/…" (hits htdocs root → XAMPP icon).
+ */
 function alcrosFaviconAssetUrl(): string
 {
     static $url = null;
@@ -3324,19 +3579,19 @@ function alcrosFaviconAssetUrl(): string
         return $url;
     }
 
-    $full = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'images' . DIRECTORY_SEPARATOR . 'favicon.png';
-    $v = is_file($full) ? ('?v=' . filemtime($full)) : '?v=2';
-    // Relative to the current PHP page (same as dashboard.php, login.php, etc.).
-    // Absolute /images/... breaks under localhost/alcros/ when base path detection fails,
-    // and the browser then shows Apache/XAMPP's htdocs/favicon.ico.
-    $url = 'images/favicon.png' . $v;
+    $base = alcrosWebBasePath();
+    $prefix = ($base === '' || $base === '/') ? '' : rtrim($base, '/');
+    $url = ($prefix !== '' ? $prefix : '') . '/images/favicon.png' . alcrosFaviconVersionQuery();
 
     return $url;
 }
 
+/** HTML link tags so browser tabs use images/favicon.png. */
 function faviconLinkTag(): string
 {
-    return '<link rel="icon" type="image/png" href="' . htmlspecialchars(alcrosFaviconAssetUrl(), ENT_QUOTES, 'UTF-8') . '">';
+    $href = htmlspecialchars(alcrosFaviconAssetUrl(), ENT_QUOTES, 'UTF-8');
+
+    return '<link rel="icon" type="image/png" href="' . $href . '">';
 }
 
 function alcrosFaviconImg(int $sizePx = 20, string $extraClass = ''): string
@@ -3366,6 +3621,50 @@ function renderStaffAvatar(?string $photoPath, string $name, string $classes = '
     return '<div class="' . htmlspecialchars($classes, ENT_QUOTES, 'UTF-8') . ' ' . htmlspecialchars($rounded, ENT_QUOTES, 'UTF-8')
         . ' bg-gray-100 flex items-center justify-center border border-gray-200 text-xs font-bold text-gray-500 shrink-0">'
         . htmlspecialchars($initial, ENT_QUOTES, 'UTF-8') . '</div>';
+}
+
+/** @param list<array<string, mixed>> $activities */
+function enrichActivityLogsForDisplay(PDO $pdo, array $activities, string $avatarClasses = 'w-9 h-9 text-xs'): array
+{
+    if ($activities === []) {
+        return [];
+    }
+
+    ensureStaffProfileColumns($pdo);
+    $staffIds = array_values(array_unique(array_filter(array_map(
+        static fn (array $row): string => trim((string) ($row['staff_id'] ?? '')),
+        $activities
+    ))));
+    $staffById = [];
+    if ($staffIds !== []) {
+        $placeholders = implode(',', array_fill(0, count($staffIds), '?'));
+        $stmt = $pdo->prepare(
+            "SELECT staff_id, first_name, middle_name, last_name, profile_photo_path
+             FROM staff WHERE staff_id IN ($placeholders)"
+        );
+        $stmt->execute($staffIds);
+        foreach ($stmt->fetchAll() as $staffRow) {
+            $staffById[(string) $staffRow['staff_id']] = $staffRow;
+        }
+    }
+
+    $enriched = [];
+    foreach ($activities as $activity) {
+        $staffId = trim((string) ($activity['staff_id'] ?? ''));
+        $staffRow = $staffId !== '' ? ($staffById[$staffId] ?? null) : null;
+        $displayName = $staffRow
+            ? personNameFromRow($staffRow)
+            : ($staffId !== '' ? $staffId : 'System');
+        $photoPath = $staffRow['profile_photo_path'] ?? null;
+
+        $activity['staff_display_name'] = $displayName;
+        $activity['staff_photo_path'] = $photoPath;
+        $activity['staff_avatar_html'] = renderStaffAvatar($photoPath, $displayName, $avatarClasses);
+
+        $enriched[] = $activity;
+    }
+
+    return $enriched;
 }
 
 function civilRecordTypeLabel(string $type): string
@@ -5974,6 +6273,43 @@ function resolveReportYear(?string $yearInput = null): int
     return $year;
 }
 
+/** Calendar years offered on Reports → Civil Records (earliest registration through current year). */
+function reportCivilRecordsYearOptions(PDO $pdo): array
+{
+    $current = (int) date('Y');
+    $minYear = $current;
+
+    try {
+        $dateExpr = civilRecordRegisteredDateExpr('cr');
+        $stmt = $pdo->query(
+            "SELECT MIN(YEAR($dateExpr)) AS min_year
+             FROM civil_records cr
+             LEFT JOIN birth_record_details brd ON brd.civil_record_id = cr.id
+             LEFT JOIN death_record_details drd ON drd.civil_record_id = cr.id
+             WHERE cr.deleted_at IS NULL"
+        );
+        $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : false;
+        if ($row && $row['min_year'] !== null && $row['min_year'] !== '') {
+            $minYear = max(2000, (int) $row['min_year']);
+        } else {
+            $minYear = max(2000, $current - 9);
+        }
+    } catch (Throwable $e) {
+        $minYear = max(2000, $current - 9);
+    }
+
+    if ($minYear > $current) {
+        $minYear = $current;
+    }
+
+    $years = [];
+    for ($y = $current; $y >= $minYear; $y--) {
+        $years[] = $y;
+    }
+
+    return $years !== [] ? $years : [$current];
+}
+
 function quarterLabels(): array
 {
     return [
@@ -6026,14 +6362,256 @@ function buildQuarterlyCivilRecordsReport(PDO $pdo, int $year): array
         $yearTotals['total'] += $count;
     }
 
-    return [
+    $priorYear = $year - 1;
+    $priorTotals = ['birth' => 0, 'death' => 0, 'marriage' => 0, 'total' => 0];
+    if ($priorYear >= 2000) {
+        $priorStmt = $pdo->prepare(
+            "SELECT cr.record_type, COUNT(*) AS cnt
+             FROM civil_records cr
+             LEFT JOIN birth_record_details brd ON brd.civil_record_id = cr.id
+             LEFT JOIN death_record_details drd ON drd.civil_record_id = cr.id
+             WHERE cr.deleted_at IS NULL AND YEAR($dateExpr) = ?
+             GROUP BY cr.record_type"
+        );
+        $priorStmt->execute([$priorYear]);
+        foreach ($priorStmt->fetchAll() as $row) {
+            $type = (string) $row['record_type'];
+            if (!in_array($type, ['birth', 'death', 'marriage'], true)) {
+                continue;
+            }
+            $cnt = (int) $row['cnt'];
+            $priorTotals[$type] = $cnt;
+            $priorTotals['total'] += $cnt;
+        }
+    }
+
+    $yoy = static function (int $current, int $previous): ?array {
+        if ($previous === 0) {
+            return $current > 0 ? ['pct' => 100, 'up' => true, 'label' => 'new'] : null;
+        }
+        $pct = (int) round((($current - $previous) / $previous) * 100);
+
+        return ['pct' => abs($pct), 'up' => $pct >= 0, 'label' => ($pct >= 0 ? '+' : '−') . abs($pct) . '%'];
+    };
+
+    $yearYoY = $yoy((int) $yearTotals['total'], (int) $priorTotals['total']);
+    $typeYoY = [];
+    foreach (['birth', 'death', 'marriage'] as $typeKey) {
+        $typeYoY[$typeKey] = $yoy((int) $yearTotals[$typeKey], (int) $priorTotals[$typeKey]);
+    }
+
+    $peakQuarter = null;
+    $peakTotal = -1;
+    foreach ($quarters as $q) {
+        if ((int) $q['total'] > $peakTotal) {
+            $peakTotal = (int) $q['total'];
+            $peakQuarter = $q;
+        }
+    }
+    if ($peakQuarter !== null && $peakTotal <= 0) {
+        $peakQuarter = null;
+    }
+
+    $monthStmt = $pdo->prepare(
+        "SELECT MONTH($dateExpr) AS month_num, cr.record_type, COUNT(*) AS cnt
+         FROM civil_records cr
+         LEFT JOIN birth_record_details brd ON brd.civil_record_id = cr.id
+         LEFT JOIN death_record_details drd ON drd.civil_record_id = cr.id
+         WHERE cr.deleted_at IS NULL AND YEAR($dateExpr) = ?
+         GROUP BY month_num, cr.record_type
+         ORDER BY month_num, cr.record_type"
+    );
+    $monthStmt->execute([$year]);
+    $months = [];
+    for ($m = 1; $m <= 12; $m++) {
+        $months[$m] = ['birth' => 0, 'death' => 0, 'marriage' => 0, 'total' => 0];
+    }
+    foreach ($monthStmt->fetchAll() as $row) {
+        $m = (int) $row['month_num'];
+        $type = (string) $row['record_type'];
+        if ($m < 1 || $m > 12 || !in_array($type, ['birth', 'death', 'marriage'], true)) {
+            continue;
+        }
+        $cnt = (int) $row['cnt'];
+        $months[$m][$type] = $cnt;
+        $months[$m]['total'] += $cnt;
+    }
+
+    $report = [
         'year' => $year,
+        'prior_year' => $priorYear,
         'generated_at' => date('Y-m-d H:i:s'),
         'office_name' => getSetting('office_name', 'Local Civil Registrar Office'),
         'site_name' => getSetting('site_name', 'ALCROS'),
         'quarters' => $quarters,
         'year_totals' => $yearTotals,
+        'prior_year_totals' => $priorTotals,
+        'year_yoy' => $yearYoY,
+        'type_yoy' => $typeYoY,
+        'peak_quarter' => $peakQuarter,
+        'months' => $months,
         'record_types' => ['birth', 'death', 'marriage'],
+    ];
+    $report['chart_payload'] = buildCivilRecordsReportChartPayload($report);
+
+    return $report;
+}
+
+/** @param array<string, mixed> $recordsReport */
+function buildCivilRecordsReportChartPayload(array $recordsReport): array
+{
+    $quarterList = array_values($recordsReport['quarters'] ?? []);
+    $totals = $recordsReport['year_totals'] ?? ['birth' => 0, 'death' => 0, 'marriage' => 0, 'total' => 0];
+    $months = $recordsReport['months'] ?? [];
+
+    $monthLabels = [];
+    $monthTotals = [];
+    for ($m = 1; $m <= 12; $m++) {
+        $ts = mktime(0, 0, 0, $m, 1, (int) ($recordsReport['year'] ?? date('Y')));
+        $monthLabels[] = date('M', $ts);
+        $monthTotals[] = (int) ($months[$m]['total'] ?? 0);
+    }
+
+    return [
+        'hasData' => (int) ($totals['total'] ?? 0) > 0,
+        'quarterly' => [
+            'labels'   => array_map(static fn (array $q): string => (string) ($q['label'] ?? ''), $quarterList),
+            'birth'    => array_map(static fn (array $q): int => (int) ($q['birth'] ?? 0), $quarterList),
+            'death'    => array_map(static fn (array $q): int => (int) ($q['death'] ?? 0), $quarterList),
+            'marriage' => array_map(static fn (array $q): int => (int) ($q['marriage'] ?? 0), $quarterList),
+        ],
+        'types' => [
+            'labels' => ['Birth', 'Death', 'Marriage'],
+            'counts' => [
+                (int) ($totals['birth'] ?? 0),
+                (int) ($totals['death'] ?? 0),
+                (int) ($totals['marriage'] ?? 0),
+            ],
+            'colors' => ['#2563eb', '#64748b', '#ec4899'],
+        ],
+        'monthly' => [
+            'labels' => $monthLabels,
+            'totals' => $monthTotals,
+        ],
+    ];
+}
+
+function printJobDocumentKindLabel(string $kind): string
+{
+    return match ($kind) {
+        'certification' => 'Certification',
+        'certificate' => 'Certificate',
+        default => ucfirst($kind),
+    };
+}
+
+/** @param array<string, mixed> $row */
+function printJobSourceSummary(array $row): string
+{
+    $tracking = trim((string) ($row['tracking_code'] ?? ''));
+    if ($tracking !== '') {
+        return 'Request ' . $tracking;
+    }
+
+    $registry = trim((string) ($row['registry_number'] ?? ''));
+    if ($registry === '') {
+        $registry = trim((string) ($row['record_registry'] ?? ''));
+    }
+    if ($registry !== '') {
+        return 'Record ' . $registry;
+    }
+
+    if (!empty($row['civil_record_id'])) {
+        return 'Record #' . (int) $row['civil_record_id'];
+    }
+
+    if (!empty($row['request_id'])) {
+        return 'Request #' . (int) $row['request_id'];
+    }
+
+    return '—';
+}
+
+/**
+ * Completed production print jobs for operational reports.
+ *
+ * @return array{
+ *     available: bool,
+ *     jobs: list<array<string, mixed>>,
+ *     by_document_kind: array{certification: int, certificate: int},
+ *     by_certificate_type: array{birth: int, death: int, marriage: int}
+ * }
+ */
+function fetchOperationalPrintReportData(PDO $pdo, string $from, string $to): array
+{
+    $empty = [
+        'available' => false,
+        'jobs' => [],
+        'by_document_kind' => ['certification' => 0, 'certificate' => 0],
+        'by_certificate_type' => ['birth' => 0, 'death' => 0, 'marriage' => 0],
+    ];
+
+    try {
+        $pdo->query('SELECT id FROM print_jobs LIMIT 1');
+        $pdo->query('SELECT document_kind FROM print_templates LIMIT 1');
+    } catch (Throwable $e) {
+        return $empty;
+    }
+
+    $baseWhere = "pj.print_mode = 'production'
+        AND pj.status = 'completed'
+        AND DATE(pj.printed_at) BETWEEN ? AND ?";
+
+    $kindStmt = $pdo->prepare(
+        "SELECT pt.document_kind, COUNT(*) AS cnt
+         FROM print_jobs pj
+         INNER JOIN print_templates pt ON pt.id = pj.template_id
+         WHERE {$baseWhere}
+         GROUP BY pt.document_kind"
+    );
+    $kindStmt->execute([$from, $to]);
+    $byKind = ['certification' => 0, 'certificate' => 0];
+    foreach ($kindStmt->fetchAll(PDO::FETCH_ASSOC) as $kindRow) {
+        $key = (string) ($kindRow['document_kind'] ?? '');
+        if (isset($byKind[$key])) {
+            $byKind[$key] = (int) ($kindRow['cnt'] ?? 0);
+        }
+    }
+
+    $typeStmt = $pdo->prepare(
+        "SELECT pj.certificate_type, COUNT(*) AS cnt
+         FROM print_jobs pj
+         INNER JOIN print_templates pt ON pt.id = pj.template_id
+         WHERE {$baseWhere}
+         GROUP BY pj.certificate_type"
+    );
+    $typeStmt->execute([$from, $to]);
+    $byType = ['birth' => 0, 'death' => 0, 'marriage' => 0];
+    foreach ($typeStmt->fetchAll(PDO::FETCH_ASSOC) as $typeRow) {
+        $key = (string) ($typeRow['certificate_type'] ?? '');
+        if (isset($byType[$key])) {
+            $byType[$key] = (int) ($typeRow['cnt'] ?? 0);
+        }
+    }
+
+    $listStmt = $pdo->prepare(
+        "SELECT pj.id, pj.printed_at, pj.certificate_type, pj.page_side, pj.copies, pj.printed_by,
+                pt.document_kind, pj.request_id, pj.civil_record_id, pj.registry_number,
+                dr.tracking_code, cr.registry_number AS record_registry
+         FROM print_jobs pj
+         INNER JOIN print_templates pt ON pt.id = pj.template_id
+         LEFT JOIN document_requests dr ON dr.id = pj.request_id
+         LEFT JOIN civil_records cr ON cr.id = pj.civil_record_id
+         WHERE {$baseWhere}
+         ORDER BY pj.printed_at DESC"
+    );
+    $listStmt->execute([$from, $to]);
+
+    return [
+        'available' => true,
+        'jobs' => $listStmt->fetchAll(PDO::FETCH_ASSOC),
+        'by_document_kind' => $byKind,
+        'by_certificate_type' => $byType,
     ];
 }
 
@@ -6127,22 +6705,19 @@ function buildOperationalReport(PDO $pdo, string $from, string $to): array
         $queueByPurpose[$row['purpose']] = (int) $row['cnt'];
     }
 
+    ensureQueueTicketTimingColumns($pdo);
+
     $queueList = $pdo->prepare(
-        "SELECT ticket_number, purpose, status, first_name, middle_name, last_name, reference_code, window_number, created_at, called_at
+        "SELECT ticket_number, purpose, status, first_name, middle_name, last_name, reference_code, window_number,
+                created_at, called_at, first_called_at
          FROM queue_tickets
          WHERE DATE(created_at) BETWEEN ? AND ?
          ORDER BY created_at DESC"
     );
     $queueList->execute([$from, $to]);
-
-    $activityList = $pdo->prepare(
-        "SELECT staff_id, action, details, created_at
-         FROM activity_logs
-         WHERE DATE(created_at) BETWEEN ? AND ?
-         ORDER BY created_at DESC
-         LIMIT 500"
-    );
-    $activityList->execute([$from, $to]);
+    $queueTickets = enrichQueueTicketsWithWaitMetrics($queueList->fetchAll());
+    $queueWaitSummary = buildQueueWaitSummary($queueTickets);
+    $printReport = fetchOperationalPrintReportData($pdo, $from, $to);
 
     return [
         'from' => $from,
@@ -6161,15 +6736,21 @@ function buildOperationalReport(PDO $pdo, string $from, string $to): array
             'pending_requests'     => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'pending'")->fetchColumn(),
             'ready_for_pickup'     => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'ready'")->fetchColumn(),
             'total_records'        => (int) $pdo->query('SELECT COUNT(*) FROM civil_records WHERE deleted_at IS NULL')->fetchColumn(),
+            'certifications_printed' => (int) ($printReport['by_document_kind']['certification'] ?? 0),
+            'certificates_printed'   => (int) ($printReport['by_document_kind']['certificate'] ?? 0),
         ],
+        'print_jobs' => $printReport['jobs'],
+        'prints_by_document_kind' => $printReport['by_document_kind'],
+        'prints_by_certificate_type' => $printReport['by_certificate_type'],
+        'prints_available' => $printReport['available'],
         'requests_by_status' => $requestsByStatus,
         'requests_by_type' => $requestsByType,
         'requests' => $requestList->fetchAll(),
         'appointments_by_status' => $appointmentsByStatus,
         'appointments' => $appointmentList->fetchAll(),
         'queue_by_purpose' => $queueByPurpose,
-        'queue_tickets' => $queueList->fetchAll(),
-        'activities' => $activityList->fetchAll(),
+        'queue_tickets' => $queueTickets,
+        'queue_wait_summary' => $queueWaitSummary,
     ];
 }
 
@@ -6187,7 +6768,7 @@ function formatReportDateTime(?string $value): string
 /** @return list<string> */
 function reportExportSectionKeys(): array
 {
-    return ['overview', 'requests', 'appointments', 'queue', 'records', 'activity'];
+    return ['overview', 'requests', 'appointments', 'queue', 'prints', 'records'];
 }
 
 /** @return list<string> */
@@ -6382,6 +6963,8 @@ function exportOperationalReportCsv(
         fputcsv($out, ['Ready for Pickup (live)', (int) ($summary['ready_for_pickup'] ?? 0)]);
         fputcsv($out, ['Total Civil Records (live)', (int) ($summary['total_records'] ?? 0)]);
         fputcsv($out, ['Registered in ' . $reportYear, (int) ($recordsReport['year_totals']['total'] ?? 0)]);
+        fputcsv($out, ['Certifications Printed', (int) ($summary['certifications_printed'] ?? 0)]);
+        fputcsv($out, ['Certificates Printed', (int) ($summary['certificates_printed'] ?? 0)]);
     }
 
     if (in_array('requests', $sections, true)) {
@@ -6420,20 +7003,60 @@ function exportOperationalReportCsv(
         }
     }
 
+    if (in_array('prints', $sections, true)) {
+        fputcsv($out, []);
+        fputcsv($out, ['PRINT JOBS']);
+        fputcsv($out, ['Printed At', 'Document Kind', 'Record Type', 'Copies', 'Source', 'Printed By']);
+
+        foreach ($report['print_jobs'] ?? [] as $row) {
+            fputcsv($out, [
+                formatReportDateTime($row['printed_at'] ?? null),
+                printJobDocumentKindLabel((string) ($row['document_kind'] ?? '')),
+                civilRecordTypeLabel((string) ($row['certificate_type'] ?? '')),
+                (int) ($row['copies'] ?? 1),
+                printJobSourceSummary($row),
+                $row['printed_by'] ?? '',
+            ]);
+        }
+    }
+
     if (in_array('queue', $sections, true)) {
         fputcsv($out, []);
+        $waitSummary = $report['queue_wait_summary'] ?? [];
+        if (!empty($waitSummary['called_count'])) {
+            fputcsv($out, ['QUEUE WAIT BEFORE FIRST CALL (average)']);
+            fputcsv($out, [
+                'Tickets called',
+                (int) ($waitSummary['called_count'] ?? 0),
+                'Average wait',
+                formatQueueWaitDuration($waitSummary['avg_seconds'] ?? null),
+            ]);
+            foreach ($waitSummary['by_purpose'] ?? [] as $purposeKey => $purposeStats) {
+                fputcsv($out, [
+                    $purposeLabels[$purposeKey] ?? $purposeKey,
+                    'Called: ' . (int) ($purposeStats['called_count'] ?? 0),
+                    'Avg wait',
+                    formatQueueWaitDuration($purposeStats['avg_seconds'] ?? null),
+                ]);
+            }
+        }
+
+        fputcsv($out, []);
         fputcsv($out, ['QUEUE TICKETS']);
-        fputcsv($out, ['Ticket', 'Purpose', 'Status', 'Citizen', 'Created']);
+        fputcsv($out, ['Ticket', 'Purpose', 'Status', 'Citizen', 'Issued', 'First called', 'Wait before call']);
 
         foreach ($report['queue_tickets'] as $row) {
             $purpose = (string) ($row['purpose'] ?? '');
+            $firstCalled = $row['first_called_at'] ?? $row['called_at'] ?? null;
 
             fputcsv($out, [
                 $row['ticket_number'] ?? '',
                 $purposeLabels[$purpose] ?? $purpose,
                 $row['status'] ?? '',
                 personNameFromRow($row),
-                formatDateDisplay(substr((string) ($row['created_at'] ?? ''), 0, 10)),
+                formatReportDateTime($row['created_at'] ?? null),
+                formatReportDateTime($firstCalled),
+                $row['wait_label'] ?? formatQueueWaitDuration($row['wait_seconds'] ?? null),
             ]);
         }
     }
@@ -6461,22 +7084,19 @@ function exportOperationalReportCsv(
             (int) ($recordsReport['year_totals']['total'] ?? 0),
         ]);
 
-        reportExportCivilRecordsDetailSection($pdo, $out, $reportYear, $recordsType);
-    }
-
-    if (in_array('activity', $sections, true)) {
-        fputcsv($out, []);
-        fputcsv($out, ['STAFF ACTIVITY LOG']);
-        fputcsv($out, ['Staff ID', 'Action', 'Details', 'When']);
-
-        foreach ($report['activities'] as $row) {
+        $priorYear = (int) ($recordsReport['prior_year'] ?? ($reportYear - 1));
+        $priorTotals = $recordsReport['prior_year_totals'] ?? null;
+        if (is_array($priorTotals)) {
             fputcsv($out, [
-                $row['staff_id'] ?? '',
-                $row['action'] ?? '',
-                $row['details'] ?? '',
-                $row['created_at'] ?? '',
+                $priorYear . ' total (comparison)',
+                (int) ($priorTotals['birth'] ?? 0),
+                (int) ($priorTotals['death'] ?? 0),
+                (int) ($priorTotals['marriage'] ?? 0),
+                (int) ($priorTotals['total'] ?? 0),
             ]);
         }
+
+        reportExportCivilRecordsDetailSection($pdo, $out, $reportYear, $recordsType);
     }
 
     fputcsv($out, []);

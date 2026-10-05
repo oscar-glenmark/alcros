@@ -224,6 +224,8 @@ if (!$formDefaults && !empty($fields[0])) {
                 </div>
 
                 <div class="print-cal-panel is-active" data-panel="fields" role="tabpanel">
+                <div class="print-cal-fields-split">
+                <div class="print-cal-fields-list-pane">
                 <h2>Form fields</h2>
                 <input type="search" id="calFieldSearch" class="print-cal-search" placeholder="Search fields…" autocomplete="off">
 
@@ -243,7 +245,9 @@ if (!$formDefaults && !empty($fields[0])) {
                         </li>
                     <?php endforeach; ?>
                 </ul>
+                </div>
 
+                <div class="print-cal-fields-editor-pane">
                 <div class="print-cal-editor" id="calFieldEditor">
                     <?php if ($formDefaults): ?>
                     <div class="print-cal-editor-empty" id="calFieldEmpty"<?= $selectedFieldId ? ' hidden' : '' ?>>
@@ -370,6 +374,8 @@ if (!$formDefaults && !empty($fields[0])) {
                     <button type="button" class="print-cal-delete" id="calDeleteFieldBtn" hidden>Delete textbox</button>
                     </div>
                     <?php endif; ?>
+                </div>
+                </div>
                 </div>
                 </div>
 

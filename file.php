@@ -19,13 +19,8 @@ function filePhpHelpers(): void
 function filePhpFaviconLinkTag(): string
 {
     filePhpHelpers();
-    $href = alcrosFaviconAssetUrl();
-    $base = alcrosWebBasePath();
-    if ($base !== '' && $href !== '' && $href[0] !== '/') {
-        $href = $base . '/' . ltrim($href, '/');
-    }
 
-    return '<link rel="icon" type="image/png" href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '">';
+    return faviconLinkTag();
 }
 
 /**

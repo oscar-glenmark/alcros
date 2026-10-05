@@ -282,10 +282,18 @@
 
     function entryFieldContainer(el) {
         if (!el) return null;
+        var printFillWrap = el.closest('.records-entry-print-fill__grid > div');
+        if (printFillWrap) {
+            return printFillWrap;
+        }
         if (el.closest('.grid')) {
             return el.closest('.grid').parentElement;
         }
         return el.parentElement;
+    }
+
+    function entryPrintFillField(form, fieldName) {
+        return enabledEntryField(form, 'print_fill[' + fieldName + ']');
     }
 
     function ensureEntryFieldErrorEl(container) {
@@ -345,28 +353,19 @@
 
     function validateEntryFormBeforeConfirm(form) {
         readPageConfig();
-        clearEntryFormValidation(form);
-
-        var requiredByType = cfg.manualEntryRequiredFields || {};
+        var V = window.AlcrosCivilRecordEntryValidation;
+        if (!V) {
+            return false;
+        }
         var typeInput = form.querySelector('#recordTypeInput');
         var type = typeInput ? String(typeInput.value || '').trim() : '';
-        var required = requiredByType[type];
-        if (!required || !required.length) return false;
-
-        var blocked = false;
-        required.forEach(function (spec) {
-            var el = enabledEntryField(form, spec.key);
-            if (!entryFieldIsEmpty(el)) return;
-            blocked = true;
-            if (el) {
-                setEntryFieldError(el, entryFieldErrorMessage(el, spec.label || spec.key));
+        return V.validateManualEntrySections(type, cfg.manualEntryRequiredFields || {}, {
+            form: form,
+            root: form,
+            resolveInput: function (fieldName) {
+                return entryPrintFillField(form, fieldName);
             }
         });
-
-        if (!blocked) return false;
-
-        scrollEntryFormToFirstError(form);
-        return true;
     }
 
     window.__alcrosValidateEntryForm = validateEntryFormBeforeConfirm;
@@ -599,19 +598,9 @@
 
         var entryForm = document.getElementById('entryForm');
         if (entryForm) {
-            entryForm.addEventListener('input', function (e) {
-                var el = e.target;
-                if (!el || !el.matches('input, select, textarea')) return;
-                el.classList.remove('is-invalid');
-                el.removeAttribute('aria-invalid');
-                var container = entryFieldContainer(el);
-                if (!container) return;
-                var err = container.querySelector('.records-field-error');
-                if (err) {
-                    err.textContent = '';
-                    err.classList.add('hidden');
-                }
-            });
+            if (window.AlcrosCivilRecordEntryValidation) {
+                AlcrosCivilRecordEntryValidation.bindLiveClear(entryForm);
+            }
             entryForm.addEventListener('submit', function () {
                 clearEntrySectionHtmlRequired();
                 entryFormSubmitting = true;
@@ -899,12 +888,59 @@
         }, true);
     }
 
-    function openRecordUpdatesModal() {
+    var viewRecordIdForHistory = null;
+
+    function recordHistoryEmptyMarkup() {
+        return '<p class="records-recent-updates__empty">No edit history yet for this record. Changes will appear here after the next save.</p>';
+    }
+
+    function fetchRecordUpdateHistoryHtml(recordId) {
+        var url = new URL(recordsAuthUrl, window.location.href);
+        url.searchParams.set('action', 'record_update_history');
+        url.searchParams.set('id', String(recordId));
+        return fetch(url.pathname + url.search, { credentials: 'same-origin' })
+            .then(function (res) {
+                if (!res.ok) {
+                    throw new Error('History request failed.');
+                }
+                return res.json();
+            })
+            .then(function (data) {
+                if (!data || !data.ok) {
+                    throw new Error((data && data.error) || 'Could not load history.');
+                }
+                return typeof data.history_html === 'string' ? data.history_html : recordHistoryEmptyMarkup();
+            });
+    }
+
+    function openRecordUpdatesModal(fromView) {
         var modal = document.getElementById('recordUpdatesModal');
         if (!modal) return;
         modal.classList.remove('hidden');
         modal.setAttribute('aria-hidden', 'false');
         refreshIcons();
+
+        if (!fromView) {
+            return;
+        }
+
+        var body = document.getElementById('recordUpdatesModalBody');
+        if (!body) {
+            return;
+        }
+        if (!viewRecordIdForHistory) {
+            body.innerHTML = recordHistoryEmptyMarkup();
+            return;
+        }
+
+        body.innerHTML = '<p class="records-detail-loading">Loading recent updates…</p>';
+        fetchRecordUpdateHistoryHtml(viewRecordIdForHistory)
+            .then(function (html) {
+                body.innerHTML = html || recordHistoryEmptyMarkup();
+            })
+            .catch(function () {
+                body.innerHTML = '<p class="records-recent-updates__empty">Could not load update history. Close and try again.</p>';
+            });
     }
 
     function closeRecordUpdatesModal() {
@@ -916,14 +952,25 @@
 
     function bindRecordUpdatesModal() {
         var openBtn = document.getElementById('recordUpdatesInfoBtn');
+        var viewOpenBtn = document.getElementById('viewRecordUpdatesInfoBtn');
         var modal = document.getElementById('recordUpdatesModal');
-        if (!openBtn || !modal) return;
+        if (!modal) return;
 
-        openBtn.addEventListener('click', function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            openRecordUpdatesModal();
-        });
+        if (openBtn) {
+            openBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openRecordUpdatesModal(false);
+            });
+        }
+
+        if (viewOpenBtn) {
+            viewOpenBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openRecordUpdatesModal(true);
+            });
+        }
 
         modal.querySelectorAll('[data-record-updates-close]').forEach(function (el) {
             el.addEventListener('click', function (e) {
@@ -1140,6 +1187,8 @@
             return;
         }
 
+        viewRecordIdForHistory = r.id;
+
         var presentation = buildViewRecordPresentation(r, printValues);
         viewContent.innerHTML = presentation.html;
         if (viewModalTitle) {
@@ -1286,6 +1335,8 @@
                     return;
                 }
 
+                viewRecordIdForHistory = r.id || null;
+
                 var viewContent = document.getElementById('viewContent');
                 if (viewContent) {
                     if (window.AlcrosLoading && typeof window.AlcrosLoading.skeletonInto === 'function') {
@@ -1301,7 +1352,12 @@
                 viewUrl.searchParams.set('id', String(r.id));
 
                 fetch(viewUrl.pathname + viewUrl.search, { credentials: 'same-origin' })
-                    .then(function (res) { return res.json(); })
+                    .then(function (res) {
+                        if (!res.ok) {
+                            throw new Error('Record request failed.');
+                        }
+                        return res.json();
+                    })
                     .then(function (data) {
                         if (!data || !data.ok || !data.record) {
                             throw new Error((data && data.error) || 'Could not load record.');

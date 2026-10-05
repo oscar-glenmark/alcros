@@ -280,3 +280,48 @@ function formatCivilRecordAuditTimestamp(string $createdAt): string
 
     return $datePart . ' · ' . $timePart;
 }
+
+/** HTML for recent-updates modal body (edit form and view modal info button). */
+function renderCivilRecordUpdateHistoryMarkup(array $recordUpdateHistory): string
+{
+    if ($recordUpdateHistory === []) {
+        return '<p class="records-recent-updates__empty">No edit history yet for this record. Changes will appear here after the next save.</p>';
+    }
+
+    ob_start();
+    ?>
+    <div class="records-recent-updates__list">
+        <?php foreach ($recordUpdateHistory as $update): ?>
+        <article class="records-recent-updates__item">
+            <header class="records-recent-updates__item-head">
+                <time class="records-recent-updates__when"><?= htmlspecialchars(formatCivilRecordAuditTimestamp($update['created_at'])) ?></time>
+                <p class="records-recent-updates__who">
+                    <strong><?= htmlspecialchars($update['event_type'] === 'created' ? 'Created by' : 'Updated by') ?>:</strong>
+                    <?= htmlspecialchars($update['staff_name']) ?>
+                    (<span class="font-mono text-[10px]"><?= htmlspecialchars($update['staff_id']) ?></span>)
+                    · <?= htmlspecialchars($update['staff_role']) ?>
+                </p>
+                <p class="records-recent-updates__summary"><?= htmlspecialchars($update['summary']) ?></p>
+            </header>
+            <?php if (!empty($update['changes'])): ?>
+            <div class="records-recent-updates__changes">
+                <p class="records-recent-updates__changes-label">Changes</p>
+                <ul class="records-recent-updates__changes-list">
+                    <?php foreach ($update['changes'] as $change): ?>
+                    <li>
+                        <span class="records-recent-updates__field"><?= htmlspecialchars((string) ($change['label'] ?? 'Field')) ?>:</span>
+                        <span class="records-recent-updates__from"><?= htmlspecialchars((string) ($change['old'] ?? '')) ?></span>
+                        <span class="records-recent-updates__arrow" aria-hidden="true">→</span>
+                        <span class="records-recent-updates__to"><?= htmlspecialchars((string) ($change['new'] ?? '')) ?></span>
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+            <?php endif; ?>
+        </article>
+        <?php endforeach; ?>
+    </div>
+    <?php
+
+    return (string) ob_get_clean();
+}

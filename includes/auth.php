@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/security.php';
 bootstrapSecurity();
 
@@ -240,8 +240,11 @@ function redirectWithAuth(string $path, array $query = []): void
 function outputAuthBootstrap(): void
 {
     require_once __DIR__ . '/scripts.php';
+    if (!function_exists('faviconLinkTag')) {
+        require_once __DIR__ . '/helpers.php';
+    }
     $redirect = basename($_SERVER['PHP_SELF']);
-    echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><link rel="icon" type="image/png" href="images/favicon.png?v=2"><title>Loading...</title>';
+    echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' . faviconLinkTag() . '<title>Loading...</title>';
     echo pageConfigJson(['redirect' => $redirect], 'auth-bootstrap-config');
     echo scriptTag('core/auth-bootstrap.js');
     echo '</head><body></body></html>';
@@ -423,7 +426,6 @@ function staffMenuPages(): array
         'manage_request.php',
         'appointment.php',
         'records.php',
-        'report.php',
         'live-queue.php',
         'documents.php',
         'print_certificate.php',

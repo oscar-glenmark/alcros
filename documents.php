@@ -5,6 +5,7 @@ require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 require_once __DIR__ . '/includes/printing.php';
 require_once __DIR__ . '/includes/print_fill_controls.php';
+require_once __DIR__ . '/includes/civil_record_schema.php';
 require_once __DIR__ . '/includes/certification_print.php';
 requireStaffLogin();
 requirePageAccess('documents.php');
@@ -72,7 +73,7 @@ $pageSubtitle = 'Blank certificate and certification forms for manual entry';
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <link rel="icon" type="image/png" href="images/favicon.png?v=2">
+    <?= faviconLinkTag() ?>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($pageTitle) ?> · ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
@@ -195,6 +196,10 @@ $pageSubtitle = 'Blank certificate and certification forms for manual entry';
                     <div class="print-cert-fill-chrome__body">
                         <p class="print-cert-hint print-cert-fill-chrome__hint">Type values manually. You can also click text directly in the preview on the right.</p>
                     </div>
+                    <?php else: ?>
+                    <div class="print-cert-fill-chrome__body">
+                        <p class="print-cert-hint print-cert-fill-chrome__hint"><strong>Child</strong>, <strong>Deceased</strong>, or <strong>Husband/Wife</strong> sections must be complete to add a record (middle names optional). Other sections are optional.</p>
+                    </div>
                     <?php endif; ?>
                     <?php if (!$isCertification): ?>
                     <div class="print-cert-fill-chrome__footer">
@@ -273,10 +278,12 @@ $pageSubtitle = 'Blank certificate and certification forms for manual entry';
     'calibrationRev' => printCalibrationRevision(),
     'initialFillValues' => array_column($fillEditorFields, 'value', 'field_name'),
     'calibrationUrl' => buildAuthUrl('print_calibration.php', $docQueryParams(['page' => 'front'])),
+    'manualEntryRequiredFields' => !$isCertification ? civilRecordManualEntryRequiredFieldsForJs() : [],
 ]) ?>
 <?= scriptTag('admin/print-fit-text.js') ?>
 <?= scriptTag('core/page-config.js') ?>
 <?= scriptTag('core/cascading-location.js') ?>
+<?= scriptTag('admin/civil-record-entry-validation.js') ?>
 <?= scriptTag('admin/print-certificate.js') ?>
 <?php endif; ?>
 <?= lucideInitScript() ?>

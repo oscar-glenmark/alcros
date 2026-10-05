@@ -886,6 +886,34 @@
         });
     }
 
+    function activateDocumentFillTab(side) {
+        var btn = document.querySelector('.print-cert-fill [data-fill-tab="' + side + '"]');
+        if (btn) {
+            btn.click();
+        }
+    }
+
+    function validateDocumentFillBeforeSave() {
+        var V = window.AlcrosCivilRecordEntryValidation;
+        if (!V) {
+            return false;
+        }
+        var fillRoot = document.querySelector('.print-cert-fill');
+        var blocked = V.validateManualEntrySections(cfg.certificateType || 'birth', cfg.manualEntryRequiredFields || {}, {
+            root: fillRoot || document,
+            resolveInput: function (fieldName) {
+                return document.querySelector('.print-cert-fill [data-field-name="' + fieldName + '"]');
+            }
+        });
+        if (blocked) {
+            activateDocumentFillTab('front');
+            window.setTimeout(function () {
+                V.scrollToFirstError(fillRoot || document);
+            }, 50);
+        }
+        return blocked;
+    }
+
     function bindAddRecord() {
         if (!cfg.manualMode || !cfg.createRecordApiUrl) {
             return;
@@ -896,10 +924,14 @@
             return;
         }
 
+        var fillRoot = document.querySelector('.print-cert-fill');
+        if (fillRoot && window.AlcrosCivilRecordEntryValidation) {
+            AlcrosCivilRecordEntryValidation.bindLiveClear(fillRoot);
+        }
+
         btn.addEventListener('click', function () {
             collectFillOverrides();
-            if (Object.keys(fillOverrides).length === 0) {
-                window.alert('Fill in at least the required name fields before saving a record.');
+            if (validateDocumentFillBeforeSave()) {
                 return;
             }
 

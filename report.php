@@ -22,6 +22,26 @@ $reportYear = resolveReportYear($_GET['year'] ?? null);
 $report = buildOperationalReport($pdo, $fromDate, $toDate);
 $recordsReport = buildQuarterlyCivilRecordsReport($pdo, $reportYear);
 $summary = $report['summary'];
+$requestsReportCharts = buildRequestsReportChartPayload(
+    $pdo,
+    $fromDate,
+    $toDate,
+    $report['requests_by_status'],
+    $report['requests_by_type']
+);
+$appointmentsReportCharts = buildAppointmentsReportChartPayload(
+    $pdo,
+    $fromDate,
+    $toDate,
+    $report['appointments_by_status']
+);
+$printsReportCharts = buildPrintsReportChartPayload(
+    $pdo,
+    $fromDate,
+    $toDate,
+    $report['prints_by_document_kind'] ?? ['certification' => 0, 'certificate' => 0],
+    $report['prints_by_certificate_type'] ?? ['birth' => 0, 'death' => 0, 'marriage' => 0]
+);
 
 if (isset($_GET['action']) && $_GET['action'] === 'export') {
     @ini_set('memory_limit', '1024M');
@@ -46,8 +66,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'export') {
             'requests' => 'Requests',
             'appointments' => 'Appointments',
             'queue' => 'Queue',
+            'prints' => 'Prints',
             'records' => 'Civil Records',
-            'activity' => 'Activity',
             default => $key,
         },
         $exportSections
@@ -82,8 +102,14 @@ function reportPageUrl(string $range, string $from, string $to, string $section 
 }
 
 $purposeLabels = ['walk_in' => 'Walk-in', 'appointment' => 'Appointment', 'document_claim' => 'Document claim'];
+$queueReportCharts = buildQueueWaitChartPayload(
+    $report['queue_tickets'],
+    $purposeLabels,
+    $fromDate,
+    $toDate
+);
 
-$validSections = ['overview', 'analytics', 'requests', 'appointments', 'queue', 'activity', 'records'];
+$validSections = ['overview', 'analytics', 'requests', 'appointments', 'queue', 'prints', 'records'];
 $section = $_GET['section'] ?? 'overview';
 if (!in_array($section, $validSections, true)) {
     $section = 'overview';
@@ -93,10 +119,10 @@ $analytics = $section === 'analytics' ? fetchAnalyticsDashboard($pdo) : null;
 
 $pageTitle = 'Reports';
 $pageSubtitle = $section === 'analytics'
-    ? 'Live charts for online and walk-in requests, certifications, appointments, queue, and civil records.'
-    : 'Summaries for requests, appointments, queue, and civil records with CSV export.';
+    ? 'Same live office analytics as the administrator dashboard — civil records, print volume, intake, and queue.'
+    : 'Summaries for requests, appointments, queue, print volume, and civil records with CSV export.';
 $pageHeaderMeta = $section === 'analytics'
-    ? '<p class="admin-header__meta">' . htmlspecialchars($report['office_name']) . ' · Live charts and statistics</p>'
+    ? '<p class="admin-header__meta">' . htmlspecialchars($report['office_name']) . ' · Live office analytics</p>'
     : '<p class="admin-header__meta">' . htmlspecialchars($report['office_name']) . ' · Showing <strong>'
         . htmlspecialchars($rangeLabel) . '</strong>'
         . ($section === 'records'
@@ -104,10 +130,7 @@ $pageHeaderMeta = $section === 'analytics'
             : '')
         . '</p>';
 
-$yearOptions = [];
-for ($y = (int) date('Y'); $y >= (int) date('Y') - 4; $y--) {
-    $yearOptions[] = $y;
-}
+$yearOptions = reportCivilRecordsYearOptions($pdo);
 
 $recordTypeStyles = [
     'birth'    => ['bg' => 'bg-blue-50', 'text' => 'text-blue-700', 'icon' => 'users'],
@@ -116,10 +139,12 @@ $recordTypeStyles = [
 ];
 
 $periodMetrics = [
-    ['label' => 'Requests Submitted', 'value' => $summary['requests_submitted'], 'hint' => 'New submissions in period', 'icon' => 'file-text', 'iconBg' => 'bg-blue-50', 'iconText' => 'text-blue-600'],
-    ['label' => 'Requests Completed', 'value' => $summary['requests_completed'], 'hint' => 'Marked completed in period', 'icon' => 'circle-check', 'iconBg' => 'bg-emerald-50', 'iconText' => 'text-emerald-600'],
-    ['label' => 'Appointments', 'value' => $summary['appointments_scheduled'], 'hint' => 'Scheduled in period', 'icon' => 'calendar', 'iconBg' => 'bg-purple-50', 'iconText' => 'text-purple-600'],
-    ['label' => 'Queue Served', 'value' => $summary['queue_served'], 'hint' => 'Tickets completed in period', 'icon' => 'users', 'iconBg' => 'bg-green-50', 'iconText' => 'text-green-600'],
+    ['label' => 'Requests Submitted', 'value' => $summary['requests_submitted'], 'hint' => 'New submissions in period', 'icon' => 'file-text', 'iconBg' => 'bg-blue-50', 'iconText' => 'text-blue-600', 'accent' => '#2563eb'],
+    ['label' => 'Requests Completed', 'value' => $summary['requests_completed'], 'hint' => 'Marked completed in period', 'icon' => 'circle-check', 'iconBg' => 'bg-emerald-50', 'iconText' => 'text-emerald-600', 'accent' => '#059669'],
+    ['label' => 'Appointments', 'value' => $summary['appointments_scheduled'], 'hint' => 'Scheduled in period', 'icon' => 'calendar', 'iconBg' => 'bg-purple-50', 'iconText' => 'text-purple-600', 'accent' => '#7c3aed'],
+    ['label' => 'Queue Served', 'value' => $summary['queue_served'], 'hint' => 'Tickets completed in period', 'icon' => 'users', 'iconBg' => 'bg-teal-50', 'iconText' => 'text-teal-600', 'accent' => '#0d9488'],
+    ['label' => 'Certifications Printed', 'value' => $summary['certifications_printed'] ?? 0, 'hint' => 'Completed certification jobs in period', 'icon' => 'stamp', 'iconBg' => 'bg-indigo-50', 'iconText' => 'text-indigo-600', 'accent' => '#4f46e5'],
+    ['label' => 'Certificates Printed', 'value' => $summary['certificates_printed'] ?? 0, 'hint' => 'Completed certificate jobs in period', 'icon' => 'printer', 'iconBg' => 'bg-cyan-50', 'iconText' => 'text-cyan-600', 'accent' => '#0891b2'],
 ];
 
 $reportTabs = [
@@ -128,8 +153,8 @@ $reportTabs = [
     'requests'     => ['label' => 'Requests',     'icon' => 'file-text',        'count' => count($report['requests'])],
     'appointments' => ['label' => 'Appointments', 'icon' => 'calendar',         'count' => count($report['appointments'])],
     'queue'        => ['label' => 'Queue',        'icon' => 'users',            'count' => count($report['queue_tickets'])],
+    'prints'       => ['label' => 'Prints',       'icon' => 'printer',          'count' => count($report['print_jobs'] ?? [])],
     'records'      => ['label' => 'Civil Records', 'icon' => 'book-open',       'count' => (int) $recordsReport['year_totals']['total']],
-    'activity'     => ['label' => 'Activity',     'icon' => 'activity',         'count' => count($report['activities'])],
 ];
 
 $rangeOptions = [
@@ -140,19 +165,32 @@ $rangeOptions = [
 ];
 
 $reportDetailSection = !in_array($section, ['overview', 'analytics'], true);
+$recordsRegistryUrl = buildAuthUrl('records.php');
+$recordsYearTotals = $recordsReport['year_totals'];
+$recordsJumpDesc = sprintf(
+    '%d registrations in %d · %s birth · %s death · %s marriage',
+    (int) $recordsYearTotals['total'],
+    (int) $reportYear,
+    number_format((int) $recordsYearTotals['birth']),
+    number_format((int) $recordsYearTotals['death']),
+    number_format((int) $recordsYearTotals['marriage'])
+);
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <link rel="icon" type="image/png" href="images/favicon.png?v=2">
+    <?= faviconLinkTag() ?>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reports - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= interFontTags() ?>
     <?= adminLayoutHeadStyles('report') ?>
-    <?= vendorScriptTag('lucide.min.js') ?>
     <?php if ($section === 'analytics'): ?>
+    <?= stylesheetTag('admin/dashboard.css') ?>
+    <?php endif; ?>
+    <?= vendorScriptTag('lucide.min.js') ?>
+    <?php if (in_array($section, ['analytics', 'records', 'requests', 'appointments', 'queue', 'prints'], true)): ?>
     <?= vendorScriptTag('chart.umd.min.js') ?>
     <?php endif; ?>
 </head>
@@ -255,15 +293,49 @@ $reportDetailSection = !in_array($section, ['overview', 'analytics'], true);
             ?>
 
             <?php if ($section === 'overview'): ?>
-            <div class="no-print flex flex-wrap gap-2 justify-end mb-2">
-                <?= $reportExportToolbarHtml ?>
+            <div class="no-print report-overview-toolbar">
+                <div class="admin-toolbar report-range-toolbar !mb-0 !rounded-xl !border !border-slate-200 !shadow-sm min-w-0 flex-1 bg-white">
+                    <div class="admin-toolbar-filters !flex-1 min-w-0">
+                        <?php foreach ($rangeOptions as $key => $label): ?>
+                        <a href="<?= htmlspecialchars(reportPageUrl($key, $fromDate, $toDate, 'overview', null)) ?>"
+                           class="range-pill px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 whitespace-nowrap shrink-0 <?= $range === $key ? 'is-active' : '' ?>">
+                            <?= htmlspecialchars($label) ?>
+                        </a>
+                        <?php endforeach; ?>
+                    </div>
+                    <form id="reportCustomRangeForm" method="GET" action="<?= htmlspecialchars(buildAuthUrl('report.php')) ?>" class="flex flex-wrap items-center gap-2 shrink-0 <?= $range === 'custom' ? '' : 'hidden' ?>">
+                        <?php if ($token = staffAuthToken()): ?>
+                        <input type="hidden" name="alcros_auth" value="<?= htmlspecialchars($token) ?>">
+                        <?php endif; ?>
+                        <input type="hidden" name="section" value="overview">
+                        <input type="hidden" name="range" value="custom">
+                        <input type="date" name="from" id="reportRangeFrom" value="<?= htmlspecialchars($fromDate) ?>" aria-label="From date" class="border border-slate-200 rounded-lg px-2.5 py-2 text-xs bg-white">
+                        <span class="text-slate-300 text-xs font-bold">to</span>
+                        <input type="date" name="to" id="reportRangeTo" value="<?= htmlspecialchars($toDate) ?>" aria-label="To date" class="border border-slate-200 rounded-lg px-2.5 py-2 text-xs bg-white">
+                    </form>
+                </div>
+                <div class="shrink-0 flex flex-wrap items-center justify-end gap-2">
+                    <?= $reportExportToolbarHtml ?>
+                </div>
+            </div>
+            <?php elseif ($section === 'records'): ?>
+            <div class="no-print report-toolbar-row flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
+                <p class="text-xs text-slate-500 bg-white border border-slate-100 rounded-xl px-3 py-2.5 shadow-sm">
+                    Civil records use <strong class="text-slate-700">calendar year <?= (int) $reportYear ?></strong> (registration date). Change year below on the report.
+                </p>
+                <div class="shrink-0 flex flex-wrap items-center justify-end gap-2">
+                    <a href="<?= htmlspecialchars($recordsRegistryUrl) ?>" class="inline-flex items-center gap-2 bg-white border border-gray-200 hover:border-blue-200 text-slate-700 px-3.5 py-2 rounded-lg text-xs font-bold">
+                        <i data-lucide="book-open" class="w-3.5 h-3.5"></i> Open registry
+                    </a>
+                    <?= $reportExportToolbarHtml ?>
+                </div>
             </div>
             <?php elseif ($reportDetailSection): ?>
             <div class="no-print report-toolbar-row flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-2">
                 <div class="admin-toolbar report-range-toolbar !mb-0 !rounded-xl !border !border-slate-100 !shadow-sm min-w-0 flex-1">
                     <div class="admin-toolbar-filters !flex-1 min-w-0">
                         <?php foreach ($rangeOptions as $key => $label): ?>
-                        <a href="<?= htmlspecialchars(reportPageUrl($key, $fromDate, $toDate, $section, $section === 'records' ? $reportYear : null)) ?>"
+                        <a href="<?= htmlspecialchars(reportPageUrl($key, $fromDate, $toDate, $section, null)) ?>"
                            class="range-pill px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 whitespace-nowrap shrink-0 <?= $range === $key ? 'is-active' : '' ?>">
                             <?= htmlspecialchars($label) ?>
                         </a>
@@ -274,9 +346,6 @@ $reportDetailSection = !in_array($section, ['overview', 'analytics'], true);
                         <input type="hidden" name="alcros_auth" value="<?= htmlspecialchars($token) ?>">
                         <?php endif; ?>
                         <input type="hidden" name="section" value="<?= htmlspecialchars($section) ?>">
-                        <?php if ($section === 'records' && $reportYear !== (int) date('Y')): ?>
-                        <input type="hidden" name="year" value="<?= (int) $reportYear ?>">
-                        <?php endif; ?>
                         <input type="hidden" name="range" value="custom">
                         <input type="date" name="from" id="reportRangeFrom" value="<?= htmlspecialchars($fromDate) ?>" aria-label="From date" class="border border-slate-200 rounded-lg px-2.5 py-2 text-xs bg-white">
                         <span class="text-slate-300 text-xs font-bold">to</span>
@@ -306,55 +375,66 @@ $reportDetailSection = !in_array($section, ['overview', 'analytics'], true);
 
             <!-- Overview -->
             <div class="report-panel" <?= $section !== 'overview' ? 'hidden' : '' ?>>
-                <div class="space-y-5">
+                <div class="report-overview">
                     <section class="report-section">
-                        <h2 class="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-3">System Activities</h2>
-                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div class="report-section-head">
+                            <h2 class="report-section-head__title">Period summary</h2>
+                            <p class="report-section-head__hint"><?= htmlspecialchars($rangeLabel) ?></p>
+                        </div>
+                        <div class="report-metric-grid">
                             <?php foreach ($periodMetrics as $card): ?>
-                            <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                                <div class="flex items-center gap-2 mb-2">
-                                    <div class="p-1.5 <?= $card['iconBg'] ?> rounded-lg">
-                                        <i data-lucide="<?= $card['icon'] ?>" class="w-4 h-4 <?= $card['iconText'] ?>"></i>
-                                    </div>
-                                    <p class="text-[10px] font-bold uppercase text-gray-400 leading-tight"><?= htmlspecialchars($card['label']) ?></p>
+                            <div class="report-metric-card" style="--report-metric-accent: <?= htmlspecialchars($card['accent']) ?>">
+                                <div class="report-metric-card__icon <?= $card['iconBg'] ?>">
+                                    <i data-lucide="<?= $card['icon'] ?>" class="w-[1.125rem] h-[1.125rem] <?= $card['iconText'] ?>"></i>
                                 </div>
-                                <p class="text-2xl font-black text-slate-900"><?= (int) $card['value'] ?></p>
-                                <p class="text-[10px] text-gray-400 mt-1"><?= htmlspecialchars($card['hint']) ?></p>
+                                <p class="report-metric-card__label"><?= htmlspecialchars($card['label']) ?></p>
+                                <p class="report-metric-card__value"><?= number_format((int) $card['value']) ?></p>
+                                <p class="report-metric-card__hint"><?= htmlspecialchars($card['hint']) ?></p>
                             </div>
                             <?php endforeach; ?>
                         </div>
                     </section>
 
                     <section class="report-section no-print">
-                        <h2 class="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-3">Jump to detail</h2>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div class="report-section-head">
+                            <h2 class="report-section-head__title">Jump to detail</h2>
+                            <p class="report-section-head__hint">Charts, tables, and CSV export by area</p>
+                        </div>
+                        <div class="report-nav-grid">
                             <?php
                             $detailLinks = [
-                                ['key' => 'analytics', 'desc' => 'Charts and live statistics at a glance', 'color' => 'border-indigo-100 hover:border-indigo-200 hover:bg-indigo-50/50'],
-                                ['key' => 'requests', 'desc' => 'Track submissions, status, and document types', 'color' => 'border-blue-100 hover:border-blue-200 hover:bg-blue-50/50'],
-                                ['key' => 'appointments', 'desc' => 'Scheduled visits and appointment status', 'color' => 'border-purple-100 hover:border-purple-200 hover:bg-purple-50/50'],
-                                ['key' => 'queue', 'desc' => 'Queue tickets served, waiting, and by purpose', 'color' => 'border-green-100 hover:border-green-200 hover:bg-green-50/50'],
-                                ['key' => 'records', 'desc' => 'Birth, death, and marriage registrations by quarter', 'color' => 'border-amber-100 hover:border-amber-200 hover:bg-amber-50/50'],
-                                ['key' => 'activity', 'desc' => 'Staff actions logged during this period', 'color' => 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'],
+                                ['key' => 'analytics', 'desc' => 'Dashboard-style charts — records, print volume, intake, and queue', 'iconBg' => 'bg-indigo-50', 'iconText' => 'text-indigo-600', 'navBorder' => '#c7d2fe', 'wide' => false],
+                                ['key' => 'requests', 'desc' => 'Track submissions, status, and document types', 'iconBg' => 'bg-blue-50', 'iconText' => 'text-blue-600', 'navBorder' => '#bfdbfe', 'wide' => false],
+                                ['key' => 'appointments', 'desc' => 'Scheduled visits and appointment status', 'iconBg' => 'bg-purple-50', 'iconText' => 'text-purple-600', 'navBorder' => '#ddd6fe', 'wide' => false],
+                                ['key' => 'queue', 'desc' => 'Queue tickets served, waiting, and by purpose', 'iconBg' => 'bg-teal-50', 'iconText' => 'text-teal-600', 'navBorder' => '#99f6e4', 'wide' => false],
+                                ['key' => 'prints', 'desc' => sprintf(
+                                    '%s certification · %s certificate print jobs in %s',
+                                    number_format((int) ($summary['certifications_printed'] ?? 0)),
+                                    number_format((int) ($summary['certificates_printed'] ?? 0)),
+                                    strtolower($rangeLabel)
+                                ), 'iconBg' => 'bg-cyan-50', 'iconText' => 'text-cyan-700', 'navBorder' => '#a5f3fc', 'wide' => false],
+                                ['key' => 'records', 'desc' => $recordsJumpDesc, 'iconBg' => 'bg-amber-50', 'iconText' => 'text-amber-700', 'navBorder' => '#fde68a', 'wide' => false],
                             ];
                             foreach ($detailLinks as $link):
                                 $tab = $reportTabs[$link['key']];
+                                $wideClass = !empty($link['wide']) ? ' report-nav-card--wide' : '';
                             ?>
                             <a href="<?= htmlspecialchars(reportPageUrl($range, $fromDate, $toDate, $link['key'], $link['key'] === 'records' ? $reportYear : null)) ?>"
-                               class="flex items-start gap-3 p-4 bg-white rounded-xl border <?= $link['color'] ?> transition-colors">
-                                <div class="p-2 bg-gray-50 rounded-lg shrink-0">
-                                    <i data-lucide="<?= $tab['icon'] ?>" class="w-4 h-4 text-slate-600"></i>
+                               class="report-nav-card<?= $wideClass ?>"
+                               style="--report-nav-border: <?= htmlspecialchars($link['navBorder']) ?>">
+                                <div class="report-nav-card__icon <?= $link['iconBg'] ?>">
+                                    <i data-lucide="<?= $tab['icon'] ?>" class="w-5 h-5 <?= $link['iconText'] ?>"></i>
                                 </div>
-                                <div class="min-w-0">
-                                    <p class="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                        <?= htmlspecialchars($tab['label']) ?>
+                                <div class="report-nav-card__body">
+                                    <div class="report-nav-card__title-row">
+                                        <p class="report-nav-card__title"><?= htmlspecialchars($tab['label']) ?></p>
                                         <?php if ($tab['count'] !== null): ?>
-                                        <span class="text-[10px] font-black bg-gray-100 text-slate-600 px-1.5 py-0.5 rounded-full"><?= (int) $tab['count'] ?></span>
+                                        <span class="report-nav-card__badge"><?= number_format((int) $tab['count']) ?></span>
                                         <?php endif; ?>
-                                    </p>
-                                    <p class="text-xs text-gray-500 mt-0.5"><?= htmlspecialchars($link['desc']) ?></p>
+                                    </div>
+                                    <p class="report-nav-card__desc"><?= htmlspecialchars($link['desc']) ?></p>
                                 </div>
-                                <i data-lucide="chevron-right" class="w-4 h-4 text-gray-300 shrink-0 mt-1"></i>
+                                <i data-lucide="chevron-right" class="report-nav-card__chevron"></i>
                             </a>
                             <?php endforeach; ?>
                         </div>
@@ -362,150 +442,14 @@ $reportDetailSection = !in_array($section, ['overview', 'analytics'], true);
                 </div>
             </div>
 
-            <!-- Analytics -->
+            <!-- Analytics (same charts as admin dashboard) -->
             <?php if ($analytics !== null): ?>
             <div class="report-panel no-print" <?= $section !== 'analytics' ? 'hidden' : '' ?>>
-                <div class="space-y-6">
-                    <?php if ($analytics['pendingCount'] > 0 || $analytics['readyCount'] > 0 || $analytics['queueWaiting'] > 0): ?>
-                    <div class="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 flex flex-wrap items-center gap-2 text-sm">
-                        <span class="font-semibold text-amber-900 mr-1">Needs attention:</span>
-                        <?php if ($analytics['pendingCount'] > 0): ?>
-                        <a href="<?= htmlspecialchars(buildStaffOperationalUrl('manage_request.php', ['status' => 'pending'])) ?>" class="text-xs font-bold bg-white border border-amber-200 text-amber-800 px-2.5 py-1 rounded-lg hover:bg-amber-100"><?= (int) $analytics['pendingCount'] ?> pending</a>
-                        <?php endif; ?>
-                        <?php if ($analytics['readyCount'] > 0): ?>
-                        <a href="<?= htmlspecialchars(buildStaffOperationalUrl('manage_request.php', ['status' => 'ready'])) ?>" class="text-xs font-bold bg-white border border-amber-200 text-amber-800 px-2.5 py-1 rounded-lg hover:bg-amber-100"><?= (int) $analytics['readyCount'] ?> ready</a>
-                        <?php endif; ?>
-                        <?php if ($analytics['queueWaiting'] > 0): ?>
-                        <a href="<?= htmlspecialchars(buildStaffOperationalUrl('live-queue.php')) ?>" class="text-xs font-bold bg-white border border-amber-200 text-amber-800 px-2.5 py-1 rounded-lg hover:bg-amber-100"><?= (int) $analytics['queueWaiting'] ?> in queue</a>
-                        <?php endif; ?>
-                    </div>
-                    <?php endif; ?>
-
-                    <div class="analytics-charts">
-                        <div class="analytics-chart-card analytics-chart-card--featured">
-                            <div class="analytics-chart-head">
-                                <h2>Monthly intake</h2>
-                                <p>Online requests and walk-in queue · last 6 months</p>
-                            </div>
-                            <?php if ($analytics['maxMonth'] === 0): ?>
-                            <div class="analytics-empty">No request or walk-in data yet.</div>
-                            <?php else: ?>
-                            <div class="chart-box chart-box--tall"><canvas id="chartMonths"></canvas></div>
-                            <?php endif; ?>
-                        </div>
-
-                        <div class="analytics-chart-grid">
-                            <div class="analytics-chart-card">
-                                <div class="analytics-chart-head">
-                                    <h2>Request pipeline</h2>
-                                    <p>Online requests by current stage</p>
-                                </div>
-                                <?php if ($analytics['totalRequests'] === 0): ?>
-                                <div class="analytics-empty">No online requests yet.</div>
-                                <?php else: ?>
-                                <div class="chart-box chart-box--compact"><canvas id="chartPipeline"></canvas></div>
-                                <?php endif; ?>
-                            </div>
-
-                            <div class="analytics-chart-card">
-                                <div class="analytics-chart-head">
-                                    <h2>Request channels</h2>
-                                    <p>Online submissions vs walk-in queue tickets</p>
-                                </div>
-                                <?php if ($analytics['totalIntake'] === 0): ?>
-                                <div class="analytics-empty">No intake data yet.</div>
-                                <?php else: ?>
-                                <div class="chart-box chart-box--compact"><canvas id="chartIntakeChannels"></canvas></div>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-
-                        <div class="analytics-chart-grid">
-                            <div class="analytics-chart-card">
-                                <div class="analytics-chart-head">
-                                    <h2>Appointments</h2>
-                                    <p>All bookings by status</p>
-                                </div>
-                                <?php if ($analytics['apptTotal'] === 0): ?>
-                                <div class="analytics-empty">No appointments yet.</div>
-                                <?php else: ?>
-                                <div class="chart-box chart-box--compact"><canvas id="chartAppointments"></canvas></div>
-                                <?php endif; ?>
-                            </div>
-
-                            <div class="analytics-chart-card">
-                                <div class="analytics-chart-head">
-                                    <h2>Certifications by type</h2>
-                                    <p>Production certification prints issued</p>
-                                </div>
-                                <?php if ($analytics['certTotal'] === 0): ?>
-                                <div class="analytics-empty">No certifications printed yet.</div>
-                                <?php else: ?>
-                                <div class="chart-box chart-box--compact"><canvas id="chartCertTypes"></canvas></div>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-
-                        <div class="analytics-chart-grid">
-                            <div class="analytics-chart-card">
-                                <div class="analytics-chart-head">
-                                    <h2>Monthly certifications</h2>
-                                    <p>Production certification prints · last 6 months</p>
-                                </div>
-                                <?php if ($analytics['maxCertMonth'] === 0): ?>
-                                <div class="analytics-empty">No certification prints yet.</div>
-                                <?php else: ?>
-                                <div class="chart-box chart-box--compact"><canvas id="chartCertMonths"></canvas></div>
-                                <?php endif; ?>
-                            </div>
-
-                            <div class="analytics-chart-card">
-                                <div class="analytics-chart-head">
-                                    <h2>Civil records by type</h2>
-                                    <p>Birth, death, and marriage registry</p>
-                                </div>
-                                <?php if ($analytics['recordsTotal'] === 0): ?>
-                                <div class="analytics-empty">No civil records yet.</div>
-                                <?php else: ?>
-                                <div class="chart-box chart-box--compact"><canvas id="chartRecordsType"></canvas></div>
-                                <?php endif; ?>
-                            </div>
-
-                            <div class="analytics-chart-card">
-                                <div class="analytics-chart-head">
-                                    <h2>Monthly registry entries</h2>
-                                    <p>New civil records · last 6 months</p>
-                                </div>
-                                <?php if ($analytics['maxRecordMonth'] === 0): ?>
-                                <div class="analytics-empty">No registry entries yet.</div>
-                                <?php else: ?>
-                                <div class="chart-box chart-box--compact"><canvas id="chartRecordsMonths"></canvas></div>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-
-                        <div class="analytics-chart-card">
-                            <div class="analytics-chart-head">
-                                <h2>Queue today</h2>
-                                <p>Live ticket counts</p>
-                            </div>
-                            <div class="analytics-queue-strip">
-                                <div class="analytics-queue-item bg-amber-50">
-                                    <strong class="text-amber-700"><?= (int) $analytics['queueWaiting'] ?></strong>
-                                    <span class="text-amber-800/70">Waiting</span>
-                                </div>
-                                <div class="analytics-queue-item bg-blue-50">
-                                    <strong class="text-blue-700"><?= (int) $analytics['queueServing'] ?></strong>
-                                    <span class="text-blue-800/70">Serving</span>
-                                </div>
-                                <div class="analytics-queue-item bg-emerald-50">
-                                    <strong class="text-emerald-700"><?= (int) $analytics['queueServed'] ?></strong>
-                                    <span class="text-emerald-800/70">Done</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <?php
+                $adminAnalytics = $analytics;
+                $adminAnalyticsContext = 'report';
+                require __DIR__ . '/includes/admin_dashboard_analytics.php';
+                ?>
             </div>
             <?php endif; ?>
 
@@ -518,26 +462,35 @@ $reportDetailSection = !in_array($section, ['overview', 'analytics'], true);
                             <p class="text-xs text-gray-400 mt-0.5"><?= count($report['requests']) ?> record(s) in <?= htmlspecialchars(strtolower($rangeLabel)) ?></p>
                         </div>
                     </div>
-                    <?php if (!empty($report['requests_by_status']) || !empty($report['requests_by_type'])): ?>
-                    <div class="px-5 py-4 grid sm:grid-cols-2 gap-6 border-b border-gray-50 bg-gray-50/40">
-                        <div>
-                            <p class="text-[10px] font-bold uppercase text-gray-400 mb-2">By status</p>
-                            <?php if (empty($report['requests_by_status'])): ?>
-                            <p class="text-xs text-gray-400">—</p>
-                            <?php else: foreach ($report['requests_by_status'] as $status => $count): ?>
-                            <div class="stat-row text-sm"><span class="text-slate-600"><?= htmlspecialchars(requestStatusLabel($status)) ?></span><span class="font-bold text-slate-900"><?= $count ?></span></div>
-                            <?php endforeach; endif; ?>
+                    <div class="no-print px-5 py-4 border-b border-gray-100">
+                        <?php if (empty($requestsReportCharts['hasData'])): ?>
+                        <p class="text-sm text-gray-400 text-center py-8 rounded-xl bg-slate-50 border border-slate-100">No document requests for this period.</p>
+                        <?php else: ?>
+                        <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                            <div class="analytics-chart-card xl:col-span-3">
+                                <div class="analytics-chart-head">
+                                    <h2>Submissions in period</h2>
+                                    <p><?= htmlspecialchars($rangeLabel) ?> · by submission date</p>
+                                </div>
+                                <div class="chart-box chart-box--compact"><canvas id="chartRequestsPeriodTrend"></canvas></div>
+                            </div>
+                            <div class="analytics-chart-card">
+                                <div class="analytics-chart-head">
+                                    <h2>By status</h2>
+                                    <p>Current period</p>
+                                </div>
+                                <div class="chart-box chart-box--donut"><canvas id="chartRequestsByStatus"></canvas></div>
+                            </div>
+                            <div class="analytics-chart-card xl:col-span-2">
+                                <div class="analytics-chart-head">
+                                    <h2>By document type</h2>
+                                    <p>Current period</p>
+                                </div>
+                                <div class="chart-box chart-box--donut"><canvas id="chartRequestsByType"></canvas></div>
+                            </div>
                         </div>
-                        <div>
-                            <p class="text-[10px] font-bold uppercase text-gray-400 mb-2">By document type</p>
-                            <?php if (empty($report['requests_by_type'])): ?>
-                            <p class="text-xs text-gray-400">—</p>
-                            <?php else: foreach ($report['requests_by_type'] as $type => $count): ?>
-                            <div class="stat-row text-sm"><span class="text-slate-600"><?= htmlspecialchars(documentTypeLabel($type)) ?></span><span class="font-bold text-slate-900"><?= $count ?></span></div>
-                            <?php endforeach; endif; ?>
-                        </div>
+                        <?php endif; ?>
                     </div>
-                    <?php endif; ?>
                     <div class="overflow-x-auto print-table-wrap print-landscape">
                         <table class="w-full text-sm text-left print-table">
                             <thead class="bg-white text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
@@ -576,19 +529,28 @@ $reportDetailSection = !in_array($section, ['overview', 'analytics'], true);
                             <p class="text-xs text-gray-400 mt-0.5"><?= count($report['appointments']) ?> visit(s) in <?= htmlspecialchars(strtolower($rangeLabel)) ?></p>
                         </div>
                     </div>
-                    <?php if (!empty($report['appointments_by_status'])): ?>
-                    <div class="px-5 py-4 border-b border-gray-50 bg-gray-50/40">
-                        <p class="text-[10px] font-bold uppercase text-gray-400 mb-2">By status</p>
-                        <div class="flex flex-wrap gap-2">
-                            <?php foreach ($report['appointments_by_status'] as $status => $count): ?>
-                            <span class="inline-flex items-center gap-2 bg-white border border-gray-100 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-700">
-                                <?= htmlspecialchars(appointmentStatusLabel($status)) ?>
-                                <span class="font-black text-slate-900"><?= $count ?></span>
-                            </span>
-                            <?php endforeach; ?>
+                    <div class="no-print px-5 py-4 border-b border-gray-100">
+                        <?php if (empty($appointmentsReportCharts['hasData'])): ?>
+                        <p class="text-sm text-gray-400 text-center py-8 rounded-xl bg-slate-50 border border-slate-100">No appointments for this period.</p>
+                        <?php else: ?>
+                        <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                            <div class="analytics-chart-card xl:col-span-2">
+                                <div class="analytics-chart-head">
+                                    <h2>Visits in period</h2>
+                                    <p><?= htmlspecialchars($rangeLabel) ?> · by appointment date</p>
+                                </div>
+                                <div class="chart-box chart-box--compact"><canvas id="chartAppointmentsPeriodTrend"></canvas></div>
+                            </div>
+                            <div class="analytics-chart-card">
+                                <div class="analytics-chart-head">
+                                    <h2>By status</h2>
+                                    <p>Current period</p>
+                                </div>
+                                <div class="chart-box chart-box--donut"><canvas id="chartAppointmentsByStatus"></canvas></div>
+                            </div>
                         </div>
+                        <?php endif; ?>
                     </div>
-                    <?php endif; ?>
                     <div class="overflow-x-auto print-table-wrap print-landscape">
                         <table class="w-full text-sm text-left print-table">
                             <thead class="bg-white text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
@@ -629,6 +591,58 @@ $reportDetailSection = !in_array($section, ['overview', 'analytics'], true);
                             </p>
                         </div>
                     </div>
+                    <div class="no-print px-5 py-4 border-b border-gray-100">
+                        <?php if (empty($queueReportCharts['hasData'])): ?>
+                        <p class="text-sm text-gray-400 text-center py-8 rounded-xl bg-slate-50 border border-slate-100">No called queue tickets in this period — wait-time charts need at least one ticket that was called.</p>
+                        <?php else: ?>
+                        <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                            <div class="analytics-chart-card">
+                                <div class="analytics-chart-head">
+                                    <h2>Average wait by line</h2>
+                                    <p><?= htmlspecialchars($rangeLabel) ?> · minutes before first call</p>
+                                </div>
+                                <?php if (empty($queueReportCharts['byPurpose']['labels'])): ?>
+                                <p class="text-sm text-gray-400 text-center py-6">No wait breakdown by purpose.</p>
+                                <?php else: ?>
+                                <div class="chart-box chart-box--compact"><canvas id="chartQueueReportWaitByPurpose"></canvas></div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="analytics-chart-card">
+                                <div class="analytics-chart-head">
+                                    <h2>Daily wait trend</h2>
+                                    <p>Average minutes before first call</p>
+                                </div>
+                                <?php if (empty($queueReportCharts['daily']['labels'])): ?>
+                                <p class="text-sm text-gray-400 text-center py-6"><?= $fromDate !== $toDate ? 'Need more than one day with called tickets for a trend line.' : 'Select a multi-day range to see a daily trend.' ?></p>
+                                <?php else: ?>
+                                <div class="chart-box chart-box--compact"><canvas id="chartQueueReportWaitDaily"></canvas></div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                    <?php
+                    $queueWaitSummary = $report['queue_wait_summary'] ?? [];
+                    if (!empty($queueWaitSummary['called_count'])):
+                    ?>
+                    <div class="px-5 py-4 border-b border-gray-50 bg-slate-50/60">
+                        <p class="text-[10px] font-bold uppercase text-gray-400 mb-2">Wait before first call</p>
+                        <p class="text-sm text-slate-700 mb-3">
+                            Average across <strong><?= (int) $queueWaitSummary['called_count'] ?></strong> called ticket(s) in this period:
+                            <strong class="text-slate-900"><?= htmlspecialchars(formatQueueWaitDuration($queueWaitSummary['avg_seconds'] ?? null)) ?></strong>
+                        </p>
+                        <?php foreach ($queueWaitSummary['by_purpose'] ?? [] as $purposeKey => $purposeStats): ?>
+                        <div class="stat-row text-sm">
+                            <span class="text-slate-600"><?= htmlspecialchars($purposeLabels[$purposeKey] ?? ucfirst($purposeKey)) ?></span>
+                            <span class="font-bold text-slate-900">
+                                <?= htmlspecialchars(formatQueueWaitDuration($purposeStats['avg_seconds'] ?? null)) ?>
+                                <span class="text-[10px] font-semibold text-gray-400 ml-1">(<?= (int) ($purposeStats['called_count'] ?? 0) ?> called)</span>
+                            </span>
+                        </div>
+                        <?php endforeach; ?>
+                        <p class="text-[10px] text-gray-400 mt-3 leading-snug">Time from ticket issued until staff first calls the number (not affected by “Call again”).</p>
+                    </div>
+                    <?php endif; ?>
                     <?php if (!empty($report['queue_by_purpose'])): ?>
                     <div class="px-5 py-4 border-b border-gray-50 bg-gray-50/40">
                         <p class="text-[10px] font-bold uppercase text-gray-400 mb-2">By purpose</p>
@@ -644,22 +658,100 @@ $reportDetailSection = !in_array($section, ['overview', 'analytics'], true);
                                     <th class="px-5 py-3">Ticket</th>
                                     <th class="px-5 py-3">Purpose</th>
                                     <th class="px-5 py-3">Status</th>
-                                    <th class="px-5 py-3 hidden sm:table-cell">Created</th>
+                                    <th class="px-5 py-3 hidden md:table-cell">Issued</th>
+                                    <th class="px-5 py-3 hidden lg:table-cell">First called</th>
+                                    <th class="px-5 py-3 text-right">Wait</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-50">
                                 <?php if (empty($report['queue_tickets'])): ?>
-                                <tr><td colspan="4" class="px-5 py-12 text-center text-gray-400 text-sm">No queue tickets for this period.</td></tr>
+                                <tr><td colspan="6" class="px-5 py-12 text-center text-gray-400 text-sm">No queue tickets for this period.</td></tr>
                                 <?php else: foreach ($report['queue_tickets'] as $row): ?>
+                                <?php $firstCalled = $row['first_called_at'] ?? $row['called_at'] ?? null; ?>
                                 <tr class="hover:bg-gray-50/60">
                                     <td class="px-5 py-3 font-mono text-xs font-bold text-slate-800"><?= htmlspecialchars($row['ticket_number']) ?></td>
                                     <td class="px-5 py-3 text-slate-600"><?= htmlspecialchars($purposeLabels[$row['purpose']] ?? $row['purpose']) ?></td>
                                     <td class="px-5 py-3 capitalize text-slate-600"><?= htmlspecialchars($row['status']) ?></td>
-                                    <td class="px-5 py-3 text-gray-400 text-xs hidden sm:table-cell"><?= htmlspecialchars(formatDateDisplay(substr($row['created_at'], 0, 10))) ?></td>
+                                    <td class="px-5 py-3 text-gray-400 text-xs hidden md:table-cell whitespace-nowrap"><?= htmlspecialchars(formatReportDateTime($row['created_at'] ?? null)) ?></td>
+                                    <td class="px-5 py-3 text-gray-400 text-xs hidden lg:table-cell whitespace-nowrap"><?= $firstCalled ? htmlspecialchars(formatReportDateTime($firstCalled)) : '—' ?></td>
+                                    <td class="px-5 py-3 text-right font-semibold text-slate-800 text-xs whitespace-nowrap"><?= htmlspecialchars($row['wait_label'] ?? formatQueueWaitDuration($row['wait_seconds'] ?? null)) ?></td>
                                 </tr>
                                 <?php endforeach; endif; ?>
                             </tbody>
                         </table>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Prints -->
+            <div class="report-panel" <?= $section !== 'prints' ? 'hidden' : '' ?>>
+                <section class="report-section bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
+                    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
+                        <div>
+                            <h2 class="text-base font-black text-slate-900">Print volume</h2>
+                            <p class="text-xs text-gray-400 mt-0.5">
+                                <?= count($report['print_jobs'] ?? []) ?> completed production job(s) in <?= htmlspecialchars(strtolower($rangeLabel)) ?>
+                                · <?= number_format((int) ($summary['certifications_printed'] ?? 0)) ?> certification · <?= number_format((int) ($summary['certificates_printed'] ?? 0)) ?> certificate
+                            </p>
+                        </div>
+                    </div>
+                    <div class="no-print px-5 py-4 border-b border-gray-100">
+                        <?php if (empty($printsReportCharts['hasData'])): ?>
+                        <p class="text-sm text-gray-400 text-center py-8 rounded-xl bg-slate-50 border border-slate-100">No completed print jobs for this period.</p>
+                        <?php else: ?>
+                        <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                            <div class="analytics-chart-card xl:col-span-3">
+                                <div class="analytics-chart-head">
+                                    <h2>Print jobs in period</h2>
+                                    <p><?= htmlspecialchars($rangeLabel) ?> · certifications and certificates by print date</p>
+                                </div>
+                                <div class="chart-box chart-box--compact"><canvas id="chartPrintsPeriodTrend"></canvas></div>
+                            </div>
+                            <div class="analytics-chart-card">
+                                <div class="analytics-chart-head">
+                                    <h2>By document kind</h2>
+                                    <p>Certification vs certificate</p>
+                                </div>
+                                <div class="chart-box chart-box--donut"><canvas id="chartPrintsByKind"></canvas></div>
+                            </div>
+                            <div class="analytics-chart-card xl:col-span-2">
+                                <div class="analytics-chart-head">
+                                    <h2>By record type</h2>
+                                    <p>Birth, death, and marriage</p>
+                                </div>
+                                <div class="chart-box chart-box--donut"><canvas id="chartPrintsByType"></canvas></div>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                    <div class="overflow-x-auto print-table-wrap print-landscape">
+                        <table class="w-full text-sm text-left print-table">
+                            <thead class="bg-white text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
+                                <tr>
+                                    <th class="px-5 py-3">Printed</th>
+                                    <th class="px-5 py-3">Kind</th>
+                                    <th class="px-5 py-3 hidden md:table-cell">Record type</th>
+                                    <th class="px-5 py-3">Source</th>
+                                    <th class="px-5 py-3 hidden lg:table-cell">Staff</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-50">
+                                <?php if (empty($report['print_jobs'])): ?>
+                                <tr><td colspan="5" class="px-5 py-12 text-center text-gray-400 text-sm">No completed print jobs for this period.</td></tr>
+                                <?php else: foreach ($report['print_jobs'] as $row): ?>
+                                <tr class="hover:bg-gray-50/60">
+                                    <td class="px-5 py-3 text-gray-500 text-xs whitespace-nowrap"><?= htmlspecialchars(formatReportDateTime($row['printed_at'] ?? null)) ?></td>
+                                    <td class="px-5 py-3 font-semibold text-slate-800"><?= htmlspecialchars(printJobDocumentKindLabel((string) ($row['document_kind'] ?? ''))) ?></td>
+                                    <td class="px-5 py-3 text-gray-500 hidden md:table-cell"><?= htmlspecialchars(civilRecordTypeLabel((string) ($row['certificate_type'] ?? ''))) ?></td>
+                                    <td class="px-5 py-3 text-xs text-slate-600"><?= htmlspecialchars(printJobSourceSummary($row)) ?></td>
+                                    <td class="px-5 py-3 font-mono text-[11px] text-gray-400 hidden lg:table-cell"><?= htmlspecialchars((string) ($row['printed_by'] ?? '—')) ?></td>
+                                </tr>
+                                <?php endforeach; endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="px-5 py-3 border-t border-gray-100 bg-gray-50/50">
+                        <p class="text-[11px] text-gray-500">Counts include <strong class="text-slate-600">production</strong> print jobs marked <strong class="text-slate-600">completed</strong> only (same logs as dashboard analytics and system maintenance cleanup).</p>
                     </div>
                 </section>
             </div>
@@ -671,8 +763,12 @@ $reportDetailSection = !in_array($section, ['overview', 'analytics'], true);
                         <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                             <div>
                                 <h2 class="text-base font-black text-slate-900">Civil Records — Quarterly Registration</h2>
-                                <p class="text-xs text-gray-400 mt-0.5">How many birth, death, and marriage records were registered each quarter.</p>
+                                <p class="text-xs text-gray-400 mt-0.5">Registrations in <?= (int) $reportYear ?> by quarter, type, and month · compared to <?= (int) ($recordsReport['prior_year'] ?? $reportYear - 1) ?>.</p>
                             </div>
+                            <a href="<?= htmlspecialchars($recordsRegistryUrl) ?>" class="no-print inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline shrink-0">
+                                View details
+                                <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                            </a>
                         </div>
                         <div class="no-print flex flex-wrap gap-1.5 mt-4">
                             <?php foreach ($yearOptions as $yearOption): ?>
@@ -686,7 +782,10 @@ $reportDetailSection = !in_array($section, ['overview', 'analytics'], true);
 
                     <div class="px-5 py-4 grid grid-cols-2 lg:grid-cols-4 gap-3 border-b border-gray-50 bg-gray-50/40">
                         <?php foreach ($recordsReport['record_types'] as $type): ?>
-                        <?php $style = $recordTypeStyles[$type]; ?>
+                        <?php
+                        $style = $recordTypeStyles[$type];
+                        $typeYoy = $recordsReport['type_yoy'][$type] ?? null;
+                        ?>
                         <div class="bg-white p-4 rounded-xl border border-gray-100">
                             <div class="flex items-center gap-2 mb-2">
                                 <div class="p-1.5 <?= $style['bg'] ?> rounded-lg">
@@ -694,10 +793,18 @@ $reportDetailSection = !in_array($section, ['overview', 'analytics'], true);
                                 </div>
                                 <p class="text-[10px] font-bold uppercase text-gray-400"><?= htmlspecialchars(civilRecordTypeLabel($type)) ?></p>
                             </div>
-                            <p class="text-2xl font-black text-slate-900"><?= number_format((int) $recordsReport['year_totals'][$type]) ?></p>
-                            <p class="text-[10px] text-gray-400 mt-1"><?= (int) $reportYear ?> total</p>
+                            <div class="flex items-baseline gap-2 flex-wrap">
+                                <p class="text-2xl font-black text-slate-900"><?= number_format((int) $recordsReport['year_totals'][$type]) ?></p>
+                                <?php if ($typeYoy !== null): ?>
+                                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full <?= !empty($typeYoy['up']) ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800' ?>">
+                                    <?= !empty($typeYoy['up']) ? '↑' : '↓' ?> <?= htmlspecialchars((string) ($typeYoy['label'] ?? '')) ?> vs <?= (int) ($recordsReport['prior_year'] ?? $reportYear - 1) ?>
+                                </span>
+                                <?php endif; ?>
+                            </div>
+                            <p class="text-[10px] text-gray-400 mt-1"><?= (int) $reportYear ?> · prior year <?= number_format((int) ($recordsReport['prior_year_totals'][$type] ?? 0)) ?></p>
                         </div>
                         <?php endforeach; ?>
+                        <?php $yearYoy = $recordsReport['year_yoy'] ?? null; ?>
                         <div class="bg-white p-4 rounded-xl border border-gray-100">
                             <div class="flex items-center gap-2 mb-2">
                                 <div class="p-1.5 bg-slate-100 rounded-lg">
@@ -705,9 +812,57 @@ $reportDetailSection = !in_array($section, ['overview', 'analytics'], true);
                                 </div>
                                 <p class="text-[10px] font-bold uppercase text-gray-400">All types</p>
                             </div>
-                            <p class="text-2xl font-black text-slate-900"><?= number_format((int) $recordsReport['year_totals']['total']) ?></p>
-                            <p class="text-[10px] text-gray-400 mt-1"><?= (int) $reportYear ?> total</p>
+                            <div class="flex items-baseline gap-2 flex-wrap">
+                                <p class="text-2xl font-black text-slate-900"><?= number_format((int) $recordsReport['year_totals']['total']) ?></p>
+                                <?php if ($yearYoy !== null): ?>
+                                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full <?= !empty($yearYoy['up']) ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800' ?>">
+                                    <?= !empty($yearYoy['up']) ? '↑' : '↓' ?> <?= htmlspecialchars((string) ($yearYoy['label'] ?? '')) ?> vs <?= (int) ($recordsReport['prior_year'] ?? $reportYear - 1) ?>
+                                </span>
+                                <?php endif; ?>
+                            </div>
+                            <p class="text-[10px] text-gray-400 mt-1">Prior year total <?= number_format((int) ($recordsReport['prior_year_totals']['total'] ?? 0)) ?></p>
                         </div>
+                    </div>
+
+                    <?php if (!empty($recordsReport['peak_quarter'])): ?>
+                    <div class="px-5 py-3 border-b border-gray-50 bg-amber-50/40 text-xs text-slate-700">
+                        <strong class="text-slate-900">Busiest quarter:</strong>
+                        <?= htmlspecialchars($recordsReport['peak_quarter']['label']) ?>
+                        with <?= number_format((int) $recordsReport['peak_quarter']['total']) ?> registration(s)
+                        (<?= number_format((int) $recordsReport['peak_quarter']['birth']) ?> birth ·
+                        <?= number_format((int) $recordsReport['peak_quarter']['death']) ?> death ·
+                        <?= number_format((int) $recordsReport['peak_quarter']['marriage']) ?> marriage).
+                    </div>
+                    <?php endif; ?>
+
+                    <div class="no-print px-5 py-4 border-b border-gray-100">
+                        <?php if (empty($recordsReport['chart_payload']['hasData'])): ?>
+                        <p class="text-sm text-gray-400 text-center py-8 rounded-xl bg-slate-50 border border-slate-100">No registrations in <?= (int) $reportYear ?> yet — charts appear when records are registered.</p>
+                        <?php else: ?>
+                        <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                            <div class="analytics-chart-card xl:col-span-2">
+                                <div class="analytics-chart-head">
+                                    <h2>Registrations by quarter</h2>
+                                    <p>Birth, death, and marriage · <?= (int) $reportYear ?></p>
+                                </div>
+                                <div class="chart-box chart-box--compact"><canvas id="chartRecordsQuarterly"></canvas></div>
+                            </div>
+                            <div class="analytics-chart-card">
+                                <div class="analytics-chart-head">
+                                    <h2>Share by type</h2>
+                                    <p>Year total composition</p>
+                                </div>
+                                <div class="chart-box chart-box--donut"><canvas id="chartRecordsReportTypes"></canvas></div>
+                            </div>
+                            <div class="analytics-chart-card xl:col-span-3">
+                                <div class="analytics-chart-head">
+                                    <h2>Monthly volume</h2>
+                                    <p>All record types · registration date in <?= (int) $reportYear ?></p>
+                                </div>
+                                <div class="chart-box chart-box--compact"><canvas id="chartRecordsMonthly"></canvas></div>
+                            </div>
+                        </div>
+                        <?php endif; ?>
                     </div>
 
                     <div class="overflow-x-auto print-table-wrap print-landscape">
@@ -746,42 +901,6 @@ $reportDetailSection = !in_array($section, ['overview', 'analytics'], true);
                     </div>
                 </section>
             </div>
-
-            <!-- Activity -->
-            <div class="report-panel" <?= $section !== 'activity' ? 'hidden' : '' ?>>
-                <section class="report-section bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-                    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
-                        <div>
-                            <h2 class="text-base font-black text-slate-900">Staff Activity Log</h2>
-                            <p class="text-xs text-gray-400 mt-0.5">Actions recorded in this period (up to 500 entries)</p>
-                        </div>
-                    </div>
-                    <div class="overflow-x-auto print-table-wrap print-landscape">
-                        <table class="w-full text-sm text-left print-table">
-                            <thead class="bg-white text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
-                                <tr>
-                                    <th class="px-5 py-3">Staff</th>
-                                    <th class="px-5 py-3">Action</th>
-                                    <th class="px-5 py-3 hidden md:table-cell">Details</th>
-                                    <th class="px-5 py-3 whitespace-nowrap">When</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-50">
-                                <?php if (empty($report['activities'])): ?>
-                                <tr><td colspan="4" class="px-5 py-12 text-center text-gray-400 text-sm">No staff activity logged for this period.</td></tr>
-                                <?php else: foreach ($report['activities'] as $row): ?>
-                                <tr class="hover:bg-gray-50/60">
-                                    <td class="px-5 py-3 font-mono text-xs text-slate-600"><?= htmlspecialchars($row['staff_id'] ?? '—') ?></td>
-                                    <td class="px-5 py-3 font-semibold text-slate-800"><?= htmlspecialchars($row['action']) ?></td>
-                                    <td class="px-5 py-3 text-gray-500 text-xs max-w-md truncate hidden md:table-cell"><?= htmlspecialchars($row['details'] ?? '') ?></td>
-                                    <td class="px-5 py-3 text-gray-400 text-xs whitespace-nowrap"><?= htmlspecialchars($row['created_at']) ?></td>
-                                </tr>
-                                <?php endforeach; endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-            </div>
         </div>
     </main>
     <?= scriptTag('admin/report.js') ?>
@@ -789,6 +908,21 @@ $reportDetailSection = !in_array($section, ['overview', 'analytics'], true);
     <?= pageConfigJson($analytics['chartPayload'], 'analytics-config') ?>
     <?= scriptTag('core/page-config.js') ?>
     <?= scriptTag('admin/analytics.js') ?>
+    <?php endif; ?>
+    <?php if ($section === 'records'): ?>
+    <?= pageConfigJson($recordsReport['chart_payload'] ?? [], 'records-report-chart-config') ?>
+    <?= scriptTag('core/page-config.js') ?>
+    <?= scriptTag('admin/report-records-charts.js') ?>
+    <?php endif; ?>
+    <?php if ($section === 'requests' || $section === 'appointments' || $section === 'queue' || $section === 'prints'): ?>
+    <?= pageConfigJson([
+        'requests' => $requestsReportCharts,
+        'appointments' => $appointmentsReportCharts,
+        'queueWait' => $queueReportCharts,
+        'prints' => $printsReportCharts,
+    ], 'operational-report-charts-config') ?>
+    <?= scriptTag('core/page-config.js') ?>
+    <?= scriptTag('admin/report-operational-charts.js') ?>
     <?php endif; ?>
     <?= lucideInitScript() ?>
 </body>

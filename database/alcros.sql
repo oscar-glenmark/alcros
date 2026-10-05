@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS queue_tickets (
     window_number INT DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     called_at TIMESTAMP NULL DEFAULT NULL,
+    first_called_at TIMESTAMP NULL DEFAULT NULL,
     INDEX idx_status (status),
     INDEX idx_date (created_at)
 ) ENGINE=InnoDB;

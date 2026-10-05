@@ -37,6 +37,8 @@ function renderPrintFillFieldInput(array $fillField, array $options = []): void
         $placeholder = 'Barangay, City/Municipality, Province, Country';
     } elseif ($isLocation) {
         $placeholder = 'Barangay, City/Municipality, Province, Country';
+    } elseif (preg_match('/_(middle_name|middlename)$/i', $fieldName)) {
+        $placeholder = 'Optional';
     }
     ?>
     <input type="text"
@@ -506,17 +508,14 @@ function renderRecordsEntryPrintFillSection(PDO $pdo, string $type, array $modal
         ? $modalRecord
         : ['record_type' => $type];
 
-    $fields = printFillEditorFields($type, $source, [
-        'exclude_record_registry_fields' => true,
-    ], $pdo);
+    $fields = printFillEditorFields($type, $source, [], $pdo);
     $grouped = groupPrintFillFieldsForEntryForm($type, $fields);
     $panelId = $type . 'PrintFillPanel';
     ?>
     <div id="<?= htmlspecialchars($panelId) ?>" class="records-entry-print-fill <?= $active ? '' : 'hidden' ?>">
         <div class="records-entry-print-fill__head">
             <div>
-                <p class="records-entry-print-fill__title">Print Certificate Fields</p>
-                <p class="records-entry-print-fill__hint">Additional values for the municipal form (attendant, informant, registrar, LCRO, affidavits, etc.). Use <strong>Back page</strong> for affidavit and optional sections. Custom textboxes from Print Calibration appear here automatically.</p>
+                <p class="records-entry-print-fill__hint">Front and back of the municipal certificate. <strong>Child</strong>, <strong>Deceased</strong>, or <strong>Husband/Wife</strong> sections must be completed to save (middle names optional). Other sections are optional. Custom fields from Print Calibration appear here.</p>
             </div>
         </div>
         <div class="records-entry-print-fill__tabs" role="tablist" aria-label="<?= htmlspecialchars(ucfirst($type)) ?> fill-in page">

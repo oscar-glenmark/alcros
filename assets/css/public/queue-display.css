@@ -8,3 +8,44 @@ body { font-family: 'Inter', sans-serif; background-color: #020617; color: white
     0% { transform: translateX(100%); }
     100% { transform: translateX(-100%); }
 }
+
+.display-table-slot {
+    padding: 1.35rem 1rem;
+}
+
+.display-table-slot__table {
+    font-size: 0.75rem;
+    font-weight: 900;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #6b7280;
+    margin: 0 0 0.4rem;
+}
+
+.display-table-slot__label {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #9ca3af;
+    margin: 0 0 0.65rem;
+}
+
+.display-table-number {
+    font-size: clamp(2.25rem, 5vw, 3.75rem);
+    line-height: 1.05;
+    font-weight: 900;
+    color: #fff;
+    margin: 0;
+}
+
+.display-table-number.is-empty {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #4b5563;
+}
+
+.display-table-wait {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: #6b7280;
+    margin: 0.5rem 0 0;
+}

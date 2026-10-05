@@ -64,6 +64,10 @@
     height: 200px;
 }
 
+.chart-box--donut {
+    height: 220px;
+}
+
 .analytics-queue-strip {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));

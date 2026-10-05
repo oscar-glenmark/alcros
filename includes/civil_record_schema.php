@@ -219,30 +219,101 @@ function civilRecordInputFieldEmpty(array $input, string $key): bool
     return trim((string) $val) === '';
 }
 
+function civilRecordPrintFillFieldIsOptionalMiddleName(string $fieldName): bool
+{
+    return (bool) preg_match('/_(middle_name|middlename)$/i', $fieldName);
+}
+
+function civilRecordPrintFillFieldLabel(string $type, string $fieldName): string
+{
+    if (!function_exists('printFieldCatalog')) {
+        require_once __DIR__ . '/print_field_definitions.php';
+    }
+    $catalog = printFieldCatalog();
+
+    return $catalog[$type]['front'][$fieldName]
+        ?? $catalog[$type]['back'][$fieldName]
+        ?? civilRecordViewFieldLabel($fieldName);
+}
+
+/** Required print-fill keys for entry form sections (front page). Middle names are optional. */
+function civilRecordPrintFillSectionRequiredFieldNames(string $type, string ...$sections): array
+{
+    if (!function_exists('printFieldCatalog')) {
+        require_once __DIR__ . '/print_field_definitions.php';
+    }
+    if (!function_exists('printFillEntryFormSectionKey')) {
+        require_once __DIR__ . '/print_fill_controls.php';
+    }
+
+    $catalog = printFieldCatalog()[$type]['front'] ?? [];
+    $required = [];
+    foreach (array_keys($catalog) as $fieldName) {
+        if (civilRecordPrintFillFieldIsOptionalMiddleName($fieldName)) {
+            continue;
+        }
+        $section = printFillEntryFormSectionKey($type, $fieldName, 'front');
+        if (in_array($section, $sections, true)) {
+            $required[] = $fieldName;
+        }
+    }
+
+    return $required;
+}
+
 /** @return array<string, list<array{key: string, label: string}>> */
 function civilRecordManualEntryRequiredFieldsForJs(): array
 {
-    $mapKeys = static function (array $keys): array {
+    $mapKeys = static function (string $type, array $keys): array {
         $out = [];
         foreach ($keys as $key) {
-            $out[] = ['key' => $key, 'label' => civilRecordViewFieldLabel($key)];
+            $out[] = ['key' => $key, 'label' => civilRecordPrintFillFieldLabel($type, $key)];
         }
 
         return $out;
     };
 
     return [
-        'birth' => $mapKeys(civilRecordBirthChildEntryRequiredKeys()),
-        'death' => $mapKeys(civilRecordDeathDeceasedEntryRequiredKeys()),
-        'marriage' => $mapKeys(array_merge(
-            civilRecordMarriageSpouseEntryRequiredKeys('husband'),
-            civilRecordMarriageSpouseEntryRequiredKeys('wife')
+        'birth' => $mapKeys('birth', civilRecordPrintFillSectionRequiredFieldNames('birth', 'child')),
+        'death' => $mapKeys('death', civilRecordPrintFillSectionRequiredFieldNames('death', 'deceased')),
+        'marriage' => $mapKeys('marriage', array_merge(
+            civilRecordPrintFillSectionRequiredFieldNames('marriage', 'husband'),
+            civilRecordPrintFillSectionRequiredFieldNames('marriage', 'wife')
         )),
     ];
 }
 
-/** Manual add/edit form — child, deceased, and spouse blocks (not CSV import). */
+function civilRecordPrintFillFieldEmpty(array $input, string $fieldName): bool
+{
+    if (isset($input['print_fill']) && is_array($input['print_fill']) && array_key_exists($fieldName, $input['print_fill'])) {
+        return trim((string) $input['print_fill'][$fieldName]) === '';
+    }
+
+    return civilRecordInputFieldEmpty($input, $fieldName);
+}
+
+/** Manual add/edit — Child / Deceased / Husband & Wife sections on the certificate form. */
 function assertCivilRecordManualEntryComplete(array $input, string $type): void
+{
+    $keys = match ($type) {
+        'birth' => civilRecordPrintFillSectionRequiredFieldNames('birth', 'child'),
+        'death' => civilRecordPrintFillSectionRequiredFieldNames('death', 'deceased'),
+        'marriage' => array_merge(
+            civilRecordPrintFillSectionRequiredFieldNames('marriage', 'husband'),
+            civilRecordPrintFillSectionRequiredFieldNames('marriage', 'wife')
+        ),
+        default => [],
+    };
+
+    foreach ($keys as $key) {
+        if (civilRecordPrintFillFieldEmpty($input, $key)) {
+            throw new InvalidArgumentException(civilRecordPrintFillFieldLabel($type, $key) . ' is required.');
+        }
+    }
+}
+
+/** Legacy CSV row validation (storage field names, not print-fill sections). */
+function assertCivilRecordCsvImportComplete(array $input, string $type): void
 {
     $keys = match ($type) {
         'birth' => civilRecordBirthChildEntryRequiredKeys(),
@@ -275,9 +346,6 @@ function civilRecordViewSections(string $type): array
                 'title' => 'Child Information',
                 'fields' => [
                     $field('_person_name', 'Full Name', ['full' => true]),
-                    $field('registry_number'),
-                    $field('book_number'),
-                    $field('page_number'),
                     $field('sex'),
                     $field('birth_date', 'Date of Birth', ['format' => 'date']),
                     $field('birth_time'),
@@ -336,9 +404,6 @@ function civilRecordViewSections(string $type): array
                 'title' => 'Deceased',
                 'fields' => [
                     $field('_person_name', 'Full Name', ['full' => true]),
-                    $field('registry_number'),
-                    $field('book_number'),
-                    $field('page_number'),
                     $field('sex'),
                     $field('birth_date', 'Date of Birth', ['format' => 'date']),
                     $field('registration_date', null, ['format' => 'date']),
@@ -436,9 +501,6 @@ function civilRecordViewSections(string $type): array
                 'title' => 'Record',
                 'fields' => [
                     $field('_person_name', 'Couple', ['full' => true]),
-                    $field('registry_number'),
-                    $field('book_number'),
-                    $field('page_number'),
                 ],
             ],
             $spouseFields('husband', 'Husband'),

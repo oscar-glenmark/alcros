@@ -92,6 +92,7 @@ a.manage-stat-card.is-active {
 .manage-stat-card--violet .manage-stat-card__icon { background: #f5f3ff; color: #7c3aed; }
 .manage-stat-card--emerald .manage-stat-card__icon { background: #ecfdf5; color: #059669; }
 .manage-stat-card--rose .manage-stat-card__icon { background: #fef2f2; color: #dc2626; }
+.manage-stat-card--sky .manage-stat-card__icon { background: #f0f9ff; color: #0284c7; }
 
 .manage-section--controls {
     margin-bottom: 0;

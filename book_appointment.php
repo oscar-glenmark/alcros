@@ -118,6 +118,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $appointmentId = (int) $pdo->lastInsertId();
                         $pdo->commit();
 
+                        require_once __DIR__ . '/includes/appointment_follow_up.php';
+                        cancelPendingFollowUpsForNewBooking($pdo, $email, $phone, $appointmentId);
+
                         $notifyPayload = [
                             'appointment_code'  => $appointmentCode,
                             'first_name'        => $firstName,
@@ -149,6 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->rollBack();
                 }
                 deleteIdUploadFiles($frontPath, $backPath);
+                error_log('ALCROS book_appointment: ' . $e->getMessage());
                 $error = 'Could not book appointment. ' . dbConnectionHelpMessage();
             } finally {
                 if ($slotLocked) {

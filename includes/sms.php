@@ -625,6 +625,38 @@ function notifyAppointmentVisitSoonSms(array $row): bool
     return sendCitizenSms((string) $row['phone'], $message, 'visit_soon', $code);
 }
 
+/** @param array<string, mixed> $row Follow-up row with phone, service fields */
+function notifyFollowUpReminderSms(array $row): bool
+{
+    if (!isSmsConfigured()) {
+        return false;
+    }
+    if (empty($row['notify_sms'])) {
+        return false;
+    }
+    $phone = trim((string) ($row['phone'] ?? ''));
+    if ($phone === '' || !isValidPhilippineMobile($phone)) {
+        return false;
+    }
+
+    $slug = trim((string) ($row['service_slug'] ?? ''));
+    $bookUrl = rtrim(appBaseUrl(), '/') . '/book_appointment.php';
+    if ($slug !== '') {
+        $bookUrl .= '?service=' . rawurlencode($slug);
+    }
+    $followUpDisplay = formatDateDisplay((string) ($row['follow_up_date'] ?? ''));
+
+    $message = smsComposeStandaloneAppointmentMessage($row, [
+        smsCitizenGreeting($row),
+        'Follow-up reminder for ' . $followUpDisplay . '. Please book your next visit.',
+        'Book: ' . $bookUrl,
+    ]);
+
+    $ref = (string) ($row['appointment_code'] ?? 'follow-up');
+
+    return sendCitizenSms($phone, $message, 'follow_up_reminder', $ref);
+}
+
 function notifyAppointmentStatusSms(PDO $pdo, int $appointmentId, string $newStatus): bool
 {
     if (!isSmsConfigured()) {

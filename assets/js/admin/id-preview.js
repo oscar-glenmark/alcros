@@ -55,13 +55,15 @@
     function idPreviewCard(label, path, eager) {
         if (!path) return '';
 
-        var openPath = resolveStaffUploadUrl(path, false);
         var embedPath = resolveStaffUploadUrl(path, true);
-        if (!openPath || !embedPath) return '';
+        if (!embedPath) return '';
+
+        var isPdf = /\.pdf(\?|$)/i.test(embedPath);
+        var openPath = isPdf ? resolveStaffUploadUrl(path, false) : embedPath;
+        if (!openPath) return '';
 
         var safeOpenPath = escapeAttr(openPath);
         var safeEmbedPath = escapeAttr(embedPath);
-        var isPdf = /\.pdf(\?|$)/i.test(openPath);
         var loadAttr = eager ? ' loading="eager" fetchpriority="high" decoding="async"' : ' loading="lazy" decoding="async"';
 
         if (isPdf) {
@@ -90,6 +92,8 @@
 
     global.AlcrosIdPreview = {
         renderGrid: renderIdPreviewGrid,
-        resolveUrl: resolveStaffUploadUrl
+        resolveUrl: function (path) {
+            return resolveStaffUploadUrl(path, true);
+        }
     };
 })(window);

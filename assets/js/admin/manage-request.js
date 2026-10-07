@@ -621,7 +621,13 @@
             params.set('q', pageConfig.redirectQ);
         }
 
-        return fetch(pageConfig.pollUrl + '?' + params.toString(), {
+        var focusUrl = pageConfig.pollUrl + '?' + params.toString();
+        var authToken = sessionStorage.getItem('alcros_auth') || '';
+        if (authToken) {
+            focusUrl += '&alcros_auth=' + encodeURIComponent(authToken);
+        }
+
+        return fetch(focusUrl, {
             credentials: 'same-origin',
             cache: 'no-store'
         })

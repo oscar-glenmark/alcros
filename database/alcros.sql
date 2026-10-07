@@ -91,6 +91,33 @@ CREATE TABLE IF NOT EXISTS appointments (
     INDEX idx_deleted_at (deleted_at)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS appointment_follow_ups (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    appointment_id INT NOT NULL,
+    follow_up_date DATE NOT NULL,
+    staff_note TEXT DEFAULT NULL,
+    status ENUM('pending','completed','cancelled') NOT NULL DEFAULT 'pending',
+    cancel_reason VARCHAR(32) DEFAULT NULL,
+    cancelled_appointment_id INT DEFAULT NULL,
+    email VARCHAR(150) DEFAULT NULL,
+    phone VARCHAR(30) DEFAULT NULL,
+    notify_email TINYINT(1) NOT NULL DEFAULT 0,
+    notify_sms TINYINT(1) NOT NULL DEFAULT 0,
+    service_type VARCHAR(100) NOT NULL DEFAULT '',
+    service_slug VARCHAR(80) DEFAULT NULL,
+    reminder_sent_at TIMESTAMP NULL DEFAULT NULL,
+    sms_reminder_sent_at TIMESTAMP NULL DEFAULT NULL,
+    created_by VARCHAR(50) DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_follow_up_date (follow_up_date, status),
+    INDEX idx_status (status),
+    INDEX idx_appointment (appointment_id),
+    INDEX idx_email (email),
+    CONSTRAINT fk_follow_up_appointment
+        FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS queue_tickets (
     id INT AUTO_INCREMENT PRIMARY KEY,
     ticket_number VARCHAR(10) NOT NULL,

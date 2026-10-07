@@ -24,31 +24,19 @@ function filePhpFaviconLinkTag(): string
 }
 
 /**
- * Stream bytes for embeds (<img>, iframe PDF, etc.). Top-level tab visits get an HTML shell with favicon + title.
+ * Stream bytes for embeds and direct image views. PDFs opened in a new tab may use the HTML viewer shell.
  */
-function filePhpIsTopLevelTabRequest(): bool
+function filePhpShouldStreamBinary(?string $mime = null): bool
 {
-    $dest = strtolower(trim((string) ($_SERVER['HTTP_SEC_FETCH_DEST'] ?? '')));
-    if ($dest === 'document') {
+    if ($mime !== null && str_starts_with($mime, 'image/')) {
         return true;
     }
-
-    $mode = strtolower(trim((string) ($_SERVER['HTTP_SEC_FETCH_MODE'] ?? '')));
-
-    return $dest === '' && $mode === 'navigate';
-}
-
-function filePhpShouldStreamBinary(): bool
-{
-    $dest = strtolower(trim((string) ($_SERVER['HTTP_SEC_FETCH_DEST'] ?? '')));
 
     if (isset($_GET['raw']) && (string) $_GET['raw'] === '1') {
-        if (filePhpIsTopLevelTabRequest()) {
-            return false;
-        }
-
         return true;
     }
+
+    $dest = strtolower(trim((string) ($_SERVER['HTTP_SEC_FETCH_DEST'] ?? '')));
 
     if ($dest === '') {
         return true;
@@ -164,7 +152,7 @@ if (!is_file($full)) {
 $mime = filePhpMimeForPath($full);
 $filename = basename($full);
 
-if (!filePhpShouldStreamBinary()) {
+if (!filePhpShouldStreamBinary($mime)) {
     filePhpRenderViewer($relative, $mime, $filename);
 }
 

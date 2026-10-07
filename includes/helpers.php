@@ -4144,20 +4144,30 @@ function countPendingAppointments(PDO $pdo): int
     )->fetchColumn();
 }
 
-function appointmentRevision(array $row): string
+function appointmentRevision(array $row, ?array $followUpPending = null): string
 {
+    $followUpPart = '';
+    if ($followUpPending) {
+        $followUpPart = '|fu:'
+            . (int) ($followUpPending['id'] ?? 0)
+            . '|' . (string) ($followUpPending['updated_at'] ?? '')
+            . '|' . (string) ($followUpPending['follow_up_date'] ?? '')
+            . '|' . (string) ($followUpPending['status'] ?? '');
+    }
+
     return sha1(
         (string) ($row['id'] ?? '')
         . '|' . (string) ($row['status'] ?? '')
         . '|' . (string) ($row['updated_at'] ?? '')
         . '|' . (string) ($row['deleted_at'] ?? '')
+        . $followUpPart
     );
 }
 
 function appointmentsListFilters(array $input, ?PDO $pdo = null): array
 {
     $status = (string) ($input['status'] ?? 'all');
-    if (!in_array($status, ['all', 'scheduled', 'confirmed', 'completed', 'no_show', 'all_appointments', 'recently_deleted'], true)) {
+    if (!in_array($status, ['all', 'scheduled', 'confirmed', 'completed', 'no_show', 'all_appointments', 'recently_deleted', 'follow_ups'], true)) {
         $status = 'all';
     }
 
@@ -4205,6 +4215,8 @@ function fetchAppointmentDayStats(PDO $pdo, string $viewDate): array
     );
     $recentlyDeletedStmt->execute([$viewDate]);
 
+    require_once __DIR__ . '/appointment_follow_up.php';
+
     return [
         'total'            => array_sum($statusCounts),
         'scheduled'        => (int) ($statusCounts['scheduled'] ?? 0),
@@ -4212,6 +4224,7 @@ function fetchAppointmentDayStats(PDO $pdo, string $viewDate): array
         'completed'        => (int) ($statusCounts['completed'] ?? 0),
         'no_show'          => (int) ($statusCounts['no_show'] ?? 0),
         'recently_deleted' => (int) $recentlyDeletedStmt->fetchColumn(),
+        'follow_ups'       => countPendingAppointmentFollowUps($pdo),
     ];
 }
 
@@ -4221,6 +4234,10 @@ function fetchAppointmentsManageList(PDO $pdo, array $filters): array
     ensureCitizenNotifyColumns($pdo);
     ensureSoftDeleteColumns($pdo);
     ensureAppointmentUpdatedColumn($pdo);
+
+    if (($filters['status'] ?? '') === 'follow_ups') {
+        return [];
+    }
 
     $viewDate = $filters['date'];
     $filterStatus = $filters['status'];
@@ -4383,7 +4400,7 @@ function documentRequestViewData(array $row): array
     ];
 }
 
-function appointmentViewData(array $row): array
+function appointmentViewData(array $row, ?PDO $pdo = null): array
 {
     $isRequest = (($row['source'] ?? '') === 'document_request') || !empty($row['tracking_code']);
     $statusKey = (string) ($row['status'] ?? 'scheduled');
@@ -4396,7 +4413,7 @@ function appointmentViewData(array $row): array
         ];
     }
 
-    return [
+    $view = [
         'id'               => (int) ($row['id'] ?? 0),
         'appointment_code' => (string) ($row['appointment_code'] ?? ''),
         'citizen_name'     => personNameFromRow($row),
@@ -4420,11 +4437,25 @@ function appointmentViewData(array $row): array
         'id_front_path'    => protectedUploadUrl(!empty($row['id_front_path']) ? (string) $row['id_front_path'] : null),
         'id_back_path'     => protectedUploadUrl(!empty($row['id_back_path']) ? (string) $row['id_back_path'] : null),
         'created_at'       => !empty($row['created_at']) ? formatReportDateTime($row['created_at']) : '—',
-        'revision'         => appointmentRevision($row),
         'can_delete'       => false,
         'actions'          => $actionOptions,
         'notes'            => !empty($row['notes']) ? (string) $row['notes'] : null,
+        'can_schedule_follow_up' => false,
+        'follow_up'        => null,
     ];
+
+    $pendingFollowUp = null;
+    if ($pdo !== null && appointmentAllowsFollowUp($row)) {
+        require_once __DIR__ . '/appointment_follow_up.php';
+        ensureAppointmentFollowUpsTable($pdo);
+        $view['can_schedule_follow_up'] = $statusKey === 'completed';
+        $pendingFollowUp = fetchPendingFollowUpByAppointmentId($pdo, (int) ($row['id'] ?? 0));
+        $view['follow_up'] = appointmentFollowUpViewData($pendingFollowUp);
+    }
+
+    $view['revision'] = appointmentRevision($row, $pendingFollowUp);
+
+    return $view;
 }
 
 function appointmentSearchClause(string $search, string $alias = 'a', ?string $requestAlias = 'dr'): array
@@ -5941,6 +5972,8 @@ function sendDueAppointmentReminders(PDO $pdo): int
         $sent += sendDueStandaloneAppointmentEmailReminders($pdo);
         require_once __DIR__ . '/sms.php';
         $sent += sendDueSmsVisitReminders($pdo);
+        require_once __DIR__ . '/appointment_follow_up.php';
+        $sent += sendDueFollowUpReminders($pdo);
     } catch (Throwable $e) {
         $failed = true;
         error_log('ALCROS appointment reminders failed: ' . $e->getMessage());

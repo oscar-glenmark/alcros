@@ -19,7 +19,7 @@ try {
     $appointments = [];
 
     foreach ($rows as $row) {
-        $view = appointmentViewData($row);
+        $view = appointmentViewData($row, $pdo);
         $appointments[] = [
             'id'                => (int) $row['id'],
             'revision'          => $view['revision'],
@@ -56,7 +56,7 @@ try {
         $stmt->execute([$focusId]);
         $focusRow = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($focusRow) {
-            $response['focus'] = appointmentViewData($focusRow);
+            $response['focus'] = appointmentViewData($focusRow, $pdo);
         }
     }
 

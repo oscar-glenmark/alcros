@@ -256,6 +256,22 @@
 
     function bindActionTriggers() {
         document.addEventListener('click', function (e) {
+            var followBtn = e.target.closest('.manage-follow-up-trigger');
+            if (followBtn) {
+                e.preventDefault();
+                e.stopPropagation();
+                var followForm = followBtn.closest('form.manage-detail-action-form');
+                if (!followForm) {
+                    var formId = followBtn.getAttribute('form');
+                    if (formId) {
+                        followForm = document.getElementById(formId);
+                    }
+                }
+                if (!followForm) return;
+                submitAppointmentForm(followForm, 'Saving follow-up…');
+                return;
+            }
+
             var btn = e.target.closest('.manage-action-trigger');
             if (!btn) return;
 
@@ -268,6 +284,141 @@
 
             showInlineConfirm(actionsWrap, actionsWrap._appointmentData, form, btn.getAttribute('data-manage-action') || '');
         });
+    }
+
+    function buildFollowUpHiddenFields() {
+        return '<input type="hidden" name="redirect_status" value="' + escapeHtml(pageConfig.redirectStatus || 'all') + '">' +
+            '<input type="hidden" name="redirect_date" value="' + escapeHtml(pageConfig.redirectDate || '') + '">' +
+            '<input type="hidden" name="redirect_q" value="' + escapeHtml(pageConfig.redirectQ || '') + '">';
+    }
+
+    function renderFollowUp(prefix, data) {
+        var wrap = document.getElementById(prefix + 'appt-view-follow-up-wrap');
+        var body = document.getElementById(prefix + 'appt-view-follow-up-body');
+        if (!wrap || !body) return;
+
+        var followUp = data.follow_up;
+        var canSchedule = data.can_schedule_follow_up === true;
+        var hasPending = followUp && followUp.status === 'pending';
+
+        if (!canSchedule && !hasPending) {
+            wrap.classList.add('hidden');
+            body.innerHTML = '';
+            return;
+        }
+
+        wrap.classList.remove('hidden');
+
+        var html = '<div class="manage-follow-up-panel">';
+        html += '<div class="manage-follow-up-notice" role="note">' +
+            '<p class="manage-follow-up-notice__title">Citizen notification</p>' +
+            '<p class="manage-follow-up-notice__text">On the follow-up date at <strong>8:00 AM</strong> (office time), citizens who opted in at booking receive email or SMS with a link to book online.</p>' +
+            '</div>';
+
+        if (hasPending) {
+            html += '<div class="manage-follow-up-current">' +
+                '<p class="manage-follow-up-current__eyebrow">Scheduled follow-up</p>' +
+                '<p class="manage-follow-up-current__date">' + escapeHtml(followUp.follow_up_date || '—') + '</p>';
+            if (followUp.staff_note) {
+                html += '<p class="manage-follow-up-current__note"><span>Note:</span> ' + escapeHtml(followUp.staff_note) + '</p>';
+            }
+            if (followUp.reminder_sent) {
+                html += '<p class="manage-follow-up-current__badge">Reminder already sent</p>';
+            }
+            html += '</div>';
+        }
+
+        var onFollowUpsView = pageConfig.redirectStatus === 'follow_ups';
+        var inlineSaveAndCancel = canSchedule && hasPending && followUp && followUp.id && !onFollowUpsView;
+
+        function buildFollowUpCancelForm(followUpId) {
+            var cancelHtml = '<form method="POST" action="' + escapeHtml(pageConfig.formAction || 'appointment.php') + '" class="manage-detail-action-form manage-detail-action-form--stacked manage-follow-up__secondary-form" data-no-confirm data-ajax="1" data-no-loading>';
+            if (authFieldsEl) {
+                cancelHtml += authFieldsEl.innerHTML;
+            }
+            cancelHtml += buildFollowUpHiddenFields() +
+                '<input type="hidden" name="follow_up_id" value="' + escapeHtml(followUpId) + '">' +
+                '<input type="hidden" name="follow_up_cancel" value="1">' +
+                '<button type="button" class="manage-detail-action manage-detail-action--danger manage-follow-up-trigger" data-loading-text="Saving…">Cancel reminder</button></form>';
+            return cancelHtml;
+        }
+
+        if (canSchedule) {
+            var selectedInterval = '3m';
+            var customDate = hasPending && followUp.follow_up_date_iso ? followUp.follow_up_date_iso : '';
+            var noteVal = hasPending && followUp.staff_note ? followUp.staff_note : '';
+            var formTitle = hasPending ? 'Update schedule' : 'Set follow-up date';
+
+            html += '<form method="POST" action="' + escapeHtml(pageConfig.formAction || 'appointment.php') + '" id="appointmentFollowUpSaveForm" class="manage-follow-up__form manage-detail-action-form manage-detail-action-form--stacked" data-no-confirm data-ajax="1" data-no-loading>';
+            if (authFieldsEl) {
+                html += authFieldsEl.innerHTML;
+            }
+            html += buildFollowUpHiddenFields() +
+                '<input type="hidden" name="appointment_id" value="' + escapeHtml(data.id) + '">' +
+                '<input type="hidden" name="follow_up_save" value="1">' +
+                '<p class="manage-follow-up__form-title">' + escapeHtml(formTitle) + '</p>' +
+                '<fieldset class="manage-follow-up__intervals">' +
+                '<legend class="manage-follow-up__field-label">Return visit</legend>' +
+                '<div class="manage-follow-up__interval-grid">' +
+                ['1m', '3m', '6m', 'custom'].map(function (key) {
+                    var labels = { '1m': '1 month', '3m': '3 months', '6m': '6 months', 'custom': 'Pick a date' };
+                    var checked = key === selectedInterval ? ' checked' : '';
+                    return '<label class="manage-follow-up__interval"><input type="radio" name="follow_up_interval" value="' + key + '"' + checked + '><span>' + labels[key] + '</span></label>';
+                }).join('') +
+                '</div></fieldset>' +
+                '<label class="manage-follow-up__date-label hidden" data-follow-up-custom-date-wrap>' +
+                '<span class="manage-follow-up__field-label">Custom date</span>' +
+                '<input type="date" name="follow_up_date" value="' + escapeHtml(customDate) + '" class="manage-follow-up__date-input">' +
+                '</label>' +
+                '<label class="manage-follow-up__note-label">' +
+                '<span class="manage-follow-up__field-label">Note for the citizen (optional)</span>' +
+                '<textarea name="follow_up_note" rows="3" class="manage-follow-up__note-input" placeholder="e.g. Bring updated IDs">' + escapeHtml(noteVal) + '</textarea>' +
+                '</label>';
+
+            if (inlineSaveAndCancel) {
+                html += '</form>';
+                html += '<div class="manage-follow-up__actions-row manage-follow-up__actions-row--inline">';
+                html += buildFollowUpCancelForm(followUp.id);
+                html += '<div class="manage-follow-up__actions-primary manage-follow-up__actions-primary--inline">' +
+                    '<button type="button" form="appointmentFollowUpSaveForm" class="manage-detail-action manage-detail-action--primary manage-follow-up-trigger manage-follow-up__save" data-loading-text="Saving…">Update follow-up</button>' +
+                    '</div></div>';
+            } else {
+                html += '<div class="manage-follow-up__actions-primary">' +
+                    '<button type="button" class="manage-detail-action manage-detail-action--primary manage-follow-up-trigger manage-follow-up__save" data-loading-text="Saving…">' +
+                    (hasPending ? 'Update follow-up' : 'Save follow-up') +
+                    '</button></div></form>';
+            }
+        }
+
+        if (hasPending && followUp.id && onFollowUpsView) {
+            html += '<div class="manage-follow-up__actions-secondary">';
+            html += '<form method="POST" action="' + escapeHtml(pageConfig.formAction || 'appointment.php') + '" class="manage-detail-action-form manage-detail-action-form--stacked manage-follow-up__secondary-form" data-no-confirm data-ajax="1" data-no-loading>';
+            if (authFieldsEl) {
+                html += authFieldsEl.innerHTML;
+            }
+            html += buildFollowUpHiddenFields() +
+                '<input type="hidden" name="follow_up_id" value="' + escapeHtml(followUp.id) + '">' +
+                '<input type="hidden" name="follow_up_complete" value="1">' +
+                '<button type="button" class="manage-detail-action manage-follow-up-trigger" data-loading-text="Saving…">Mark follow-up done</button></form>';
+            html += buildFollowUpCancelForm(followUp.id);
+            html += '</div>';
+        }
+
+        html += '</div>';
+        body.innerHTML = html;
+
+        var customWrap = body.querySelector('[data-follow-up-custom-date-wrap]');
+        var intervalInputs = body.querySelectorAll('input[name="follow_up_interval"]');
+        function syncCustomDateVisibility() {
+            if (!customWrap) return;
+            var selected = body.querySelector('input[name="follow_up_interval"]:checked');
+            var isCustom = selected && selected.value === 'custom';
+            customWrap.classList.toggle('hidden', !isCustom);
+        }
+        intervalInputs.forEach(function (input) {
+            input.addEventListener('change', syncCustomDateVisibility);
+        });
+        syncCustomDateVisibility();
     }
 
     function renderDetailActions(actionsWrap, data) {
@@ -347,6 +498,49 @@
                     notesWrap.classList.add('hidden');
                 }
             }
+
+        renderFollowUp(prefix, data);
+        applyModalDetailLayout(prefix, data);
+    }
+
+    function applyModalDetailLayout(prefix, data) {
+        if (prefix !== 'modal-') {
+            return;
+        }
+
+        var body = document.getElementById('modalAppointmentDetailBody');
+        var details = document.getElementById('modal-appt-appointment-details');
+        var followUp = document.getElementById('modal-appt-view-follow-up-wrap');
+        var detailsHeading = document.getElementById('modal-appt-details-heading');
+        if (!body || !details || !followUp) {
+            return;
+        }
+
+        var followUpsView = pageConfig.redirectStatus === 'follow_ups';
+        var showFollowUp = !followUp.classList.contains('hidden');
+        var followUpFirst = followUpsView && showFollowUp;
+
+        if (detailsHeading) {
+            detailsHeading.classList.toggle('hidden', !followUpFirst);
+        }
+        details.classList.toggle('manage-appointment-details--below-follow-up', followUpFirst);
+        followUp.classList.toggle('manage-follow-up--featured', followUpFirst);
+
+        var ordered = followUpFirst
+            ? [followUp, detailsHeading, details]
+            : [details, detailsHeading, followUp];
+
+        ordered.forEach(function (node) {
+            if (node) {
+                body.appendChild(node);
+            }
+        });
+
+        if (followUpFirst && data) {
+            window.requestAnimationFrame(function () {
+                refreshModalIdPreviews(data);
+            });
+        }
     }
 
     function shouldUseSidePanel(data) {
@@ -379,8 +573,8 @@
         panel.classList.add('is-open');
         markSelectedRow(row || null);
 
-            if (typeof lucide !== 'undefined') lucide.createIcons();
-        }
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
 
     function closeDetail() {
         if (!panel || !emptyState || !content) return;
@@ -395,17 +589,31 @@
         }
     }
 
+    function refreshModalIdPreviews(data) {
+        if (!data) return;
+        var container = document.getElementById('modal-appt-view-id-files');
+        if (!container) return;
+        renderIdFiles(container, data);
+        if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
+            lucide.createIcons({ nodes: [container] });
+        }
+    }
+
     function openModal(data, row) {
         if (!modal) return;
 
         closeDetail();
-        populateDetailView(modalView, data);
         modal.classList.remove('hidden');
         modal.setAttribute('aria-hidden', 'false');
         document.body.classList.add('manage-request-modal-open');
+        populateDetailView(modalView, data);
         markSelectedRow(row || null);
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
+        refreshModalIdPreviews(data);
+        window.requestAnimationFrame(function () {
+            refreshModalIdPreviews(data);
+        });
     }
 
     function closeModal() {
@@ -461,7 +669,13 @@
             params.set('date', pageConfig.redirectDate);
         }
 
-        return fetch(pageConfig.pollUrl + '?' + params.toString(), {
+        var focusUrl = pageConfig.pollUrl + '?' + params.toString();
+        var authToken = sessionStorage.getItem('alcros_auth') || '';
+        if (authToken) {
+            focusUrl += (focusUrl.indexOf('?') !== -1 ? '&' : '?') + 'alcros_auth=' + encodeURIComponent(authToken);
+        }
+
+        return fetch(focusUrl, {
             credentials: 'same-origin',
             cache: 'no-store'
         })
@@ -605,7 +819,8 @@
         scheduled: 'scheduled',
         confirmed: 'confirmed',
         completed: 'completed',
-        no_show: 'no_show'
+        no_show: 'no_show',
+        follow_ups: 'follow_ups'
     };
 
     function listSignature(appointments) {
@@ -730,7 +945,7 @@
         )
     );
 
-    if (window.AlcrosPoll && pageConfig.pollUrl) {
+    if (window.AlcrosPoll && pageConfig.pollUrl && pageConfig.pollEnabled !== false) {
         AlcrosPoll.pollJson(
             pageConfig.pollUrl,
             function () {

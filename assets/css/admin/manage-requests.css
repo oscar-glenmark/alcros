@@ -1,4 +1,5 @@
 @import url('id-preview.css');
+@import url('staff-id-dialog.css');
 
 .manage-requests-page {
     max-width: none;
@@ -856,6 +857,8 @@ a.manage-stat-card.is-active {
     min-height: 6.5rem;
     border-radius: 0.625rem;
     border-width: 1px;
+    pointer-events: auto;
+    cursor: pointer;
 }
 
 .manage-detail-ids .admin-id-preview-image,
@@ -874,6 +877,11 @@ a.manage-stat-card.is-active {
 .manage-detail-ids .admin-id-preview-caption {
     font-size: 0.6875rem;
     padding: 0.35rem 0.5rem;
+}
+
+.manage-detail-ids .admin-id-preview-open {
+    font-size: 0.75rem;
+    padding: 0.625rem 0.5rem;
 }
 
 .manage-detail-ids > a,
@@ -916,13 +924,15 @@ a.manage-stat-card.is-active {
 .manage-request-modal__backdrop {
     position: absolute;
     inset: 0;
+    z-index: 0;
     background: rgba(15, 23, 42, 0.55);
     backdrop-filter: blur(2px);
 }
 
 .manage-request-modal__dialog {
     position: relative;
-    z-index: 1;
+    z-index: 2;
+    pointer-events: auto;
     display: flex;
     flex-direction: column;
     width: min(100%, 44rem);

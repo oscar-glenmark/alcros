@@ -219,7 +219,7 @@ function recordCivilRecordAudit(PDO $pdo, int $recordId, string $eventType, arra
 }
 
 /** @return list<array<string, mixed>> */
-function fetchCivilRecordUpdateHistory(PDO $pdo, int $recordId, int $limit = 20): array
+function fetchCivilRecordUpdateHistory(PDO $pdo, int $recordId, int $limit = 20, bool $editsOnly = true): array
 {
     if ($recordId <= 0) {
         return [];
@@ -228,13 +228,15 @@ function fetchCivilRecordUpdateHistory(PDO $pdo, int $recordId, int $limit = 20)
     ensureCivilRecordUpdatesTable($pdo);
     $limit = max(1, min(50, $limit));
 
-    $stmt = $pdo->prepare(
-        "SELECT id, event_type, staff_id, staff_name, staff_role, summary, changes_json, created_at
+    $sql = "SELECT id, event_type, staff_id, staff_name, staff_role, summary, changes_json, created_at
          FROM civil_record_updates
-         WHERE civil_record_id = ?
-         ORDER BY created_at DESC, id DESC
-         LIMIT $limit"
-    );
+         WHERE civil_record_id = ?";
+    if ($editsOnly) {
+        $sql .= " AND event_type = 'updated'";
+    }
+    $sql .= " ORDER BY created_at DESC, id DESC LIMIT $limit";
+
+    $stmt = $pdo->prepare($sql);
     $stmt->execute([$recordId]);
     $rows = [];
 
@@ -285,7 +287,7 @@ function formatCivilRecordAuditTimestamp(string $createdAt): string
 function renderCivilRecordUpdateHistoryMarkup(array $recordUpdateHistory): string
 {
     if ($recordUpdateHistory === []) {
-        return '<p class="records-recent-updates__empty">No edit history yet for this record. Changes will appear here after the next save.</p>';
+        return '<p class="records-recent-updates__empty">No edits yet for this record. Field changes will appear here after someone saves an update.</p>';
     }
 
     ob_start();

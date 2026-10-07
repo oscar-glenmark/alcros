@@ -3,6 +3,7 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
+require_once __DIR__ . '/includes/staff_id_lightbox.php';
 require_once __DIR__ . '/includes/printing.php';
 requireStaffLogin();
 requirePageAccess('manage_request.php');
@@ -403,7 +404,7 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                                         <?php endif; ?>
                                         <span class="manage-row-action__label"><?= htmlspecialchars($isReadyAction ? $viewLabel : strtoupper($viewLabel)) ?></span>
                                     </button>
-                                    <?php if ($req['status'] === 'completed' && !$showBulkActions): ?>
+                                    <?php if (documentRequestIsDeletable($req)): ?>
                                     <form method="POST" action="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="manage-delete-form">
                                         <?= authFormField() ?>
                                         <input type="hidden" name="redirect_status" value="<?= htmlspecialchars($filterStatus) ?>">
@@ -556,7 +557,9 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
         'pollUrl'        => buildAuthUrl('api/manage_requests.php'),
     ]) ?>
     <div id="requestActionAuthFields" class="hidden" aria-hidden="true"><?= authFormField() ?></div>
+    <?= staffIdLightboxMarkup() ?>
     <?= actionResultScript($flash) ?>
+    <?= scriptTag('core/staff-id-view.js') ?>
     <?= scriptTag('admin/id-preview.js') ?>
     <?= scriptTag('core/page-config.js') ?>
     <?= scriptTag('core/admin-search.js') ?>

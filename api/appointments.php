@@ -34,11 +34,17 @@ try {
     }
 
     $response = [
-        'appointments' => $appointments,
-        'stats'        => fetchAppointmentDayStats($pdo, $filters['date']),
-        'filters'      => $filters,
-        'count'        => count($appointments),
-        'date'         => $filters['date'],
+        'appointments'            => $appointments,
+        'stats'                   => fetchAppointmentDayStats($pdo, $filters['date']),
+        'filters'                 => $filters,
+        'count'                   => count($appointments),
+        'date'                    => $filters['date'],
+        'overview_card_highlight' => resolveAppointmentOverviewCardHighlight(
+            $filters['status'],
+            $filters['q'],
+            $rows,
+            $filters['status'] === 'follow_ups'
+        ),
     ];
 
     if ($focusId > 0) {

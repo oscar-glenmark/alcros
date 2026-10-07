@@ -705,6 +705,23 @@
         syncAffidavitFillFields();
     }
 
+    function apiPrintRequestUrl() {
+        var url = cfg.apiPrintUrl || 'api/print.php';
+        if (url.indexOf('alcros_auth=') !== -1) {
+            return url;
+        }
+        try {
+            var token = sessionStorage.getItem('alcros_auth');
+            if (token) {
+                var sep = url.indexOf('?') !== -1 ? '&' : '?';
+                return url + sep + 'alcros_auth=' + encodeURIComponent(token);
+            }
+        } catch (err) {
+            /* ignore storage errors */
+        }
+        return url;
+    }
+
     function logPrint(page, testMode, callback) {
         if (cfg.manualMode) {
             if (callback) callback();
@@ -732,7 +749,7 @@
         collectFillOverrides();
         body.append('fill', JSON.stringify(fillOverrides));
 
-        fetch(cfg.apiPrintUrl || 'api/print.php', {
+        fetch(apiPrintRequestUrl(), {
             method: 'POST',
             body: body,
             credentials: 'same-origin'

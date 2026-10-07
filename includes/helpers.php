@@ -1533,6 +1533,49 @@ function resolveAppointmentsManageDate(PDO $pdo, ?string $requestedDate = null):
     return appointmentsManageSuggestedDate($pdo, alcrosTodayDate());
 }
 
+/** Which overview stat card should show is-active (matches list filter / search results). */
+function resolveAppointmentOverviewCardHighlight(
+    string $filterStatus,
+    string $search,
+    array $appointmentRows,
+    bool $isFollowUpsView = false
+): string {
+    if ($isFollowUpsView || $filterStatus === 'follow_ups') {
+        return 'follow_ups';
+    }
+    if ($filterStatus === 'recently_deleted') {
+        return 'recently_deleted';
+    }
+
+    $search = trim($search);
+    if ($search !== '') {
+        if (!in_array($filterStatus, ['all', '', 'all_appointments'], true)) {
+            return $filterStatus;
+        }
+
+        $statusKeys = ['scheduled', 'confirmed', 'completed', 'no_show'];
+        $seen = [];
+        foreach ($appointmentRows as $row) {
+            $status = (string) ($row['status'] ?? '');
+            if ($status !== '') {
+                $seen[$status] = true;
+            }
+        }
+        $unique = array_keys($seen);
+        if (count($unique) === 1 && in_array($unique[0], $statusKeys, true)) {
+            return $unique[0];
+        }
+
+        return 'all_appointments';
+    }
+
+    if ($filterStatus === 'all' || $filterStatus === '') {
+        return 'scheduled';
+    }
+
+    return $filterStatus;
+}
+
 /** Standalone appointments awaiting staff confirmation on a given date. */
 function countAwaitingAppointmentsOnDate(PDO $pdo, string $date): int
 {
@@ -1639,6 +1682,89 @@ function scheduleVisitAppointmentSql(string $alias = 'a'): string
               AND dr.tracking_code IS NOT NULL
               AND dr.tracking_code != ''
         )";
+}
+
+/** Calendar day markers — any non-cancelled visit (includes completed; matches Manage Appointments day view). */
+function scheduleCalendarAppointmentSql(string $alias = 'a'): string
+{
+    return "{$alias}.status NOT IN ('cancelled', 'no_show')";
+}
+
+/** @return 'awaiting'|'confirmed'|'completed'|null */
+function scheduleVisitCalendarToneForAppointment(array $row): ?string
+{
+    $status = (string) ($row['status'] ?? '');
+    if (in_array($status, ['cancelled', 'no_show'], true)) {
+        return null;
+    }
+
+    if (!empty($row['request_status'])) {
+        $requestStatus = normalizeRequestStatus((string) $row['request_status']);
+        if ($requestStatus === 'completed') {
+            return 'completed';
+        }
+    }
+
+    if ($status === 'completed') {
+        return 'completed';
+    }
+
+    if ($status === 'confirmed') {
+        return 'confirmed';
+    }
+
+    return 'awaiting';
+}
+
+/** @return 'awaiting'|'confirmed'|'completed'|null */
+function scheduleVisitCalendarToneForRequest(array $row): ?string
+{
+    $status = normalizeRequestStatus((string) ($row['status'] ?? ''));
+    if ($status === 'rejected') {
+        return null;
+    }
+
+    if ($status === 'completed') {
+        return 'completed';
+    }
+
+    if ($status === 'ready') {
+        return 'confirmed';
+    }
+
+    return 'awaiting';
+}
+
+/**
+ * @param array<string, array{awaiting?: int, confirmed?: int, completed?: int}> $buckets
+ * @return array<string, array{tone: string, count: int}>
+ */
+function finalizeScheduleCalendarDateMarkers(array $buckets): array
+{
+    $map = [];
+    foreach ($buckets as $date => $counts) {
+        $awaiting = (int) ($counts['awaiting'] ?? 0);
+        $confirmed = (int) ($counts['confirmed'] ?? 0);
+        $completed = (int) ($counts['completed'] ?? 0);
+        $total = $awaiting + $confirmed + $completed;
+        if ($total === 0) {
+            continue;
+        }
+
+        $tone = 'completed';
+        if ($awaiting > 0) {
+            $tone = 'awaiting';
+        } elseif ($confirmed > 0) {
+            $tone = 'confirmed';
+        }
+
+        $map[$date] = [
+            'tone'  => $tone,
+            'count' => $total,
+        ];
+    }
+
+    return $map;
 }
 
 /** Active special-service appointments on a date (matches appointment.php list). */
@@ -4382,7 +4508,7 @@ function documentRequestViewData(array $row): array
         'status'         => requestStatusLabel($statusKey),
         'status_key'     => $statusKey,
         'status_badge_html' => requestStatusBadge($statusKey),
-        'can_delete'     => ($row['status'] ?? '') === 'completed',
+        'can_delete'     => documentRequestIsDeletable($row),
         'can_print'      => canPrintRequestStatus($statusKey)
             && ($row['document_type'] ?? '') !== 'cenomar',
         'print_url'              => buildAuthUrl('print_certificate.php', ['request_id' => (int) ($row['id'] ?? 0)]),
@@ -4437,7 +4563,7 @@ function appointmentViewData(array $row, ?PDO $pdo = null): array
         'id_front_path'    => protectedUploadUrl(!empty($row['id_front_path']) ? (string) $row['id_front_path'] : null),
         'id_back_path'     => protectedUploadUrl(!empty($row['id_back_path']) ? (string) $row['id_back_path'] : null),
         'created_at'       => !empty($row['created_at']) ? formatReportDateTime($row['created_at']) : '—',
-        'can_delete'       => false,
+        'can_delete'       => (string) ($row['status'] ?? '') === 'completed',
         'actions'          => $actionOptions,
         'notes'            => !empty($row['notes']) ? (string) $row['notes'] : null,
         'can_schedule_follow_up' => false,
@@ -6003,10 +6129,13 @@ function runReminderSchedulerIfDue(?PDO $pdo = null, int $intervalSeconds = 300)
     }
 
     $now = time();
+    $intervalSeconds = max(60, $intervalSeconds);
     $last = is_file($tickFile) ? (int) trim((string) file_get_contents($tickFile)) : 0;
-    if ($last > 0 && ($now - $last) < max(60, $intervalSeconds)) {
+    if ($last > 0 && ($now - $last) < $intervalSeconds) {
         return 0;
     }
+
+    @file_put_contents($tickFile, (string) $now, LOCK_EX);
 
     return sendDueAppointmentReminders($pdo);
 }

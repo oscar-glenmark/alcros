@@ -81,6 +81,9 @@
         if (!container) return;
         if (window.AlcrosIdPreview && typeof window.AlcrosIdPreview.renderGrid === 'function') {
             container.innerHTML = window.AlcrosIdPreview.renderGrid(data.id_front_path, data.id_back_path);
+            if (typeof window.AlcrosIdPreview.wireCards === 'function') {
+                window.AlcrosIdPreview.wireCards(container);
+            }
             if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
                 lucide.createIcons({ nodes: [container] });
             }

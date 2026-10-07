@@ -88,6 +88,7 @@ $activities = $activities ?? [];
         <?php endif; ?>
     </div>
 
+    <?php if ($adminAnalyticsContext !== 'report'): ?>
     <div class="dash-admin-split">
         <div class="analytics-chart-card dash-admin-split__panel">
             <div class="analytics-chart-head dash-admin-chart-head--split">
@@ -95,9 +96,7 @@ $activities = $activities ?? [];
                     <h3>Certificates printed</h3>
                     <p>Certifications and bond certificates · today vs this month</p>
                 </div>
-                <?php if ($adminAnalyticsContext !== 'report'): ?>
                 <a href="<?= htmlspecialchars($printsDetailsUrl) ?>" class="dash-admin-featured__details shrink-0">View details</a>
-                <?php endif; ?>
             </div>
             <?php if ($a['certTotal'] === 0 && $a['certificateTotal'] === 0): ?>
             <div class="analytics-empty">No print jobs logged yet.</div>
@@ -117,6 +116,7 @@ $activities = $activities ?? [];
             <?php endif; ?>
         </div>
     </div>
+    <?php endif; ?>
 
     <?php if ($adminAnalyticsContext === 'report'):
         $queueWaitChart = $a['queueWaitChart'] ?? [];

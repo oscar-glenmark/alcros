@@ -79,6 +79,9 @@
             if (!container) return;
             if (window.AlcrosIdPreview && typeof window.AlcrosIdPreview.renderGrid === 'function') {
                 container.innerHTML = window.AlcrosIdPreview.renderGrid(data.id_front_path, data.id_back_path);
+                if (typeof window.AlcrosIdPreview.wireCards === 'function') {
+                    window.AlcrosIdPreview.wireCards(container);
+                }
                 if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
                     lucide.createIcons({ nodes: [container] });
                 }
@@ -166,12 +169,47 @@
         return form;
     }
 
+    function buildDeleteForm(data) {
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = pageConfig.formAction || 'appointment.php';
+        form.className = 'manage-detail-action-form';
+        form.dataset.noConfirm = '';
+        form.dataset.ajax = '1';
+        form.dataset.noLoading = '';
+
+        if (authFieldsEl) {
+            form.innerHTML = authFieldsEl.innerHTML;
+        }
+
+        form.insertAdjacentHTML('beforeend',
+            '<input type="hidden" name="redirect_status" value="' + escapeHtml(pageConfig.redirectStatus || 'all') + '">' +
+            '<input type="hidden" name="redirect_date" value="' + escapeHtml(pageConfig.redirectDate || '') + '">' +
+            '<input type="hidden" name="redirect_q" value="' + escapeHtml(pageConfig.redirectQ || '') + '">' +
+            '<input type="hidden" name="appointment_id" value="' + escapeHtml(data.id) + '">' +
+            '<input type="hidden" name="delete_appointment" value="1">' +
+            '<button type="button" class="manage-detail-action manage-detail-action--danger manage-detail-action--icon manage-action-trigger" data-manage-action="delete" data-loading-text="Deleting…" title="Delete completed appointment" aria-label="Delete completed appointment">' +
+                '<i data-lucide="trash-2" class="w-4 h-4"></i>' +
+            '</button>'
+        );
+
+        return form;
+    }
+
     function inlineConfirmYesLabel(action) {
         if (action === 'confirmed') return 'Yes, confirm';
         if (action === 'completed') return 'Yes, complete';
         if (action === 'cancelled') return 'Yes, reject';
         if (action === 'no_show') return 'Yes, mark no-show';
+        if (action === 'delete') return 'Yes, delete';
         return 'Yes, continue';
+    }
+
+    function appointmentActionConfirmMessage(data, action) {
+        if (action === 'delete') {
+            return 'Move this completed appointment to recently deleted?';
+        }
+        return actionConfirmMessage(action, data);
     }
 
     function submitAppointmentForm(form, loadingMessage) {
@@ -231,7 +269,7 @@
     function showInlineConfirm(actionsWrap, data, form, action) {
         actionsWrap.innerHTML =
             '<div class="manage-inline-confirm">' +
-                '<p class="manage-inline-confirm__msg">' + escapeHtml(actionConfirmMessage(action, data)) + '</p>' +
+                '<p class="manage-inline-confirm__msg">' + escapeHtml(appointmentActionConfirmMessage(data, action)) + '</p>' +
                 '<div class="manage-detail-actions__buttons">' +
                     '<button type="button" class="manage-detail-action manage-detail-action--primary" data-inline-confirm-yes>' + escapeHtml(inlineConfirmYesLabel(action)) + '</button>' +
                     '<button type="button" class="manage-detail-action" data-inline-confirm-back>Go back</button>' +
@@ -242,7 +280,7 @@
         actionsWrap.querySelector('[data-inline-confirm-yes]').addEventListener('click', function (e) {
             e.preventDefault();
             e.stopPropagation();
-            var loadingMessage = 'Saving appointment…';
+            var loadingMessage = action === 'delete' ? 'Deleting…' : 'Saving appointment…';
             submitAppointmentForm(form, loadingMessage);
         });
 
@@ -252,6 +290,36 @@
             renderDetailActions(actionsWrap, data);
             if (typeof lucide !== 'undefined') lucide.createIcons();
         });
+    }
+
+    function followUpSaveConfirmMessage(mode) {
+        if (mode === 'update') {
+            return 'Update this follow-up schedule? The return visit date and note will be saved.';
+        }
+        return 'Save this follow-up schedule? The citizen may receive a reminder the day before the follow-up date if they opted in at booking.';
+    }
+
+    function isFollowUpSaveTrigger(btn, form) {
+        if (!btn || !form) return false;
+        if (btn.getAttribute('data-follow-up-action') === 'save') return true;
+        return btn.classList.contains('manage-follow-up__save') && !!form.querySelector('[name="follow_up_save"]');
+    }
+
+    function confirmThenSubmitFollowUp(followForm, followBtn, loadingMessage) {
+        var mode = followBtn.getAttribute('data-follow-up-mode') || 'create';
+        var msg = followUpSaveConfirmMessage(mode);
+
+        if (window.AlcrosConfirm && typeof window.AlcrosConfirm.ask === 'function') {
+            window.AlcrosConfirm.ask(msg).then(function (ok) {
+                if (!ok) return;
+                submitAppointmentForm(followForm, loadingMessage);
+            });
+            return;
+        }
+
+        if (window.confirm(msg)) {
+            submitAppointmentForm(followForm, loadingMessage);
+        }
     }
 
     function bindActionTriggers() {
@@ -268,7 +336,14 @@
                     }
                 }
                 if (!followForm) return;
-                submitAppointmentForm(followForm, 'Saving follow-up…');
+
+                var loadingMessage = followBtn.getAttribute('data-loading-text') || 'Saving follow-up…';
+                if (isFollowUpSaveTrigger(followBtn, followForm)) {
+                    confirmThenSubmitFollowUp(followForm, followBtn, loadingMessage);
+                    return;
+                }
+
+                submitAppointmentForm(followForm, loadingMessage);
                 return;
             }
 
@@ -282,7 +357,20 @@
             var actionsWrap = btn.closest('#modalAppointmentDetailActions, #appointmentDetailActions');
             if (!form || !actionsWrap || !actionsWrap._appointmentData) return;
 
-            showInlineConfirm(actionsWrap, actionsWrap._appointmentData, form, btn.getAttribute('data-manage-action') || '');
+            var action = btn.getAttribute('data-manage-action') || '';
+            var data = actionsWrap._appointmentData;
+            var msg = appointmentActionConfirmMessage(data, action);
+            var loadingMessage = action === 'delete' ? 'Deleting…' : 'Saving appointment…';
+
+            if (window.AlcrosConfirm && typeof window.AlcrosConfirm.ask === 'function') {
+                window.AlcrosConfirm.ask(msg).then(function (ok) {
+                    if (!ok) return;
+                    submitAppointmentForm(form, loadingMessage);
+                });
+                return;
+            }
+
+            showInlineConfirm(actionsWrap, data, form, action);
         });
     }
 
@@ -310,10 +398,6 @@
         wrap.classList.remove('hidden');
 
         var html = '<div class="manage-follow-up-panel">';
-        html += '<div class="manage-follow-up-notice" role="note">' +
-            '<p class="manage-follow-up-notice__title">Citizen notification</p>' +
-            '<p class="manage-follow-up-notice__text">On the follow-up date at <strong>8:00 AM</strong> (office time), citizens who opted in at booking receive email or SMS with a link to book online.</p>' +
-            '</div>';
 
         if (hasPending) {
             html += '<div class="manage-follow-up-current">' +
@@ -347,7 +431,10 @@
             var selectedInterval = '3m';
             var customDate = hasPending && followUp.follow_up_date_iso ? followUp.follow_up_date_iso : '';
             var noteVal = hasPending && followUp.staff_note ? followUp.staff_note : '';
+            var followUpDateInputId = prefix.replace(/-$/, '') + '-follow-up-date-input';
             var formTitle = hasPending ? 'Update schedule' : 'Set follow-up date';
+            var followUpSaveMode = hasPending ? 'update' : 'create';
+            var followUpSaveAttrs = ' data-follow-up-action="save" data-follow-up-mode="' + followUpSaveMode + '"';
 
             html += '<form method="POST" action="' + escapeHtml(pageConfig.formAction || 'appointment.php') + '" id="appointmentFollowUpSaveForm" class="manage-follow-up__form manage-detail-action-form manage-detail-action-form--stacked" data-no-confirm data-ajax="1" data-no-loading>';
             if (authFieldsEl) {
@@ -366,10 +453,12 @@
                     return '<label class="manage-follow-up__interval"><input type="radio" name="follow_up_interval" value="' + key + '"' + checked + '><span>' + labels[key] + '</span></label>';
                 }).join('') +
                 '</div></fieldset>' +
-                '<label class="manage-follow-up__date-label hidden" data-follow-up-custom-date-wrap>' +
-                '<span class="manage-follow-up__field-label">Custom date</span>' +
-                '<input type="date" name="follow_up_date" value="' + escapeHtml(customDate) + '" class="manage-follow-up__date-input">' +
-                '</label>' +
+                '<div class="manage-follow-up__date-label hidden" data-follow-up-custom-date-wrap>' +
+                '<label class="manage-follow-up__field-label" for="' + escapeHtml(followUpDateInputId) + '">Custom date</label>' +
+                '<input type="date" id="' + escapeHtml(followUpDateInputId) + '" name="follow_up_date" value="' + escapeHtml(customDate) + '"' +
+                (pageConfig.minFollowUpDate ? ' min="' + escapeHtml(pageConfig.minFollowUpDate) + '"' : '') +
+                ' class="manage-follow-up__date-input" aria-label="Custom follow-up date">' +
+                '</div>' +
                 '<label class="manage-follow-up__note-label">' +
                 '<span class="manage-follow-up__field-label">Note for the citizen (optional)</span>' +
                 '<textarea name="follow_up_note" rows="3" class="manage-follow-up__note-input" placeholder="e.g. Bring updated IDs">' + escapeHtml(noteVal) + '</textarea>' +
@@ -380,11 +469,11 @@
                 html += '<div class="manage-follow-up__actions-row manage-follow-up__actions-row--inline">';
                 html += buildFollowUpCancelForm(followUp.id);
                 html += '<div class="manage-follow-up__actions-primary manage-follow-up__actions-primary--inline">' +
-                    '<button type="button" form="appointmentFollowUpSaveForm" class="manage-detail-action manage-detail-action--primary manage-follow-up-trigger manage-follow-up__save" data-loading-text="Saving…">Update follow-up</button>' +
+                    '<button type="button" form="appointmentFollowUpSaveForm" class="manage-detail-action manage-detail-action--primary manage-follow-up-trigger manage-follow-up__save"' + followUpSaveAttrs + ' data-loading-text="Saving…">Update follow-up</button>' +
                     '</div></div>';
             } else {
                 html += '<div class="manage-follow-up__actions-primary">' +
-                    '<button type="button" class="manage-detail-action manage-detail-action--primary manage-follow-up-trigger manage-follow-up__save" data-loading-text="Saving…">' +
+                    '<button type="button" class="manage-detail-action manage-detail-action--primary manage-follow-up-trigger manage-follow-up__save"' + followUpSaveAttrs + ' data-loading-text="Saving…">' +
                     (hasPending ? 'Update follow-up' : 'Save follow-up') +
                     '</button></div></form>';
             }
@@ -419,6 +508,11 @@
             input.addEventListener('change', syncCustomDateVisibility);
         });
         syncCustomDateVisibility();
+
+        var followUpDateInput = body.querySelector('input[name="follow_up_date"]');
+        if (followUpDateInput && pageConfig.minFollowUpDate) {
+            followUpDateInput.setAttribute('min', pageConfig.minFollowUpDate);
+        }
     }
 
     function renderDetailActions(actionsWrap, data) {
@@ -427,8 +521,9 @@
         actionsWrap._appointmentData = data;
         actionsWrap.innerHTML = '';
         var hasActions = Array.isArray(data.actions) && data.actions.length > 0;
+        var canDelete = !!data.can_delete && pageConfig.redirectStatus !== 'follow_ups';
 
-        if (!hasActions) {
+        if (!hasActions && !canDelete) {
             actionsWrap.classList.add('hidden');
             return;
         }
@@ -439,18 +534,29 @@
             hint.textContent = 'Review the citizen details above, then confirm or reject the appointment.';
         } else if (hasActions) {
             hint.textContent = 'Update this visit when the citizen has been served or did not arrive.';
+        } else if (canDelete) {
+            hint.textContent = 'This visit is finished. You can remove it from the active list when records are filed.';
         }
         actionsWrap.appendChild(hint);
 
         var group = document.createElement('div');
         group.className = 'manage-detail-actions__buttons';
 
-        data.actions.forEach(function (action) {
-            group.appendChild(buildStatusForm(data, action.value, action.label));
-        });
+        if (hasActions) {
+            data.actions.forEach(function (action) {
+                group.appendChild(buildStatusForm(data, action.value, action.label));
+            });
+        }
+
+        if (canDelete) {
+            group.appendChild(buildDeleteForm(data));
+        }
 
         actionsWrap.appendChild(group);
         actionsWrap.classList.remove('hidden');
+        if (window.lucide && typeof lucide.createIcons === 'function') {
+            lucide.createIcons();
+        }
     }
 
     function populateDetailView(view, data) {
@@ -516,9 +622,9 @@
             return;
         }
 
-        var followUpsView = pageConfig.redirectStatus === 'follow_ups';
+        var listStatus = pageConfig.redirectStatus || '';
         var showFollowUp = !followUp.classList.contains('hidden');
-        var followUpFirst = followUpsView && showFollowUp;
+        var followUpFirst = showFollowUp && (listStatus === 'follow_ups' || listStatus === 'completed');
 
         if (detailsHeading) {
             detailsHeading.classList.toggle('hidden', !followUpFirst);
@@ -755,6 +861,10 @@
 
         picker.addEventListener('change', function () {
             if (!picker.value) return;
+            var navLabel = document.getElementById('appointmentDateNavLabel');
+            if (navLabel && window.AlcrosDateDisplay) {
+                navLabel.textContent = AlcrosDateDisplay.formatLongDate(picker.value);
+            }
             var href = window.AlcrosPoll
                 ? AlcrosPoll.buildUrl('appointment.php', { date: picker.value })
                 : 'appointment.php?date=' + encodeURIComponent(picker.value);
@@ -814,6 +924,10 @@
     bindActionTriggers();
     bindDatePicker();
 
+    if (pageConfig.overviewCardHighlight) {
+        updateOverviewCardHighlight(pageConfig.overviewCardHighlight);
+    }
+
     var statFieldMap = {
         all_appointments: 'total',
         scheduled: 'scheduled',
@@ -837,6 +951,14 @@
             if (!field || stats[field] === undefined) return;
             var valueEl = card.querySelector('.manage-stat-card__value');
             if (valueEl) valueEl.textContent = Number(stats[field]).toLocaleString();
+        });
+    }
+
+    function updateOverviewCardHighlight(highlightKey) {
+        if (!highlightKey) return;
+        document.querySelectorAll('[data-stat-key]').forEach(function (card) {
+            var key = card.getAttribute('data-stat-key') || '';
+            card.classList.toggle('is-active', key === highlightKey);
         });
     }
 
@@ -865,6 +987,10 @@
     function applyListUpdate(data) {
         var appointments = data.appointments || [];
         var signature = listSignature(appointments);
+        if (data.overview_card_highlight) {
+            updateOverviewCardHighlight(data.overview_card_highlight);
+        }
+
         if (signature !== lastListSignature) {
             lastListSignature = signature;
             updateStatCards(data.stats);

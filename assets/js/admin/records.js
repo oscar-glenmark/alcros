@@ -891,7 +891,7 @@
     var viewRecordIdForHistory = null;
 
     function recordHistoryEmptyMarkup() {
-        return '<p class="records-recent-updates__empty">No edit history yet for this record. Changes will appear here after the next save.</p>';
+        return '<p class="records-recent-updates__empty">No edits yet for this record. Field changes will appear here after someone saves an update.</p>';
     }
 
     function fetchRecordUpdateHistoryHtml(recordId) {

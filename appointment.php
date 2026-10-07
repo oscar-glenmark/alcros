@@ -4,6 +4,7 @@ require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/appointment_follow_up.php';
 require_once __DIR__ . '/includes/scripts.php';
+require_once __DIR__ . '/includes/staff_id_lightbox.php';
 requireStaffLogin();
 requirePageAccess('appointment.php');
 releaseSessionLock();
@@ -196,6 +197,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$isAjax) {
                     appointmentFlashSet('success', $responseMessage);
                 }
+            } else {
+                $responseMessage = 'Only completed appointments can be deleted.';
+                if (!$isAjax) {
+                    appointmentFlashSet('error', $responseMessage);
+                }
             }
         }
     }
@@ -346,6 +352,13 @@ $resultCount = count($appointments);
 
 } // end !follow_ups list
 
+$overviewCardHighlight = resolveAppointmentOverviewCardHighlight(
+    $filterStatus,
+    $search,
+    $appointments,
+    $isFollowUpsView
+);
+
 // Stale sidebar/bookmarks may pin an old ?date= with no visits; jump to the nearest awaiting day.
 if (
     !$isFollowUpsView
@@ -364,7 +377,7 @@ if (
 
 $pageTitle = 'Appointments';
 $pageSubtitle = 'Review, confirm, and complete citizen visits and special service bookings.';
-$pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecialchars(formatDateDisplay($viewDate)) . '</strong></p>';
+$pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecialchars(formatDateEmailDisplay($viewDate)) . '</strong></p>';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -389,7 +402,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
 
             <section class="manage-section" aria-label="Appointment overview">
                 <div class="manage-section__head">
-                    <h2 class="manage-section__title"><?= $isFollowUpsView ? 'Overview · Upcoming follow-ups' : 'Overview · ' . htmlspecialchars(formatDateDisplay($viewDate)) ?></h2>
+                    <h2 class="manage-section__title"><?= $isFollowUpsView ? 'Overview · Upcoming follow-ups' : 'Overview · ' . htmlspecialchars(formatDateEmailDisplay($viewDate)) ?></h2>
                     <p class="manage-section__hint">Click a card to filter the list below</p>
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
@@ -404,8 +417,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                             'q'      => $search !== '' ? $search : null,
                         ]));
                     }
-                    $cardActive = $filterStatus === $cardFilter
-                        || ($cardFilter === 'scheduled' && $filterStatus === 'all');
+                    $cardActive = $cardFilter === $overviewCardHighlight;
                 ?>
                 <a href="<?= htmlspecialchars($cardHref) ?>"
                    class="manage-stat-card manage-stat-card--<?= htmlspecialchars($card['tone']) ?><?= $cardActive ? ' is-active' : '' ?>"
@@ -439,9 +451,10 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                             <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php', array_filter(['date' => $prevDate, 'status' => $filterStatus !== 'all' ? $filterStatus : null, 'q' => $search ?: null]))) ?>" class="appointments-date-nav__btn" aria-label="Previous day">
                                 <i data-lucide="chevron-left" class="w-4 h-4"></i>
                             </a>
-                            <label class="appointments-date-nav__date">
-                                <i data-lucide="calendar" class="w-3.5 h-3.5 text-blue-600"></i>
-                                <input type="date" id="appointmentDatePicker" value="<?= htmlspecialchars($viewDate) ?>" class="appointments-date-nav__input">
+                            <label class="appointments-date-nav__date alcros-date-picker">
+                                <i data-lucide="calendar" class="w-3.5 h-3.5 text-blue-600 shrink-0" aria-hidden="true"></i>
+                                <span id="appointmentDateNavLabel" class="appointments-date-nav__label" data-date-picker-label><?= htmlspecialchars(formatDateEmailDisplay($viewDate)) ?></span>
+                                <input type="date" id="appointmentDatePicker" value="<?= htmlspecialchars($viewDate) ?>" class="appointments-date-nav__input" aria-label="Choose appointment date">
                             </label>
                             <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php', array_filter(['date' => $nextDate, 'status' => $filterStatus !== 'all' ? $filterStatus : null, 'q' => $search ?: null]))) ?>" class="appointments-date-nav__btn" aria-label="Next day">
                                 <i data-lucide="chevron-right" class="w-4 h-4"></i>
@@ -481,7 +494,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                         <h2 class="manage-table-head__title">Upcoming follow-ups</h2>
                         <p class="manage-table-head__meta"><?= number_format($resultCount) ?> pending reminder<?= $resultCount === 1 ? '' : 's' ?> · sorted by follow-up date</p>
                     </div>
-                    <p class="manage-table-head__tip">Citizens receive email or SMS at 8:00 AM on the follow-up date staff set (if they opted in at booking). Booking a new appointment cancels pending reminders automatically.</p>
+                    <p class="manage-table-head__tip">Citizens receive email or SMS at 8:00 AM the day before the follow-up date staff set (if they opted in at booking). Booking a new appointment cancels pending reminders automatically.</p>
                 </div>
                 <?php if (empty($upcomingFollowUps)): ?>
                 <div class="manage-requests-empty manage-requests-empty--inset">
@@ -534,7 +547,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                             </td>
                             <td><span class="manage-doc-type"><?= htmlspecialchars(appointmentServiceLabel((string) ($fuRow['service_type'] ?? ''))) ?></span></td>
                             <td><span class="manage-date"><?= htmlspecialchars(formatAppointmentDisplay($fuRow['visit_date'] ?? null, $fuRow['visit_time'] ?? null) ?: '—') ?></span></td>
-                            <td><span class="manage-date"><?= htmlspecialchars(formatDateDisplay((string) ($fuRow['follow_up_date'] ?? ''))) ?></span></td>
+                            <td><span class="manage-date"><?= htmlspecialchars(formatDateEmailDisplay((string) ($fuRow['follow_up_date'] ?? ''))) ?></span></td>
                             <td><span class="text-xs text-gray-600"><?= htmlspecialchars(implode(' · ', $reminderBits)) ?></span></td>
                             <td class="manage-cell-actions">
                                 <button type="button"
@@ -575,7 +588,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                             <?php if ($isSearchMode): ?>
                             · search across all dates
                             <?php else: ?>
-                            · <?= htmlspecialchars(formatDateDisplay($viewDate)) ?>
+                            · <?= htmlspecialchars(formatDateEmailDisplay($viewDate)) ?>
                             <?php endif; ?>
                             <?= $search !== '' ? ' · matching “' . htmlspecialchars($search) . '”' : '' ?>
                             <?php if ($showBulkActions && !$isRecentlyDeletedView): ?>
@@ -686,6 +699,19 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                                         <?php endif; ?>
                                         <span class="manage-row-action__label"><?= htmlspecialchars($isCompleteAction ? $viewLabel : strtoupper($viewLabel)) ?></span>
                                     </button>
+                                    <?php if (($ap['status'] ?? '') === 'completed'): ?>
+                                    <form method="POST" action="<?= htmlspecialchars(buildAuthUrl('appointment.php')) ?>" class="manage-delete-form">
+                                        <?= authFormField() ?>
+                                        <input type="hidden" name="redirect_status" value="<?= htmlspecialchars($filterStatus) ?>">
+                                        <input type="hidden" name="redirect_date" value="<?= htmlspecialchars($viewDate) ?>">
+                                        <input type="hidden" name="redirect_q" value="<?= htmlspecialchars($search) ?>">
+                                        <input type="hidden" name="appointment_id" value="<?= (int) $ap['id'] ?>">
+                                        <input type="hidden" name="delete_appointment" value="1">
+                                        <button type="submit" title="Delete completed appointment" aria-label="Delete completed appointment" class="manage-row-action manage-row-action--danger" data-loading-text="Deleting…">
+                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                        </button>
+                                    </form>
+                                    <?php endif; ?>
                                     <?php else: ?>
                                     <span class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Deleted</span>
                                     <?php endif; ?>
@@ -756,7 +782,18 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                             </section>
 
                             <section id="appt-view-follow-up-wrap" class="manage-detail-block manage-detail-block--follow-up hidden" aria-label="Follow-up reminder">
-                                <h3>Follow-up reminder</h3>
+                                <h3 class="manage-follow-up-heading">
+                                    <span>Follow-up reminder</span>
+                                    <details class="manage-follow-up-info">
+                                        <summary class="manage-follow-up-info__trigger" aria-label="Citizen notification info">
+                                            <i data-lucide="info" class="manage-follow-up-info__icon"></i>
+                                        </summary>
+                                        <div class="manage-follow-up-info__panel" role="note">
+                                            <p class="manage-follow-up-notice__title">Citizen notification</p>
+                                            <p class="manage-follow-up-notice__text">The <strong>day before</strong> the follow-up date at <strong>8:00 AM</strong> (office time), citizens who opted in at booking receive email or SMS reminding them of their next visit date (no online re-booking).</p>
+                                        </div>
+                                    </details>
+                                </h3>
                                 <div id="appt-view-follow-up-body" class="manage-follow-up"></div>
                             </section>
                         </div>
@@ -785,7 +822,18 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
 
             <div class="manage-request-modal__body" id="modalAppointmentDetailBody">
                 <section id="modal-appt-view-follow-up-wrap" class="manage-detail-block manage-detail-block--follow-up hidden" aria-label="Follow-up details">
-                    <h3>Follow-up details</h3>
+                    <h3 class="manage-follow-up-heading">
+                        <span>Follow-up details</span>
+                        <details class="manage-follow-up-info">
+                            <summary class="manage-follow-up-info__trigger" aria-label="Citizen notification info">
+                                <i data-lucide="info" class="manage-follow-up-info__icon"></i>
+                            </summary>
+                            <div class="manage-follow-up-info__panel" role="note">
+                                <p class="manage-follow-up-notice__title">Citizen notification</p>
+                                <p class="manage-follow-up-notice__text">The <strong>day before</strong> the follow-up date at <strong>8:00 AM</strong> (office time), citizens who opted in at booking receive email or SMS reminding them of their next visit date (no online re-booking).</p>
+                            </div>
+                        </details>
+                    </h3>
                     <div id="modal-appt-view-follow-up-body" class="manage-follow-up"></div>
                 </section>
 
@@ -839,11 +887,16 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
         'redirectQ'      => $search,
         'useSidePanel'   => $showSidePanel,
         'bulkActions'    => $showBulkActions,
-        'pollUrl'        => buildAuthUrl('api/appointments.php'),
-        'pollEnabled'    => !$isFollowUpsView,
+        'pollUrl'               => buildAuthUrl('api/appointments.php'),
+        'pollEnabled'           => !$isFollowUpsView,
+        'overviewCardHighlight' => $overviewCardHighlight,
+        'minFollowUpDate'       => minFollowUpPickDate(),
+        'todayDate'             => alcrosTodayDate(),
     ]) ?>
     <div id="appointmentActionAuthFields" class="hidden" aria-hidden="true"><?= authFormField() ?></div>
+    <?= staffIdLightboxMarkup() ?>
     <?= actionResultScript($flash) ?>
+    <?= scriptTag('core/staff-id-view.js') ?>
     <?= scriptTag('admin/id-preview.js') ?>
     <?= scriptTag('core/page-config.js') ?>
     <?= scriptTag('core/admin-search.js') ?>

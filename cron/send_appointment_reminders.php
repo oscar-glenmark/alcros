@@ -4,7 +4,7 @@
  *   C:\xampp\php\php.exe C:\xampp\htdocs\alcros\cron\send_appointment_reminders.php
  * Or double-click / schedule: cron\run-reminders.bat
  *
- * Sends visit/appointment reminders (5h, 3h, 1h before schedule) and follow-up email/SMS at 8:00 AM on the follow-up date staff set.
+ * Sends visit/appointment reminders (5h, 3h, 1h before schedule) and follow-up email/SMS at 8:00 AM the day before the follow-up date staff set.
  * ALCROS also runs a throttled background check during site traffic, but Task Scheduler
  * is required for overnight/off-hours delivery.
  */

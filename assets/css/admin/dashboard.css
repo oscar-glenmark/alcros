@@ -228,13 +228,26 @@
 
 .dash-cal-dot {
     display: none;
-    width: 0.3rem;
-    height: 0.3rem;
+    width: 0.35rem;
+    height: 0.35rem;
     border-radius: 9999px;
+}
+
+.dash-cal-dot--awaiting {
+    background: #f59e0b;
+}
+
+.dash-cal-dot--confirmed {
+    background: #7c3aed;
+}
+
+.dash-cal-dot--completed {
     background: #10b981;
 }
 
-.dash-cal-day.is-selected .dash-cal-dot {
+.dash-cal-day.is-selected .dash-cal-dot--awaiting,
+.dash-cal-day.is-selected .dash-cal-dot--confirmed,
+.dash-cal-day.is-selected .dash-cal-dot--completed {
     background: #fff;
 }
 

@@ -6,10 +6,10 @@
 require_once __DIR__ . '/appointment_notice_requirements.php';
 require_once __DIR__ . '/sms.php';
 
-/** 0 = send email/SMS on the follow-up date staff set (same calendar day). */
-const APPOINTMENT_FOLLOW_UP_REMINDER_DAYS = 0;
+/** Days before follow_up_date to send (1 = day before the visit date staff set). */
+const APPOINTMENT_FOLLOW_UP_REMINDER_DAYS = 1;
 
-/** Local office hour (24h) when follow-up reminders may start on the follow-up date. */
+/** Local office hour (24h) when follow-up reminders may start on the reminder day. */
 const APPOINTMENT_FOLLOW_UP_REMINDER_HOUR = 8;
 
 function followUpRemindersAllowedNow(): bool
@@ -146,6 +146,12 @@ function appointmentFollowUpDateFromInterval(string $interval, ?string $baseDate
     }
 
     return $dt->format('Y-m-d');
+}
+
+/** Earliest date allowed in the follow-up “Pick a date” control (must be after today). */
+function minFollowUpPickDate(): string
+{
+    return date('Y-m-d', strtotime(alcrosTodayDate() . ' +1 day'));
 }
 
 function validateFollowUpDate(string $followUpDate): ?string
@@ -378,7 +384,7 @@ function appointmentFollowUpViewData(?array $row): ?array
     return [
         'id'               => (int) ($row['id'] ?? 0),
         'appointment_id'   => (int) ($row['appointment_id'] ?? 0),
-        'follow_up_date'   => formatDateDisplay((string) ($row['follow_up_date'] ?? '')),
+        'follow_up_date'   => formatDateEmailDisplay((string) ($row['follow_up_date'] ?? '')),
         'follow_up_date_iso' => (string) ($row['follow_up_date'] ?? ''),
         'staff_note'       => !empty($row['staff_note']) ? (string) $row['staff_note'] : '',
         'status'           => (string) ($row['status'] ?? 'pending'),
@@ -396,26 +402,20 @@ function notifyFollowUpReminderEmail(array $row): bool
         return false;
     }
 
-    $slug = trim((string) ($row['service_slug'] ?? ''));
-    if ($slug === '') {
-        $slug = appointmentServiceRequirementsSlugFromServiceType((string) ($row['service_type'] ?? ''));
-    }
-
-    $bookUrl = appointmentFollowUpBookUrl($slug);
     $followUpDisplay = formatDateDisplay((string) ($row['follow_up_date'] ?? ''));
     $serviceLabel = appointmentServiceLabel((string) ($row['service_type'] ?? ''));
 
     $details = [
-        'Service'           => $serviceLabel,
-        'Follow-up date'    => $followUpDisplay,
+        'Next visit date' => $followUpDisplay,
+        'Service'         => $serviceLabel,
     ];
 
-    $note = 'Our office set this date for your next visit. Please book an appointment when you are ready.';
+    $note = 'Our office scheduled this date for your return visit. Please come on that date during office hours. No need to book a new appointment online for this follow-up.';
     $staffNote = trim((string) ($row['staff_note'] ?? ''));
     if ($staffNote !== '') {
         $note .= "\n\nNote from the office: " . $staffNote;
     }
-    $note .= "\n\nUse the button below to choose a time slot online.";
+    $note .= "\n\nIf you have questions, contact us using the details below.";
 
     $nameRow = [
         'first_name'  => (string) ($row['first_name'] ?? ''),
@@ -425,18 +425,14 @@ function notifyFollowUpReminderEmail(array $row): bool
 
     return sendCitizenNotice(
         (string) $row['email'],
-        'ALCROS — Time to schedule your next visit',
+        'ALCROS — Reminder: your next visit',
         [
-            'heading'      => 'Follow-up visit reminder',
-            'name'         => personNameFromRow($nameRow),
-            'intro'        => 'This is your follow-up reminder for the date our office recommended for your next visit.',
-            'code_label'   => 'Previous appointment',
-            'code'         => (string) ($row['appointment_code'] ?? ''),
-            'details'      => $details,
-            'note'         => $note,
-            'button_label' => 'Book appointment',
-            'button_url'   => $bookUrl,
-            'accent'       => '#2563eb',
+            'heading' => 'Next visit reminder',
+            'name'    => personNameFromRow($nameRow),
+            'intro'   => 'This is a reminder about your next visit to our office.',
+            'details' => $details,
+            'note'    => $note,
+            'accent'  => '#2563eb',
         ],
         'follow_up_reminder'
     );

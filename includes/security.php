@@ -553,6 +553,12 @@ function queueDisplayTokenKey(): string
 
 function requireQueueAnnouncementAccess(): void
 {
+    $expected = queueDisplayTokenKey();
+    $provided = (string) ($_POST['display_token'] ?? $_GET['display_token'] ?? '');
+    if ($provided !== '' && hash_equals($expected, $provided)) {
+        return;
+    }
+
     if (function_exists('getAuthenticatedStaff') && getAuthenticatedStaff()) {
         if (function_exists('isAdmin') && isAdmin()) {
             http_response_code(403);
@@ -561,12 +567,6 @@ function requireQueueAnnouncementAccess(): void
             exit;
         }
 
-        return;
-    }
-
-    $expected = queueDisplayTokenKey();
-    $provided = (string) ($_POST['display_token'] ?? $_GET['display_token'] ?? '');
-    if ($provided !== '' && hash_equals($expected, $provided)) {
         return;
     }
 

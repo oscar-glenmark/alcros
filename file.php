@@ -167,6 +167,10 @@ if ($ifNoneMatch !== '' && hash_equals($etag, $ifNoneMatch)) {
     exit;
 }
 
+while (ob_get_level() > 0) {
+    ob_end_clean();
+}
+
 header('Content-Type: ' . $mime);
 header('Content-Disposition: inline; filename="' . $filename . '"');
 header('X-Content-Type-Options: nosniff');

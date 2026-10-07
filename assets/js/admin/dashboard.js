@@ -60,6 +60,27 @@
         return { year: parseInt(bits[0], 10), month: parseInt(bits[1], 10) - 1 };
     }
 
+    function dayMarker(iso) {
+        var entry = appointmentDates[iso];
+        if (entry === undefined || entry === null) {
+            return null;
+        }
+        if (typeof entry === 'number') {
+            return { tone: 'awaiting', count: entry };
+        }
+        if (typeof entry === 'object' && entry.tone) {
+            var tone = entry.tone;
+            if (tone !== 'completed' && tone !== 'confirmed' && tone !== 'awaiting') {
+                tone = 'awaiting';
+            }
+            return {
+                tone: tone,
+                count: entry.count || 0
+            };
+        }
+        return null;
+    }
+
     function shiftMonth(ym, delta) {
         var p = monthParts(ym);
         var d = new Date(p.year, p.month + delta, 1);
@@ -99,17 +120,28 @@
 
         for (var day = 1; day <= daysInMonth; day++) {
             var iso = p.year + '-' + pad(p.month + 1) + '-' + pad(day);
-            var hasAppt = !!appointmentDates[iso];
-            var count = appointmentDates[iso] || 0;
+            var marker = dayMarker(iso);
+            var hasAppt = !!marker;
+            var count = marker ? marker.count : 0;
+            var tone = marker ? marker.tone : '';
             var classes = ['dash-cal-cell', 'dash-cal-day'];
             if (iso === selectedDate) classes.push('is-selected');
             if (iso === todayIso) classes.push('is-today');
-            if (hasAppt) classes.push('has-appointments');
+            if (hasAppt) {
+                classes.push('has-appointments');
+                classes.push('has-appointments--' + tone);
+            }
+
+            var apptHint = '';
+            if (hasAppt) {
+                var toneLabel = tone === 'completed' ? 'completed' : (tone === 'confirmed' ? 'confirmed' : 'awaiting');
+                apptHint = ', ' + count + ' visit(s), ' + toneLabel;
+            }
 
             html += '<button type="button" class="' + classes.join(' ') + '" data-date="' + iso + '" aria-label="' +
-                escapeHtml(formatDateDisplay(iso)) + (hasAppt ? ', ' + count + ' appointment(s)' : '') + '">' +
+                escapeHtml(formatDateDisplay(iso)) + apptHint + '">' +
                 '<span class="dash-cal-day-num">' + day + '</span>' +
-                (hasAppt ? '<span class="dash-cal-dot" aria-hidden="true"></span>' : '') +
+                (hasAppt ? '<span class="dash-cal-dot dash-cal-dot--' + tone + '" aria-hidden="true"></span>' : '') +
                 '</button>';
             cell++;
         }
@@ -264,9 +296,6 @@
         rollToTodayIfNeeded();
     });
 
-    if (selectedDate !== initialSelectedDate) {
-        loadSchedule();
-    } else {
-        renderCalendar();
-    }
+    renderCalendar();
+    loadSchedule();
 })();

@@ -262,44 +262,58 @@ function fetchScheduleDatesInMonth(PDO $pdo, string $yearMonth): array
 
     $start = $yearMonth . '-01';
     $end = date('Y-m-t', strtotime($start));
-    $map = [];
+    $buckets = [];
 
     $stmt = $pdo->prepare(
-        "SELECT a.appointment_date, COUNT(*) AS cnt
+        "SELECT a.appointment_date, a.status, dr.status AS request_status
          FROM appointments a
+         LEFT JOIN document_requests dr ON dr.tracking_code = a.tracking_code AND dr.deleted_at IS NULL
          WHERE a.appointment_date BETWEEN ? AND ?
-           AND " . scheduleVisitAppointmentSql('a') . "
-           AND a.deleted_at IS NULL
-         GROUP BY a.appointment_date"
+           AND " . scheduleCalendarAppointmentSql('a') . "
+           AND a.deleted_at IS NULL"
     );
     $stmt->execute([$start, $end]);
     foreach ($stmt->fetchAll() as $row) {
-        $map[(string) $row['appointment_date']] = (int) $row['cnt'];
+        $date = substr((string) ($row['appointment_date'] ?? ''), 0, 10);
+        $tone = scheduleVisitCalendarToneForAppointment($row);
+        if ($date === '' || $tone === null) {
+            continue;
+        }
+        if (!isset($buckets[$date])) {
+            $buckets[$date] = ['awaiting' => 0, 'confirmed' => 0, 'completed' => 0];
+        }
+        $buckets[$date][$tone]++;
     }
 
     $stmt = $pdo->prepare(
-        "SELECT dr.appointment_date, COUNT(*) AS cnt
+        "SELECT dr.appointment_date, dr.status
          FROM document_requests dr
          WHERE dr.appointment_date BETWEEN ? AND ?
            AND dr.appointment_time IS NOT NULL
            AND dr.appointment_time != ''
            AND dr.deleted_at IS NULL
-           AND dr.status NOT IN ('rejected', 'completed')
+           AND dr.status != 'rejected'
            AND NOT EXISTS (
                 SELECT 1 FROM appointments a
                 WHERE a.tracking_code = dr.tracking_code
                   AND a.deleted_at IS NULL
                   AND a.appointment_date = dr.appointment_date
-           )
-         GROUP BY dr.appointment_date"
+           )"
     );
     $stmt->execute([$start, $end]);
     foreach ($stmt->fetchAll() as $row) {
-        $date = (string) $row['appointment_date'];
-        $map[$date] = ($map[$date] ?? 0) + (int) $row['cnt'];
+        $date = substr((string) ($row['appointment_date'] ?? ''), 0, 10);
+        $tone = scheduleVisitCalendarToneForRequest($row);
+        if ($date === '' || $tone === null) {
+            continue;
+        }
+        if (!isset($buckets[$date])) {
+            $buckets[$date] = ['awaiting' => 0, 'confirmed' => 0, 'completed' => 0];
+        }
+        $buckets[$date][$tone]++;
     }
 
-    return $map;
+    return finalizeScheduleCalendarDateMarkers($buckets);
 }
 
 function scheduleVisitManageRequestStatus(array $row): string
@@ -558,13 +572,14 @@ function enrichStaffPortalNotification(array $item): array
     return $item;
 }
 
-function fetchScheduleVisits(PDO $pdo, string $date, int $limit = 8): array
+function fetchScheduleVisits(PDO $pdo, string $date, int $limit = 8, bool $upcomingOnly = false): array
 {
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
         $date = date('Y-m-d');
     }
 
     $rows = [];
+    $appointmentFilter = $upcomingOnly ? scheduleVisitAppointmentSql('a') : scheduleCalendarAppointmentSql('a');
 
     $stmt = $pdo->prepare(
         "SELECT a.appointment_code, a.appointment_date, a.first_name, a.middle_name, a.last_name,
@@ -573,7 +588,7 @@ function fetchScheduleVisits(PDO $pdo, string $date, int $limit = 8): array
          FROM appointments a
          LEFT JOIN document_requests dr ON dr.tracking_code = a.tracking_code AND dr.deleted_at IS NULL
          WHERE a.appointment_date = ?
-           AND " . scheduleVisitAppointmentSql('a') . "
+           AND {$appointmentFilter}
            AND a.deleted_at IS NULL
          ORDER BY a.appointment_time ASC"
     );
@@ -656,7 +671,7 @@ function fetchAppointments(PDO $pdo, string $date): array
 
 function fetchIncomingAppointments(PDO $pdo, int $limit = 8): array
 {
-    return fetchScheduleVisits($pdo, incomingAppointmentsDate(), $limit);
+    return fetchScheduleVisits($pdo, incomingAppointmentsDate(), $limit, true);
 }
 
 function incomingAppointmentsDate(): string

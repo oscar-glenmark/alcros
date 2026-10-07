@@ -625,6 +625,59 @@ function notifyAppointmentVisitSoonSms(array $row): bool
     return sendCitizenSms((string) $row['phone'], $message, 'visit_soon', $code);
 }
 
+/**
+ * Follow-up SMS body (≤ SMS_BODY_MAX_LENGTH — IPROG header is separate).
+ *
+ * @param array<string, mixed> $row
+ */
+function smsFollowUpVisitReminderMessage(array $row): string
+{
+    $first = trim((string) ($row['first_name'] ?? ''));
+    $greeting = $first !== '' ? 'Hi ' . $first . ',' : 'Hi,';
+
+    $dateRaw = (string) ($row['follow_up_date'] ?? '');
+    $dateDisplay = formatDateDisplay($dateRaw);
+    $service = appointmentServiceLabel((string) ($row['service_type'] ?? ''));
+
+    $compose = static function (string $greet, string $date, string $serviceLabel): string {
+        $message = $greet . ' reminder: your next visit is on ' . $date;
+        if ($serviceLabel !== '') {
+            $message .= ' for ' . $serviceLabel;
+        }
+
+        return $message . '. Please return on that date during office hours.';
+    };
+
+    $message = $compose($greeting, $dateDisplay, $service);
+    if (mb_strlen($message) <= SMS_BODY_MAX_LENGTH) {
+        return $message;
+    }
+
+    $ts = strtotime($dateRaw);
+    $shortDate = $ts !== false ? date('M j, Y', $ts) : $dateDisplay;
+    $message = $compose($greeting, $shortDate, $service);
+    if (mb_strlen($message) <= SMS_BODY_MAX_LENGTH) {
+        return $message;
+    }
+
+    $withoutService = $compose($greeting, $shortDate, '');
+    $budget = SMS_BODY_MAX_LENGTH - mb_strlen($withoutService);
+    if ($service !== '' && $budget > 8) {
+        $trimmed = mb_strlen($service) > $budget
+            ? mb_substr($service, 0, max(1, $budget - 1)) . '…'
+            : $service;
+        $message = $compose($greeting, $shortDate, $trimmed);
+    } else {
+        $message = $withoutService;
+    }
+
+    if (mb_strlen($message) > SMS_BODY_MAX_LENGTH) {
+        $message = mb_substr($message, 0, SMS_BODY_MAX_LENGTH - 1) . '…';
+    }
+
+    return $message;
+}
+
 /** @param array<string, mixed> $row Follow-up row with phone, service fields */
 function notifyFollowUpReminderSms(array $row): bool
 {
@@ -639,19 +692,7 @@ function notifyFollowUpReminderSms(array $row): bool
         return false;
     }
 
-    $slug = trim((string) ($row['service_slug'] ?? ''));
-    $bookUrl = rtrim(appBaseUrl(), '/') . '/book_appointment.php';
-    if ($slug !== '') {
-        $bookUrl .= '?service=' . rawurlencode($slug);
-    }
-    $followUpDisplay = formatDateDisplay((string) ($row['follow_up_date'] ?? ''));
-
-    $message = smsComposeStandaloneAppointmentMessage($row, [
-        smsCitizenGreeting($row),
-        'Follow-up reminder for ' . $followUpDisplay . '. Please book your next visit.',
-        'Book: ' . $bookUrl,
-    ]);
-
+    $message = smsFollowUpVisitReminderMessage($row);
     $ref = (string) ($row['appointment_code'] ?? 'follow-up');
 
     return sendCitizenSms($phone, $message, 'follow_up_reminder', $ref);

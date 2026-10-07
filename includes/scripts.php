@@ -30,7 +30,8 @@ function stylesheetTag(string $path): string
 function adminCoreStyles(): string
 {
     return stylesheetTag('admin/shell.css') . "\n    "
-        . stylesheetTag('admin/print-layout.css');
+        . stylesheetTag('admin/print-layout.css') . "\n    "
+        . stylesheetTag('admin/date-picker.css');
 }
 
 function adminPageStyles(string $page): string
@@ -213,6 +214,7 @@ function adminCoreScripts(): string
 {
     $scripts = [
         'admin/sidebar.js',
+        'core/date-display.js',
         'core/admin-auth.js',
         'core/confirm.js',
         'core/loading.js',

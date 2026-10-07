@@ -81,7 +81,7 @@
             return 'Delete this completed request? This cannot be undone.';
         }
         if (form.querySelector('[name="delete_appointment"]')) {
-            return 'Delete this appointment permanently?';
+            return 'Move this completed appointment to recently deleted?';
         }
 
         var settingsAction = hiddenValue(form, 'settings_action');

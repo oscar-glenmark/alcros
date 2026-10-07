@@ -9,18 +9,13 @@
         return label.replace(/\s*ID\s*$/i, '').trim() || label;
     }
 
-    /** App root path (e.g. /alcros/) from the current admin page. */
     function appRootPath() {
         var path = window.location.pathname || '/';
         var slash = path.lastIndexOf('/');
         return slash >= 0 ? path.slice(0, slash + 1) : '/';
     }
 
-    /**
-     * Ensure file.php URLs are under the app root and carry fresh staff auth.
-     * @param {boolean} forEmbed - true for <img>/iframe (raw=1); false for click-to-open tab (HTML viewer + favicon).
-     */
-    function resolveStaffUploadUrl(path, forEmbed) {
+    function resolveStaffUploadUrl(path) {
         if (!path) return '';
 
         try {
@@ -35,11 +30,7 @@
                 url.pathname = root + '/file.php';
             }
 
-            if (forEmbed) {
-                url.searchParams.set('raw', '1');
-            } else {
-                url.searchParams.delete('raw');
-            }
+            url.searchParams.set('raw', '1');
 
             var token = sessionStorage.getItem('alcros_auth') || '';
             if (token) {
@@ -52,34 +43,38 @@
         }
     }
 
+    function openLink(label, src, isPdf) {
+        var pdfAttr = isPdf ? ' data-staff-id-pdf="1"' : '';
+        return '<a href="#" class="admin-id-preview-open" data-staff-id-open data-staff-id-src="' + escapeAttr(src) +
+            '" data-staff-id-label="' + escapeAttr(label) + '"' + pdfAttr + '>View full size</a>';
+    }
+
     function idPreviewCard(label, path, eager) {
         if (!path) return '';
 
-        var embedPath = resolveStaffUploadUrl(path, true);
+        var embedPath = resolveStaffUploadUrl(path);
         if (!embedPath) return '';
 
         var isPdf = /\.pdf(\?|$)/i.test(embedPath);
-        var openPath = isPdf ? resolveStaffUploadUrl(path, false) : embedPath;
-        if (!openPath) return '';
-
-        var safeOpenPath = escapeAttr(openPath);
         var safeEmbedPath = escapeAttr(embedPath);
         var loadAttr = eager ? ' loading="eager" fetchpriority="high" decoding="async"' : ' loading="lazy" decoding="async"';
 
         if (isPdf) {
-            return '<a href="' + safeOpenPath + '" target="_blank" rel="noopener noreferrer" class="admin-id-preview-card admin-id-preview-card--pdf">' +
+            return '<div class="admin-id-preview-card">' +
                 '<span class="admin-id-preview-label">' + escapeAttr(sideLabel(label)) + '</span>' +
                 '<div class="admin-id-preview-pdf">' +
                 '<i data-lucide="file-text" class="w-7 h-7 mb-1 opacity-60"></i>' +
-                '<span>PDF · Click to open</span></div>' +
-                '<span class="admin-id-preview-caption">' + escapeAttr(label) + '</span></a>';
+                '<span>PDF document</span></div>' +
+                openLink(label, embedPath, true) +
+                '</div>';
         }
 
-        return '<a href="' + safeOpenPath + '" target="_blank" rel="noopener noreferrer" class="admin-id-preview-card">' +
+        return '<div class="admin-id-preview-card">' +
             '<span class="admin-id-preview-label">' + escapeAttr(sideLabel(label)) + '</span>' +
-            '<img src="' + safeEmbedPath + '" alt="' + escapeAttr(label) + '" class="admin-id-preview-image"' + loadAttr +
+            '<img src="' + safeEmbedPath + '" alt="' + escapeAttr(label) + '" class="admin-id-preview-image" draggable="false"' + loadAttr +
             ' onerror="this.classList.add(\'admin-id-preview-image--error\');this.alt=\'Preview unavailable\';">' +
-            '<span class="admin-id-preview-caption">' + escapeAttr(label) + ' · Click to open</span></a>';
+            openLink(label, embedPath, false) +
+            '</div>';
     }
 
     function renderIdPreviewGrid(frontPath, backPath) {
@@ -92,8 +87,7 @@
 
     global.AlcrosIdPreview = {
         renderGrid: renderIdPreviewGrid,
-        resolveUrl: function (path) {
-            return resolveStaffUploadUrl(path, true);
-        }
+        wireCards: function () { /* handled by staff-id-view.js */ },
+        resolveUrl: resolveStaffUploadUrl
     };
 })(window);

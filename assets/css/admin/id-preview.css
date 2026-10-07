@@ -16,6 +16,14 @@
     transition: border-color 0.2s, box-shadow 0.2s;
 }
 
+.admin-id-preview-card--interactive {
+    width: 100%;
+    padding: 0;
+    margin: 0;
+    pointer-events: auto;
+    isolation: isolate;
+}
+
 .admin-id-preview-card:hover {
     border-color: #34d399;
     box-shadow: 0 4px 14px rgba(16, 185, 129, 0.12);
@@ -43,8 +51,13 @@
     object-position: center;
     opacity: 1;
     display: block;
-    pointer-events: none;
     background: #ecfdf5;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+.admin-id-preview-card--interactive .admin-id-preview-image {
+    pointer-events: none;
 }
 
 .admin-id-preview-image--error {
@@ -66,15 +79,47 @@
     opacity: 0.72;
 }
 
-.admin-id-preview-caption {
+.admin-id-preview-open {
     position: absolute;
     left: 0;
     right: 0;
     bottom: 0;
-    padding: 0.35rem 0.5rem;
-    background: linear-gradient(to top, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.68));
-    font-size: 0.625rem;
-    font-weight: 700;
-    color: #334155;
+    z-index: 5;
+    display: block;
+    width: 100%;
+    margin: 0;
+    padding: 0.55rem 0.5rem;
+    border: none;
+    border-top: 2px solid #059669;
+    border-radius: 0 0 0.625rem 0.625rem;
+    background: linear-gradient(180deg, #10b981 0%, #059669 100%);
+    box-shadow: 0 -2px 10px rgba(5, 150, 105, 0.35);
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #fff;
     text-align: center;
+    text-decoration: none;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
+    cursor: pointer;
+    pointer-events: auto;
+    touch-action: manipulation;
+    transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.admin-id-preview-open:hover {
+    color: #fff;
+    background: linear-gradient(180deg, #34d399 0%, #10b981 100%);
+    box-shadow: 0 -3px 14px rgba(16, 185, 129, 0.45);
+}
+
+.admin-id-preview-open:active {
+    transform: scale(0.99);
+}
+
+.admin-id-preview-open:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: -3px;
+    box-shadow: 0 0 0 3px #047857, 0 -2px 10px rgba(5, 150, 105, 0.35);
 }

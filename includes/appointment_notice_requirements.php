@@ -90,7 +90,7 @@ function formatAppointmentRequirementsPlainText(string $slug, ?string $serviceLa
         }
         $n++;
     }
-    foreach ($req['notes'] as $note) {
+    foreach (appointmentServiceRequirementsNonFeeNotes($req) as $note) {
         $lines[] = $note;
     }
 
@@ -131,9 +131,10 @@ function formatAppointmentRequirementsEmailHtml(string $slug, ?string $serviceLa
     }
     $html .= '</ol>';
 
-    if ($req['notes'] !== []) {
+    $nonFeeNotes = appointmentServiceRequirementsNonFeeNotes($req);
+    if ($nonFeeNotes !== []) {
         $html .= '<div style="margin-top:12px;padding:10px 12px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;">';
-        foreach ($req['notes'] as $note) {
+        foreach ($nonFeeNotes as $note) {
             $html .= '<p style="margin:0;font-size:11px;font-weight:bold;color:#92400e;">' . citizenEmailText($note) . '</p>';
         }
         $html .= '</div>';
@@ -163,6 +164,10 @@ function appendSpecialServiceRequirementsToCitizenMail(array $mail, array $row):
     }
 
     $label = appointmentServiceLabel((string) ($row['service_type'] ?? ''));
+    $feesSummary = appointmentServiceRequirementsFeesSummary($slug, $label);
+    if ($feesSummary !== '') {
+        $mail['fees_summary'] = $feesSummary;
+    }
     $mail['requirements_plain'] = formatAppointmentRequirementsPlainText($slug, $label);
     $mail['requirements_html'] = formatAppointmentRequirementsEmailHtml($slug, $label);
 
@@ -175,11 +180,6 @@ function smsTailForStandaloneAppointment(array $row): string
         return 'Bring valid ID.';
     }
 
-    $slug = appointmentServiceRequirementsSlugFromServiceType((string) ($row['service_type'] ?? ''));
-    $url = appointmentServiceRequirementsPublicUrl($slug);
-    if ($url === '') {
-        return '';
-    }
-
-    return 'Requirements: ' . $url;
+    // IPROG rejects many URLs (especially http:// localhost) as phishing; requirements stay in email.
+    return 'Bring valid ID and required documents (see confirmation email).';
 }

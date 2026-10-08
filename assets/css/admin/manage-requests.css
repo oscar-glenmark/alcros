@@ -713,6 +713,33 @@ a.manage-stat-card.is-active {
     font-weight: 600;
 }
 
+.manage-inline-confirm__label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.manage-inline-confirm__reason {
+    width: 100%;
+    min-height: 4.5rem;
+    padding: 0.5rem 0.625rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.625rem;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: #0f172a;
+    resize: vertical;
+    box-sizing: border-box;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
 .manage-detail-action-form {
     display: inline-flex;
     margin: 0;

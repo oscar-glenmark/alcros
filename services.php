@@ -192,7 +192,9 @@ $year = date('Y');
 
                     <h3 class="font-bold text-sm mb-2 text-slate-900"><?= htmlspecialchars($doc['label']) ?></h3>
 
-                    <p class="text-gray-500 text-[11px] leading-relaxed mb-5"><?= htmlspecialchars($doc['desc']) ?></p>
+                    <p class="text-gray-500 text-[11px] leading-relaxed mb-3"><?= htmlspecialchars($doc['desc']) ?></p>
+
+                    <?= renderOfficeFeesCardHtml(getDocumentCertificateFeeNotes()) ?>
 
                     <a href="request.php?type=<?= urlencode($doc['slug']) ?>" class="citizen-link-gold">
 
@@ -231,7 +233,9 @@ $year = date('Y');
 
                     <h4 class="font-bold text-xs mb-1 uppercase text-slate-900"><?= htmlspecialchars($svc['label']) ?></h4>
 
-                    <p class="text-gray-500 text-[10px] mb-4 flex-1"><?= htmlspecialchars($svc['desc']) ?></p>
+                    <p class="text-gray-500 text-[10px] mb-3 flex-1"><?= htmlspecialchars($svc['desc']) ?></p>
+
+                    <?= renderAppointmentServiceFeesCardHtml($svc['slug'], $svc['label']) ?>
 
                     <div class="citizen-service-card__actions w-full pt-3 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
 

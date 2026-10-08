@@ -201,6 +201,48 @@
         return 'Yes, continue';
     }
 
+    function setFormRejectionReason(form, reason) {
+        if (!form) return;
+        var el = form.querySelector('input[name="rejection_reason"]');
+        if (!el) {
+            el = document.createElement('input');
+            el.type = 'hidden';
+            el.name = 'rejection_reason';
+            form.appendChild(el);
+        }
+        el.value = reason || '';
+    }
+
+    function isManageRejectAction(action) {
+        return action === 'rejected';
+    }
+
+    function confirmManageAction(form, msg, action, loadingMessage) {
+        if (isManageRejectAction(action) && window.AlcrosConfirm && typeof window.AlcrosConfirm.askWithReason === 'function') {
+            window.AlcrosConfirm.askWithReason(msg, {
+                label: 'Reason for rejection',
+                placeholder: 'Explain why this request is being rejected…',
+                okLabel: 'Reject'
+            }).then(function (reason) {
+                if (!reason) return;
+                setFormRejectionReason(form, reason);
+                submitManageForm(form, loadingMessage);
+            });
+            return;
+        }
+
+        if (window.AlcrosConfirm && typeof window.AlcrosConfirm.ask === 'function') {
+            window.AlcrosConfirm.ask(msg).then(function (ok) {
+                if (!ok) return;
+                submitManageForm(form, loadingMessage);
+            });
+            return;
+        }
+
+        var actionsWrap = form.closest('#modalRequestDetailActions, #requestDetailActions');
+        showInlineConfirm(actionsWrap, (actionsWrap && actionsWrap._requestData) || {}, form, action);
+    }
+
     function submitManageForm(form, loadingMessage) {
         if (!form) return;
 
@@ -233,7 +275,7 @@
 
                 if (data.ok) {
                     if (window.AlcrosActionResult && typeof window.AlcrosActionResult.show === 'function') {
-                        window.AlcrosActionResult.show('success', data.message || 'Saved successfully.');
+                        window.AlcrosActionResult.show(data.type || 'success', data.message || 'Saved successfully.');
                     }
                     window.setTimeout(function () {
                         window.location.reload();
@@ -262,9 +304,14 @@
 
         var msg = manageActionConfirmMessage(data, action);
 
+        var rejectField = isManageRejectAction(action)
+            ? '<label class="manage-inline-confirm__label">Reason for rejection<textarea class="manage-inline-confirm__reason" rows="3" maxlength="2000" placeholder="Explain why this request is being rejected…"></textarea></label>'
+            : '';
+
         actionsWrap.innerHTML =
             '<div class="manage-inline-confirm">' +
                 '<p class="manage-inline-confirm__msg">' + escapeHtml(msg) + '</p>' +
+                rejectField +
                 '<div class="manage-detail-actions__buttons">' +
                     '<button type="button" class="manage-detail-action manage-detail-action--primary" data-inline-confirm-yes>' + escapeHtml(inlineConfirmYesLabel(action)) + '</button>' +
                     '<button type="button" class="manage-detail-action" data-inline-confirm-back>Go back</button>' +
@@ -276,6 +323,15 @@
             e.preventDefault();
             e.stopPropagation();
             var loadingMessage = action === 'delete' ? 'Deleting…' : 'Saving request…';
+            if (isManageRejectAction(action)) {
+                var reasonEl = actionsWrap.querySelector('.manage-inline-confirm__reason');
+                var reason = reasonEl ? String(reasonEl.value || '').trim() : '';
+                if (!reason) {
+                    if (reasonEl) reasonEl.focus();
+                    return;
+                }
+                setFormRejectionReason(form, reason);
+            }
             submitManageForm(form, loadingMessage);
         });
 
@@ -311,15 +367,7 @@
             var msg = manageActionConfirmMessage(data, action);
             var loadingMessage = action === 'delete' ? 'Deleting…' : 'Saving request…';
 
-            if (window.AlcrosConfirm && typeof window.AlcrosConfirm.ask === 'function') {
-                window.AlcrosConfirm.ask(msg).then(function (ok) {
-                    if (!ok) return;
-                    submitManageForm(form, loadingMessage);
-                });
-                return;
-            }
-
-            showInlineConfirm(actionsWrap, data, form, action);
+            confirmManageAction(form, msg, action, loadingMessage);
         });
     }
 
@@ -530,6 +578,17 @@
                 notesWrap.classList.remove('hidden');
             } else {
                 notesWrap.classList.add('hidden');
+            }
+        }
+
+        var rejectionWrap = document.getElementById(prefix + 'view-rejection-wrap');
+        var rejectionEl = document.getElementById(prefix + 'view-rejection');
+        if (rejectionWrap && rejectionEl) {
+            if (data.rejection_reason) {
+                rejectionEl.textContent = data.rejection_reason;
+                rejectionWrap.classList.remove('hidden');
+            } else {
+                rejectionWrap.classList.add('hidden');
             }
         }
     }

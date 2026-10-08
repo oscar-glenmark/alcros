@@ -6,6 +6,7 @@ require_once __DIR__ . '/includes/system_errors.php';
 require_once __DIR__ . '/includes/duplicati_backup.php';
 require_once __DIR__ . '/includes/registry_backup.php';
 require_once __DIR__ . '/includes/hosting.php';
+require_once __DIR__ . '/includes/office_fees.php';
 require_once __DIR__ . '/includes/scripts.php';
 requireStaffLogin();
 requirePageAccess('system_settings.php');
@@ -18,9 +19,9 @@ $currentStaffId = staffId();
 
 $adminSettingKeys = [
     'site_name', 'office_name', 'office_address', 'office_phone', 'office_email',
-    'office_hours', 'office_head', 'overview_text', 'portal_title', 'portal_description',
+    'office_hours', 'office_head',
     'queue_window', 'maintenance_mode', 'allow_public_requests', 'notification_email',
-    'max_daily_appointments', 'privacy_policy_url', 'kiosk_welcome_message',
+    'max_daily_appointments',
     'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass',
     'sms_enabled', 'iprog_api_token', 'iprog_sender_name',
 ];
@@ -33,16 +34,11 @@ $defaults = [
     'office_email'            => 'aloran@gov.ph',
     'office_hours'            => '8:00 AM - 5:00 PM (Monday to Friday)',
     'office_head'             => 'ATTY. LOCAL CIVIL REGISTRAR',
-    'overview_text'           => 'This guide covers the requirements, steps, and fees for all core civil registration services handled by the <strong>{office}</strong>.',
-    'portal_title'            => 'ALCROS Online Request Portal',
-    'portal_description'      => 'Request document submissions or track application statuses online.',
     'queue_window'            => '1',
     'maintenance_mode'        => '0',
     'allow_public_requests'   => '1',
     'notification_email'      => 'aloran@gov.ph',
     'max_daily_appointments'  => '20',
-    'privacy_policy_url'      => 'privacy.php',
-    'kiosk_welcome_message'   => 'Welcome to ALCROS. Please get your queue number and wait to be served.',
     'smtp_host'               => 'smtp.gmail.com',
     'smtp_port'               => '587',
     'smtp_user'               => '',
@@ -151,8 +147,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 } elseif ($key === 'iprog_sender_name') {
                     setSetting($key, trim((string) ($_POST[$key] ?? '')));
-                } elseif ($key === 'privacy_policy_url') {
-                    setSetting($key, sanitizeExternalUrl(trim((string) ($_POST[$key] ?? '')), 'privacy.php'));
                 } elseif (isset($_POST[$key])) {
                     setSetting($key, trim($_POST[$key]));
                 }
@@ -161,6 +155,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 setSetting('allow_public_requests', '0');
             } elseif (getSetting('allow_public_requests', '0') === '1') {
                 setSetting('maintenance_mode', '0');
+            }
+            if (isset($_POST['office_fees']) && is_array($_POST['office_fees'])) {
+                saveOfficeFeesFromPost($_POST['office_fees']);
+            }
+            if (isset($_POST['office_requirements']) && is_array($_POST['office_requirements'])) {
+                saveOfficeRequirementsFromPost($_POST['office_requirements']);
             }
             logActivity($currentStaffId, 'Settings Updated', 'System configuration saved');
             require_once __DIR__ . '/includes/sms.php';
@@ -446,6 +446,8 @@ foreach ($adminSettingKeys as $key) {
 $smtpPassMask = '••••••••••••••••';
 $smtpPassSaved = trim($settings['smtp_pass']) !== '';
 $iprogTokenSaved = trim($settings['iprog_api_token']) !== '';
+$officeFeesForm = $isAdmin ? officeFeesFormValues() : [];
+$officeRequirementsForm = $isAdmin ? officeRequirementsFormValues() : [];
 
 $currentStaff = currentStaffRow($pdo, $currentStaffId);
 $profileNeeds2svConfirmation = staffRecoveryGmailNeeds2svConfirmation($currentStaff, (string) ($currentStaff['email'] ?? ''));
@@ -552,7 +554,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                     ];
                     if ($isAdmin) {
                         $tabs['account-management']   = ['label' => 'Staff Accounts', 'icon' => 'users', 'desc' => 'Portal users & roles'];
-                        $tabs['system-configuration'] = ['label' => 'Configuration', 'icon' => 'settings', 'desc' => 'Office, portal & email'];
+                        $tabs['system-configuration'] = ['label' => 'Configuration', 'icon' => 'settings', 'desc' => 'Office, fees & requirements'];
                         $tabs['admin-tools']          = ['label' => 'Admin Tools', 'icon' => 'wrench', 'desc' => 'Stats, logs & upkeep'];
                     }
                     foreach ($tabs as $id => $tab):
@@ -881,21 +883,60 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
 
                             <details class="config-section group rounded-xl border border-slate-200 overflow-hidden">
                                 <summary class="flex items-center justify-between gap-3 px-4 py-3.5 bg-slate-50 hover:bg-slate-100/80 font-semibold text-sm text-slate-800">
-                                    <span class="flex items-center gap-2"><i data-lucide="globe" class="w-4 h-4 text-slate-500"></i> Public Portal Content</span>
+                                    <span class="flex items-center gap-2"><i data-lucide="clipboard-list" class="w-4 h-4 text-slate-500"></i> Office Fees &amp; Requirements</span>
                                     <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 config-chevron"></i>
                                 </summary>
                                 <div class="p-4 space-y-4 border-t border-slate-100">
-                                    <div>
-                                        <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Overview Description</label>
-                                        <textarea name="overview_text" rows="3" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><?= htmlspecialchars($settings['overview_text']) ?></textarea>
-                                        <p class="text-[10px] text-slate-400 mt-1">Use <code class="bg-slate-100 px-1 rounded">{office}</code> to insert the office name.</p>
+                                    <p class="text-xs text-slate-600 leading-relaxed">
+                                        <strong>Fees:</strong> one line per row — shown on All Services, requirement modals, and citizen emails. Leave blank to hide fees for that service.<br>
+                                        <strong>Requirements:</strong> special-service appointments only (not fast-track certificate cards). Checklist items: one per line; sub-items use two spaces and a dash (<code class="bg-slate-100 px-1 rounded text-[10px]">  - </code>). Notes are for legal or other non-fee text (fees are edited above).
+                                    </p>
+                                    <div class="space-y-4">
+                                        <?php foreach (officeFeesCatalog() as $feeKey => $feeMeta):
+                                            $reqForm = $officeRequirementsForm[$feeKey] ?? null;
+                                            $hasRequirements = officeRequirementsEditable($feeKey);
+                                        ?>
+                                        <div class="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-4">
+                                            <h3 class="text-sm font-bold text-slate-800"><?= htmlspecialchars($feeMeta['label']) ?></h3>
+                                            <?php if (!empty($feeMeta['hint'])): ?>
+                                            <p class="text-[10px] text-slate-500 -mt-2"><?= htmlspecialchars($feeMeta['hint']) ?></p>
+                                            <?php endif; ?>
+
+                                            <div>
+                                                <label class="block text-[10px] font-bold text-slate-600 uppercase mb-1" for="office-fee-<?= htmlspecialchars($feeKey) ?>">Office fees</label>
+                                                <textarea
+                                                    id="office-fee-<?= htmlspecialchars($feeKey) ?>"
+                                                    name="office_fees[<?= htmlspecialchars($feeKey) ?>]"
+                                                    rows="<?= max(2, min(4, count($feeMeta['defaults'] ?? []))) ?>"
+                                                    class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-mono leading-relaxed bg-white"
+                                                    placeholder="Example:&#10;Processing fee: PHP 100.00"><?= htmlspecialchars($officeFeesForm[$feeKey] ?? '') ?></textarea>
+                                            </div>
+
+                                            <?php if ($hasRequirements && is_array($reqForm)): ?>
+                                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-2 border-t border-slate-200/80">
+                                                <div class="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label class="block text-[10px] font-bold text-slate-600 uppercase mb-1" for="office-req-subtitle-<?= htmlspecialchars($feeKey) ?>">Requirements subtitle</label>
+                                                        <input type="text" id="office-req-subtitle-<?= htmlspecialchars($feeKey) ?>" name="office_requirements[<?= htmlspecialchars($feeKey) ?>][subtitle]" value="<?= htmlspecialchars($reqForm['subtitle'] ?? '') ?>" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white" placeholder="e.g. R.A. 9048">
+                                                    </div>
+                                                    <div class="sm:col-span-1">
+                                                        <label class="block text-[10px] font-bold text-slate-600 uppercase mb-1" for="office-req-lead-<?= htmlspecialchars($feeKey) ?>">Intro / lead</label>
+                                                        <textarea id="office-req-lead-<?= htmlspecialchars($feeKey) ?>" name="office_requirements[<?= htmlspecialchars($feeKey) ?>][lead]" rows="2" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white"><?= htmlspecialchars($reqForm['lead'] ?? '') ?></textarea>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label class="block text-[10px] font-bold text-slate-600 uppercase mb-1" for="office-req-items-<?= htmlspecialchars($feeKey) ?>">Checklist items</label>
+                                                    <textarea id="office-req-items-<?= htmlspecialchars($feeKey) ?>" name="office_requirements[<?= htmlspecialchars($feeKey) ?>][items]" rows="8" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-mono leading-relaxed bg-white" placeholder="One item per line&#10;  - Sub-item"><?= htmlspecialchars($reqForm['items'] ?? '') ?></textarea>
+                                                </div>
+                                                <div>
+                                                    <label class="block text-[10px] font-bold text-slate-600 uppercase mb-1" for="office-req-notes-<?= htmlspecialchars($feeKey) ?>">Other notes (non-fee)</label>
+                                                    <textarea id="office-req-notes-<?= htmlspecialchars($feeKey) ?>" name="office_requirements[<?= htmlspecialchars($feeKey) ?>][notes]" rows="8" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm leading-relaxed bg-white" placeholder="Legal basis, reminders…"><?= htmlspecialchars($reqForm['notes'] ?? '') ?></textarea>
+                                                </div>
+                                            </div>
+                                            <?php endif; ?>
+                                        </div>
+                                        <?php endforeach; ?>
                                     </div>
-                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Portal Banner Title</label><input type="text" name="portal_title" value="<?= htmlspecialchars($settings['portal_title']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
-                                        <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Privacy Policy URL</label><input type="text" name="privacy_policy_url" value="<?= htmlspecialchars($settings['privacy_policy_url']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
-                                    </div>
-                                    <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Portal Banner Description</label><textarea name="portal_description" rows="2" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><?= htmlspecialchars($settings['portal_description']) ?></textarea></div>
-                                    <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Kiosk Welcome Message</label><input type="text" name="kiosk_welcome_message" value="<?= htmlspecialchars($settings['kiosk_welcome_message']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                 </div>
                             </details>
 
@@ -931,22 +972,63 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                 <div class="p-4 space-y-4 border-t border-slate-100">
                                     <?php
                                     require_once __DIR__ . '/includes/sms.php';
+                                    ensureExtendedSchema($pdo);
                                     $smsSummary = smsConfigurationSummary();
+                                    $smsRecentLogs = $pdo->query(
+                                        'SELECT sent_at, success, sms_type, error_message, recipient
+                                         FROM sms_logs ORDER BY sent_at DESC LIMIT 5'
+                                    )->fetchAll(PDO::FETCH_ASSOC) ?: [];
                                     ?>
                                     <div class="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-xs text-slate-600">
                                         <?php if ($smsSummary['configured'] && empty($smsSummary['sender_hint'])): ?>
                                         <p class="font-semibold text-green-700">IPROG is configured and ready to send SMS.</p>
                                         <?php elseif ($smsSummary['configured'] && !empty($smsSummary['sender_hint'])): ?>
                                         <p class="font-semibold text-amber-700"><?= htmlspecialchars($smsSummary['sender_hint']) ?></p>
-                                        <?php elseif ($smsSummary['configured']): ?>
-                                        <p class="font-semibold text-green-700">API token saved. SMS uses IPROG&apos;s default sender unless a custom sender is set below.</p>
+                                        <?php elseif ($smsSummary['has_api_key'] && !$smsSummary['enabled']): ?>
+                                        <p class="font-semibold text-amber-700">API token is saved but <strong>Enable SMS notifications</strong> is off — no texts will be sent until you check that box and save.</p>
                                         <?php elseif ($smsSummary['enabled'] && !$smsSummary['has_api_key']): ?>
                                         <p class="font-semibold text-amber-700">SMS is enabled but no API token is saved yet.</p>
-                                        <?php else: ?>
+                                        <?php elseif (!$smsSummary['has_api_key']): ?>
                                         <p class="font-semibold text-slate-700">SMS is off until you subscribe at <a href="https://www.iprogsms.com" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">iprogsms.com</a> and enter your API token below.</p>
+                                        <?php else: ?>
+                                        <p class="font-semibold text-green-700">API token saved. Turn on SMS below and save.</p>
                                         <?php endif; ?>
-                                        <p class="mt-1.5">Citizens who opt in receive text messages when a request is accepted, when it is ready for pickup, and 1 hour before a confirmed visit.</p>
+                                        <p class="mt-1.5">Citizens must opt in at booking/request (<strong>09XXXXXXXXX</strong> only). Open <strong>Recent</strong> <i data-lucide="history" class="inline w-3 h-3 align-text-bottom text-slate-500"></i> to see when IPROG accepted or rejected messages.</p>
                                     </div>
+                                    <?php if ($smsRecentLogs !== []):
+                                        $smsRecentCount = count($smsRecentLogs);
+                                        $smsRecentLatestFailed = empty($smsRecentLogs[0]['success']);
+                                    ?>
+                                    <details class="sms-recent-details rounded-xl border border-slate-200 bg-white overflow-hidden">
+                                        <summary class="sms-recent-details__trigger flex items-center justify-between gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50/80">
+                                            <span class="flex items-center gap-2.5 min-w-0">
+                                                <span class="sms-recent-details__icon-wrap relative flex shrink-0 items-center justify-center w-9 h-9 rounded-lg bg-slate-100 text-slate-600">
+                                                    <i data-lucide="history" class="w-4.5 h-4.5 w-[1.125rem] h-[1.125rem]" aria-hidden="true"></i>
+                                                    <?php if ($smsRecentLatestFailed): ?>
+                                                    <span class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-white" title="Latest attempt failed"></span>
+                                                    <?php endif; ?>
+                                                </span>
+                                                <span class="min-w-0">
+                                                    <span class="block text-sm font-semibold text-slate-800">Recent SMS attempts</span>
+                                                    <span class="block text-[11px] text-slate-500 truncate">Last <?= (int) $smsRecentCount ?> · tap to expand</span>
+                                                </span>
+                                            </span>
+                                            <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 shrink-0 sms-recent-details__chevron" aria-hidden="true"></i>
+                                        </summary>
+                                        <ul class="divide-y divide-slate-100 border-t border-slate-100 text-[11px]">
+                                            <?php foreach ($smsRecentLogs as $logRow): ?>
+                                            <li class="px-4 py-2.5 <?= !empty($logRow['success']) ? 'text-emerald-800 bg-emerald-50/40' : 'text-red-800 bg-red-50/40' ?>">
+                                                <span class="font-semibold"><?= !empty($logRow['success']) ? 'Sent' : 'Failed' ?></span>
+                                                · <?= htmlspecialchars((string) ($logRow['sms_type'] ?? '')) ?>
+                                                · <?= htmlspecialchars((string) ($logRow['sent_at'] ?? '')) ?>
+                                                <?php if (empty($logRow['success']) && !empty($logRow['error_message'])): ?>
+                                                <br><span class="text-red-700/90"><?= htmlspecialchars((string) $logRow['error_message']) ?></span>
+                                                <?php endif; ?>
+                                            </li>
+                                            <?php endforeach; ?>
+                                        </ul>
+                                    </details>
+                                    <?php endif; ?>
                                     <label class="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-100 cursor-pointer">
                                         <div>
                                             <p class="text-sm font-semibold text-slate-800">Enable SMS notifications</p>
@@ -956,7 +1038,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     </label>
                                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">IPROG API Token</label><input type="password" name="iprog_api_token" id="iprogApiTokenInput" value="<?= $iprogTokenSaved ? htmlspecialchars($smtpPassMask) : '' ?>" autocomplete="new-password" data-saved-mask="<?= $iprogTokenSaved ? htmlspecialchars($smtpPassMask) : '' ?>" data-saved-value="<?= $iprogTokenSaved ? htmlspecialchars($settings['iprog_api_token']) : '' ?>" placeholder="<?= $iprogTokenSaved ? '' : 'API token from IPROG dashboard' ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Found in your IPROG SMS dashboard.<?= $iprogTokenSaved ? ' Click the field, then the eye icon, to view the saved token.' : '' ?></p></div>
-                                        <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Sender Name (optional)</label><input type="text" name="iprog_sender_name" value="<?= htmlspecialchars($settings['iprog_sender_name']) ?>" maxlength="11" placeholder="AlCROS" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Leave blank to use IPROG&apos;s default sender. A custom name is optional and does not block sending.</p></div>
+                                        <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Sender Name (optional)</label><input type="text" name="iprog_sender_name" value="<?= htmlspecialchars($settings['iprog_sender_name']) ?>" maxlength="11" placeholder="AlCROS" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Required for many <strong>Smart/TNT</strong> numbers — register at <a href="https://www.iprogsms.com/sender-names/new" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">IPROG sender names</a>.</p></div>
                                     </div>
                                 </div>
                             </details>

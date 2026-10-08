@@ -343,7 +343,85 @@
     margin: 0;
 }
 
-.manage-follow-up__date-input,
+.manage-follow-up__date-control {
+    position: relative;
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 2.375rem;
+    margin: 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    background: #fff;
+    cursor: pointer;
+}
+
+.manage-follow-up__date-control:focus-within {
+    outline: 2px solid #93c5fd;
+    outline-offset: 1px;
+}
+
+.manage-follow-up__date-face {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 0.65rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.35;
+    color: #0f172a;
+    pointer-events: none;
+    user-select: none;
+}
+
+.manage-follow-up__date-face.is-placeholder {
+    color: #94a3b8;
+}
+
+.manage-follow-up__date-control .manage-follow-up__date-input-native {
+    position: relative;
+    z-index: 2;
+    display: block;
+    width: 100%;
+    min-height: 2.375rem;
+    margin: 0;
+    padding: 0.5rem 0.65rem;
+    box-sizing: border-box;
+    border: none;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: transparent;
+    caret-color: transparent;
+    cursor: pointer;
+    font-size: 0.8125rem;
+}
+
+.manage-follow-up__date-control .manage-follow-up__date-input-native:focus {
+    outline: none;
+}
+
+.manage-follow-up__date-control .manage-follow-up__date-input-native::-webkit-datetime-edit,
+.manage-follow-up__date-control .manage-follow-up__date-input-native::-webkit-datetime-edit-fields-wrapper,
+.manage-follow-up__date-control .manage-follow-up__date-input-native::-webkit-datetime-edit-text,
+.manage-follow-up__date-control .manage-follow-up__date-input-native::-webkit-datetime-edit-month-field,
+.manage-follow-up__date-control .manage-follow-up__date-input-native::-webkit-datetime-edit-day-field,
+.manage-follow-up__date-control .manage-follow-up__date-input-native::-webkit-datetime-edit-year-field {
+    opacity: 0;
+}
+
+.manage-follow-up__date-control .manage-follow-up__date-input-native::-webkit-calendar-picker-indicator {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    cursor: pointer;
+    opacity: 0;
+}
+
 .manage-follow-up__note-input {
     width: 100%;
     box-sizing: border-box;
@@ -353,6 +431,24 @@
     border-radius: 0.5rem;
     padding: 0.5rem 0.65rem;
     font-size: 0.8125rem;
+}
+
+.manage-follow-up__date-hint {
+    margin: 0.35rem 0 0;
+    font-size: 0.6875rem;
+    line-height: 1.4;
+    color: #64748b;
+}
+
+.manage-follow-up__date-error {
+    margin: 0.35rem 0 0;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: #b91c1c;
+}
+
+.manage-follow-up__date-error.hidden {
+    display: none;
 }
 
 .manage-follow-up__note-input {

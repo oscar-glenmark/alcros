@@ -344,6 +344,49 @@ function cancelPendingFollowUpsForNewBooking(PDO $pdo, ?string $email, ?string $
     return $stmt->rowCount();
 }
 
+/** SQL fragment: appointment has no pending follow-up row. */
+function appointmentSqlExcludePendingFollowUp(string $appointmentAlias = 'a'): string
+{
+    return 'NOT EXISTS (
+        SELECT 1 FROM appointment_follow_ups f
+        WHERE f.appointment_id = ' . $appointmentAlias . '.id
+          AND f.status = \'pending\'
+    )';
+}
+
+function countCompletedAppointmentsWithoutPendingFollowUp(PDO $pdo, string $viewDate): int
+{
+    ensureAppointmentFollowUpsTable($pdo);
+    $standaloneSql = appointmentStandaloneSql('a');
+    $excludeFollowUp = appointmentSqlExcludePendingFollowUp('a');
+    $stmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM appointments a
+         WHERE a.appointment_date = ?
+           AND {$standaloneSql}
+           AND a.deleted_at IS NULL
+           AND a.status = 'completed'
+           AND {$excludeFollowUp}"
+    );
+    $stmt->execute([$viewDate]);
+
+    return (int) $stmt->fetchColumn();
+}
+
+function appointmentVisitDateForFollowUp(PDO $pdo, int $followUpId): ?string
+{
+    $followUp = fetchFollowUpById($pdo, $followUpId);
+    if (!$followUp) {
+        return null;
+    }
+    $appointment = fetchAppointmentRowForFollowUp($pdo, (int) ($followUp['appointment_id'] ?? 0));
+    if (!$appointment) {
+        return null;
+    }
+    $date = (string) ($appointment['appointment_date'] ?? '');
+
+    return preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) ? $date : null;
+}
+
 function countPendingAppointmentFollowUps(PDO $pdo): int
 {
     ensureAppointmentFollowUpsTable($pdo);

@@ -41,14 +41,18 @@ function isAppointmentAjax(): bool
     return ($_POST['ajax'] ?? '') === '1';
 }
 
-function appointmentJsonResponse(bool $ok, string $message): never
+function appointmentJsonResponse(bool $ok, string $message, ?array $redirectQuery = null, ?string $type = null): never
 {
     header('Content-Type: application/json; charset=utf-8');
-    echo json_encode([
+    $payload = [
         'ok'      => $ok,
-        'type'    => $ok ? 'success' : 'error',
+        'type'    => $type ?? ($ok ? 'success' : 'error'),
         'message' => $message,
-    ], JSON_UNESCAPED_UNICODE);
+    ];
+    if ($redirectQuery !== null) {
+        $payload['redirect_url'] = buildAuthUrl('appointment.php', array_filter($redirectQuery, static fn ($v) => $v !== null && $v !== ''));
+    }
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -73,6 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($isFollowUpAction) {
         $staffId = (string) ($_SESSION['staff_id'] ?? '');
+        $followUpRedirectQuery = null;
         if ($isFollowUpSave) {
             if ($id <= 0) {
                 $responseMessage = 'Appointment not found.';
@@ -98,6 +103,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     );
                     $responseOk = !empty($result['ok']);
                     $responseMessage = (string) ($result['message'] ?? $responseMessage);
+                    if ($responseOk) {
+                        $followUpRedirectQuery = ['status' => 'follow_ups'];
+                    }
                     if ($responseOk && !$isAjax) {
                         appointmentFlashSet('success', $responseMessage);
                     }
@@ -105,17 +113,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } elseif ($isFollowUpCancel) {
             $followUpId = (int) ($_POST['follow_up_id'] ?? 0);
+            $visitDate = appointmentVisitDateForFollowUp($pdo, $followUpId);
             $result = cancelAppointmentFollowUp($pdo, $followUpId, 'staff');
             $responseOk = !empty($result['ok']);
             $responseMessage = (string) ($result['message'] ?? $responseMessage);
+            if ($responseOk) {
+                $followUpRedirectQuery = array_filter([
+                    'status' => 'completed',
+                    'date'   => $visitDate ?? $viewDate,
+                ]);
+            }
             if ($responseOk && !$isAjax) {
                 appointmentFlashSet('success', $responseMessage);
             }
         } elseif ($isFollowUpComplete) {
             $followUpId = (int) ($_POST['follow_up_id'] ?? 0);
+            $visitDate = appointmentVisitDateForFollowUp($pdo, $followUpId);
             $result = completeAppointmentFollowUp($pdo, $followUpId);
             $responseOk = !empty($result['ok']);
             $responseMessage = (string) ($result['message'] ?? $responseMessage);
+            if ($responseOk) {
+                $followUpRedirectQuery = array_filter([
+                    'status' => 'completed',
+                    'date'   => $visitDate ?? $viewDate,
+                ]);
+            }
             if ($responseOk && !$isAjax) {
                 appointmentFlashSet('success', $responseMessage);
             }
@@ -126,19 +148,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($isAjax) {
-            appointmentJsonResponse($responseOk, $responseMessage);
+            appointmentJsonResponse($responseOk, $responseMessage, $followUpRedirectQuery);
         }
 
-        redirectWithAuth('appointment.php', array_filter([
-            'date'   => $viewDate,
-            'status' => $filters['status'] !== 'all' ? $filters['status'] : null,
-            'q'      => trim($filters['q']) !== '' ? trim($filters['q']) : null,
-        ]));
+        redirectWithAuth('appointment.php', array_filter(
+            $followUpRedirectQuery ?? [
+                'date'   => $viewDate,
+                'status' => $filters['status'] !== 'all' ? $filters['status'] : null,
+                'q'      => trim($filters['q']) !== '' ? trim($filters['q']) : null,
+            ]
+        ));
     }
 
     if ($isUpdate) {
         $status = (string) ($_POST['status'] ?? '');
-        if ($id > 0 && updateAppointmentStatus($pdo, $id, $status)) {
+        $rejectionReason = null;
+        if ($status === 'cancelled') {
+            $rejectionReason = normalizeStaffRejectionReason($_POST['rejection_reason'] ?? null);
+            if ($rejectionReason === null) {
+                $responseMessage = 'Please enter a reason for rejecting this appointment.';
+                if (!$isAjax) {
+                    appointmentFlashSet('error', $responseMessage);
+                }
+                if ($isAjax) {
+                    appointmentJsonResponse(false, $responseMessage);
+                }
+                redirectWithAuth('appointment.php', array_filter(
+                    [
+                        'date'   => $viewDate,
+                        'status' => $filters['status'] !== 'all' ? $filters['status'] : null,
+                        'q'      => trim($filters['q']) !== '' ? trim($filters['q']) : null,
+                    ]
+                ));
+            }
+        }
+        if ($id > 0 && updateAppointmentStatus($pdo, $id, $status, $rejectionReason)) {
             $responseOk = true;
             $responseMessage = match ($status) {
                 'confirmed' => 'Appointment confirmed — citizen will be notified.',
@@ -147,11 +191,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'no_show'   => 'Appointment marked as no-show.',
                 default     => 'Appointment status saved as ' . appointmentStatusLabel($status) . '.',
             };
+            $responseMessage = staffCitizenNotifyAppendToStaffMessage($responseMessage);
+            $responseType = staffCitizenNotifyFlashType(true);
             if (!$isAjax) {
-                appointmentFlashSet('success', $responseMessage);
+                appointmentFlashSet($responseType, $responseMessage);
             }
         } else {
-            $responseMessage = 'Could not update appointment status. Another staff member may have already updated this visit.';
+            $responseMessage = $status === 'cancelled'
+                ? 'Could not reject this appointment. It may have already been updated, or the reason was missing.'
+                : 'Could not update appointment status. Another staff member may have already updated this visit.';
             if (!$isAjax) {
                 appointmentFlashSet('error', $responseMessage);
             }
@@ -207,7 +255,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($isAjax) {
-        appointmentJsonResponse($responseOk, $responseMessage);
+        $ajaxType = $responseOk && $isUpdate ? staffCitizenNotifyFlashType(true) : ($responseOk ? 'success' : 'error');
+        appointmentJsonResponse($responseOk, $responseMessage, null, $ajaxType);
     }
 
     redirectWithAuth('appointment.php', array_filter([
@@ -263,7 +312,7 @@ $appointmentStats = [
     'total'            => array_sum($statusCounts),
     'scheduled'        => (int) ($statusCounts['scheduled'] ?? 0),
     'confirmed'        => (int) ($statusCounts['confirmed'] ?? 0),
-    'completed'        => (int) ($statusCounts['completed'] ?? 0),
+    'completed'        => countCompletedAppointmentsWithoutPendingFollowUp($pdo, $viewDate),
     'no_show'          => (int) ($statusCounts['no_show'] ?? 0),
     'recently_deleted' => $recentlyDeletedCount,
     'follow_ups'       => $pendingFollowUpCount,
@@ -324,6 +373,9 @@ if ($search !== '') {
     if ($filterStatus !== 'all' && $filterStatus !== '' && $filterStatus !== 'all_appointments') {
         $sql .= ' AND a.status = ?';
         $params[] = $filterStatus;
+        if ($filterStatus === 'completed') {
+            $sql .= ' AND ' . appointmentSqlExcludePendingFollowUp('a');
+        }
     }
 } elseif ($filterStatus === 'all_appointments') {
     // All active statuses for this date.
@@ -334,6 +386,9 @@ if ($search !== '') {
 } else {
     $sql .= ' AND a.status = ?';
     $params[] = $filterStatus;
+    if ($filterStatus === 'completed') {
+        $sql .= ' AND ' . appointmentSqlExcludePendingFollowUp('a');
+    }
 }
 
 [$searchSql, $searchParams] = appointmentSearchClause($search, 'a');
@@ -389,6 +444,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= interFontTags() ?>
     <?= adminLayoutHeadStyles('appointment') ?>
+    <?= staffIdLightboxHeadStyles() ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>
 <body class="flex min-h-screen">
@@ -781,6 +837,11 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                                 <p id="appt-view-notes" class="manage-detail-notes"></p>
                             </section>
 
+                            <section id="appt-view-rejection-wrap" class="manage-detail-block hidden">
+                                <h3>Reason for rejection</h3>
+                                <p id="appt-view-rejection" class="manage-detail-notes"></p>
+                            </section>
+
                             <section id="appt-view-follow-up-wrap" class="manage-detail-block manage-detail-block--follow-up hidden" aria-label="Follow-up reminder">
                                 <h3 class="manage-follow-up-heading">
                                     <span>Follow-up reminder</span>
@@ -873,6 +934,11 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                         <h3>Notes</h3>
                         <p id="modal-appt-view-notes" class="manage-detail-notes"></p>
                     </section>
+
+                    <section id="modal-appt-view-rejection-wrap" class="manage-detail-block hidden">
+                        <h3>Reason for rejection</h3>
+                        <p id="modal-appt-view-rejection" class="manage-detail-notes"></p>
+                    </section>
                 </div>
             </div>
 
@@ -890,8 +956,10 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
         'pollUrl'               => buildAuthUrl('api/appointments.php'),
         'pollEnabled'           => !$isFollowUpsView,
         'overviewCardHighlight' => $overviewCardHighlight,
-        'minFollowUpDate'       => minFollowUpPickDate(),
-        'todayDate'             => alcrosTodayDate(),
+        'minFollowUpDate'        => minFollowUpPickDate(),
+        'todayDate'              => alcrosTodayDate(),
+        'officeHolidayDates'     => officeHolidayDatesFromSettings(),
+        'officeHolidayRecurring' => recurringOfficeHolidaySuffixes(),
     ]) ?>
     <div id="appointmentActionAuthFields" class="hidden" aria-hidden="true"><?= authFormField() ?></div>
     <?= staffIdLightboxMarkup() ?>

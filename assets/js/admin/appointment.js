@@ -212,6 +212,47 @@
         return actionConfirmMessage(action, data);
     }
 
+    function setFormRejectionReason(form, reason) {
+        if (!form) return;
+        var el = form.querySelector('input[name="rejection_reason"]');
+        if (!el) {
+            el = document.createElement('input');
+            el.type = 'hidden';
+            el.name = 'rejection_reason';
+            form.appendChild(el);
+        }
+        el.value = reason || '';
+    }
+
+    function isAppointmentRejectAction(action) {
+        return action === 'cancelled';
+    }
+
+    function confirmAppointmentAction(form, msg, action, loadingMessage, actionsWrap, data) {
+        if (isAppointmentRejectAction(action) && window.AlcrosConfirm && typeof window.AlcrosConfirm.askWithReason === 'function') {
+            window.AlcrosConfirm.askWithReason(msg, {
+                label: 'Reason for rejection',
+                placeholder: 'Explain why this appointment is being rejected…',
+                okLabel: 'Reject'
+            }).then(function (reason) {
+                if (!reason) return;
+                setFormRejectionReason(form, reason);
+                submitAppointmentForm(form, loadingMessage);
+            });
+            return;
+        }
+
+        if (window.AlcrosConfirm && typeof window.AlcrosConfirm.ask === 'function') {
+            window.AlcrosConfirm.ask(msg).then(function (ok) {
+                if (!ok) return;
+                submitAppointmentForm(form, loadingMessage);
+            });
+            return;
+        }
+
+        showInlineConfirm(actionsWrap, data, form, action);
+    }
+
     function submitAppointmentForm(form, loadingMessage) {
         if (!form) return;
 
@@ -244,9 +285,14 @@
 
                 if (data.ok) {
                     if (window.AlcrosActionResult && typeof window.AlcrosActionResult.show === 'function') {
-                        window.AlcrosActionResult.show('success', data.message || 'Saved successfully.');
+                        window.AlcrosActionResult.show(data.type || 'success', data.message || 'Saved successfully.');
                     }
+                    var redirectUrl = data.redirect_url || '';
                     window.setTimeout(function () {
+                        if (redirectUrl) {
+                            window.location.href = redirectUrl;
+                            return;
+                        }
                         window.location.reload();
                     }, 900);
                     return;
@@ -267,9 +313,14 @@
     }
 
     function showInlineConfirm(actionsWrap, data, form, action) {
+        var rejectField = isAppointmentRejectAction(action)
+            ? '<label class="manage-inline-confirm__label">Reason for rejection<textarea class="manage-inline-confirm__reason" rows="3" maxlength="2000" placeholder="Explain why this appointment is being rejected…"></textarea></label>'
+            : '';
+
         actionsWrap.innerHTML =
             '<div class="manage-inline-confirm">' +
                 '<p class="manage-inline-confirm__msg">' + escapeHtml(appointmentActionConfirmMessage(data, action)) + '</p>' +
+                rejectField +
                 '<div class="manage-detail-actions__buttons">' +
                     '<button type="button" class="manage-detail-action manage-detail-action--primary" data-inline-confirm-yes>' + escapeHtml(inlineConfirmYesLabel(action)) + '</button>' +
                     '<button type="button" class="manage-detail-action" data-inline-confirm-back>Go back</button>' +
@@ -281,6 +332,15 @@
             e.preventDefault();
             e.stopPropagation();
             var loadingMessage = action === 'delete' ? 'Deleting…' : 'Saving appointment…';
+            if (isAppointmentRejectAction(action)) {
+                var reasonEl = actionsWrap.querySelector('.manage-inline-confirm__reason');
+                var reason = reasonEl ? String(reasonEl.value || '').trim() : '';
+                if (!reason) {
+                    if (reasonEl) reasonEl.focus();
+                    return;
+                }
+                setFormRejectionReason(form, reason);
+            }
             submitAppointmentForm(form, loadingMessage);
         });
 
@@ -290,6 +350,148 @@
             renderDetailActions(actionsWrap, data);
             if (typeof lucide !== 'undefined') lucide.createIcons();
         });
+    }
+
+    function followUpFormatLongDate(iso) {
+        if (!iso) {
+            return '';
+        }
+        if (window.AlcrosDateDisplay && typeof window.AlcrosDateDisplay.formatLongDate === 'function') {
+            return window.AlcrosDateDisplay.formatLongDate(iso);
+        }
+        var parts = String(iso).trim().split('-');
+        if (parts.length !== 3) {
+            return iso;
+        }
+        var y = parseInt(parts[0], 10);
+        var m = parseInt(parts[1], 10) - 1;
+        var d = parseInt(parts[2], 10);
+        var date = new Date(y, m, d);
+        if (isNaN(date.getTime())) {
+            return iso;
+        }
+        return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    }
+
+    function followUpDateBlockMessage(reason) {
+        if (reason === 'weekend') {
+            return 'Follow-up date cannot fall on a weekend. Choose Monday to Friday.';
+        }
+        if (reason === 'holiday') {
+            return 'Follow-up date cannot fall on a holiday. Choose another weekday.';
+        }
+        if (reason === 'past') {
+            return 'Follow-up date must be after today.';
+        }
+        return 'Choose a valid follow-up date.';
+    }
+
+    function followUpDateBlockReason(iso) {
+        if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+            return 'invalid';
+        }
+        var minDate = pageConfig.minFollowUpDate || '';
+        if (minDate && iso < minDate) {
+            return 'past';
+        }
+        if (pageConfig.todayDate && iso <= pageConfig.todayDate) {
+            return 'past';
+        }
+        var parts = iso.split('-');
+        var date = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        if (isNaN(date.getTime())) {
+            return 'invalid';
+        }
+        var dow = date.getDay();
+        if (dow === 0 || dow === 6) {
+            return 'weekend';
+        }
+        var holidays = pageConfig.officeHolidayDates || [];
+        if (holidays.indexOf(iso) !== -1) {
+            return 'holiday';
+        }
+        var suffix = iso.slice(4);
+        var recurring = pageConfig.officeHolidayRecurring || [];
+        if (recurring.indexOf(suffix) !== -1) {
+            return 'holiday';
+        }
+        return null;
+    }
+
+    function wireFollowUpDateField(container) {
+        if (!container || container.getAttribute('data-follow-up-date-wired') === '1') {
+            return;
+        }
+        container.setAttribute('data-follow-up-date-wired', '1');
+
+        var input = container.querySelector('input[name="follow_up_date"]');
+        var displayEl = container.querySelector('[data-follow-up-date-display]');
+        var controlEl = container.querySelector('[data-follow-up-date-control]');
+        var errEl = container.querySelector('[data-follow-up-date-error]');
+        if (!input || !displayEl) {
+            return;
+        }
+
+        function setDisplay(iso) {
+            var placeholder = displayEl.getAttribute('data-placeholder') || 'mm/dd/yyyy';
+            if (!iso) {
+                displayEl.textContent = placeholder;
+                displayEl.classList.add('is-placeholder');
+                return;
+            }
+            displayEl.textContent = followUpFormatLongDate(iso);
+            displayEl.classList.remove('is-placeholder');
+        }
+
+        function setError(reason) {
+            if (!errEl) {
+                return;
+            }
+            if (reason) {
+                errEl.textContent = followUpDateBlockMessage(reason);
+                errEl.classList.remove('hidden');
+                input.setCustomValidity(followUpDateBlockMessage(reason));
+            } else {
+                errEl.textContent = '';
+                errEl.classList.add('hidden');
+                input.setCustomValidity('');
+            }
+        }
+
+        function syncFromInput() {
+            if (!input.value) {
+                setError(null);
+                setDisplay('');
+                return;
+            }
+            var reason = followUpDateBlockReason(input.value);
+            if (reason) {
+                input.value = '';
+                setDisplay('');
+                setError(reason);
+                return;
+            }
+            setError(null);
+            setDisplay(input.value);
+        }
+
+        input.addEventListener('change', syncFromInput);
+        input.addEventListener('input', syncFromInput);
+        if (pageConfig.minFollowUpDate) {
+            input.setAttribute('min', pageConfig.minFollowUpDate);
+        }
+        syncFromInput();
+    }
+
+    function followUpDateFieldValid(form) {
+        var input = form && form.querySelector('input[name="follow_up_date"]');
+        if (!input) {
+            return true;
+        }
+        if (!input.value || followUpDateBlockReason(input.value)) {
+            return false;
+        }
+        return true;
     }
 
     function followUpSaveConfirmMessage(mode) {
@@ -306,6 +508,21 @@
     }
 
     function confirmThenSubmitFollowUp(followForm, followBtn, loadingMessage) {
+        var dateInput = followForm.querySelector('input[name="follow_up_date"]');
+        if (dateInput && !followUpDateFieldValid(followForm)) {
+            var reason = followUpDateBlockReason(dateInput.value) || 'past';
+            var errEl = followForm.querySelector('[data-follow-up-date-error]');
+            if (errEl) {
+                errEl.textContent = followUpDateBlockMessage(reason);
+                errEl.classList.remove('hidden');
+            }
+            dateInput.setCustomValidity(followUpDateBlockMessage(reason));
+            if (dateInput.reportValidity) {
+                dateInput.reportValidity();
+            }
+            return;
+        }
+
         var mode = followBtn.getAttribute('data-follow-up-mode') || 'create';
         var msg = followUpSaveConfirmMessage(mode);
 
@@ -362,15 +579,7 @@
             var msg = appointmentActionConfirmMessage(data, action);
             var loadingMessage = action === 'delete' ? 'Deleting…' : 'Saving appointment…';
 
-            if (window.AlcrosConfirm && typeof window.AlcrosConfirm.ask === 'function') {
-                window.AlcrosConfirm.ask(msg).then(function (ok) {
-                    if (!ok) return;
-                    submitAppointmentForm(form, loadingMessage);
-                });
-                return;
-            }
-
-            showInlineConfirm(actionsWrap, data, form, action);
+            confirmAppointmentAction(form, msg, action, loadingMessage, actionsWrap, data);
         });
     }
 
@@ -428,7 +637,6 @@
         }
 
         if (canSchedule) {
-            var selectedInterval = '3m';
             var customDate = hasPending && followUp.follow_up_date_iso ? followUp.follow_up_date_iso : '';
             var noteVal = hasPending && followUp.staff_note ? followUp.staff_note : '';
             var followUpDateInputId = prefix.replace(/-$/, '') + '-follow-up-date-input';
@@ -444,20 +652,16 @@
                 '<input type="hidden" name="appointment_id" value="' + escapeHtml(data.id) + '">' +
                 '<input type="hidden" name="follow_up_save" value="1">' +
                 '<p class="manage-follow-up__form-title">' + escapeHtml(formTitle) + '</p>' +
-                '<fieldset class="manage-follow-up__intervals">' +
-                '<legend class="manage-follow-up__field-label">Return visit</legend>' +
-                '<div class="manage-follow-up__interval-grid">' +
-                ['1m', '3m', '6m', 'custom'].map(function (key) {
-                    var labels = { '1m': '1 month', '3m': '3 months', '6m': '6 months', 'custom': 'Pick a date' };
-                    var checked = key === selectedInterval ? ' checked' : '';
-                    return '<label class="manage-follow-up__interval"><input type="radio" name="follow_up_interval" value="' + key + '"' + checked + '><span>' + labels[key] + '</span></label>';
-                }).join('') +
-                '</div></fieldset>' +
-                '<div class="manage-follow-up__date-label hidden" data-follow-up-custom-date-wrap>' +
-                '<label class="manage-follow-up__field-label" for="' + escapeHtml(followUpDateInputId) + '">Custom date</label>' +
+                '<div class="manage-follow-up__date-label" data-follow-up-date-field>' +
+                '<label class="manage-follow-up__field-label" for="' + escapeHtml(followUpDateInputId) + '">Follow-up date</label>' +
+                '<div class="manage-follow-up__date-control" data-follow-up-date-control>' +
+                '<span class="manage-follow-up__date-face" data-follow-up-date-display data-placeholder="mm/dd/yyyy">mm/dd/yyyy</span>' +
                 '<input type="date" id="' + escapeHtml(followUpDateInputId) + '" name="follow_up_date" value="' + escapeHtml(customDate) + '"' +
                 (pageConfig.minFollowUpDate ? ' min="' + escapeHtml(pageConfig.minFollowUpDate) + '"' : '') +
-                ' class="manage-follow-up__date-input" aria-label="Custom follow-up date">' +
+                ' class="manage-follow-up__date-input-native" aria-label="Follow-up date" required>' +
+                '</div>' +
+                '<p class="manage-follow-up__date-hint">Monday to Friday only, excluding holidays.</p>' +
+                '<p class="manage-follow-up__date-error hidden" data-follow-up-date-error role="alert"></p>' +
                 '</div>' +
                 '<label class="manage-follow-up__note-label">' +
                 '<span class="manage-follow-up__field-label">Note for the citizen (optional)</span>' +
@@ -496,22 +700,9 @@
         html += '</div>';
         body.innerHTML = html;
 
-        var customWrap = body.querySelector('[data-follow-up-custom-date-wrap]');
-        var intervalInputs = body.querySelectorAll('input[name="follow_up_interval"]');
-        function syncCustomDateVisibility() {
-            if (!customWrap) return;
-            var selected = body.querySelector('input[name="follow_up_interval"]:checked');
-            var isCustom = selected && selected.value === 'custom';
-            customWrap.classList.toggle('hidden', !isCustom);
-        }
-        intervalInputs.forEach(function (input) {
-            input.addEventListener('change', syncCustomDateVisibility);
-        });
-        syncCustomDateVisibility();
-
-        var followUpDateInput = body.querySelector('input[name="follow_up_date"]');
-        if (followUpDateInput && pageConfig.minFollowUpDate) {
-            followUpDateInput.setAttribute('min', pageConfig.minFollowUpDate);
+        var followUpDateField = body.querySelector('[data-follow-up-date-field]');
+        if (followUpDateField) {
+            wireFollowUpDateField(followUpDateField);
         }
     }
 
@@ -604,6 +795,17 @@
                     notesWrap.classList.add('hidden');
                 }
             }
+
+        var rejectionWrap = document.getElementById(prefix + 'appt-view-rejection-wrap');
+        var rejectionEl = document.getElementById(prefix + 'appt-view-rejection');
+        if (rejectionWrap && rejectionEl) {
+            if (data.rejection_reason) {
+                rejectionEl.textContent = data.rejection_reason;
+                rejectionWrap.classList.remove('hidden');
+            } else {
+                rejectionWrap.classList.add('hidden');
+            }
+        }
 
         renderFollowUp(prefix, data);
         applyModalDetailLayout(prefix, data);

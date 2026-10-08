@@ -7,9 +7,15 @@
     var modal = null;
     var messageEl = null;
     var pendingResolve = null;
+    var pendingInputResolve = null;
     var pendingForm = null;
     var pendingSubmitter = null;
     var hiddenReviewModals = [];
+    var inputWrapEl = null;
+    var inputFieldEl = null;
+    var inputErrorEl = null;
+    var okBtnEl = null;
+    var inputRequired = false;
 
     function hiddenValue(form, name) {
         var el = form.querySelector('[name="' + name + '"]');
@@ -190,6 +196,11 @@
                     '<p class="alcros-modal-badge alcros-modal-badge--confirm">Confirmation</p>' +
                     '<h3 id="alcrosConfirmTitle" class="alcros-confirm-modal__title">Confirm Action</h3>' +
                     '<p id="alcrosConfirmMessage" class="alcros-confirm-modal__message"></p>' +
+                    '<div id="alcrosConfirmInputWrap" class="alcros-confirm-modal__input-wrap hidden">' +
+                        '<label id="alcrosConfirmInputLabel" class="alcros-confirm-modal__input-label" for="alcrosConfirmInputField">Reason</label>' +
+                        '<textarea id="alcrosConfirmInputField" class="alcros-confirm-modal__input" rows="3" maxlength="2000"></textarea>' +
+                        '<p id="alcrosConfirmInputError" class="alcros-confirm-modal__input-error hidden" role="alert"></p>' +
+                    '</div>' +
                 '</div>' +
                 '<div class="alcros-confirm-modal__actions">' +
                     '<button type="button" id="alcrosConfirmCancelBtn" class="alcros-confirm-modal__btn alcros-confirm-modal__btn--cancel">Cancel</button>' +
@@ -200,25 +211,62 @@
         document.body.appendChild(modal);
 
         messageEl = modal.querySelector('#alcrosConfirmMessage');
-        var okBtn = modal.querySelector('#alcrosConfirmOkBtn');
+        okBtnEl = modal.querySelector('#alcrosConfirmOkBtn');
         var cancelBtn = modal.querySelector('#alcrosConfirmCancelBtn');
         var closeBtn = modal.querySelector('#alcrosConfirmCloseBtn');
         var panel = modal.querySelector('.alcros-confirm-modal__panel');
+        inputWrapEl = modal.querySelector('#alcrosConfirmInputWrap');
+        inputFieldEl = modal.querySelector('#alcrosConfirmInputField');
+        inputErrorEl = modal.querySelector('#alcrosConfirmInputError');
+        var inputLabelEl = modal.querySelector('#alcrosConfirmInputLabel');
 
-        okBtn.addEventListener('click', function (e) {
+        if (inputFieldEl) {
+            inputFieldEl.addEventListener('input', function () {
+                if (inputErrorEl) {
+                    inputErrorEl.classList.add('hidden');
+                    inputErrorEl.textContent = '';
+                }
+                syncInputOkButton();
+            });
+        }
+
+        okBtnEl.addEventListener('click', function (e) {
             e.preventDefault();
             e.stopPropagation();
+            if (pendingInputResolve) {
+                var value = inputFieldEl ? String(inputFieldEl.value || '').trim() : '';
+                if (inputRequired && value === '') {
+                    if (inputErrorEl) {
+                        inputErrorEl.textContent = 'Please enter a reason before continuing.';
+                        inputErrorEl.classList.remove('hidden');
+                    }
+                    if (inputFieldEl) {
+                        inputFieldEl.focus();
+                    }
+                    return;
+                }
+                closeInputModal(value);
+                return;
+            }
             closeModal(true);
         });
         cancelBtn.addEventListener('click', function (e) {
             e.preventDefault();
             e.stopPropagation();
+            if (pendingInputResolve) {
+                closeInputModal(null);
+                return;
+            }
             closeModal(false);
         });
         if (closeBtn) {
             closeBtn.addEventListener('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
+                if (pendingInputResolve) {
+                    closeInputModal(null);
+                    return;
+                }
                 closeModal(false);
             });
         }
@@ -232,11 +280,45 @@
         });
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape' && modal.classList.contains('is-open')) {
+                if (pendingInputResolve) {
+                    closeInputModal(null);
+                    return;
+                }
                 closeModal(false);
             }
         });
 
+        if (inputLabelEl) {
+            modal._inputLabelEl = inputLabelEl;
+        }
+
         return modal;
+    }
+
+    function syncInputOkButton() {
+        if (!okBtnEl || !inputRequired || !inputFieldEl) {
+            return;
+        }
+        var value = String(inputFieldEl.value || '').trim();
+        okBtnEl.disabled = value === '';
+    }
+
+    function resetInputArea() {
+        inputRequired = false;
+        if (inputWrapEl) {
+            inputWrapEl.classList.add('hidden');
+        }
+        if (inputFieldEl) {
+            inputFieldEl.value = '';
+        }
+        if (inputErrorEl) {
+            inputErrorEl.textContent = '';
+            inputErrorEl.classList.add('hidden');
+        }
+        if (okBtnEl) {
+            okBtnEl.disabled = false;
+            okBtnEl.textContent = 'Confirm';
+        }
     }
 
     function dismissBlockingLayers() {
@@ -248,19 +330,41 @@
         }
     }
 
-    function openModal(message) {
+    function openModal(message, inputOptions) {
         ensureModal();
         dismissBlockingLayers();
+        resetInputArea();
         messageEl.textContent = message || 'Are you sure you want to continue?';
         hideReviewModalsForConfirm();
         document.body.classList.add('alcros-confirm-open');
         document.body.appendChild(modal);
         modal.classList.remove('is-hidden');
         modal.classList.add('is-open');
-        var okBtn = modal.querySelector('#alcrosConfirmOkBtn');
-        if (okBtn) {
+
+        if (inputOptions && inputWrapEl && inputFieldEl) {
+            inputRequired = inputOptions.required !== false;
+            inputWrapEl.classList.remove('hidden');
+            if (modal._inputLabelEl && inputOptions.label) {
+                modal._inputLabelEl.textContent = inputOptions.label;
+            }
+            if (inputOptions.placeholder) {
+                inputFieldEl.setAttribute('placeholder', inputOptions.placeholder);
+            } else {
+                inputFieldEl.removeAttribute('placeholder');
+            }
+            if (okBtnEl && inputOptions.okLabel) {
+                okBtnEl.textContent = inputOptions.okLabel;
+            }
+            syncInputOkButton();
             window.requestAnimationFrame(function () {
-                okBtn.focus();
+                inputFieldEl.focus();
+            });
+            return;
+        }
+
+        if (okBtnEl) {
+            window.requestAnimationFrame(function () {
+                okBtnEl.focus();
             });
         }
     }
@@ -270,6 +374,7 @@
         modal.classList.add('is-hidden');
         modal.classList.remove('is-open');
         document.body.classList.remove('alcros-confirm-open');
+        resetInputArea();
         if (!result) {
             restoreReviewModalsAfterConfirm();
         }
@@ -285,10 +390,37 @@
         }
     }
 
+    function closeInputModal(value) {
+        if (!modal) return;
+        modal.classList.add('is-hidden');
+        modal.classList.remove('is-open');
+        document.body.classList.remove('alcros-confirm-open');
+        resetInputArea();
+        restoreReviewModalsAfterConfirm();
+        var resolve = pendingInputResolve;
+        pendingInputResolve = null;
+        if (resolve) {
+            resolve(value);
+        }
+    }
+
     function ask(message) {
         return new Promise(function (resolve) {
             pendingResolve = resolve;
             openModal(message);
+        });
+    }
+
+    function askWithReason(message, options) {
+        options = options || {};
+        return new Promise(function (resolve) {
+            pendingInputResolve = resolve;
+            openModal(message, {
+                label: options.label || 'Reason for rejection',
+                placeholder: options.placeholder || 'Explain why this is being rejected…',
+                required: options.required !== false,
+                okLabel: options.okLabel || 'Reject'
+            });
         });
     }
 
@@ -368,6 +500,7 @@
 
     global.AlcrosConfirm = {
         ask: ask,
+        askWithReason: askWithReason,
         markConfirmed: markConfirmed,
         inferMessage: inferMessage,
         dismissBlockingLayers: dismissBlockingLayers

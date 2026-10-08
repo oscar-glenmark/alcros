@@ -261,6 +261,41 @@ body.citizen-site {
     }
 }
 
+.citizen-service-card__fees {
+    width: 100%;
+    margin-bottom: 0.75rem;
+    padding: 0.55rem 0.65rem;
+    border-radius: 0.5rem;
+    background: linear-gradient(90deg, #fffbeb 0%, #fef3c7 100%);
+    border: 1px solid #fcd34d;
+}
+
+.citizen-service-card__fees-label {
+    margin: 0 0 0.25rem;
+    font-size: 0.5625rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #b45309;
+}
+
+.citizen-service-card__fees-line {
+    margin: 0;
+    font-size: 0.625rem;
+    font-weight: 700;
+    line-height: 1.45;
+    color: #92400e;
+}
+
+.citizen-service-card__fees-line + .citizen-service-card__fees-line {
+    margin-top: 0.2rem;
+}
+
+.citizen-service-card.p-8 .citizen-service-card__fees {
+    text-align: left;
+    margin-bottom: 1rem;
+}
+
 .citizen-service-card--appointment {
     cursor: default;
 }
@@ -523,6 +558,17 @@ body.svc-req-modal-open .citizen-site-main {
 
 .svc-req-fees p + p {
     margin-top: 0.35rem;
+}
+
+.svc-req-notes {
+    margin-top: 0.65rem;
+    font-size: 0.6875rem;
+    line-height: 1.45;
+    color: #64748b;
+}
+
+.svc-req-notes p {
+    margin: 0;
 }
 
 .svc-req-modal__footer {

@@ -1319,13 +1319,38 @@ function printDocumentsFillEditorFields(PDO $pdo, string $certificateType, strin
         require_once __DIR__ . '/certification_print.php';
         $catalog = certificationFieldCatalog()[$certificateType] ?? [];
         $fields = [];
+        $seen = [];
         foreach ($catalog as $fieldName => $label) {
+            if (!printFieldIncludedInFillEditor($pdo, $certificateType, 'front', (string) $fieldName, 'certification')) {
+                continue;
+            }
             $fields[] = [
                 'field_name' => $fieldName,
                 'label'      => $label,
                 'page_side'  => 'front',
                 'value'      => '',
             ];
+            $seen[$fieldName] = true;
+        }
+
+        $template = getPrintTemplate($pdo, $certificateType, 'front', 'certification');
+        if ($template) {
+            foreach (getPrintFields($pdo, (int) $template['id'], true) as $dbField) {
+                $name = (string) $dbField['field_name'];
+                if (!printIsCustomField($name) || isset($seen[$name])) {
+                    continue;
+                }
+                if (!printFieldIncludedInFillEditor($pdo, $certificateType, 'front', $name, 'certification')) {
+                    continue;
+                }
+                $fields[] = [
+                    'field_name' => $name,
+                    'label'      => (string) ($dbField['label'] ?: $name),
+                    'page_side'  => 'front',
+                    'value'      => '',
+                ];
+                $seen[$name] = true;
+            }
         }
 
         return $fields;
@@ -1718,6 +1743,38 @@ function printStripExcludedOptionalSections(array $values, array $options): arra
     return $values;
 }
 
+/** null = no row on template (removed in calibration); false = hidden; true = shown on print. */
+function printFieldEnabledOnTemplate(PDO $pdo, int $templateId, string $fieldName): ?bool
+{
+    $stmt = $pdo->prepare(
+        'SELECT enabled FROM print_fields WHERE template_id = ? AND field_name = ? LIMIT 1'
+    );
+    $stmt->execute([$templateId, $fieldName]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) {
+        return null;
+    }
+
+    return (int) ($row['enabled'] ?? 1) === 1;
+}
+
+function printFieldIncludedInFillEditor(
+    PDO $pdo,
+    string $certificateType,
+    string $pageSide,
+    string $fieldName,
+    string $documentKind = 'certificate'
+): bool {
+    $template = getPrintTemplate($pdo, $certificateType, $pageSide, $documentKind);
+    if (!$template) {
+        return false;
+    }
+
+    $enabled = printFieldEnabledOnTemplate($pdo, (int) $template['id'], $fieldName);
+
+    return $enabled === true;
+}
+
 /** @return array<string, string> Catalog + custom calibration field labels for front and back pages. */
 function printFillFieldLabelsForType(PDO $pdo, string $certificateType): array
 {
@@ -1726,7 +1783,15 @@ function printFillFieldLabelsForType(PDO $pdo, string $certificateType): array
     }
 
     $catalog = printFieldCatalog()[$certificateType] ?? [];
-    $labels = array_merge($catalog['front'] ?? [], $catalog['back'] ?? []);
+    $labels = [];
+
+    foreach (['front', 'back'] as $side) {
+        foreach ($catalog[$side] ?? [] as $name => $label) {
+            if (printFieldIncludedInFillEditor($pdo, $certificateType, $side, (string) $name)) {
+                $labels[$name] = $label;
+            }
+        }
+    }
 
     foreach (['front', 'back'] as $side) {
         $template = getPrintTemplate($pdo, $certificateType, $side);
@@ -1752,8 +1817,22 @@ function printFillCsvColumnsForType(PDO $pdo, string $type): array
         require_once __DIR__ . '/print_field_definitions.php';
     }
 
-    $columns = printFillCsvColumns($type);
-    $seen = array_fill_keys($columns, true);
+    $catalog = printFieldCatalog()[$type] ?? [];
+    $columns = [];
+    $seen = [];
+    foreach (['front', 'back'] as $side) {
+        foreach ($catalog[$side] ?? [] as $name => $_label) {
+            $name = (string) $name;
+            if (isset($seen[$name])) {
+                continue;
+            }
+            if (!printFieldIncludedInFillEditor($pdo, $type, $side, $name)) {
+                continue;
+            }
+            $columns[] = $name;
+            $seen[$name] = true;
+        }
+    }
 
     foreach (['front', 'back'] as $side) {
         $template = getPrintTemplate($pdo, $type, $side);
@@ -1807,6 +1886,12 @@ function printFillEditorFields(string $certificateType, array $record, array $op
             if (printIsRecordRegistryField($name) && !empty($options['exclude_record_registry_fields'])) {
                 continue;
             }
+            if ($pdo !== null && !printFieldIncludedInFillEditor($pdo, $certificateType, $side, (string) $name)) {
+                continue;
+            }
+            if (isset($seen[$name])) {
+                continue;
+            }
             $rawValue = (string) ($values[$name] ?? '');
             $fields[] = [
                 'field_name' => $name,
@@ -1829,6 +1914,9 @@ function printFillEditorFields(string $certificateType, array $record, array $op
             foreach (getPrintFields($pdo, (int) $template['id'], true) as $dbField) {
                 $name = (string) $dbField['field_name'];
                 if (!printIsCustomField($name) || isset($seen[$name])) {
+                    continue;
+                }
+                if (!printFieldIncludedInFillEditor($pdo, $certificateType, $side, $name)) {
                     continue;
                 }
                 $rawValue = (string) ($values[$name] ?? '');
@@ -2330,10 +2418,19 @@ function getPrintTemplateById(PDO $pdo, int $templateId): ?array
 
 function nextCustomTextboxFieldName(PDO $pdo, int $templateId): string
 {
+    $template = getPrintTemplateById($pdo, $templateId);
+    if (!$template) {
+        return 'custom_textbox_1';
+    }
+
+    $documentKind = normalizePrintDocumentKind($template['document_kind'] ?? 'certificate');
     $stmt = $pdo->prepare(
-        'SELECT field_name FROM print_fields WHERE template_id = ? AND field_name LIKE ?'
+        'SELECT pf.field_name
+         FROM print_fields pf
+         INNER JOIN print_templates pt ON pt.id = pf.template_id
+         WHERE pt.certificate_type = ? AND pt.document_kind = ? AND pf.field_name LIKE ?'
     );
-    $stmt->execute([$templateId, 'custom_textbox_%']);
+    $stmt->execute([(string) $template['certificate_type'], $documentKind, 'custom_textbox_%']);
     $max = 0;
     foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) ?: [] as $name) {
         if (preg_match('/^custom_textbox_(\d+)$/', (string) $name, $matches)) {
@@ -2468,6 +2565,58 @@ function getPrintFieldsForCalibration(PDO $pdo, int $templateId, bool $enabledOn
     ));
 }
 
+function removeFieldFromStoredPrintFill(PDO $pdo, string $fieldName, string $certificateType): void
+{
+    try {
+        $recordStmt = $pdo->prepare(
+            'SELECT id, print_fill_data FROM civil_records
+             WHERE record_type = ? AND print_fill_data IS NOT NULL AND print_fill_data != \'\''
+        );
+        $recordStmt->execute([$certificateType]);
+        $updateRecord = $pdo->prepare('UPDATE civil_records SET print_fill_data = ? WHERE id = ?');
+        foreach ($recordStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $fill = printParseFillData($row['print_fill_data'] ?? null);
+            if (!array_key_exists($fieldName, $fill)) {
+                continue;
+            }
+            unset($fill[$fieldName]);
+            $json = $fill === [] ? null : json_encode($fill, JSON_UNESCAPED_UNICODE);
+            $updateRecord->execute([$json, (int) $row['id']]);
+        }
+
+        $requestStmt = $pdo->prepare(
+            'SELECT id, print_fill_data FROM document_requests
+             WHERE document_type = ? AND print_fill_data IS NOT NULL AND print_fill_data != \'\''
+        );
+        $requestStmt->execute([$certificateType]);
+        $updateRequest = $pdo->prepare('UPDATE document_requests SET print_fill_data = ? WHERE id = ?');
+        foreach ($requestStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $fill = printParseFillData($row['print_fill_data'] ?? null);
+            if (!array_key_exists($fieldName, $fill)) {
+                continue;
+            }
+            unset($fill[$fieldName]);
+            $json = $fill === [] ? null : json_encode($fill, JSON_UNESCAPED_UNICODE);
+            $updateRequest->execute([$json, (int) $row['id']]);
+        }
+    } catch (Throwable $e) {
+        // Non-fatal — field rows are already removed from print_fields.
+    }
+}
+
+function printFieldExistsOnCertificate(PDO $pdo, string $certificateType, string $documentKind, string $fieldName): bool
+{
+    $stmt = $pdo->prepare(
+        'SELECT 1 FROM print_fields pf
+         INNER JOIN print_templates pt ON pt.id = pf.template_id
+         WHERE pt.certificate_type = ? AND pt.document_kind = ? AND pf.field_name = ?
+         LIMIT 1'
+    );
+    $stmt->execute([$certificateType, $documentKind, $fieldName]);
+
+    return (bool) $stmt->fetchColumn();
+}
+
 function deletePrintField(PDO $pdo, int $fieldId): bool
 {
     $field = getPrintFieldById($pdo, $fieldId);
@@ -2475,9 +2624,25 @@ function deletePrintField(PDO $pdo, int $fieldId): bool
         return false;
     }
 
-    $stmt = $pdo->prepare('DELETE FROM print_fields WHERE id = ? LIMIT 1');
+    $fieldName = (string) $field['field_name'];
+    $template = getPrintTemplateById($pdo, (int) $field['template_id']);
+    if (!$template) {
+        return false;
+    }
 
-    return $stmt->execute([$fieldId]);
+    $certificateType = (string) $template['certificate_type'];
+    $documentKind = normalizePrintDocumentKind($template['document_kind'] ?? 'certificate');
+
+    $stmt = $pdo->prepare('DELETE FROM print_fields WHERE id = ? LIMIT 1');
+    if (!$stmt->execute([$fieldId]) || $stmt->rowCount() < 1) {
+        return false;
+    }
+
+    if (!printFieldExistsOnCertificate($pdo, $certificateType, $documentKind, $fieldName)) {
+        removeFieldFromStoredPrintFill($pdo, $fieldName, $certificateType);
+    }
+
+    return true;
 }
 
 function updatePrintField(PDO $pdo, int $fieldId, array $data): bool

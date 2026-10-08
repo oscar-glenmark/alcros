@@ -190,8 +190,13 @@ function actionResultScript(?array $flash): string
         return '';
     }
 
+    $flashType = (string) ($flash[0] ?? 'error');
+    if (!in_array($flashType, ['success', 'warning', 'error'], true)) {
+        $flashType = 'error';
+    }
+
     return pageConfigJson([
-        'type' => $flash[0] === 'success' ? 'success' : 'error',
+        'type' => $flashType,
         'message' => (string) $flash[1],
     ], 'alcros-action-result');
 }

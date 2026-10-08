@@ -226,7 +226,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <main class="citizen-site-main">
         <section class="citizen-page-hero citizen-page-hero--compact">
-            <div class="max-w-lg mx-auto">
+            <div class="max-w-2xl mx-auto">
                 <a href="services.php" class="back-home back-home--inline is-centered">
                     <i data-lucide="chevron-left" class="back-home__icon w-3 h-3"></i>
                     <span>Back to Services</span>
@@ -236,35 +236,71 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
         </section>
 
-        <section class="max-w-lg mx-auto px-4 pb-12">
+        <section class="max-w-2xl mx-auto px-4 pb-12">
         <?php if ($success): ?>
-        <div class="citizen-request-card p-4 sm:p-6 md:p-8 text-center">
-            <div class="w-12 h-12 bg-green-50 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                <i data-lucide="calendar-check" class="w-6 h-6"></i>
+        <?php
+        $successCitizenName = $citizenName !== '' ? $citizenName : trim($firstName . ' ' . $lastName);
+        $successServiceLabel = $serviceType !== '' ? $serviceType : $serviceLabel;
+        ?>
+        <div class="citizen-request-card p-4 sm:p-6 md:p-8 lg:p-10">
+            <div class="text-center mb-8">
+                <div class="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i data-lucide="check-circle" class="w-8 h-8"></i>
+                </div>
+                <h1 class="text-2xl font-black text-slate-900 mb-2">Appointment Booked Successfully</h1>
+                <p class="text-gray-500 text-sm">
+                    Thank you, <strong><?= htmlspecialchars($successCitizenName) ?></strong>.
+                    Your <?= htmlspecialchars($successServiceLabel) ?> appointment is now in our system.
+                </p>
             </div>
-            <h2 class="text-xl font-black text-slate-900 mb-2">Appointment Booked</h2>
-            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Your Appointment Code</p>
-            <p class="text-blue-600 text-2xl font-black tracking-widest mb-4" id="booked-appt-code"><?= htmlspecialchars($appointmentCode) ?></p>
-            <p class="text-gray-500 text-sm mb-4">Save this code to track your appointment status anytime.</p>
-            <?php if ($notifyEmail && $emailSent): ?>
-            <p class="citizen-request-notice citizen-request-notice--success text-left mb-4">
-                A Gmail confirmation was sent. You will also receive email reminders 5 hours, 3 hours, and 1 hour before your appointment.
-            </p>
-            <?php elseif ($notifyEmail): ?>
-            <p class="citizen-request-notice citizen-request-notice--warn text-left mb-4">
-                We could not send the Gmail confirmation right now. Please save your appointment code. Ask staff to verify Gmail SMTP in Settings if this keeps happening.
-            </p>
-            <?php else: ?>
-            <p class="citizen-request-notice citizen-request-notice--warn text-left mb-4">
-                Gmail notifications were not enabled for this booking. You can still track your appointment online using your code.
-            </p>
-            <?php endif; ?>
-            <button type="button" data-open-track data-track-code="<?= htmlspecialchars($appointmentCode, ENT_QUOTES) ?>" class="citizen-btn-gold inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm">
-                Track Appointment <i data-lucide="arrow-right" class="w-4 h-4"></i>
-            </button>
+
+            <div class="bg-blue-50 border border-blue-100 rounded-xl p-6 text-center mb-6">
+                <p class="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-2">Your appointment code</p>
+                <p id="success-tracking-code" class="text-3xl md:text-4xl font-black text-blue-700 tracking-widest"><?= htmlspecialchars($appointmentCode) ?></p>
+                <button type="button" id="copy-tracking-btn" class="mt-4 inline-flex items-center gap-2 bg-white border border-blue-200 text-blue-700 px-4 py-2 rounded-lg text-xs font-bold hover:bg-blue-100">
+                    <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy code
+                </button>
+            </div>
+
+            <div class="space-y-3 text-sm text-slate-600 mb-6">
+                <?php if ($date !== ''): ?>
+                <p><span class="font-bold text-slate-500">Scheduled visit:</span> <?= htmlspecialchars(formatAppointmentDisplay($date, $time)) ?></p>
+                <?php endif; ?>
+                <p><span class="font-bold text-slate-500">Status:</span> Awaiting confirmation — you can follow every update online.</p>
+                <?php if ($notifyEmail && $emailSent): ?>
+                <p class="citizen-request-notice citizen-request-notice--success">
+                    <i data-lucide="mail" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                    <span>A Gmail confirmation was sent to <strong><?= htmlspecialchars($email) ?></strong>. You will also receive email reminders 5 hours, 3 hours, and 1 hour before your appointment.</span>
+                </p>
+                <?php elseif ($notifyEmail): ?>
+                <p class="citizen-request-notice citizen-request-notice--warn">
+                    <i data-lucide="alert-circle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                    <span>We could not send the Gmail confirmation right now. Please save your appointment code and use <strong>Track</strong>. Staff can still email updates once Gmail sending is configured.</span>
+                </p>
+                <?php else: ?>
+                <p class="citizen-request-notice citizen-request-notice--warn">
+                    <i data-lucide="alert-circle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                    <span>Gmail notifications were not enabled for this booking, so confirmation and visit reminders will not be emailed. Please save your appointment code and use <strong>Track</strong> to follow your status.</span>
+                </p>
+                <?php endif; ?>
+                <?php if ($notifySms): ?>
+                <p class="citizen-request-notice citizen-request-notice--success">
+                    <i data-lucide="message-square" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                    <span>SMS updates are enabled. You will receive a text when staff confirms your appointment and a reminder 1 hour before your visit.</span>
+                </p>
+                <?php endif; ?>
+            </div>
+
+            <div class="flex flex-col sm:flex-row justify-center gap-3">
+                <button type="button" data-open-track data-track-code="<?= htmlspecialchars($appointmentCode, ENT_QUOTES) ?>" class="citizen-btn-gold px-6 py-3 rounded-full text-xs text-center">Track My Appointment</button>
+                <a href="services.php" class="back-home back-home--btn">Back to Services</a>
+            </div>
         </div>
+        <?= pageConfigJson(['trackingCode' => $appointmentCode], 'request-success-config') ?>
+        <?= scriptTag('core/page-config.js') ?>
+        <?= scriptTag('public/request-success.js') ?>
         <?php else: ?>
-        <form method="POST" enctype="multipart/form-data" class="citizen-request-card p-4 sm:p-6 space-y-4" id="bookAppointmentForm" data-slot-type="standalone">
+        <form method="POST" enctype="multipart/form-data" class="citizen-request-card p-4 sm:p-6 md:p-8 space-y-4" id="bookAppointmentForm" data-slot-type="standalone">
             <?= publicCsrfField() ?>
             <input type="hidden" name="service" value="<?= htmlspecialchars($service) ?>">
             <input type="hidden" name="email_verified" id="emailVerified" value="<?= $gmailVerified ? '1' : '0' ?>">

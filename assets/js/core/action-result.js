@@ -79,21 +79,24 @@
     }
 
     function applyType(type) {
-        var isSuccess = type === 'success';
-        var tone = isSuccess ? 'success' : 'error';
+        var tone = type === 'warning' ? 'warning' : (type === 'success' ? 'success' : 'error');
+        var isSuccess = tone === 'success';
+        var isWarning = tone === 'warning';
         iconWrapEl.className = 'alcros-action-result-modal__icon-wrap alcros-action-result-modal__icon-wrap--' + tone;
         iconWrapEl.innerHTML =
             '<div class="alcros-action-result-modal__icon alcros-action-result-modal__icon--' + tone + '">' +
                 (isSuccess
                     ? '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>'
-                    : '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>') +
+                    : isWarning
+                        ? '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path></svg>'
+                        : '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>') +
             '</div>';
         if (badgeEl) {
             badgeEl.className = 'alcros-modal-badge alcros-modal-badge--' + tone;
-            badgeEl.textContent = isSuccess ? 'Success' : 'Error';
+            badgeEl.textContent = isSuccess ? 'Success' : (isWarning ? 'Attention' : 'Error');
         }
-        titleEl.textContent = isSuccess ? 'Action Successful' : 'Action Failed';
-        okBtn.textContent = isSuccess ? 'Done' : 'Try Again';
+        titleEl.textContent = isSuccess ? 'Action Successful' : (isWarning ? 'Saved with warnings' : 'Action Failed');
+        okBtn.textContent = isSuccess || isWarning ? 'Done' : 'Try Again';
         okBtn.className = 'alcros-action-result-modal__btn alcros-action-result-modal__btn--' + tone;
     }
 
@@ -114,7 +117,8 @@
         if (options.title) titleEl.textContent = options.title;
         if (options.badge && badgeEl) badgeEl.textContent = options.badge;
         if (options.buttonLabel) okBtn.textContent = options.buttonLabel;
-        messageEl.textContent = message || (type === 'success' ? 'The action completed successfully.' : 'The action could not be completed.');
+        messageEl.style.whiteSpace = 'pre-line';
+        messageEl.textContent = message || (type === 'success' ? 'The action completed successfully.' : (type === 'warning' ? 'The action completed but some notifications failed.' : 'The action could not be completed.'));
         document.body.appendChild(modal);
         modal.classList.remove('is-hidden');
         modal.classList.add('is-open');
@@ -133,7 +137,8 @@
     }
 
     function show(type, message, options) {
-        openModal(type === 'success' ? 'success' : 'error', message, options || {});
+        var normalized = type === 'success' || type === 'warning' ? type : 'error';
+        openModal(normalized, message, options || {});
     }
 
     function initFromConfig() {

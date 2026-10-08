@@ -14,10 +14,11 @@ try {
     $pdo = getDB();
     ensureSoftDeleteColumns($pdo);
     ensureAppointmentUpdatedColumn($pdo);
+    ensureRejectionReasonColumns($pdo);
 
     $stmt = $pdo->prepare(
         'SELECT appointment_code, first_name, middle_name, last_name, service_type, status,
-                appointment_date, appointment_time, email, phone, created_at, updated_at
+                appointment_date, appointment_time, email, phone, created_at, updated_at, rejection_reason
          FROM appointments
          WHERE appointment_code = ? AND deleted_at IS NULL
          LIMIT 1'
@@ -43,7 +44,7 @@ try {
         'service'        => appointmentServiceLabel($appointment['service_type']),
         'status_html'    => appointmentStatusBadge($appointment['status']),
         'status_label'   => appointmentStatusLabel($appointment['status']),
-        'status_message' => appointmentStatusMessage($appointment['status']),
+        'status_message' => appointmentStatusMessage($appointment['status'], $appointment['rejection_reason'] ?? null),
         'current_idx'    => $currentIdx === false ? -1 : (int) $currentIdx,
         'status_steps'   => $statusSteps,
         'step_labels'    => array_map('appointmentStatusLabel', $statusSteps),
@@ -54,6 +55,7 @@ try {
             . '|' . (string) ($appointment['appointment_date'] ?? '')
             . '|' . (string) ($appointment['appointment_time'] ?? '')
             . '|' . (string) $updatedAt
+            . '|' . (string) ($appointment['rejection_reason'] ?? '')
         ),
     ]);
 } catch (Throwable $e) {

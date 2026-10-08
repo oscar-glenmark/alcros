@@ -17,12 +17,10 @@ function appointmentServiceRequirementsKey(string $slug): string
     };
 }
 
-/** @return array{title: string, subtitle: string, lead: string, items: list<array{text: string, sub?: list<string>}>, notes: list<string>} */
-function getAppointmentServiceRequirements(string $slug, ?string $serviceLabel = null): array
+/** @return array<string, array{title: string, subtitle: string, lead: string, items: list<array{text: string, sub?: list<string>}>, notes: list<string>}> */
+function appointmentServiceRequirementsBuiltinSpecs(): array
 {
-    $key = appointmentServiceRequirementsKey($slug);
-
-    $specs = [
+    return [
         'delayed-registration-birth' => [
             'title'    => 'Delayed Registration of Birth',
             'subtitle' => 'Mandatory requirements',
@@ -174,13 +172,83 @@ function getAppointmentServiceRequirements(string $slug, ?string $serviceLabel =
             'notes'    => [],
         ],
     ];
+}
 
+/** @return array{title: string, subtitle: string, lead: string, items: list<array{text: string, sub?: list<string>}>, notes: list<string>} */
+function appointmentServiceRequirementsBuiltinSpec(string $key): array
+{
+    $specs = appointmentServiceRequirementsBuiltinSpecs();
+
+    return $specs[$key] ?? $specs['general'];
+}
+
+/** @return array{title: string, subtitle: string, lead: string, items: list<array{text: string, sub?: list<string>}>, notes: list<string>} */
+function getAppointmentServiceRequirements(string $slug, ?string $serviceLabel = null): array
+{
+    $key = appointmentServiceRequirementsKey($slug);
+
+    $specs = appointmentServiceRequirementsBuiltinSpecs();
     $spec = $specs[$key] ?? $specs['general'];
     if ($key === 'general' && $serviceLabel !== null && trim($serviceLabel) !== '') {
         $spec['title'] = trim($serviceLabel);
     }
 
+    if ($key !== 'general') {
+        require_once __DIR__ . '/office_fees.php';
+        $spec = applyConfiguredOfficeRequirements($spec, $key);
+        $spec = applyConfiguredOfficeFeesToRequirement($spec, $key);
+    }
+
     return $spec;
+}
+
+/** @param array{notes: list<string>} $req */
+function appointmentServiceRequirementsFeeNotes(array $req): array
+{
+    return array_values(array_filter($req['notes'], static function (string $note): bool {
+        return preg_match('/\bfee\b|PHP\s*[\d,]/iu', $note) === 1;
+    }));
+}
+
+/** @param array{notes: list<string>} $req */
+function appointmentServiceRequirementsNonFeeNotes(array $req): array
+{
+    return array_values(array_filter($req['notes'], static function (string $note): bool {
+        return preg_match('/\bfee\b|PHP\s*[\d,]/iu', $note) !== 1;
+    }));
+}
+
+function appointmentServiceRequirementsFeesSummary(string $slug, ?string $serviceLabel = null): string
+{
+    $req = getAppointmentServiceRequirements($slug, $serviceLabel);
+    $fees = appointmentServiceRequirementsFeeNotes($req);
+
+    return $fees !== [] ? implode("\n", $fees) : '';
+}
+
+/** @param list<string> $feeLines */
+function renderOfficeFeesCardHtml(array $feeLines): string
+{
+    $feeLines = array_values(array_filter(array_map(static fn (string $line): string => trim($line), $feeLines)));
+    if ($feeLines === []) {
+        return '';
+    }
+
+    $html = '<div class="citizen-service-card__fees" role="note">';
+    $html .= '<p class="citizen-service-card__fees-label">Office fees</p>';
+    foreach ($feeLines as $fee) {
+        $html .= '<p class="citizen-service-card__fees-line">' . htmlspecialchars($fee) . '</p>';
+    }
+    $html .= '</div>';
+
+    return $html;
+}
+
+function renderAppointmentServiceFeesCardHtml(string $slug, ?string $serviceLabel = null): string
+{
+    $req = getAppointmentServiceRequirements($slug, $serviceLabel);
+
+    return renderOfficeFeesCardHtml(appointmentServiceRequirementsFeeNotes($req));
 }
 
 function renderAppointmentServiceRequirementsHtml(string $slug): string
@@ -206,9 +274,18 @@ function renderAppointmentServiceRequirementsHtml(string $slug): string
     }
     $html .= '</ol>';
 
-    if ($req['notes'] !== []) {
+    $feeNotes = appointmentServiceRequirementsFeeNotes($req);
+    if ($feeNotes !== []) {
         $html .= '<div class="svc-req-fees" role="note">';
-        foreach ($req['notes'] as $note) {
+        foreach ($feeNotes as $note) {
+            $html .= '<p>' . htmlspecialchars($note) . '</p>';
+        }
+        $html .= '</div>';
+    }
+    $nonFeeNotes = appointmentServiceRequirementsNonFeeNotes($req);
+    if ($nonFeeNotes !== []) {
+        $html .= '<div class="svc-req-notes" role="note">';
+        foreach ($nonFeeNotes as $note) {
             $html .= '<p>' . htmlspecialchars($note) . '</p>';
         }
         $html .= '</div>';

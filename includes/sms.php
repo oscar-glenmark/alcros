@@ -128,12 +128,41 @@ function iprogHttpRequest(string $method, string $path, array $payload = []): ar
 
 function smsProviderSendBlockReason(): ?string
 {
-    return null;
+    if (!isSmsEnabled() || !isSmsConfigured()) {
+        return null;
+    }
+
+    try {
+        ensureExtendedSchema(getDB());
+        // Only warn when the most recent attempt failed — not when an older failure precedes a later success.
+        $stmt = getDB()->query(
+            'SELECT success, error_message FROM sms_logs ORDER BY sent_at DESC, id DESC LIMIT 1'
+        );
+        $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : false;
+        if (!$row || !empty($row['success'])) {
+            return null;
+        }
+
+        $reason = trim((string) ($row['error_message'] ?? ''));
+        if ($reason === '') {
+            return null;
+        }
+        if (stripos($reason, 'Smart/TNT') !== false) {
+            return $reason;
+        }
+        if (stripos($reason, 'phishing') !== false || stripos($reason, 'suspicious') !== false) {
+            return 'IPROG blocked the last SMS (often due to links in the message). ALCROS no longer puts URLs in SMS; retry after saving Configuration.';
+        }
+
+        return 'The last SMS attempt failed: ' . $reason;
+    } catch (Throwable $e) {
+        return null;
+    }
 }
 
 function smsSenderConfigurationHint(): ?string
 {
-    return null;
+    return smsProviderSendBlockReason();
 }
 
 function iprogFormatApiError(mixed $decoded, int $httpCode): string
@@ -224,6 +253,23 @@ function logSmsDelivery(
     }
 }
 
+/** Remove links IPROG often blocks (http localhost, non-https, etc.). Requirements belong in email. */
+function smsSanitizeMessageForIprog(string $message): string
+{
+    $message = trim(preg_replace('/\s+/u', ' ', $message));
+    if ($message === '') {
+        return '';
+    }
+
+    if (preg_match('#https?://#iu', $message)) {
+        $message = preg_replace('#https?://[^\s]+#iu', '', $message);
+        $message = preg_replace('#\bRequirements:\s*#iu', '', $message);
+        $message = trim(preg_replace('/\s+/u', ' ', $message));
+    }
+
+    return $message;
+}
+
 function sendIprogSms(string $phone, string $message): array
 {
     if (!isSmsConfigured()) {
@@ -235,7 +281,7 @@ function sendIprogSms(string $phone, string $message): array
         return ['ok' => false, 'error' => 'Invalid Philippine mobile number.'];
     }
 
-    $message = trim($message);
+    $message = smsSanitizeMessageForIprog($message);
     if ($message === '') {
         return ['ok' => false, 'error' => 'SMS message is empty.'];
     }
@@ -261,40 +307,67 @@ function sendIprogSms(string $phone, string $message): array
     return ['ok' => true, 'response' => $decoded ?? ($result['body'] ?? null)];
 }
 
+function smsLastDeliveryError(): ?string
+{
+    $err = $GLOBALS['alcros_sms_last_delivery_error'] ?? null;
+
+    return is_string($err) && $err !== '' ? $err : null;
+}
+
+/** @return array{attempted: bool, sent: bool} */
+function citizenSmsNotifySkipped(): array
+{
+    return ['attempted' => false, 'sent' => false];
+}
+
+/** @return array{attempted: bool, sent: bool} */
+function citizenSmsNotifyResult(bool $sent): array
+{
+    return ['attempted' => true, 'sent' => $sent];
+}
+
 function sendCitizenSms(string $phone, string $message, string $smsType = 'general', ?string $referenceCode = null): bool
 {
+    $GLOBALS['alcros_sms_last_delivery_error'] = null;
+
     if (!isSmsEnabled()) {
+        $GLOBALS['alcros_sms_last_delivery_error'] = 'SMS is disabled in Settings.';
         logSmsDelivery(
             normalizeSmsPhone($phone) ?: $phone,
             $message,
             $smsType,
             $referenceCode,
             false,
-            'SMS is disabled in Settings.'
+            $GLOBALS['alcros_sms_last_delivery_error']
         );
         return false;
     }
 
     if (!isSmsConfigured()) {
+        $GLOBALS['alcros_sms_last_delivery_error'] = 'IPROG API token is not configured.';
         logSmsDelivery(
             normalizeSmsPhone($phone) ?: $phone,
             $message,
             $smsType,
             $referenceCode,
             false,
-            'IPROG API token is not configured.'
+            $GLOBALS['alcros_sms_last_delivery_error']
         );
         return false;
     }
 
     $result = sendIprogSms($phone, $message);
+    $error = $result['ok'] ? null : ($result['error'] ?? 'Send failed');
+    if ($error !== null && $error !== '') {
+        $GLOBALS['alcros_sms_last_delivery_error'] = $error;
+    }
     logSmsDelivery(
         normalizeSmsPhone($phone) ?: $phone,
         $message,
         $smsType,
         $referenceCode,
         !empty($result['ok']),
-        $result['ok'] ? null : ($result['error'] ?? 'Send failed')
+        $error
     );
 
     return !empty($result['ok']);
@@ -350,7 +423,7 @@ function smsVisitShort(?string $date, ?string $time): string
 
 /**
  * Single-paragraph SMS — capped at SMS_BODY_MAX_LENGTH (IPROG header is separate).
- * Pass $pinnedTail (e.g. requirements URL) to always keep it and trim earlier segments.
+ * Pass $pinnedTail to always keep it and trim earlier segments (no URLs — IPROG rejects many links).
  *
  * @param list<string|null> $segments
  */
@@ -438,35 +511,54 @@ function notifyAppointmentBookedSms(array $data): bool
     return false;
 }
 
-function notifyRequestStatusSms(PDO $pdo, int $requestId, string $newStatus, ?string $staffAction = null): bool
-{
+/** @return array{attempted: bool, sent: bool} */
+function notifyRequestStatusSms(
+    PDO $pdo,
+    int $requestId,
+    string $newStatus,
+    ?string $staffAction = null,
+    ?string $rejectionReason = null
+): array {
     if (!isSmsConfigured()) {
-        return false;
+        return citizenSmsNotifySkipped();
     }
 
     ensureCitizenNotifyColumns($pdo);
+    ensureRejectionReasonColumns($pdo);
     $stmt = $pdo->prepare(
         'SELECT tracking_code, first_name, middle_name, last_name, phone, document_type, status,
-                appointment_date, appointment_time, notify_sms
+                appointment_date, appointment_time, notify_sms, rejection_reason
          FROM document_requests WHERE id = ? LIMIT 1'
     );
     $stmt->execute([$requestId]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!citizenWantsSmsNotify($row)) {
-        return false;
+        return citizenSmsNotifySkipped();
     }
 
     $status = $staffAction === 'verified' ? 'verified' : normalizeRequestStatus($newStatus);
     $code = (string) $row['tracking_code'];
     $doc = documentTypeLabel((string) $row['document_type']);
+
+    if ($status === 'rejected') {
+        $reason = normalizeStaffRejectionReason($rejectionReason ?? ($row['rejection_reason'] ?? null));
+        $tail = $reason !== null ? 'Reason: ' . $reason : 'Contact the office for help.';
+        $message = smsComposeCitizenMessage([
+            smsCitizenGreeting($row),
+            $doc . ' request declined.',
+            'Code ' . $code . '.',
+        ], $tail);
+
+        return citizenSmsNotifyResult(sendCitizenSms((string) $row['phone'], $message, 'request_rejected', $code));
+    }
+
+    if ($status !== 'verified' && $status !== 'ready') {
+        return citizenSmsNotifySkipped();
+    }
+
     $appointment = fetchDocumentRequestAppointment($pdo, $code);
     $visitDate = $appointment['appointment_date'] ?? $row['appointment_date'] ?? null;
     $visitTime = $appointment['appointment_time'] ?? $row['appointment_time'] ?? null;
-
-    if ($status !== 'verified' && $status !== 'ready') {
-        return false;
-    }
-
     $visit = smsVisitShort($visitDate, $visitTime);
     $message = smsComposeCitizenMessage([
         smsCitizenGreeting($row),
@@ -476,7 +568,7 @@ function notifyRequestStatusSms(PDO $pdo, int $requestId, string $newStatus, ?st
         'Bring valid ID.',
     ]);
 
-    return sendCitizenSms((string) $row['phone'], $message, 'request_ready', $code);
+    return citizenSmsNotifyResult(sendCitizenSms((string) $row['phone'], $message, 'request_ready', $code));
 }
 
 function smsReminderLeadTimes(): array
@@ -698,10 +790,11 @@ function notifyFollowUpReminderSms(array $row): bool
     return sendCitizenSms($phone, $message, 'follow_up_reminder', $ref);
 }
 
-function notifyAppointmentStatusSms(PDO $pdo, int $appointmentId, string $newStatus): bool
+/** @return array{attempted: bool, sent: bool} */
+function notifyAppointmentStatusSms(PDO $pdo, int $appointmentId, string $newStatus): array
 {
     if (!isSmsConfigured()) {
-        return false;
+        return citizenSmsNotifySkipped();
     }
 
     ensureCitizenNotifyColumns($pdo);
@@ -713,11 +806,11 @@ function notifyAppointmentStatusSms(PDO $pdo, int $appointmentId, string $newSta
     $stmt->execute([$appointmentId]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!citizenWantsSmsNotify($row)) {
-        return false;
+        return citizenSmsNotifySkipped();
     }
 
     if ($newStatus !== 'confirmed') {
-        return false;
+        return citizenSmsNotifySkipped();
     }
 
     $code = (string) ($row['appointment_code'] ?? '');
@@ -729,7 +822,7 @@ function notifyAppointmentStatusSms(PDO $pdo, int $appointmentId, string $newSta
         $visit !== '' ? $visit . '.' : '',
     ]);
 
-    return sendCitizenSms((string) $row['phone'], $message, 'appointment_confirmed', $code);
+    return citizenSmsNotifyResult(sendCitizenSms((string) $row['phone'], $message, 'appointment_confirmed', $code));
 }
 
 function sendDueSmsReminderRow(

@@ -819,10 +819,13 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                 <?php if ($type !== 'all'): ?><input type="hidden" name="type" value="<?= htmlspecialchars($type) ?>"><?php endif; ?>
                 <?php if ($sort !== 'name'): ?><input type="hidden" name="sort" value="<?= htmlspecialchars($sort) ?>"><?php endif; ?>
                 <?php if ($dir !== 'asc'): ?><input type="hidden" name="dir" value="<?= htmlspecialchars($dir) ?>"><?php endif; ?>
-                <div class="relative flex-1 admin-toolbar-search">
-                    <span class="absolute left-3 top-2.5 pointer-events-none text-gray-400"><?= lucideSvg('search', 'w-4 h-4') ?></span>
-                    <input type="text" name="q" id="recordsSearchInput" value="<?= htmlspecialchars($search) ?>" placeholder="First, middle, last, full name, DOB, DOM, registryâ€¦"
-                        class="records-search-input w-full pl-10 pr-4 py-2 text-sm bg-gray-50 border-none rounded-lg focus:ring-0 text-slate-600 placeholder-gray-400" autocomplete="off">
+                <div class="records-toolbar-search-row">
+                    <div class="relative flex-1 min-w-0 records-toolbar-search">
+                        <span class="absolute left-3 top-2.5 pointer-events-none text-gray-400"><?= lucideSvg('search', 'w-4 h-4') ?></span>
+                        <input type="text" name="q" id="recordsSearchInput" value="<?= htmlspecialchars($search) ?>" placeholder="First, middle, last, full name, DOB, DOM, registry…"
+                            class="records-search-input w-full pl-10 pr-4 py-2 text-sm bg-gray-50 border-none rounded-lg focus:ring-0 text-slate-600 placeholder-gray-400" autocomplete="off">
+                    </div>
+                    <button type="submit" class="records-toolbar-search-btn bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold shrink-0" data-loading-text="Searching…">Search</button>
                 </div>
                 <div class="admin-toolbar-filters">
                     <?php
@@ -841,7 +844,6 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                     </a>
                     <?php endforeach; ?>
                 </div>
-                <button type="submit" class="w-full lg:w-auto bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold shrink-0" data-loading-text="Searchingâ€¦">Search</button>
             </form>
 
             <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">

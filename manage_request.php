@@ -38,12 +38,12 @@ function isManageRequestAjax(): bool
     return ($_POST['ajax'] ?? '') === '1';
 }
 
-function manageRequestJsonResponse(bool $ok, string $message): never
+function manageRequestJsonResponse(bool $ok, string $message, ?string $type = null): never
 {
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
         'ok'      => $ok,
-        'type'    => $ok ? 'success' : 'error',
+        'type'    => $type ?? ($ok ? 'success' : 'error'),
         'message' => $message,
     ], JSON_UNESCAPED_UNICODE);
     exit;
@@ -65,7 +65,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($isUpdate) {
         $status = (string) ($_POST['status'] ?? '');
-        if (updateDocumentRequestStatus($pdo, $id, $status)) {
+        $rejectionReason = null;
+        if ($status === 'rejected') {
+            $rejectionReason = normalizeStaffRejectionReason($_POST['rejection_reason'] ?? null);
+            if ($rejectionReason === null) {
+                $responseMessage = 'Please enter a reason for rejecting this request.';
+                if (!$isAjax) {
+                    manageRequestsFlashSet('error', $responseMessage);
+                }
+                if ($isAjax) {
+                    manageRequestJsonResponse(false, $responseMessage);
+                }
+                redirectWithAuth('manage_request.php', array_filter($filters, static fn ($value) => $value !== '' && $value !== 'all'));
+            }
+        }
+        if (updateDocumentRequestStatus($pdo, $id, $status, false, $rejectionReason)) {
             $responseOk = true;
             if ($status === 'verified') {
                 $responseMessage = 'Request accepted — moved to Ready for Pickup. Print the certificate when ready.';
@@ -76,11 +90,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $responseMessage = 'Request status saved as ' . requestStatusLabel($status) . '.';
             }
+            $responseMessage = staffCitizenNotifyAppendToStaffMessage($responseMessage);
+            $responseType = staffCitizenNotifyFlashType(true);
             if (!$isAjax) {
-                manageRequestsFlashSet('success', $responseMessage);
+                manageRequestsFlashSet($responseType, $responseMessage);
             }
         } else {
-            $responseMessage = 'Could not update request status. Another staff member may have already updated this request.';
+            $responseMessage = $status === 'rejected'
+                ? 'Could not reject this request. It may have already been updated, or the reason was missing.'
+                : 'Could not update request status. Another staff member may have already updated this request.';
             if (!$isAjax) {
                 manageRequestsFlashSet('error', $responseMessage);
             }
@@ -134,7 +152,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($isAjax) {
-        manageRequestJsonResponse($responseOk, $responseMessage);
+        $ajaxType = $responseOk && $isUpdate ? staffCitizenNotifyFlashType(true) : ($responseOk ? 'success' : 'error');
+        manageRequestJsonResponse($responseOk, $responseMessage, $ajaxType);
     }
 
     redirectWithAuth('manage_request.php', array_filter($filters, static fn ($value) => $value !== '' && $value !== 'all'));
@@ -194,6 +213,7 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= interFontTags() ?>
     <?= adminLayoutHeadStyles('manage-requests') ?>
+    <?= staffIdLightboxHeadStyles() ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>
 <body class="flex min-h-screen">
@@ -484,6 +504,11 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                                 <h3>Notes</h3>
                                 <p id="view-notes" class="manage-detail-notes"></p>
                             </section>
+
+                            <section id="view-rejection-wrap" class="manage-detail-block hidden">
+                                <h3>Reason for rejection</h3>
+                                <p id="view-rejection" class="manage-detail-notes"></p>
+                            </section>
                         </div>
 
                         <div id="requestDetailActions" class="manage-request-detail__actions hidden" aria-label="Request actions"></div>
@@ -541,6 +566,11 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                 <section id="modal-view-notes-wrap" class="manage-detail-block hidden">
                     <h3>Notes</h3>
                     <p id="modal-view-notes" class="manage-detail-notes"></p>
+                </section>
+
+                <section id="modal-view-rejection-wrap" class="manage-detail-block hidden">
+                    <h3>Reason for rejection</h3>
+                    <p id="modal-view-rejection" class="manage-detail-notes"></p>
                 </section>
             </div>
 

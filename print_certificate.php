@@ -52,7 +52,7 @@ if (!$context['ok']) {
             ? certificationTitle($certificateType) . ' · Existing LCRO Record'
             : printCertificateTitle($certificateType) . ' · Municipal Form No. ' . printCertificateFormNumber($certificateType);
         $fillEditorFields = $isCertification
-            ? printCertificationFillEditorFields($certificateType, $record)
+            ? printCertificationFillEditorFields($certificateType, $record, [], $pdo)
             : printFillEditorFields($certificateType, $record, [], $pdo);
         $frontTemplate = getPrintTemplate($pdo, $certificateType, 'front', $documentKind);
         if ($isCertification) {

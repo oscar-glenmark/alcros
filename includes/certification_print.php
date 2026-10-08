@@ -872,20 +872,47 @@ function seedCertificationPrintTemplates(PDO $pdo): void
     setSetting('certification_layout_version', (string) CERTIFICATION_LAYOUT_VERSION);
 }
 
-function printCertificationFillEditorFields(string $certificateType, array $record, array $overrides = []): array
+function printCertificationFillEditorFields(string $certificateType, array $record, array $overrides = [], ?PDO $pdo = null): array
 {
     $values = certificationBuildFieldValues($record, $certificateType, ['keep_empty' => true]);
     $values = printApplyFillOverrides($values, $overrides);
     $catalog = certificationFieldCatalog()[$certificateType] ?? [];
     $fields = [];
+    $seen = [];
 
     foreach ($catalog as $fieldName => $label) {
+        if ($pdo !== null && !printFieldIncludedInFillEditor($pdo, $certificateType, 'front', (string) $fieldName, 'certification')) {
+            continue;
+        }
         $fields[] = [
             'field_name' => $fieldName,
             'label'      => $label,
             'value'      => (string) ($values[$fieldName] ?? ''),
             'page_side'  => 'front',
         ];
+        $seen[$fieldName] = true;
+    }
+
+    if ($pdo !== null) {
+        $template = getPrintTemplate($pdo, $certificateType, 'front', 'certification');
+        if ($template) {
+            foreach (getPrintFields($pdo, (int) $template['id'], true) as $dbField) {
+                $name = (string) $dbField['field_name'];
+                if (!printIsCustomField($name) || isset($seen[$name])) {
+                    continue;
+                }
+                if (!printFieldIncludedInFillEditor($pdo, $certificateType, 'front', $name, 'certification')) {
+                    continue;
+                }
+                $fields[] = [
+                    'field_name' => $name,
+                    'label'      => (string) ($dbField['label'] ?: $name),
+                    'value'      => (string) ($values[$name] ?? ''),
+                    'page_side'  => 'front',
+                ];
+                $seen[$name] = true;
+            }
+        }
     }
 
     return $fields;

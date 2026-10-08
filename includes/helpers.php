@@ -778,8 +778,6 @@ function getSiteSettings(): array
         'head'               => getSetting('office_head', 'ATTY. LOCAL CIVIL REGISTRAR'),
         'hours'              => getSetting('office_hours', '8:00 AM - 5:00 PM (Monday to Friday)'),
         'overview'           => getSetting('overview_text', 'This guide covers the requirements, steps, and fees for all core civil registration services handled by the <strong>{office}</strong>.'),
-        'portal_title'       => getSetting('portal_title', 'ALCROS Online Request Portal'),
-        'portal_description' => getSetting('portal_description', 'Request document submissions or track application statuses online.'),
     ];
 }
 
@@ -1086,6 +1084,54 @@ function ensureAppointmentUpdatedColumn(PDO $pdo): void
         } catch (Throwable $ignored) {
         }
     }
+}
+
+function ensureRejectionReasonColumns(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+
+    foreach (['document_requests', 'appointments'] as $table) {
+        try {
+            $pdo->query("SELECT rejection_reason FROM `$table` LIMIT 1");
+        } catch (Throwable $e) {
+            try {
+                $pdo->exec(
+                    "ALTER TABLE `$table` ADD COLUMN rejection_reason TEXT NULL DEFAULT NULL AFTER notes"
+                );
+            } catch (Throwable $ignored) {
+            }
+        }
+    }
+}
+
+function normalizeStaffRejectionReason(?string $reason): ?string
+{
+    $reason = trim((string) $reason);
+    if ($reason === '') {
+        return null;
+    }
+    if (function_exists('mb_strlen') && mb_strlen($reason) > 2000) {
+        return mb_substr($reason, 0, 2000);
+    }
+    if (strlen($reason) > 2000) {
+        return substr($reason, 0, 2000);
+    }
+
+    return $reason;
+}
+
+function citizenStatusMessageWithRejectionReason(string $base, ?string $rejectionReason): string
+{
+    $reason = normalizeStaffRejectionReason($rejectionReason);
+    if ($reason === null) {
+        return $base;
+    }
+
+    return $base . ' Reason: ' . $reason;
 }
 
 function documentRequestActiveSql(string $alias = ''): string
@@ -1404,6 +1450,32 @@ function formatAppointmentEmailDisplay(?string $date, ?string $time): string
     }
 
     return $out;
+}
+
+/** @return list<string> */
+function getDocumentCertificateFeeNotes(): array
+{
+    require_once __DIR__ . '/office_fees.php';
+
+    return getOfficeFeeLines('document_certificate');
+}
+
+function documentCertificateFeesSummary(): string
+{
+    $notes = getDocumentCertificateFeeNotes();
+
+    return $notes !== [] ? implode("\n", $notes) : '';
+}
+
+/** @param array<string, mixed> $mail */
+function citizenMailWithCertificateFees(array $mail): array
+{
+    $fees = documentCertificateFeesSummary();
+    if ($fees !== '') {
+        $mail['fees_summary'] = $fees;
+    }
+
+    return $mail;
 }
 
 function getDocumentTypes(): array
@@ -1843,9 +1915,9 @@ function appointmentStatusLabel(string $status): string
     };
 }
 
-function appointmentStatusMessage(string $status): string
+function appointmentStatusMessage(string $status, ?string $rejectionReason = null): string
 {
-    return match ($status) {
+    $message = match ($status) {
         'scheduled' => 'Your appointment request was received. Our office will confirm your visit — this is not yet a confirmed schedule.',
         'confirmed' => 'Your appointment has been confirmed by our office. Please arrive on time with a valid ID.',
         'completed' => 'This appointment has been completed. Thank you for visiting ALCROS.',
@@ -1853,6 +1925,12 @@ function appointmentStatusMessage(string $status): string
         'no_show'   => 'You were marked as a no-show. Please contact the office to reschedule.',
         default     => 'Track your appointment status below.',
     };
+
+    if ($status === 'cancelled') {
+        return citizenStatusMessageWithRejectionReason($message, $rejectionReason);
+    }
+
+    return $message;
 }
 
 function activeAppointmentSlotStatuses(): array
@@ -3896,6 +3974,7 @@ function documentRequestRevision(array $row): string
         . '|' . normalizeRequestStatus((string) ($row['status'] ?? ''))
         . '|' . (string) ($row['updated_at'] ?? '')
         . '|' . (string) ($row['deleted_at'] ?? '')
+        . '|' . (string) ($row['rejection_reason'] ?? '')
     );
 }
 
@@ -4347,7 +4426,7 @@ function fetchAppointmentDayStats(PDO $pdo, string $viewDate): array
         'total'            => array_sum($statusCounts),
         'scheduled'        => (int) ($statusCounts['scheduled'] ?? 0),
         'confirmed'        => (int) ($statusCounts['confirmed'] ?? 0),
-        'completed'        => (int) ($statusCounts['completed'] ?? 0),
+        'completed'        => countCompletedAppointmentsWithoutPendingFollowUp($pdo, $viewDate),
         'no_show'          => (int) ($statusCounts['no_show'] ?? 0),
         'recently_deleted' => (int) $recentlyDeletedStmt->fetchColumn(),
         'follow_ups'       => countPendingAppointmentFollowUps($pdo),
@@ -4395,6 +4474,9 @@ function fetchAppointmentsManageList(PDO $pdo, array $filters): array
         if ($filterStatus !== 'all' && $filterStatus !== '' && $filterStatus !== 'all_appointments') {
             $sql .= ' AND a.status = ?';
             $params[] = $filterStatus;
+            if ($filterStatus === 'completed') {
+                $sql .= ' AND ' . appointmentSqlExcludePendingFollowUp('a');
+            }
         }
     } elseif ($filterStatus === 'all_appointments') {
         // All active statuses for this date.
@@ -4405,6 +4487,9 @@ function fetchAppointmentsManageList(PDO $pdo, array $filters): array
     } else {
         $sql .= ' AND a.status = ?';
         $params[] = $filterStatus;
+        if ($filterStatus === 'completed') {
+            $sql .= ' AND ' . appointmentSqlExcludePendingFollowUp('a');
+        }
     }
 
     [$searchSql, $searchParams] = appointmentSearchClause($search, 'a');
@@ -4521,8 +4606,9 @@ function documentRequestViewData(array $row): array
         'submitted_at'   => !empty($row['submitted_at']) ? formatDateDisplay($row['submitted_at']) : '—',
         'updated_at'     => !empty($row['updated_at']) ? formatDateDisplay($row['updated_at']) : '—',
         'updated_at_iso' => (string) ($row['updated_at'] ?? ''),
-        'revision'       => documentRequestRevision($row),
-        'notes'          => !empty($row['notes']) ? (string) $row['notes'] : null,
+        'revision'         => documentRequestRevision($row),
+        'notes'            => !empty($row['notes']) ? (string) $row['notes'] : null,
+        'rejection_reason' => !empty($row['rejection_reason']) ? (string) $row['rejection_reason'] : null,
     ];
 }
 
@@ -4565,7 +4651,8 @@ function appointmentViewData(array $row, ?PDO $pdo = null): array
         'created_at'       => !empty($row['created_at']) ? formatReportDateTime($row['created_at']) : '—',
         'can_delete'       => (string) ($row['status'] ?? '') === 'completed',
         'actions'          => $actionOptions,
-        'notes'            => !empty($row['notes']) ? (string) $row['notes'] : null,
+        'notes'              => !empty($row['notes']) ? (string) $row['notes'] : null,
+        'rejection_reason'   => !empty($row['rejection_reason']) ? (string) $row['rejection_reason'] : null,
         'can_schedule_follow_up' => false,
         'follow_up'        => null,
     ];
@@ -4707,8 +4794,12 @@ function publicRequestStatusLabel(string $status): string
     };
 }
 
-function publicRequestStatusMessage(string $status, ?array $appointment = null, bool $emailDateFormat = false): string
-{
+function publicRequestStatusMessage(
+    string $status,
+    ?array $appointment = null,
+    bool $emailDateFormat = false,
+    ?string $rejectionReason = null
+): string {
     $status = normalizeRequestStatus($status);
 
     if ($status === 'verified' || $status === 'ready') {
@@ -4727,7 +4818,12 @@ function publicRequestStatusMessage(string $status, ?array $appointment = null, 
             . ' Please visit the Local Civil Registrar Office with your tracking code and a valid ID.';
     }
 
-    return requestStatusMessage($status);
+    $message = requestStatusMessage($status);
+    if ($status === 'rejected') {
+        return citizenStatusMessageWithRejectionReason($message, $rejectionReason);
+    }
+
+    return $message;
 }
 
 function publicRequestStatusProgressIndex(string $status): int|false
@@ -4852,6 +4948,17 @@ function citizenEmailPlain(array $mail): string
     $lines[] = '';
     $lines[] = trim((string) ($mail['intro'] ?? ''));
     $lines[] = '';
+    $feesSummary = trim((string) ($mail['fees_summary'] ?? ''));
+    if ($feesSummary !== '') {
+        $lines[] = 'Office fees:';
+        foreach (preg_split('/\R/u', $feesSummary) ?: [] as $feeLine) {
+            $feeLine = trim($feeLine);
+            if ($feeLine !== '') {
+                $lines[] = $feeLine;
+            }
+        }
+        $lines[] = '';
+    }
     if (!empty($mail['code'])) {
         $lines[] = ($mail['code_label'] ?? 'Code') . ': ' . $mail['code'];
     }
@@ -4894,7 +5001,31 @@ function citizenEmailHtml(array $mail): string
     $intro   = trim((string) ($mail['intro'] ?? ''));
     $note    = trim((string) ($mail['note'] ?? ''));
     $code    = trim((string) ($mail['code'] ?? ''));
-    $preheader = $intro !== '' ? $intro : $heading;
+    $feesSummary = trim((string) ($mail['fees_summary'] ?? ''));
+    $preheader = trim((string) ($mail['preheader'] ?? ''));
+    if ($preheader === '') {
+        if ($feesSummary !== '') {
+            $feesInline = preg_replace('/\R/u', ' · ', $feesSummary) ?? $feesSummary;
+            $preheader = 'Office fees: ' . $feesInline;
+            if ($intro !== '') {
+                $preheader .= ' · ' . $intro;
+            }
+        } else {
+            $preheader = $intro !== '' ? $intro : $heading;
+        }
+    }
+    if (mb_strlen($preheader) > 200) {
+        $preheader = mb_substr($preheader, 0, 197) . '…';
+    }
+
+    $feesHtml = '';
+    if ($feesSummary !== '') {
+        $feesHtml = '<div style="margin:0 0 20px;padding:14px 16px;background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;">'
+            . '<p style="margin:0 0 6px;font-size:10px;font-weight:bold;letter-spacing:.08em;text-transform:uppercase;color:#b45309;">Office fees</p>'
+            . '<p style="margin:0;font-size:14px;font-weight:700;line-height:1.6;color:#92400e;">'
+            . nl2br(citizenEmailText($feesSummary), false)
+            . '</p></div>';
+    }
 
     $detailRows = '';
     foreach ($mail['details'] ?? [] as $label => $value) {
@@ -4953,6 +5084,7 @@ function citizenEmailHtml(array $mail): string
         . citizenEmailText($heading) . '</p>'
         . '<h1 style="margin:0 0 14px;font-size:22px;line-height:1.3;color:#0f172a;">' . citizenEmailText($hello) . '</h1>'
         . $introHtml
+        . $feesHtml
         . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">'
         . '<tr><td style="padding:18px 20px;">' . $codeBlock
         . ($detailRows !== '' ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">' . $detailRows . '</table>' : '')
@@ -5165,7 +5297,7 @@ function notifyRequestSubmitted(array $data): bool
     return sendCitizenNotice(
         $data['email'],
         'ALCROS — Request received (' . $data['tracking_code'] . ')',
-        [
+        citizenMailWithCertificateFees([
             'heading'      => 'Request received',
             'name'         => personNameFromRow($data),
             'intro'        => 'Thank you for submitting your document request through ALCROS.',
@@ -5176,16 +5308,17 @@ function notifyRequestSubmitted(array $data): bool
             'button_label' => 'Track your request',
             'button_url'   => trackRequestUrl($data['tracking_code']),
             'accent'       => '#2563eb',
-        ],
+        ]),
         'request_submitted'
     );
 }
 
-function syncDocumentRequestAppointment(PDO $pdo, int $requestId, string $requestStatus): void
+function syncDocumentRequestAppointment(PDO $pdo, int $requestId, string $requestStatus, ?string $rejectionReason = null): void
 {
     ensureCitizenNotifyColumns($pdo);
     ensureSoftDeleteColumns($pdo);
     ensureAppointmentUpdatedColumn($pdo);
+    ensureRejectionReasonColumns($pdo);
     $status = normalizeRequestStatus($requestStatus);
 
     $stmt = $pdo->prepare(
@@ -5276,17 +5409,25 @@ function syncDocumentRequestAppointment(PDO $pdo, int $requestId, string $reques
         default     => null,
     };
     if ($apptStatus !== null && $existing['status'] !== $apptStatus) {
-        $pdo->prepare('UPDATE appointments SET status = ?, updated_at = NOW() WHERE id = ?')
-            ->execute([$apptStatus, $existing['id']]);
+        if ($apptStatus === 'cancelled') {
+            $reason = normalizeStaffRejectionReason($rejectionReason);
+            $pdo->prepare(
+                'UPDATE appointments SET status = ?, rejection_reason = ?, updated_at = NOW() WHERE id = ?'
+            )->execute([$apptStatus, $reason, $existing['id']]);
+        } else {
+            $pdo->prepare('UPDATE appointments SET status = ?, updated_at = NOW() WHERE id = ?')
+                ->execute([$apptStatus, $existing['id']]);
+        }
     }
 }
 
 function syncAppointmentToDocumentRequest(PDO $pdo, int $appointmentId, string $appointmentStatus): void
 {
     ensureSoftDeleteColumns($pdo);
+    ensureRejectionReasonColumns($pdo);
 
     $stmt = $pdo->prepare(
-        'SELECT tracking_code FROM appointments WHERE id = ? AND deleted_at IS NULL LIMIT 1'
+        'SELECT tracking_code, rejection_reason FROM appointments WHERE id = ? AND deleted_at IS NULL LIMIT 1'
     );
     $stmt->execute([$appointmentId]);
     $appointment = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -5328,16 +5469,103 @@ function syncAppointmentToDocumentRequest(PDO $pdo, int $appointmentId, string $
         return;
     }
 
-    updateDocumentRequestStatus($pdo, $requestId, $targetAction, true);
+    $reason = $appointmentStatus === 'cancelled'
+        ? normalizeStaffRejectionReason($appointment['rejection_reason'] ?? null)
+        : null;
+    updateDocumentRequestStatus($pdo, $requestId, $targetAction, true, $reason);
 }
 
-function updateDocumentRequestStatus(PDO $pdo, int $id, string $status, bool $skipNotifications = false): bool
+function staffCitizenNotifyWarningsReset(): void
 {
+    $GLOBALS['alcros_staff_citizen_notify_warnings'] = [];
+}
+
+/** @return list<string> */
+function staffCitizenNotifyWarnings(): array
+{
+    $list = $GLOBALS['alcros_staff_citizen_notify_warnings'] ?? [];
+
+    return is_array($list) ? $list : [];
+}
+
+function staffCitizenNotifyWarningAdd(string $line): void
+{
+    $line = trim($line);
+    if ($line === '') {
+        return;
+    }
+    if (!isset($GLOBALS['alcros_staff_citizen_notify_warnings']) || !is_array($GLOBALS['alcros_staff_citizen_notify_warnings'])) {
+        $GLOBALS['alcros_staff_citizen_notify_warnings'] = [];
+    }
+    $GLOBALS['alcros_staff_citizen_notify_warnings'][] = $line;
+}
+
+function staffCitizenNotifyAppendToStaffMessage(string $baseMessage): string
+{
+    $warnings = staffCitizenNotifyWarnings();
+    if ($warnings === []) {
+        return $baseMessage;
+    }
+
+    return trim($baseMessage) . "\n\n" . implode("\n", $warnings);
+}
+
+function staffCitizenNotifyFlashType(bool $actionSucceeded): string
+{
+    if (!$actionSucceeded) {
+        return 'error';
+    }
+
+    return staffCitizenNotifyWarnings() !== [] ? 'warning' : 'success';
+}
+
+/** @param array{attempted: bool, sent: bool} $result */
+function staffCitizenNotifyRecordEmailAttempt(array $result): void
+{
+    if (empty($result['attempted']) || !empty($result['sent'])) {
+        return;
+    }
+    staffCitizenNotifyWarningAdd('Email was not sent. ' . citizenEmailFailureReason());
+}
+
+/** @param array{attempted: bool, sent: bool} $result */
+function staffCitizenNotifyRecordSmsAttempt(array $result): void
+{
+    if (empty($result['attempted']) || !empty($result['sent'])) {
+        return;
+    }
+    require_once __DIR__ . '/sms.php';
+    $err = smsLastDeliveryError();
+    staffCitizenNotifyWarningAdd(
+        'SMS was not sent.' . ($err !== null ? ' ' . $err : ' Check Settings → SMS (IPROG).')
+    );
+}
+
+/** @return array{attempted: bool, sent: bool} */
+function citizenEmailNotifySkipped(): array
+{
+    return ['attempted' => false, 'sent' => false];
+}
+
+/** @return array{attempted: bool, sent: bool} */
+function citizenEmailNotifyResult(bool $sent): array
+{
+    return ['attempted' => true, 'sent' => $sent];
+}
+
+function updateDocumentRequestStatus(
+    PDO $pdo,
+    int $id,
+    string $status,
+    bool $skipNotifications = false,
+    ?string $rejectionReason = null
+): bool {
     if ($id <= 0) {
         return false;
     }
 
     ensureSoftDeleteColumns($pdo);
+    ensureRejectionReasonColumns($pdo);
 
     $oldStmt = $pdo->prepare('SELECT status, tracking_code FROM document_requests WHERE id = ? AND deleted_at IS NULL LIMIT 1');
     $oldStmt->execute([$id]);
@@ -5363,8 +5591,20 @@ function updateDocumentRequestStatus(PDO $pdo, int $id, string $status, bool $sk
         return true;
     }
 
-    $stmt = $pdo->prepare('UPDATE document_requests SET status = ?, updated_at = NOW() WHERE id = ? AND status = ?');
-    $stmt->execute([$saveStatus, $id, $rawOldStatus]);
+    $savedRejectionReason = null;
+    if ($staffAction === 'rejected') {
+        $savedRejectionReason = normalizeStaffRejectionReason($rejectionReason);
+        if ($savedRejectionReason === null) {
+            return false;
+        }
+        $stmt = $pdo->prepare(
+            'UPDATE document_requests SET status = ?, rejection_reason = ?, updated_at = NOW() WHERE id = ? AND status = ?'
+        );
+        $stmt->execute([$saveStatus, $savedRejectionReason, $id, $rawOldStatus]);
+    } else {
+        $stmt = $pdo->prepare('UPDATE document_requests SET status = ?, updated_at = NOW() WHERE id = ? AND status = ?');
+        $stmt->execute([$saveStatus, $id, $rawOldStatus]);
+    }
     if ($stmt->rowCount() === 0) {
         return false;
     }
@@ -5373,22 +5613,30 @@ function updateDocumentRequestStatus(PDO $pdo, int $id, string $status, bool $sk
         if ($staffAction === 'verified') {
             syncDocumentRequestAppointment($pdo, $id, 'verified');
         } else {
-            syncDocumentRequestAppointment($pdo, $id, $saveStatus);
+            syncDocumentRequestAppointment(
+                $pdo,
+                $id,
+                $saveStatus,
+                $staffAction === 'rejected' ? $savedRejectionReason : null
+            );
         }
     } catch (Throwable $e) {
         // Status is already saved; appointment sync failure should not block staff.
     }
 
     if (!$skipNotifications) {
+        staffCitizenNotifyWarningsReset();
         try {
-            notifyRequestStatusChange($pdo, $id, $saveStatus, $staffAction);
+            $emailResult = notifyRequestStatusChange($pdo, $id, $saveStatus, $staffAction, $savedRejectionReason);
+            staffCitizenNotifyRecordEmailAttempt($emailResult);
         } catch (Throwable $e) {
             // Status is already saved; email failure should not block staff.
         }
 
         try {
             require_once __DIR__ . '/sms.php';
-            notifyRequestStatusSms($pdo, $id, $saveStatus, $staffAction);
+            $smsResult = notifyRequestStatusSms($pdo, $id, $saveStatus, $staffAction, $savedRejectionReason);
+            staffCitizenNotifyRecordSmsAttempt($smsResult);
         } catch (Throwable $e) {
             // Status is already saved; SMS failure should not block staff.
         }
@@ -5405,7 +5653,7 @@ function updateDocumentRequestStatus(PDO $pdo, int $id, string $status, bool $sk
     return true;
 }
 
-function updateAppointmentStatus(PDO $pdo, int $id, string $status): bool
+function updateAppointmentStatus(PDO $pdo, int $id, string $status, ?string $rejectionReason = null): bool
 {
     if ($id <= 0) {
         return false;
@@ -5413,6 +5661,7 @@ function updateAppointmentStatus(PDO $pdo, int $id, string $status): bool
 
     ensureSoftDeleteColumns($pdo);
     ensureAppointmentUpdatedColumn($pdo);
+    ensureRejectionReasonColumns($pdo);
 
     $oldStmt = $pdo->prepare(
         'SELECT status, appointment_code FROM appointments WHERE id = ? AND deleted_at IS NULL LIMIT 1'
@@ -5432,8 +5681,20 @@ function updateAppointmentStatus(PDO $pdo, int $id, string $status): bool
         return true;
     }
 
-    $stmt = $pdo->prepare('UPDATE appointments SET status = ?, updated_at = NOW() WHERE id = ? AND status = ?');
-    $stmt->execute([$status, $id, $oldStatus]);
+    $savedRejectionReason = null;
+    if ($status === 'cancelled') {
+        $savedRejectionReason = normalizeStaffRejectionReason($rejectionReason);
+        if ($savedRejectionReason === null) {
+            return false;
+        }
+        $stmt = $pdo->prepare(
+            'UPDATE appointments SET status = ?, rejection_reason = ?, updated_at = NOW() WHERE id = ? AND status = ?'
+        );
+        $stmt->execute([$status, $savedRejectionReason, $id, $oldStatus]);
+    } else {
+        $stmt = $pdo->prepare('UPDATE appointments SET status = ?, updated_at = NOW() WHERE id = ? AND status = ?');
+        $stmt->execute([$status, $id, $oldStatus]);
+    }
     if ($stmt->rowCount() === 0) {
         return false;
     }
@@ -5444,15 +5705,18 @@ function updateAppointmentStatus(PDO $pdo, int $id, string $status): bool
         // Status is already saved; request sync failure should not block staff.
     }
 
+    staffCitizenNotifyWarningsReset();
     try {
-        notifyAppointmentStatusChange($pdo, $id, $status);
+        $emailResult = notifyAppointmentStatusChange($pdo, $id, $status, $savedRejectionReason);
+        staffCitizenNotifyRecordEmailAttempt($emailResult);
     } catch (Throwable $e) {
         // Status is already saved; email failure should not block staff.
     }
 
     try {
         require_once __DIR__ . '/sms.php';
-        notifyAppointmentStatusSms($pdo, $id, $status);
+        $smsResult = notifyAppointmentStatusSms($pdo, $id, $status);
+        staffCitizenNotifyRecordSmsAttempt($smsResult);
     } catch (Throwable $e) {
         // Status is already saved; SMS failure should not block staff.
     }
@@ -5463,17 +5727,24 @@ function updateAppointmentStatus(PDO $pdo, int $id, string $status): bool
     return true;
 }
 
-function notifyRequestStatusChange(PDO $pdo, int $requestId, string $newStatus, ?string $staffAction = null): void
-{
+/** @return array{attempted: bool, sent: bool} */
+function notifyRequestStatusChange(
+    PDO $pdo,
+    int $requestId,
+    string $newStatus,
+    ?string $staffAction = null,
+    ?string $rejectionReason = null
+): array {
     ensureCitizenNotifyColumns($pdo);
+    ensureRejectionReasonColumns($pdo);
     $stmt = $pdo->prepare(
-        'SELECT tracking_code, first_name, middle_name, last_name, email, document_type, status, appointment_date, appointment_time, notify_email
+        'SELECT tracking_code, first_name, middle_name, last_name, email, document_type, status, appointment_date, appointment_time, notify_email, rejection_reason
          FROM document_requests WHERE id = ? LIMIT 1'
     );
     $stmt->execute([$requestId]);
     $row = $stmt->fetch();
     if (!citizenWantsEmailNotify($row)) {
-        return;
+        return citizenEmailNotifySkipped();
     }
 
     $status = $staffAction === 'verified' ? 'verified' : normalizeRequestStatus($newStatus);
@@ -5508,6 +5779,8 @@ function notifyRequestStatusChange(PDO $pdo, int $requestId, string $newStatus, 
         default     => 'Request update',
     };
 
+    $effectiveReason = normalizeStaffRejectionReason($rejectionReason ?? ($row['rejection_reason'] ?? null));
+
     $details = [
         'Document'   => documentTypeLabel($row['document_type']),
         'New status' => publicRequestStatusLabel($newStatus),
@@ -5518,19 +5791,24 @@ function notifyRequestStatusChange(PDO $pdo, int $requestId, string $newStatus, 
             $details['Scheduled visit'] = $visitSchedule;
         }
     }
+    if ($status === 'rejected' && $effectiveReason !== null) {
+        $details['Reason'] = $effectiveReason;
+    }
 
-    sendCitizenNotice($row['email'], $subject, [
+    $sent = sendCitizenNotice($row['email'], $subject, citizenMailWithCertificateFees([
         'heading'      => $heading,
         'name'         => personNameFromRow($row),
         'intro'        => $intro,
         'code_label'   => 'Tracking code',
         'code'         => $row['tracking_code'],
         'details'      => $details,
-        'note'         => publicRequestStatusMessage($newStatus, $appointment, true),
+        'note'         => publicRequestStatusMessage($newStatus, $appointment, true, $effectiveReason),
         'button_label' => 'View full details',
         'button_url'   => trackRequestUrl($row['tracking_code']),
         'accent'       => $accent,
-    ], 'request_' . $status);
+    ]), 'request_' . $status);
+
+    return citizenEmailNotifyResult($sent);
 }
 
 function notifyAppointmentBooked(array $data): bool
@@ -5576,18 +5854,20 @@ function notifyAppointmentBooked(array $data): bool
     );
 }
 
-function notifyAppointmentStatusChange(PDO $pdo, int $appointmentId, string $newStatus): void
+/** @return array{attempted: bool, sent: bool} */
+function notifyAppointmentStatusChange(PDO $pdo, int $appointmentId, string $newStatus, ?string $rejectionReason = null): array
 {
     ensureCitizenNotifyColumns($pdo);
+    ensureRejectionReasonColumns($pdo);
     $stmt = $pdo->prepare(
         'SELECT appointment_code, first_name, middle_name, last_name, email, service_type, appointment_date, appointment_time,
-                notify_email, source, tracking_code
+                notify_email, source, tracking_code, rejection_reason
          FROM appointments WHERE id = ? LIMIT 1'
     );
     $stmt->execute([$appointmentId]);
     $row = $stmt->fetch();
     if (!citizenWantsEmailNotify($row)) {
-        return;
+        return citizenEmailNotifySkipped();
     }
 
     require_once __DIR__ . '/appointment_notice_requirements.php';
@@ -5599,18 +5879,25 @@ function notifyAppointmentStatusChange(PDO $pdo, int $appointmentId, string $new
         default => '#2563eb',
     };
 
+    $effectiveReason = normalizeStaffRejectionReason($rejectionReason ?? ($row['rejection_reason'] ?? null));
+
+    $details = [
+        'Service'    => appointmentServiceLabel((string) $row['service_type']),
+        'Schedule'   => formatAppointmentEmailDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
+        'New status' => appointmentStatusLabel($newStatus),
+    ];
+    if ($newStatus === 'cancelled' && $effectiveReason !== null) {
+        $details['Reason'] = $effectiveReason;
+    }
+
     $mail = [
         'heading'      => 'Appointment update',
         'name'         => personNameFromRow($row),
         'intro'        => 'There is an update on your appointment.',
         'code_label'   => 'Appointment code',
         'code'         => $row['appointment_code'],
-        'details'      => [
-            'Service'    => appointmentServiceLabel((string) $row['service_type']),
-            'Schedule'   => formatAppointmentEmailDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
-            'New status' => appointmentStatusLabel($newStatus),
-        ],
-        'note'         => appointmentStatusMessage($newStatus),
+        'details'      => $details,
+        'note'         => appointmentStatusMessage($newStatus, $effectiveReason),
         'button_label' => 'View full details',
         'button_url'   => trackRequestUrl($row['appointment_code']),
         'accent'       => $accent,
@@ -5622,12 +5909,14 @@ function notifyAppointmentStatusChange(PDO $pdo, int $appointmentId, string $new
         $mail = appendSpecialServiceRequirementsToCitizenMail($mail, $row);
     }
 
-    sendCitizenNotice(
+    $sent = sendCitizenNotice(
         $row['email'],
         'ALCROS — Appointment update (' . $row['appointment_code'] . ')',
         $mail,
         'appointment_' . $newStatus
     );
+
+    return citizenEmailNotifyResult($sent);
 }
 
 function reminderLeadTimes(): array
@@ -5727,7 +6016,7 @@ function notifyRequestVisitReminder(array $row, int $hoursBefore): bool
     return sendCitizenNotice(
         (string) $row['email'],
         'ALCROS — Visit in ' . $hoursLabel . ' (' . $row['tracking_code'] . ')',
-        [
+        citizenMailWithCertificateFees([
             'heading'      => 'Visit reminder',
             'name'         => personNameFromRow($row),
             'intro'        => 'This is a reminder that your preferred visit for document pickup is in about ' . $hoursLabel . '.',
@@ -5742,7 +6031,7 @@ function notifyRequestVisitReminder(array $row, int $hoursBefore): bool
             'button_label' => 'Track your request',
             'button_url'   => trackRequestUrl((string) $row['tracking_code']),
             'accent'       => '#d97706',
-        ]
+        ])
     );
 }
 
@@ -5818,7 +6107,7 @@ function notifyRequestVisitSoon(array $row): bool
     return sendCitizenNotice(
         (string) $row['email'],
         'ALCROS — Visit today in ' . $soonLabel . ' (' . $row['tracking_code'] . ')',
-        [
+        citizenMailWithCertificateFees([
             'heading'      => 'Your visit is coming up soon',
             'name'         => personNameFromRow($row),
             'intro'        => 'Your preferred LCRO visit is in about ' . $soonLabel . '. Please head to the office if you are not already on your way.',
@@ -5833,7 +6122,7 @@ function notifyRequestVisitSoon(array $row): bool
             'button_label' => 'Track your request',
             'button_url'   => trackRequestUrl((string) $row['tracking_code']),
             'accent'       => '#d97706',
-        ],
+        ]),
         'visit_soon'
     );
 }

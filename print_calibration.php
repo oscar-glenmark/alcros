@@ -238,7 +238,9 @@ if (!$formDefaults && !empty($fields[0])) {
                                 data-field-name="<?= htmlspecialchars($field['field_name']) ?>"
                                 data-field-label="<?= htmlspecialchars($field['label'] ?: $field['field_name']) ?>">
                                 <span class="print-cal-field-label"><?= htmlspecialchars($field['label'] ?: $field['field_name']) ?></span>
-                                <?php if (empty($field['enabled'])): ?>
+                                <?php if (printIsCustomField((string) $field['field_name'])): ?>
+                                    <span class="print-cal-field-badge print-cal-field-badge--custom">Textbox</span>
+                                <?php elseif (empty($field['enabled'])): ?>
                                     <span class="print-cal-field-badge">Hidden</span>
                                 <?php endif; ?>
                             </button>
@@ -254,7 +256,8 @@ if (!$formDefaults && !empty($fields[0])) {
                         <p class="print-cal-editor-empty-title">No field selected</p>
                         <p class="print-cal-hint">Click a field in the list to fine-tune it. When finished, click <strong>Save all changes</strong> above the form to save every field you moved.</p>
                     </div>
-                    <div id="calFieldControls"<?= $selectedFieldId ? '' : ' hidden' ?>>
+                    <div id="calFieldControls" class="print-cal-field-controls"<?= $selectedFieldId ? '' : ' hidden' ?>>
+                    <div class="print-cal-field-controls-scroll">
                     <div class="print-cal-field-nav">
                         <button type="button" class="print-cal-nav-btn" id="calPrevField" aria-label="Previous field">← Prev</button>
                         <button type="button" class="print-cal-nav-btn" id="calNextField" aria-label="Next field">Next →</button>
@@ -365,16 +368,24 @@ if (!$formDefaults && !empty($fields[0])) {
                             <span class="print-cal-toggle-text">Show this field when printing</span>
                         </label>
                     </form>
+                    </div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <?php if ($formDefaults): ?>
+                <div class="print-cal-field-actions" id="calFieldActions"<?= $selectedFieldId ? '' : ' hidden' ?>>
+                    <p class="print-cal-field-actions-hint" id="calDeleteFieldHint">
+                        <strong>Delete</strong> applies only to this certificate type and page (e.g. Birth · Front). <strong>Reset</strong> restores a built-in field’s default position.
+                    </p>
                     <form method="post" class="print-cal-reset-form" id="calResetFieldForm" data-no-confirm>
                         <?= csrfField() ?>
                         <input type="hidden" name="action" value="reset_field">
                         <input type="hidden" name="field_id" value="<?= (int) $formDefaults['id'] ?>">
                         <button type="button" class="print-cal-reset" id="calResetFieldBtn">Reset this field to default</button>
                     </form>
-                    <button type="button" class="print-cal-delete" id="calDeleteFieldBtn" hidden>Delete textbox</button>
-                    </div>
-                    <?php endif; ?>
+                    <button type="button" class="print-cal-delete" id="calDeleteFieldBtn">Delete textbox</button>
                 </div>
+                <?php endif; ?>
                 </div>
                 </div>
                 </div>

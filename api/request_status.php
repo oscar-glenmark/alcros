@@ -15,10 +15,11 @@ try {
     migrateLegacyProcessingStatus($pdo);
     ensureSoftDeleteColumns($pdo);
     ensureAppointmentUpdatedColumn($pdo);
+    ensureRejectionReasonColumns($pdo);
 
     $stmt = $pdo->prepare(
         'SELECT tracking_code, first_name, middle_name, last_name, document_type, status, submitted_at, updated_at,
-                appointment_date, appointment_time, email, deleted_at
+                appointment_date, appointment_time, email, deleted_at, rejection_reason
          FROM document_requests
          WHERE tracking_code = ? AND deleted_at IS NULL
          LIMIT 1'
@@ -50,7 +51,12 @@ try {
         'document'              => documentTypeLabel($request['document_type']),
         'status_html'           => publicRequestStatusBadge($request['status']),
         'status_label'          => publicRequestStatusLabel($request['status']),
-        'status_message'        => publicRequestStatusMessage($request['status'], $appointment),
+        'status_message'        => publicRequestStatusMessage(
+            $request['status'],
+            $appointment,
+            false,
+            $request['rejection_reason'] ?? null
+        ),
         'current_idx'           => $currentIdx === false ? -1 : (int) $currentIdx,
         'status_steps'          => $statusSteps,
         'step_labels'           => array_map('requestStatusLabel', $statusSteps),

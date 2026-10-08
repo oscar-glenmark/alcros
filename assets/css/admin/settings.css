@@ -89,3 +89,19 @@ details.config-section[open] > summary .config-chevron {
 .config-chevron {
     transition: transform 0.2s;
 }
+
+details.sms-recent-details > summary {
+    list-style: none;
+}
+
+details.sms-recent-details > summary::-webkit-details-marker {
+    display: none;
+}
+
+details.sms-recent-details[open] > summary .sms-recent-details__chevron {
+    transform: rotate(180deg);
+}
+
+.sms-recent-details__chevron {
+    transition: transform 0.2s ease;
+}

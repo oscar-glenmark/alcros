@@ -68,8 +68,10 @@
     function setEditorVisible(visible) {
         var empty = document.getElementById('calFieldEmpty');
         var controls = document.getElementById('calFieldControls');
+        var actions = document.getElementById('calFieldActions');
         if (empty) empty.hidden = !!visible;
         if (controls) controls.hidden = !visible;
+        if (actions) actions.hidden = !visible;
     }
 
     function readConfig() {
@@ -530,11 +532,9 @@
 
     function updateCustomFieldActions(field) {
         var isCustom = isCustomField(field);
-        var deleteBtn = document.getElementById('calDeleteFieldBtn');
         var resetForm = document.getElementById('calResetFieldForm');
         var labelWrap = document.getElementById('calFieldLabelWrap');
         var labelInput = document.getElementById('calFieldLabel');
-        if (deleteBtn) deleteBtn.hidden = false;
         if (resetForm) resetForm.hidden = isCustom;
         if (labelWrap) labelWrap.hidden = false;
         if (labelInput) {
@@ -555,16 +555,16 @@
     function removeFieldFromUi(fieldId) {
         fieldId = Number(fieldId);
         var field = findFieldConfig(fieldId);
-        if (field && cfg.sampleValues) {
+        if (field && field.field_name && cfg.sampleValues) {
             delete cfg.sampleValues[field.field_name];
         }
 
-        cfg.fields = (cfg.fields || []).filter(function (f) { return Number(f.id) !== fieldId; });
+        cfg.fields = (cfg.fields || []).filter(function (f) {
+            return Number(f.id) !== fieldId;
+        });
 
         placedFieldIds.delete(fieldId);
         dirtyFieldIds.delete(fieldId);
-        persistPlacedFields();
-        updateDirtyUi();
 
         var btn = listBtnEl(fieldId);
         if (btn && btn.closest('li')) {
@@ -573,6 +573,9 @@
 
         var marker = markerEl(fieldId);
         if (marker) marker.remove();
+
+        persistPlacedFields();
+        updateDirtyUi();
     }
 
     function deleteCustomField() {

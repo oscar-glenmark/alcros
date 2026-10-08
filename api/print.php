@@ -153,13 +153,14 @@ function handleDeleteField(PDO $pdo): void
         apiError('Field not found.');
     }
 
+    $fieldName = (string) $field['field_name'];
     if (!deletePrintField($pdo, $fieldId)) {
         apiError('Could not delete textbox.');
     }
 
-    logActivity(staffId(), 'Print Field Deleted', 'Deleted print field ' . $field['field_name']);
+    logActivity(staffId(), 'Print Field Deleted', 'Deleted print field ' . $fieldName);
     bumpPrintCalibrationRevision();
-    apiJsonResponse(['field_id' => $fieldId]);
+    apiJsonResponse(['field_id' => $fieldId, 'field_name' => $fieldName]);
 }
 
 function printFieldUpdateDataFromInput(PDO $pdo, int $fieldId, array $input): array

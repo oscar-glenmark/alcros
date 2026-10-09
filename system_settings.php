@@ -20,8 +20,7 @@ $currentStaffId = staffId();
 $adminSettingKeys = [
     'site_name', 'office_name', 'office_address', 'office_phone', 'office_email',
     'office_hours', 'office_head',
-    'queue_window', 'maintenance_mode', 'allow_public_requests', 'notification_email',
-    'max_daily_appointments',
+    'maintenance_mode', 'allow_public_requests', 'notification_email',
     'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass',
     'sms_enabled', 'iprog_api_token', 'iprog_sender_name',
 ];
@@ -34,11 +33,9 @@ $defaults = [
     'office_email'            => 'aloran@gov.ph',
     'office_hours'            => '8:00 AM - 5:00 PM (Monday to Friday)',
     'office_head'             => 'ATTY. LOCAL CIVIL REGISTRAR',
-    'queue_window'            => '1',
     'maintenance_mode'        => '0',
     'allow_public_requests'   => '1',
     'notification_email'      => 'aloran@gov.ph',
-    'max_daily_appointments'  => '20',
     'smtp_host'               => 'smtp.gmail.com',
     'smtp_port'               => '587',
     'smtp_user'               => '',
@@ -453,9 +450,13 @@ $currentStaff = currentStaffRow($pdo, $currentStaffId);
 $profileNeeds2svConfirmation = staffRecoveryGmailNeeds2svConfirmation($currentStaff, (string) ($currentStaff['email'] ?? ''));
 $staffMembers = $pdo->query('SELECT staff_id, first_name, middle_name, last_name, email, recovery_gmail_2sv_confirmed, role, created_at, profile_photo_path FROM staff ORDER BY created_at ASC')->fetchAll();
 $systemStats = $isAdmin ? getSystemStats($pdo) : [];
-$recentLogs = $isAdmin
-    ? $pdo->query('SELECT staff_id, action, details, created_at FROM activity_logs ORDER BY created_at DESC LIMIT 8')->fetchAll()
-    : [];
+$recentLogs = [];
+if ($isAdmin) {
+    $recentLogsRaw = $pdo->query(
+        'SELECT staff_id, action, details, created_at FROM activity_logs ORDER BY created_at DESC LIMIT 8'
+    )->fetchAll();
+    $recentLogs = enrichActivityLogsForDisplay($pdo, $recentLogsRaw, 'w-8 h-8 text-[10px]');
+}
 
 $lastLoginStmt = $pdo->prepare(
     "SELECT created_at FROM activity_logs WHERE staff_id = ? AND action = 'Staff Login' ORDER BY created_at DESC LIMIT 1 OFFSET 1"
@@ -942,7 +943,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
 
                             <details class="config-section group rounded-xl border border-slate-200 overflow-hidden">
                                 <summary class="flex items-center justify-between gap-3 px-4 py-3.5 bg-slate-50 hover:bg-slate-100/80 font-semibold text-sm text-slate-800">
-                                    <span class="flex items-center gap-2"><i data-lucide="mail" class="w-4 h-4 text-slate-500"></i> Operations, Queue & Email</span>
+                                    <span class="flex items-center gap-2"><i data-lucide="mail" class="w-4 h-4 text-slate-500"></i> Operations & Email</span>
                                     <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 config-chevron"></i>
                                 </summary>
                                 <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-100">
@@ -954,8 +955,6 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                         Gmail SMTP is not complete yet. Fill in <strong>Gmail Address (SMTP user)</strong> and <strong>Gmail App Password</strong> below, then Save. Notification Email alone does not enable sending.
                                         <?php endif; ?>
                                     </div>
-                                    <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Queue Window Number</label><input type="number" name="queue_window" value="<?= htmlspecialchars($settings['queue_window']) ?>" min="1" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
-                                    <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Max Daily Appointments</label><input type="number" name="max_daily_appointments" value="<?= htmlspecialchars($settings['max_daily_appointments']) ?>" min="1" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                     <div class="sm:col-span-2"><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Notification Email</label><input type="email" name="notification_email" value="<?= htmlspecialchars($settings['notification_email']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Fallback From address if Gmail SMTP is not used.</p></div>
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Gmail SMTP Host</label><input type="text" name="smtp_host" value="<?= htmlspecialchars($settings['smtp_host'] ?: 'smtp.gmail.com') ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Gmail SMTP Port</label><input type="number" name="smtp_port" value="<?= htmlspecialchars($settings['smtp_port'] ?: '587') ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">587 for STARTTLS, or 465 for SSL.</p></div>
@@ -1161,9 +1160,13 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     <?php foreach ($recentLogs as $log): ?>
                                     <div class="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 hover:bg-slate-50/60">
                                         <div class="flex items-center gap-3 min-w-0 flex-1">
-                                            <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                                                <i data-lucide="activity" class="w-4 h-4"></i>
-                                            </div>
+                                            <span class="shrink-0" aria-hidden="true">
+                                                <?= $log['staff_avatar_html'] ?? renderStaffAvatar(
+                                                    null,
+                                                    (string) ($log['staff_display_name'] ?? $log['staff_id'] ?? 'System'),
+                                                    'w-8 h-8 text-[10px]'
+                                                ) ?>
+                                            </span>
                                             <div class="min-w-0">
                                                 <p class="text-sm font-semibold text-slate-800 truncate"><?= htmlspecialchars($log['action']) ?></p>
                                                 <p class="text-xs text-slate-400 truncate"><?= htmlspecialchars($log['staff_id'] ?? 'System') ?> · <?= htmlspecialchars($log['details'] ?? '') ?></p>

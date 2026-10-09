@@ -139,12 +139,12 @@ $recordTypeStyles = [
 ];
 
 $periodMetrics = [
-    ['label' => 'Requests Submitted', 'value' => $summary['requests_submitted'], 'hint' => 'New submissions in period', 'icon' => 'file-text', 'iconBg' => 'bg-blue-50', 'iconText' => 'text-blue-600', 'accent' => '#2563eb'],
-    ['label' => 'Requests Completed', 'value' => $summary['requests_completed'], 'hint' => 'Marked completed in period', 'icon' => 'circle-check', 'iconBg' => 'bg-emerald-50', 'iconText' => 'text-emerald-600', 'accent' => '#059669'],
-    ['label' => 'Appointments', 'value' => $summary['appointments_scheduled'], 'hint' => 'Scheduled in period', 'icon' => 'calendar', 'iconBg' => 'bg-purple-50', 'iconText' => 'text-purple-600', 'accent' => '#7c3aed'],
-    ['label' => 'Queue Served', 'value' => $summary['queue_served'], 'hint' => 'Tickets completed in period', 'icon' => 'users', 'iconBg' => 'bg-teal-50', 'iconText' => 'text-teal-600', 'accent' => '#0d9488'],
-    ['label' => 'Certifications Printed', 'value' => $summary['certifications_printed'] ?? 0, 'hint' => 'Completed certification jobs in period', 'icon' => 'stamp', 'iconBg' => 'bg-indigo-50', 'iconText' => 'text-indigo-600', 'accent' => '#4f46e5'],
-    ['label' => 'Certificates Printed', 'value' => $summary['certificates_printed'] ?? 0, 'hint' => 'Completed certificate jobs in period', 'icon' => 'printer', 'iconBg' => 'bg-cyan-50', 'iconText' => 'text-cyan-600', 'accent' => '#0891b2'],
+    ['label' => 'Requests Submitted', 'value' => $summary['requests_submitted'], 'hint' => 'New submissions in period', 'icon' => 'file-text', 'iconBg' => 'bg-blue-50', 'iconText' => 'text-blue-600'],
+    ['label' => 'Requests Completed', 'value' => $summary['requests_completed'], 'hint' => 'Marked completed in period', 'icon' => 'circle-check', 'iconBg' => 'bg-emerald-50', 'iconText' => 'text-emerald-600'],
+    ['label' => 'Appointments', 'value' => $summary['appointments_scheduled'], 'hint' => 'Scheduled in period', 'icon' => 'calendar', 'iconBg' => 'bg-purple-50', 'iconText' => 'text-purple-600'],
+    ['label' => 'Queue Served', 'value' => $summary['queue_served'], 'hint' => 'Tickets completed in period', 'icon' => 'users', 'iconBg' => 'bg-teal-50', 'iconText' => 'text-teal-600'],
+    ['label' => 'Certifications Printed', 'value' => $summary['certifications_printed'] ?? 0, 'hint' => 'Completed certification jobs in period', 'icon' => 'stamp', 'iconBg' => 'bg-indigo-50', 'iconText' => 'text-indigo-600'],
+    ['label' => 'Certificates Printed', 'value' => $summary['certificates_printed'] ?? 0, 'hint' => 'Completed certificate jobs in period', 'icon' => 'printer', 'iconBg' => 'bg-cyan-50', 'iconText' => 'text-cyan-600'],
 ];
 
 $reportTabs = [
@@ -383,9 +383,9 @@ $recordsJumpDesc = sprintf(
                         </div>
                         <div class="report-metric-grid">
                             <?php foreach ($periodMetrics as $card): ?>
-                            <div class="report-metric-card" style="--report-metric-accent: <?= htmlspecialchars($card['accent']) ?>">
+                            <div class="report-metric-card">
                                 <div class="report-metric-card__icon <?= $card['iconBg'] ?>">
-                                    <i data-lucide="<?= $card['icon'] ?>" class="w-[1.125rem] h-[1.125rem] <?= $card['iconText'] ?>"></i>
+                                    <i data-lucide="<?= $card['icon'] ?>" class="w-4 h-4 <?= $card['iconText'] ?>"></i>
                                 </div>
                                 <p class="report-metric-card__label"><?= htmlspecialchars($card['label']) ?></p>
                                 <p class="report-metric-card__value"><?= number_format((int) $card['value']) ?></p>

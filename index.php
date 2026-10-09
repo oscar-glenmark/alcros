@@ -38,7 +38,6 @@ $howSteps = [
 
 $whyItems = [
     ['icon' => 'shield-check', 'title' => 'Secure & Reliable', 'desc' => 'Official LCRO records handled with care and compliance.'],
-    ['icon' => 'clock', 'title' => 'Convenient', 'desc' => 'Submit requests online without long queues at the office.'],
     ['icon' => 'smartphone', 'title' => 'Accessible', 'desc' => 'Use ALCROS from any device with an internet connection.'],
     ['icon' => 'search', 'title' => 'Easy to Track', 'desc' => 'Check your request status anytime with your tracking code.'],
 ];
@@ -217,7 +216,7 @@ $faqs = [
             <div class="text-center mb-12">
                 <h2 class="text-2xl md:text-3xl font-black text-slate-900 uppercase tracking-wide">Why Choose ALCROS?</h2>
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 max-w-5xl mx-auto">
                 <?php foreach ($whyItems as $item): ?>
                 <div class="text-center">
                     <div class="w-14 h-14 rounded-full bg-[#071428] text-gold flex items-center justify-center mx-auto mb-4">

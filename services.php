@@ -264,32 +264,6 @@ $year = date('Y');
 
         </section>
 
-
-
-        <section class="max-w-4xl mx-auto px-6 pb-16">
-
-            <div class="citizen-help-card p-8 text-center">
-
-                <h2 class="text-lg font-black text-slate-900 mb-2">Need Help Choosing a Service?</h2>
-
-                <p class="text-gray-500 text-sm mb-6">Visit the <?= htmlspecialchars($site['office']) ?> during office hours or contact us directly.</p>
-
-                <div class="flex flex-wrap justify-center gap-4 text-xs text-gray-500">
-
-                    <span class="flex items-center gap-1.5"><i data-lucide="clock" class="w-3.5 h-3.5 text-amber-500"></i> <?= htmlspecialchars($site['hours']) ?></span>
-
-                    <span class="flex items-center gap-1.5"><i data-lucide="phone" class="w-3.5 h-3.5 text-amber-500"></i> <?= htmlspecialchars($site['phone']) ?></span>
-
-                    <span class="flex items-center gap-1.5"><i data-lucide="mail" class="w-3.5 h-3.5 text-amber-500"></i> <?= htmlspecialchars($site['email']) ?></span>
-
-                </div>
-
-            </div>
-
-        </section>
-
-
-
         <footer class="citizen-footer py-6 px-6 sm:px-12 text-[10px]">
 
             <div class="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">

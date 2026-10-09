@@ -6,11 +6,11 @@
             return;
         }
         var root = document.querySelector('.admin-main') || document.querySelector('main') || document.body;
-        var options = { nameAttr: 'data-lucide' };
-        if (root && root !== document.body) {
-            options.root = root;
+        var nodes = root.querySelectorAll('[data-lucide]');
+        if (!nodes.length) {
+            return;
         }
-        lucide.createIcons(options);
+        lucide.createIcons({ nameAttr: 'data-lucide', nodes: Array.prototype.slice.call(nodes) });
     }
 
     if (document.readyState === 'loading') {

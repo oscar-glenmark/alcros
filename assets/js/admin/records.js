@@ -139,10 +139,16 @@
         }
     }
 
-    function refreshIcons() {
-        if (window.lucide && typeof lucide.createIcons === 'function') {
-            lucide.createIcons();
+    function refreshIcons(root) {
+        if (!window.lucide || typeof lucide.createIcons !== 'function') {
+            return;
         }
+        var scope = root && root.nodeType === 1 ? root : (document.querySelector('.admin-page-wrap') || document.querySelector('.admin-main') || document.body);
+        var nodes = scope.querySelectorAll('[data-lucide]');
+        if (!nodes.length) {
+            return;
+        }
+        lucide.createIcons({ nameAttr: 'data-lucide', nodes: Array.prototype.slice.call(nodes) });
     }
 
     function openModal(id) {
@@ -159,7 +165,7 @@
             el.classList.add('flex');
             document.body.classList.add('records-entry-modal-open');
         }
-        refreshIcons();
+        refreshIcons(el);
     }
 
     function closeAllModals() {
@@ -427,7 +433,10 @@
         clearEntrySectionHtmlRequired();
         if (type === 'birth') syncSingleBirthDetails();
         updateEntryModalTitle(type);
-        refreshIcons();
+        var entryModal = document.getElementById('entryModal');
+        if (entryModal) {
+            refreshIcons(entryModal);
+        }
     }
 
     function openSingleEntryModal(type) {
@@ -632,7 +641,7 @@
         }
         modal.classList.remove('hidden');
         modal.setAttribute('aria-hidden', 'false');
-        refreshIcons();
+        refreshIcons(modal);
         if (categoryModal && typeof categoryModal.focus === 'function') {
             categoryModal.focus();
         }
@@ -1144,7 +1153,7 @@
         }
         modal.classList.remove('hidden');
         modal.setAttribute('aria-hidden', 'false');
-        refreshIcons();
+        refreshIcons(modal);
 
         var recordId = fromView ? viewRecordIdForHistory : (cfg.editRecordId || null);
         loadRecordUpdatesHistoryPanel(recordId);
@@ -1522,68 +1531,456 @@
         });
     }
 
+    var recordsPrintMenuGlobalsBound = false;
+
     function bindRecordsPrintMenus() {
         document.querySelectorAll('.manage-print-menu').forEach(bindPrintMenu);
+        if (recordsPrintMenuGlobalsBound) {
+            return;
+        }
+        recordsPrintMenuGlobalsBound = true;
         document.addEventListener('click', closePrintMenus);
         window.addEventListener('resize', closePrintMenus);
         window.addEventListener('scroll', closePrintMenus, true);
     }
 
-    function bindViewRecordButtons() {
-        document.querySelectorAll('.view-record-btn').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                var r;
-                try {
-                    r = JSON.parse(btn.getAttribute('data-record') || '{}');
-                } catch (err) {
+    function showEditNavigationLoading() {
+        if (window.AlcrosLoading && typeof window.AlcrosLoading.page === 'function') {
+            window.AlcrosLoading.page(true, 'Opening editor…');
+        }
+    }
+
+    function bindEditRecordLinks() {
+        if (document.documentElement.dataset.alcrosRecordsEditNavBound === '1') {
+            return;
+        }
+        document.documentElement.dataset.alcrosRecordsEditNavBound = '1';
+        document.addEventListener('click', function (e) {
+            var link = e.target.closest('a.manage-row-action[href*="edit="], a#viewEditLink[href*="edit="]');
+            if (!link || link.getAttribute('aria-disabled') === 'true' || link.classList.contains('is-disabled')) {
+                return;
+            }
+            if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+                return;
+            }
+            var href = link.getAttribute('href');
+            if (!href || href === '#') {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            showEditNavigationLoading();
+            window.location.assign(href);
+        }, true);
+    }
+
+    function openViewRecordFromButton(btn) {
+        if (!btn) {
+            return;
+        }
+        var r;
+        try {
+            r = JSON.parse(btn.getAttribute('data-record') || '{}');
+        } catch (err) {
+            return;
+        }
+        if (!r.id) {
+            return;
+        }
+
+        viewRecordIdForHistory = r.id || null;
+
+        var viewContent = document.getElementById('viewContent');
+        if (viewContent) {
+            if (window.AlcrosLoading && typeof window.AlcrosLoading.skeletonInto === 'function') {
+                window.AlcrosLoading.skeletonInto(viewContent, 'detail', 8);
+            } else {
+                viewContent.innerHTML = '<p class="records-detail-loading">Loading record details…</p>';
+            }
+        }
+        openModal('viewModal');
+
+        var viewUrl = new URL(recordsAuthUrl, window.location.href);
+        viewUrl.searchParams.set('action', 'view_record');
+        viewUrl.searchParams.set('id', String(r.id));
+
+        fetch(viewUrl.pathname + viewUrl.search, { credentials: 'same-origin' })
+            .then(function (res) {
+                if (!res.ok) {
+                    throw new Error('Record request failed.');
+                }
+                return res.json();
+            })
+            .then(function (data) {
+                if (!data || !data.ok || !data.record) {
+                    throw new Error((data && data.error) || 'Could not load record.');
+                }
+                if (data.edit_lock) {
+                    data.record.edit_lock = data.edit_lock;
+                }
+                renderViewRecordPresentation(data.record, data.print_values || {});
+            })
+            .catch(function () {
+                renderViewRecordPresentation(r, {});
+            });
+    }
+
+    function bindRecordsViewDelegation() {
+        if (document.documentElement.dataset.alcrosRecordsViewDelegation === '1') {
+            return;
+        }
+        document.documentElement.dataset.alcrosRecordsViewDelegation = '1';
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest('#recordsListPanel .view-record-btn');
+            if (!btn) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            openViewRecordFromButton(btn);
+        });
+    }
+
+    var recordsListAbort = null;
+    var recordsListRequestId = 0;
+    var recordsSearchDebounceTimer = null;
+    var recordsListAppliedQuery = '';
+    var RECORDS_SEARCH_DEBOUNCE_MS = 450;
+    var RECORDS_SEARCH_MIN_CHARS = 2;
+
+    function recordsSearchLooksLikeDate(value) {
+        value = String(value || '').trim();
+        if (!value) {
+            return false;
+        }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+            return true;
+        }
+        if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}$/.test(value)) {
+            return true;
+        }
+        return /^\d{4}$/.test(value);
+    }
+
+    function recordsFiltersFromNavUrl(urlString) {
+        var url = new URL(urlString, window.location.href);
+        return {
+            type: url.searchParams.get('type') || 'all',
+            q: url.searchParams.get('q') || '',
+            sort: url.searchParams.get('sort') || 'name',
+            dir: url.searchParams.get('dir') || 'asc',
+            page: Math.max(1, parseInt(url.searchParams.get('page') || '1', 10) || 1)
+        };
+    }
+
+    function readRecordsFiltersFromForm(pageOverride) {
+        var form = document.getElementById('recordsToolbarForm');
+        if (!form) {
+            return null;
+        }
+        var qInput = form.querySelector('input[name="q"]');
+        var typeInput = form.querySelector('input[name="type"]');
+        var sortInput = form.querySelector('input[name="sort"]');
+        var dirInput = form.querySelector('input[name="dir"]');
+        return {
+            type: typeInput && typeInput.value ? typeInput.value : 'all',
+            q: qInput ? qInput.value.trim() : '',
+            sort: sortInput && sortInput.value ? sortInput.value : 'name',
+            dir: dirInput && dirInput.value ? dirInput.value : 'asc',
+            page: pageOverride || 1
+        };
+    }
+
+    function syncRecordsToolbarHiddenFields(filters) {
+        var wrap = document.getElementById('recordsToolbarHiddenFields');
+        if (!wrap || !filters) {
+            return;
+        }
+        wrap.innerHTML = '';
+        if (filters.type && filters.type !== 'all') {
+            var typeEl = document.createElement('input');
+            typeEl.type = 'hidden';
+            typeEl.name = 'type';
+            typeEl.value = filters.type;
+            wrap.appendChild(typeEl);
+        }
+        if (filters.sort && filters.sort !== 'name') {
+            var sortEl = document.createElement('input');
+            sortEl.type = 'hidden';
+            sortEl.name = 'sort';
+            sortEl.value = filters.sort;
+            wrap.appendChild(sortEl);
+        }
+        if (filters.dir && filters.dir !== 'asc') {
+            var dirEl = document.createElement('input');
+            dirEl.type = 'hidden';
+            dirEl.name = 'dir';
+            dirEl.value = filters.dir;
+            wrap.appendChild(dirEl);
+        }
+    }
+
+    function updateRecordsTypeFilterChips(activeType) {
+        document.querySelectorAll('#recordsTypeFilters [data-records-type]').forEach(function (chip) {
+            var key = chip.getAttribute('data-records-type');
+            var active = key === activeType;
+            chip.classList.toggle('bg-white', active);
+            chip.classList.toggle('shadow-sm', active);
+            chip.classList.toggle('text-blue-600', active);
+            chip.classList.toggle('text-gray-400', !active);
+            chip.classList.toggle('hover:text-gray-600', !active);
+        });
+    }
+
+    function buildRecordsListRequestUrl(filters) {
+        var url = new URL(recordsAuthUrl, window.location.href);
+        url.searchParams.set('action', 'list_fragment');
+        url.searchParams.set('type', filters.type || 'all');
+        if (filters.q) {
+            url.searchParams.set('q', filters.q);
+        } else {
+            url.searchParams.delete('q');
+        }
+        if (filters.sort && filters.sort !== 'name') {
+            url.searchParams.set('sort', filters.sort);
+        } else {
+            url.searchParams.delete('sort');
+        }
+        if (filters.dir && filters.dir !== 'asc') {
+            url.searchParams.set('dir', filters.dir);
+        } else {
+            url.searchParams.delete('dir');
+        }
+        if (filters.page && filters.page > 1) {
+            url.searchParams.set('page', String(filters.page));
+        } else {
+            url.searchParams.delete('page');
+        }
+        return url;
+    }
+
+    function setRecordsListLoading(on) {
+        var panel = document.getElementById('recordsListPanel');
+        if (!panel) {
+            return;
+        }
+        panel.classList.toggle('is-loading', !!on);
+        panel.setAttribute('aria-busy', on ? 'true' : 'false');
+    }
+
+    function updateRecordsSearchStatus(totalRecords, query) {
+        var status = document.getElementById('recordsSearchStatus');
+        if (!status) {
+            return;
+        }
+        if (query) {
+            status.textContent = totalRecords + ' record' + (totalRecords === 1 ? '' : 's') + ' found for “' + query + '”.';
+        } else {
+            status.textContent = totalRecords + ' record' + (totalRecords === 1 ? '' : 's') + ' shown.';
+        }
+    }
+
+    function applyRecordsListPayload(data, options) {
+        options = options || {};
+        if (!data || !data.ok) {
+            return;
+        }
+        var panel = document.getElementById('recordsListPanel');
+        if (panel && data.html) {
+            panel.outerHTML = data.html;
+        }
+        if (data.filters) {
+            syncRecordsToolbarHiddenFields(data.filters);
+            updateRecordsTypeFilterChips(data.filters.type || 'all');
+            recordsListAppliedQuery = (data.filters.q || '').trim();
+            var qInput = document.querySelector('#recordsToolbarForm input[name="q"]');
+            if (qInput && qInput.value.trim() !== recordsListAppliedQuery) {
+                qInput.value = recordsListAppliedQuery;
+            }
+        }
+        updateRecordsSearchStatus(data.totalRecords || 0, data.filters ? data.filters.q : '');
+        bindRecordsPrintMenus();
+        if (!cfg.editRecordId && options.pushState !== false && data.url) {
+            try {
+                window.history.pushState({ alcrosRecordsList: true }, '', data.url);
+            } catch (err) {
+                /* ignore */
+            }
+        }
+    }
+
+    function fetchRecordsList(filters, options) {
+        options = options || {};
+        var requestId = ++recordsListRequestId;
+        if (recordsListAbort) {
+            recordsListAbort.abort();
+        }
+        recordsListAbort = new AbortController();
+        setRecordsListLoading(true);
+
+        var url = buildRecordsListRequestUrl(filters);
+        return fetch(url.pathname + url.search, {
+            credentials: 'same-origin',
+            signal: recordsListAbort.signal,
+            headers: { Accept: 'application/json' }
+        })
+            .then(function (res) {
+                if (!res.ok) {
+                    throw new Error('Records search failed.');
+                }
+                return res.json();
+            })
+            .then(function (data) {
+                if (requestId !== recordsListRequestId) {
                     return;
                 }
-                if (!r.id) {
+                applyRecordsListPayload(data, options);
+                return data;
+            })
+            .catch(function (err) {
+                if (err && err.name === 'AbortError') {
                     return;
                 }
+                var status = document.getElementById('recordsSearchStatus');
+                if (status) {
+                    status.textContent = 'Could not update the list. Try again.';
+                }
+            })
+            .finally(function () {
+                if (requestId === recordsListRequestId) {
+                    setRecordsListLoading(false);
+                }
+            });
+    }
 
-                viewRecordIdForHistory = r.id || null;
+    function recordsSearchShouldRun(query) {
+        if (query === recordsListAppliedQuery) {
+            return false;
+        }
+        if (query !== '' && query.length < RECORDS_SEARCH_MIN_CHARS && !recordsSearchLooksLikeDate(query)) {
+            return false;
+        }
+        return true;
+    }
 
-                var viewContent = document.getElementById('viewContent');
-                if (viewContent) {
-                    if (window.AlcrosLoading && typeof window.AlcrosLoading.skeletonInto === 'function') {
-                        window.AlcrosLoading.skeletonInto(viewContent, 'detail', 8);
-                    } else {
-                        viewContent.innerHTML = '<p class="records-detail-loading">Loading record details…</p>';
+    function scheduleRecordsSearchFromInput(immediate) {
+        var form = document.getElementById('recordsToolbarForm');
+        var input = form ? form.querySelector('input[name="q"]') : null;
+        if (!input) {
+            return;
+        }
+        if (recordsSearchDebounceTimer) {
+            clearTimeout(recordsSearchDebounceTimer);
+            recordsSearchDebounceTimer = null;
+        }
+        var run = function () {
+            var query = input.value.trim();
+            if (query !== '' && query.length < RECORDS_SEARCH_MIN_CHARS && !recordsSearchLooksLikeDate(query)) {
+                if (recordsListAppliedQuery !== '') {
+                    var resetFilters = readRecordsFiltersFromForm(1);
+                    if (resetFilters) {
+                        resetFilters.q = '';
+                        resetFilters.page = 1;
+                        fetchRecordsList(resetFilters, { pushState: !cfg.editRecordId });
                     }
                 }
-                openModal('viewModal');
+                return;
+            }
+            if (!recordsSearchShouldRun(query)) {
+                return;
+            }
+            var filters = readRecordsFiltersFromForm(1);
+            if (!filters) {
+                return;
+            }
+            filters.q = query;
+            filters.page = 1;
+            fetchRecordsList(filters, { pushState: !cfg.editRecordId });
+        };
+        if (immediate) {
+            run();
+        } else {
+            recordsSearchDebounceTimer = setTimeout(run, RECORDS_SEARCH_DEBOUNCE_MS);
+        }
+    }
 
-                var viewUrl = new URL(recordsAuthUrl, window.location.href);
-                viewUrl.searchParams.set('action', 'view_record');
-                viewUrl.searchParams.set('id', String(r.id));
+    function bindRecordsLiveSearch() {
+        var form = document.getElementById('recordsToolbarForm');
+        if (!form || form.dataset.recordsLiveSearchBound === '1') {
+            return;
+        }
+        form.dataset.recordsLiveSearchBound = '1';
 
-                fetch(viewUrl.pathname + viewUrl.search, { credentials: 'same-origin' })
-                    .then(function (res) {
-                        if (!res.ok) {
-                            throw new Error('Record request failed.');
-                        }
-                        return res.json();
-                    })
-                    .then(function (data) {
-                        if (!data || !data.ok || !data.record) {
-                            throw new Error((data && data.error) || 'Could not load record.');
-                        }
-                        if (data.edit_lock) {
-                            data.record.edit_lock = data.edit_lock;
-                        }
-                        renderViewRecordPresentation(data.record, data.print_values || {});
-                    })
-                    .catch(function () {
-                        renderViewRecordPresentation(r, {});
-                    });
+        var input = form.querySelector('input[name="q"]');
+        if (input) {
+            recordsListAppliedQuery = (input.value || '').trim();
+            input.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    scheduleRecordsSearchFromInput(true);
+                }
             });
+            input.addEventListener('input', function () {
+                scheduleRecordsSearchFromInput(false);
+            });
+        }
+
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            scheduleRecordsSearchFromInput(true);
+        });
+
+        document.addEventListener('click', function (e) {
+            var link = e.target.closest('a.records-list-nav');
+            if (!link || !link.getAttribute('href')) {
+                return;
+            }
+            if (!link.closest('#recordsToolbarForm') && !link.closest('#recordsListPanel')) {
+                return;
+            }
+            if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            var filters = recordsFiltersFromNavUrl(link.href);
+            var qInput = form.querySelector('input[name="q"]');
+            if (qInput && link.closest('#recordsTypeFilters')) {
+                filters.q = qInput.value.trim();
+            }
+            syncRecordsToolbarHiddenFields(filters);
+            if (qInput) {
+                qInput.value = filters.q;
+            }
+            recordsListAppliedQuery = filters.q;
+            fetchRecordsList(filters, { pushState: !cfg.editRecordId });
+        });
+
+        window.addEventListener('popstate', function () {
+            if (!document.getElementById('recordsToolbarForm')) {
+                return;
+            }
+            var filters = recordsFiltersFromNavUrl(window.location.href);
+            var qInput = form.querySelector('input[name="q"]');
+            if (qInput) {
+                qInput.value = filters.q;
+            }
+            syncRecordsToolbarHiddenFields(filters);
+            updateRecordsTypeFilterChips(filters.type);
+            recordsListAppliedQuery = filters.q;
+            fetchRecordsList(filters, { pushState: false });
         });
     }
 
     function initRecordsPage() {
         readPageConfig();
-        refreshIcons();
+        var entryModalEl = document.getElementById('entryModal');
+        var entryAlreadyOpen = entryModalEl && entryModalEl.classList.contains('is-open');
+        if (entryAlreadyOpen) {
+            refreshIcons(entryModalEl);
+        } else {
+            refreshIcons();
+        }
         bindRecordsExportMenu();
         bindNewEntryMenu();
         bindRecordTypeTabs();
@@ -1593,7 +1990,9 @@
         bindImportForm();
         bindModalClose();
         bindRecordUpdatesModal();
-        bindViewRecordButtons();
+        bindRecordsViewDelegation();
+        bindRecordsLiveSearch();
+        bindEditRecordLinks();
         bindRecordsPrintMenus();
 
         var recordTypeInput = document.getElementById('recordTypeInput');
@@ -1601,8 +2000,15 @@
             setRecordType(recordTypeInput.value || 'birth');
         }
 
-        if (cfg.openEntryModal) {
+        if (cfg.openEntryModal && !entryAlreadyOpen) {
             openSingleEntryModal(cfg.defaultEntryType || 'birth');
+        } else if (entryAlreadyOpen) {
+            document.body.classList.add('records-entry-modal-open');
+            refreshIcons(entryModalEl);
+        }
+
+        if (window.AlcrosLoading && typeof window.AlcrosLoading.page === 'function') {
+            window.AlcrosLoading.page(false);
         }
 
         if (cfg.editRecordId && cfg.editLockHeld) {

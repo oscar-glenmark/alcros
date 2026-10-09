@@ -8,6 +8,7 @@ require_once __DIR__ . '/includes/printing.php';
 require_once __DIR__ . '/includes/record_locks.php';
 require_once __DIR__ . '/includes/cascading_location.php';
 require_once __DIR__ . '/includes/print_fill_controls.php';
+require_once __DIR__ . '/includes/records_list.php';
 require_once __DIR__ . '/includes/records_form.php';
 require_once __DIR__ . '/includes/records_csv_import.php';
 require_once __DIR__ . '/includes/civil_record_audit.php';
@@ -37,42 +38,21 @@ syncCivilRecordDerivedFields($pdo);
 ensureCivilRegistryNumberingSchema($pdo);
 
 $validTypes = ['birth', 'death', 'marriage'];
-$validSorts = [
-    'name'    => 'cr.last_name, cr.first_name',
-    'type'    => 'cr.record_type',
-    'date'    => 'COALESCE(cr.event_date, cr.birth_date)',
-    'created' => 'cr.created_at',
-];
 
 function buildRecordsUrl(array $overrides = []): string
 {
-    $params = array_merge([
-        'type' => $_GET['type'] ?? 'all',
-        'q'    => $_GET['q'] ?? '',
-        'sort' => $_GET['sort'] ?? 'name',
-        'dir'  => $_GET['dir'] ?? 'asc',
-        'page' => (int) ($_GET['page'] ?? 1),
-    ], $overrides);
-    foreach (['type', 'q', 'sort', 'dir', 'page', 'edit'] as $key) {
-        if ($key === 'type' && ($params['type'] ?? '') === 'all') unset($params['type']);
-        elseif ($key === 'sort' && ($params['sort'] ?? '') === 'name') unset($params['sort']);
-        elseif ($key === 'dir' && ($params['dir'] ?? '') === 'asc') unset($params['dir']);
-        elseif ($key === 'page' && (int) ($params['page'] ?? 1) <= 1) unset($params['page']);
-        elseif ($key === 'q' && ($params['q'] ?? '') === '') unset($params['q']);
-        elseif ($key === 'edit' && empty($params['edit'])) unset($params['edit']);
-    }
-    return buildAuthUrl('records.php', $params);
+    return buildRecordsUrlFromFilters(currentRecordsFilters(), $overrides);
 }
 
 function currentRecordsFilters(): array
 {
-    return [
+    return recordsListNormalizeFilters([
         'type' => $_GET['type'] ?? 'all',
         'q'    => $_GET['q'] ?? '',
         'sort' => $_GET['sort'] ?? 'name',
-        'dir'  => strtolower($_GET['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc',
-        'page' => max(1, (int) ($_GET['page'] ?? 1)),
-    ];
+        'dir'  => $_GET['dir'] ?? 'asc',
+        'page' => $_GET['page'] ?? 1,
+    ]);
 }
 
 function recordsExportTypeFromRequest(): string
@@ -167,123 +147,6 @@ function exportCivilRecordsTypeCounts(PDO $pdo, string $where, array $params, ar
     return $counts;
 }
 
-function buildRecordsWhere(array $filters): array
-{
-    ensureAdminSearchIndexes(getDB());
-
-    $where  = 'cr.deleted_at IS NULL';
-    $params = [];
-
-    if ($filters['type'] !== 'all' && in_array($filters['type'], ['birth', 'death', 'marriage'], true)) {
-        $where .= ' AND cr.record_type = ?';
-        $params[] = $filters['type'];
-    }
-
-    $search = adminSearchNormalizeWhitespace($filters['q'] ?? '');
-    if ($search === '') {
-        return [$where, $params];
-    }
-
-    [$nameSearch, $dateSearch] = adminSearchSplitNameAndDate($search);
-    if ($nameSearch === '' && $dateSearch === '') {
-        $nameSearch = $search;
-    }
-
-    $term = '%' . $search . '%';
-    $clauses = [];
-    $searchParams = [];
-
-    if ($nameSearch !== '') {
-        [$nameClauses, $nameParams] = adminSearchNameLikeClauses(
-            $nameSearch,
-            'cr.first_name',
-            'cr.middle_name',
-            'cr.last_name'
-        );
-        $clauses = array_merge($clauses, $nameClauses);
-        $searchParams = array_merge($searchParams, $nameParams);
-
-        $nameTerm = '%' . $nameSearch . '%';
-        $clauses[] = "EXISTS (
-                SELECT 1 FROM marriage_record_details mrd
-                WHERE mrd.civil_record_id = cr.id
-                AND (
-                    mrd.husband_name LIKE ?
-                    OR mrd.wife_name LIKE ?
-                    OR mrd.husband_father_name LIKE ?
-                    OR mrd.husband_mother_maiden_name LIKE ?
-                    OR mrd.wife_father_name LIKE ?
-                    OR mrd.wife_mother_maiden_name LIKE ?
-                    OR mrd.solemnized_by LIKE ?
-                    OR mrd.witnesses LIKE ?
-                )
-            )";
-        $searchParams = array_merge($searchParams, array_fill(0, 8, $nameTerm));
-    }
-
-    foreach ([
-        'cr.registry_number LIKE ?',
-        'cr.book_number LIKE ?',
-        'cr.page_number LIKE ?',
-        'cr.father_name LIKE ?',
-        'cr.mother_name LIKE ?',
-        'cr.place LIKE ?',
-        'cr.notes LIKE ?',
-        'CAST(cr.id AS CHAR) LIKE ?',
-    ] as $clause) {
-        $clauses[] = $clause;
-        $searchParams[] = $term;
-    }
-
-    $clauses[] = "EXISTS (
-            SELECT 1 FROM death_record_details drd
-            WHERE drd.civil_record_id = cr.id
-            AND drd.code_number LIKE ?
-        )";
-    $searchParams[] = $term;
-
-    $dateQuery = $dateSearch !== '' ? $dateSearch : (adminSearchLooksLikeDate($search) ? $search : '');
-    if ($dateQuery !== '') {
-        [$dateClauses, $dateParams] = adminSearchDateClausesForColumns($dateQuery, [
-            'cr.birth_date',
-            'cr.event_date',
-        ]);
-        $clauses = array_merge($clauses, $dateClauses);
-        $searchParams = array_merge($searchParams, $dateParams);
-
-        [$deathRegSql, $deathRegParams] = adminSearchDateMatchExpr('drd.registration_date', $dateQuery);
-        $clauses[] = "EXISTS (
-                SELECT 1 FROM death_record_details drd
-                WHERE drd.civil_record_id = cr.id
-                AND $deathRegSql
-            )";
-        $searchParams = array_merge($searchParams, $deathRegParams);
-
-        [$birthRegSql, $birthRegParams] = adminSearchDateMatchExpr('brd.registration_date', $dateQuery);
-        [$parentsDomSql, $parentsDomParams] = adminSearchDateMatchExpr('brd.parents_marriage_date', $dateQuery);
-        $clauses[] = "EXISTS (
-                SELECT 1 FROM birth_record_details brd
-                WHERE brd.civil_record_id = cr.id
-                AND ($birthRegSql OR $parentsDomSql)
-            )";
-        $searchParams = array_merge($searchParams, $birthRegParams, $parentsDomParams);
-
-        [$husbandDobSql, $husbandDobParams] = adminSearchDateMatchExpr('mrd.husband_birth_date', $dateQuery);
-        [$wifeDobSql, $wifeDobParams] = adminSearchDateMatchExpr('mrd.wife_birth_date', $dateQuery);
-        $clauses[] = "EXISTS (
-                SELECT 1 FROM marriage_record_details mrd
-                WHERE mrd.civil_record_id = cr.id
-                AND ($husbandDobSql OR $wifeDobSql)
-            )";
-        $searchParams = array_merge($searchParams, $husbandDobParams, $wifeDobParams);
-    }
-
-    $where .= ' AND (' . implode(' OR ', $clauses) . ')';
-    $params = array_merge($params, $searchParams);
-
-    return [$where, $params];
-}
-
 function civilRecordSearchBlob(array $r): string
 {
     $parts = [
@@ -319,11 +182,6 @@ function civilRecordSearchBlob(array $r): string
     }
 
     return implode(' ', array_filter(array_map(static fn ($v) => trim((string) $v), $parts), static fn ($v) => $v !== ''));
-}
-
-function recordInitial(string $name): string
-{
-    return strtoupper(substr(trim($name), 0, 1));
 }
 
 function civilRecordExportRowValues(array $row, string $type): array
@@ -512,6 +370,19 @@ if (isset($_GET['action']) && $_GET['action'] === 'record_update_history') {
     exit;
 }
 
+// JSON list fragment for live search / filters (no full page reload)
+if (isset($_GET['action']) && $_GET['action'] === 'list_fragment') {
+    header('Content-Type: application/json; charset=UTF-8');
+    try {
+        $payload = recordsListAjaxPayload($pdo, $_GET);
+        echo json_encode(['ok' => true] + $payload, JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'error' => 'Could not load records.'], JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+    exit;
+}
+
 // JSON record details for view modal
 if (isset($_GET['action']) && $_GET['action'] === 'view_record') {
     header('Content-Type: application/json; charset=UTF-8');
@@ -669,19 +540,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $filters = currentRecordsFilters();
 $type   = $filters['type'];
-$search = trim($filters['q']);
-$page   = $filters['page'];
-$sort   = $filters['sort'];
-$dir    = $filters['dir'];
-$perPage = 10;
-$offset  = ($page - 1) * $perPage;
-
-if (!in_array($type, ['all', ...$validTypes], true)) {
-    $type = 'all';
-}
-if (!isset($validSorts[$sort])) {
-    $sort = 'name';
-}
+$search = $filters['q'];
 
 $typeCounts = $pdo->query(
     "SELECT record_type, COUNT(*) AS cnt
@@ -693,18 +552,7 @@ $birthCount    = (int) ($typeCounts['birth'] ?? 0);
 $deathCount    = (int) ($typeCounts['death'] ?? 0);
 $marriageCount = (int) ($typeCounts['marriage'] ?? 0);
 
-[$where, $params] = buildRecordsWhere($filters);
-$countStmt = $pdo->prepare("SELECT COUNT(*) FROM civil_records cr WHERE $where");
-$countStmt->execute($params);
-$totalRecords = (int) $countStmt->fetchColumn();
-$totalPages   = max(1, (int) ceil($totalRecords / $perPage));
-
-$orderCol = $validSorts[$sort];
-$sql = "SELECT cr.* FROM civil_records cr WHERE $where ORDER BY $orderCol $dir LIMIT $perPage OFFSET $offset";
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$records = $stmt->fetchAll();
-$records = hydrateCivilRecordRows($pdo, $records);
+$recordsListHtml = renderRecordsListPanel($pdo, $filters);
 
 $editRecord = null;
 $editLockBlocked = null;
@@ -722,21 +570,8 @@ if (isset($_GET['edit'])) {
     }
 }
 
-$typeBadgeClass = [
-    'birth'    => 'bg-blue-100 text-blue-600',
-    'death'    => 'bg-gray-100 text-gray-600',
-    'marriage' => 'bg-pink-100 text-pink-600',
-];
-
 $showModal = isset($_GET['new']);
 $flash = recordsFlashGet();
-
-function sortUrl(string $column): string
-{
-    global $sort, $dir;
-    $nextDir = ($sort === $column && $dir === 'asc') ? 'desc' : 'asc';
-    return buildRecordsUrl(['sort' => $column, 'dir' => $nextDir, 'page' => 1]);
-}
 
 $pageTitle = 'Civil Records';
 $pageSubtitle = 'Manage birth, death, and marriage registry entries with search, export, and import.';
@@ -753,9 +588,18 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
     <?= adminLayoutHeadStyles('records') ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>
-<body class="flex min-h-screen">
+<body class="flex min-h-screen<?= $editRecord ? ' records-entry-modal-open' : '' ?>">
 
     <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
+    <?php if (isset($_GET['edit'])): ?>
+    <script>
+    (function () {
+        if (window.AlcrosLoading && typeof window.AlcrosLoading.page === 'function') {
+            window.AlcrosLoading.page(true, 'Opening editor…');
+        }
+    })();
+    </script>
+    <?php endif; ?>
 
     <main class="admin-main flex flex-col bg-[#fdfdfd]">
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
@@ -822,20 +666,24 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                 <?php endforeach; ?>
             </div>
 
-            <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('records.php')) ?>" class="admin-toolbar">
+            <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('records.php')) ?>" class="admin-toolbar" id="recordsToolbarForm" data-records-ajax-search="1">
                 <?= authFormField() ?>
-                <?php if ($type !== 'all'): ?><input type="hidden" name="type" value="<?= htmlspecialchars($type) ?>"><?php endif; ?>
-                <?php if ($sort !== 'name'): ?><input type="hidden" name="sort" value="<?= htmlspecialchars($sort) ?>"><?php endif; ?>
-                <?php if ($dir !== 'asc'): ?><input type="hidden" name="dir" value="<?= htmlspecialchars($dir) ?>"><?php endif; ?>
+                <div id="recordsToolbarHiddenFields">
+                    <?php if ($type !== 'all'): ?><input type="hidden" name="type" value="<?= htmlspecialchars($type) ?>"><?php endif; ?>
+                    <?php if ($filters['sort'] !== 'name'): ?><input type="hidden" name="sort" value="<?= htmlspecialchars($filters['sort']) ?>"><?php endif; ?>
+                    <?php if ($filters['dir'] !== 'asc'): ?><input type="hidden" name="dir" value="<?= htmlspecialchars($filters['dir']) ?>"><?php endif; ?>
+                </div>
                 <div class="records-toolbar-search-row">
                     <div class="relative flex-1 min-w-0 records-toolbar-search">
                         <span class="absolute left-3 top-2.5 pointer-events-none text-gray-400"><?= lucideSvg('search', 'w-4 h-4') ?></span>
                         <input type="text" name="q" id="recordsSearchInput" value="<?= htmlspecialchars($search) ?>" placeholder="First, middle, last, full name, DOB, DOM, registry…"
-                            class="records-search-input w-full pl-10 pr-4 py-2 text-sm bg-gray-50 border-none rounded-lg focus:ring-0 text-slate-600 placeholder-gray-400" autocomplete="off">
+                            class="records-search-input w-full pl-10 pr-4 py-2 text-sm bg-gray-50 border-none rounded-lg focus:ring-0 text-slate-600 placeholder-gray-400" autocomplete="off"
+                            aria-controls="recordsListPanel" aria-describedby="recordsSearchStatus">
                     </div>
                     <button type="submit" class="records-toolbar-search-btn bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold shrink-0" data-loading-text="Searching…">Search</button>
                 </div>
-                <div class="admin-toolbar-filters">
+                <p id="recordsSearchStatus" class="sr-only" aria-live="polite"></p>
+                <div class="admin-toolbar-filters" id="recordsTypeFilters">
                     <?php
                     $filterTabs = [
                         'all'      => ['label' => 'All', 'icon' => 'layers'],
@@ -845,8 +693,9 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                     ];
                     foreach ($filterTabs as $key => $filterMeta):
                     ?>
-                    <a href="<?= buildRecordsUrl(['type' => $key, 'page' => 1, 'q' => $search ?: null]) ?>"
-                       class="filter-chip filter-chip--with-icon whitespace-nowrap shrink-0 <?= $type === $key ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600' ?>">
+                    <a href="<?= htmlspecialchars(buildRecordsUrl(['type' => $key, 'page' => 1, 'q' => $search !== '' ? $search : null])) ?>"
+                       data-records-type="<?= htmlspecialchars($key) ?>"
+                       class="filter-chip filter-chip--with-icon whitespace-nowrap shrink-0 records-list-nav <?= $type === $key ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600' ?>">
                         <?= lucideSvg($filterMeta['icon'], 'records-filter-icon shrink-0') ?>
                         <span><?= htmlspecialchars($filterMeta['label']) ?></span>
                     </a>
@@ -854,110 +703,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                 </div>
             </form>
 
-            <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-                <?php if (empty($records)): ?>
-                <div class="p-16 text-center">
-                    <div class="bg-gray-50 p-4 rounded-xl w-fit mx-auto mb-4 text-gray-200"><?= lucideSvg('book-open', 'w-10 h-10') ?></div>
-                    <p class="text-sm font-bold text-slate-800 mb-1">No records found</p>
-                    <p class="text-gray-400 text-xs">Try adjusting your filters or add a new entry.</p>
-                </div>
-                <?php else: ?>
-                <div class="overflow-x-auto">
-                <table class="w-full min-w-[720px]">
-                    <thead class="bg-gray-50/50 border-b border-gray-100">
-                        <tr>
-                            <th class="p-4 text-left table-head"><a href="<?= sortUrl('name') ?>" class="hover:text-blue-600">Record Name <?= $sort === 'name' ? ($dir === 'asc' ? 'â†‘' : 'â†“') : '' ?></a></th>
-                            <th class="p-4 text-left table-head"><a href="<?= sortUrl('type') ?>" class="hover:text-blue-600">Type <?= $sort === 'type' ? ($dir === 'asc' ? 'â†‘' : 'â†“') : '' ?></a></th>
-                            <th class="p-4 text-left table-head"><a href="<?= sortUrl('date') ?>" class="hover:text-blue-600">Key Date <?= $sort === 'date' ? ($dir === 'asc' ? 'â†‘' : 'â†“') : '' ?></a></th>
-                            <th class="p-4 text-left table-head">Details</th>
-                            <th class="p-4 text-right table-head">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100" id="recordsTableBody">
-                        <?php foreach ($records as $r):
-                            $badge = $typeBadgeClass[$r['record_type']] ?? 'bg-gray-100 text-gray-600';
-                            $keyDate = $r['record_type'] === 'birth' ? $r['birth_date'] : $r['event_date'];
-                            if (!$keyDate) {
-                                $keyDate = $r['birth_date'] ?: $r['event_date'];
-                            }
-                            $parents = array_filter([$r['father_name'] ? 'Father: ' . $r['father_name'] : '', $r['mother_name'] ? 'Mother: ' . $r['mother_name'] : '']);
-                        ?>
-                        <tr class="hover:bg-gray-50/50 transition-colors records-table-row">
-                            <td class="p-4">
-                                <button type="button" class="view-record-btn text-left w-full" data-record="<?= htmlspecialchars(json_encode($r, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), ENT_QUOTES, 'UTF-8') ?>">
-                                    <div class="flex items-center space-x-3">
-                                        <div class="w-8 h-8 bg-blue-100 rounded flex items-center justify-center text-blue-600 font-bold text-xs"><?= htmlspecialchars(recordInitial(civilRecordDisplayName($r))) ?></div>
-                                        <div>
-                                            <div class="flex items-center space-x-2">
-                                                <span class="text-sm font-bold text-slate-800 hover:text-blue-600"><?= htmlspecialchars(civilRecordDisplayName($r)) ?></span>
-                                                <?php $displayRegistry = civilRecordRegistryNumber($r); ?>
-                                                <?php if ($displayRegistry): ?>
-                                                <span class="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 font-bold">#<?= htmlspecialchars($displayRegistry) ?></span>
-                                                <?php endif; ?>
-                                                <?php if (!empty($r['book_number']) || !empty($r['page_number'])): ?>
-                                                <span class="text-[9px] bg-amber-50 px-1.5 py-0.5 rounded text-amber-700 font-bold">Bk <?= htmlspecialchars((string) ($r['book_number'] ?? 'â€”')) ?> Â· Pg <?= htmlspecialchars((string) ($r['page_number'] ?? 'â€”')) ?></span>
-                                                <?php endif; ?>
-                                            </div>
-                                            <p class="text-[10px] text-gray-400 font-medium">ID: <?= (int) $r['id'] ?> â€¢ Added <?= formatRecordDate(substr($r['created_at'], 0, 10)) ?></p>
-                                        </div>
-                                    </div>
-                                </button>
-                            </td>
-                            <td class="p-4"><span class="text-[9px] font-black <?= $badge ?> px-2 py-0.5 rounded uppercase"><?= htmlspecialchars($r['record_type']) ?></span></td>
-                            <td class="p-4 text-[10px] text-gray-500 font-medium"><?= formatRecordDate($keyDate) ?></td>
-                            <td class="p-4 text-[10px] text-gray-400 font-medium max-w-[180px] truncate" title="<?= htmlspecialchars(implode(' â€¢ ', $parents) ?: ($r['place'] ?? '')) ?>">
-                                <?= htmlspecialchars(implode(' â€¢ ', $parents) ?: ($r['place'] ?? 'â€”')) ?>
-                            </td>
-                            <td class="p-4 text-right">
-                                <div class="manage-row-actions" onclick="event.stopPropagation()">
-                                    <div class="manage-print-menu">
-                                        <button type="button"
-                                                class="manage-row-action manage-row-action--labeled manage-row-action--print manage-print-trigger"
-                                                title="Print options"
-                                                aria-label="Print options for <?= htmlspecialchars(civilRecordDisplayName($r)) ?>"
-                                                aria-haspopup="true"
-                                                aria-expanded="false">
-                                            <i data-lucide="printer" class="w-3.5 h-3.5"></i>
-                                            <span class="manage-row-action__label">PRINT</span>
-                                            <i data-lucide="chevron-down" class="w-3 h-3 manage-print-trigger__chevron"></i>
-                                        </button>
-                                        <div class="manage-print-dropdown hidden" role="menu">
-                                            <a href="<?= htmlspecialchars(buildAuthUrl('print_certificate.php', ['record_id' => (int) $r['id']])) ?>"
-                                               role="menuitem">Local Certificate</a>
-                                            <a href="<?= htmlspecialchars(buildAuthUrl('print_certificate.php', ['record_id' => (int) $r['id'], 'kind' => 'certification'])) ?>"
-                                               role="menuitem">Certification</a>
-                                        </div>
-                                    </div>
-                                    <button type="button" class="view-record-btn manage-row-action" title="View" aria-label="View record"
-                                            data-record="<?= htmlspecialchars(json_encode($r, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), ENT_QUOTES, 'UTF-8') ?>">
-                                        <i data-lucide="eye" class="w-4 h-4"></i>
-                                    </button>
-                                    <a href="<?= buildRecordsUrl(['edit' => $r['id']]) ?>" class="manage-row-action" title="Edit" aria-label="Edit record"><i data-lucide="edit-3" class="w-4 h-4"></i></a>
-                                </div>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-                </div>
-                <?php endif; ?>
-
-                <div class="p-4 border-t border-gray-100 flex items-center justify-between">
-                    <p class="text-[10px] font-bold text-gray-400 uppercase">Page <?= $page ?> of <?= $totalPages ?> â€¢ Total: <?= $totalRecords ?></p>
-                    <div class="flex space-x-2">
-                        <?php if ($page > 1): ?>
-                        <a href="<?= buildRecordsUrl(['page' => $page - 1]) ?>" class="p-1 border border-gray-200 rounded text-gray-400 hover:bg-gray-50"><i data-lucide="chevron-left" class="w-4 h-4"></i></a>
-                        <?php else: ?>
-                        <span class="p-1 border border-gray-100 rounded text-gray-200"><i data-lucide="chevron-left" class="w-4 h-4"></i></span>
-                        <?php endif; ?>
-                        <?php if ($page < $totalPages): ?>
-                        <a href="<?= buildRecordsUrl(['page' => $page + 1]) ?>" class="p-1 border border-gray-200 rounded text-gray-400 hover:bg-gray-50"><i data-lucide="chevron-right" class="w-4 h-4"></i></a>
-                        <?php else: ?>
-                        <span class="p-1 border border-gray-100 rounded text-gray-200"><i data-lucide="chevron-right" class="w-4 h-4"></i></span>
-                        <?php endif; ?>
-                    </div>
-                </div>
-            </div>
+            <?= $recordsListHtml ?>
         </div>
     </main>
 
@@ -975,7 +721,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
         ? fetchCivilRecordUpdateHistory($pdo, (int) $editRecord['id'], 15)
         : [];
     ?>
-    <div class="records-entry-modal hidden" id="entryModal">
+    <div class="records-entry-modal<?= $editRecord ? ' is-open' : ' hidden' ?>" id="entryModal">
         <div class="records-entry-dialog">
             <div class="records-entry-header">
                 <h2 class="text-lg font-black text-slate-900 min-w-0 flex-1" id="entryModalTitle"><?= htmlspecialchars($modalTitle) ?></h2>

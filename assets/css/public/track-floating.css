@@ -1,5 +1,234 @@
+:root {
+    --alcros-navy: #071428;
+    --alcros-navy-mid: #0c2247;
+    --alcros-gold: #f4b400;
+    --alcros-gold-hover: #e5a800;
+}
+
 #track-floating-root.hidden {
     pointer-events: none !important;
+}
+
+#track-floating-backdrop {
+    animation: track-floating-fade-in 0.2s ease-out;
+}
+
+@keyframes track-floating-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.track-floating-card {
+    background: #fff;
+    border-radius: 1.25rem;
+    overflow: hidden;
+    border: 1px solid rgba(7, 20, 40, 0.08);
+    box-shadow:
+        0 24px 48px -12px rgba(7, 20, 40, 0.22),
+        0 0 0 1px rgba(255, 255, 255, 0.6) inset;
+    animation: track-floating-slide-up 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes track-floating-slide-up {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.track-floating-card__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 1.15rem 1.25rem 1.1rem;
+    background: linear-gradient(135deg, var(--alcros-navy) 0%, var(--alcros-navy-mid) 100%);
+    border-bottom: 3px solid var(--alcros-gold);
+    color: #fff;
+}
+
+.track-floating-card__heading {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.track-floating-card__icon {
+    flex-shrink: 0;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.75rem;
+    background: rgba(244, 180, 0, 0.15);
+    border: 1px solid rgba(244, 180, 0, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--alcros-gold);
+}
+
+.track-floating-card__eyebrow {
+    font-size: 0.625rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--alcros-gold);
+    margin: 0 0 0.15rem;
+}
+
+.track-floating-card__title {
+    font-size: 1.05rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin: 0;
+    line-height: 1.25;
+    color: #fff;
+}
+
+.track-floating-card__close {
+    flex-shrink: 0;
+    padding: 0.45rem;
+    border: none;
+    border-radius: 0.65rem;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.65);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.track-floating-card__close:hover {
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
+}
+
+.track-floating-card__body {
+    padding: 1.15rem 1.25rem 1.35rem;
+    background: linear-gradient(180deg, #f8fafc 0%, #fff 48%);
+}
+
+.track-floating-card__hint {
+    font-size: 0.8125rem;
+    color: #64748b;
+    margin: 0 0 0.85rem;
+    line-height: 1.45;
+}
+
+.track-floating-form {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.track-floating-form__field {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.track-floating-form__icon {
+    position: absolute;
+    inset-block: 0;
+    left: 0.85rem;
+    display: flex;
+    align-items: center;
+    pointer-events: none;
+    color: #94a3b8;
+}
+
+.track-floating-form__input {
+    width: 100%;
+    box-sizing: border-box;
+    background: #fff;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 0.75rem;
+    padding: 0.72rem 0.85rem 0.72rem 2.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--alcros-navy);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.track-floating-form__input::placeholder {
+    text-transform: none;
+    font-weight: 500;
+    letter-spacing: normal;
+    color: #94a3b8;
+}
+
+.track-floating-form__input:focus {
+    outline: none;
+    border-color: var(--alcros-gold);
+    box-shadow: 0 0 0 3px rgba(244, 180, 0, 0.22);
+}
+
+.track-floating-form__submit {
+    flex-shrink: 0;
+    border: none;
+    cursor: pointer;
+    border-radius: 0.75rem;
+    padding: 0.72rem 1.35rem;
+    background: var(--alcros-gold);
+    color: var(--alcros-navy);
+    font-size: 0.8125rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    box-shadow: 0 4px 14px rgba(244, 180, 0, 0.35);
+    transition: background 0.2s, transform 0.12s, box-shadow 0.2s;
+}
+
+.track-floating-form__submit:hover:not(:disabled) {
+    background: var(--alcros-gold-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(244, 180, 0, 0.4);
+}
+
+.track-floating-form__submit:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.track-floating-form__submit:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+#track-floating-error {
+    margin-top: 0.85rem;
+    border-radius: 0.75rem;
+}
+
+#track-floating-result {
+    margin-top: 0.85rem;
+}
+
+#track-floating-result .rounded-xl.border-slate-100 {
+    border-color: rgba(7, 20, 40, 0.08);
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(7, 20, 40, 0.06);
+}
+
+.track-floating-result__code {
+    font-size: 1.25rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    word-break: break-all;
+    color: var(--alcros-navy);
+}
+
+.track-floating-card .track-step-dot.is-active {
+    background: var(--alcros-gold);
+    box-shadow: 0 0 0 3px rgba(244, 180, 0, 0.25);
+}
+
+.track-floating-card .track-step-label.is-active {
+    color: var(--alcros-navy);
 }
 
 @media (max-width: 639px) {
@@ -14,17 +243,31 @@
         padding-bottom: env(safe-area-inset-bottom);
     }
 
-    #track-floating-panel > div {
-        border-radius: 1.25rem 1.25rem 0 0;
+    .track-floating-card {
+        border-radius: 1.35rem 1.35rem 0 0;
         max-height: min(92dvh, 640px);
         overflow-y: auto;
+        animation-name: track-floating-sheet-up;
     }
 
-    #track-floating-form {
+    @keyframes track-floating-sheet-up {
+        from {
+            opacity: 0;
+            transform: translateY(100%);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .track-floating-form {
         flex-direction: column;
     }
 
-    #track-floating-submit {
+    .track-floating-form__submit {
         width: 100%;
+        padding-top: 0.85rem;
+        padding-bottom: 0.85rem;
     }
 }

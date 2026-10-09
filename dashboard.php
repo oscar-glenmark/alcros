@@ -150,18 +150,6 @@ if (!$isAdminUser) {
     ];
 }
 
-function activityIcon(string $action): string
-{
-    return match (true) {
-        str_contains($action, 'Login')    => 'log-in',
-        str_contains($action, 'Created')    => 'plus-circle',
-        str_contains($action, 'Updated')  => 'pencil',
-        str_contains($action, 'Deleted')  => 'trash-2',
-        str_contains($action, 'Import')   => 'upload',
-        str_contains($action, 'Password') => 'key',
-        default                             => 'activity',
-    };
-}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -227,15 +215,15 @@ function activityIcon(string $action): string
             <?php if ($isAdminUser): ?>
             <section class="dash-admin-quick-wrap" aria-labelledby="dash-admin-quick-heading">
                 <p id="dash-admin-quick-heading" class="dash-admin-analytics__kicker">Quick access</p>
-            <div class="dash-admin-quick grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mt-2">
+            <div class="dash-admin-quick grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mt-2">
                 <?php foreach ($quickActions as $action): ?>
-                <a href="<?= htmlspecialchars(buildAuthUrl($action['href'], $action['query'] ?? [])) ?>" class="dash-admin-quick__card dash-card bg-white rounded-xl border border-gray-100 p-4 hover:border-blue-200 flex items-start gap-3">
-                    <div class="p-2 rounded-lg shrink-0 <?= htmlspecialchars($action['color']) ?>">
-                        <i data-lucide="<?= htmlspecialchars($action['icon']) ?>" class="w-4 h-4"></i>
+                <a href="<?= htmlspecialchars(buildAuthUrl($action['href'], $action['query'] ?? [])) ?>" class="dash-admin-quick__card dash-card bg-white rounded-xl border border-gray-100 hover:border-blue-200 flex items-start">
+                    <div class="dash-admin-quick__icon rounded-lg shrink-0 <?= htmlspecialchars($action['color']) ?>">
+                        <i data-lucide="<?= htmlspecialchars($action['icon']) ?>" class="w-5 h-5"></i>
                     </div>
                     <div class="min-w-0">
-                        <p class="text-sm font-bold text-slate-800 truncate"><?= htmlspecialchars($action['label']) ?></p>
-                        <p class="text-[10px] text-gray-400 mt-0.5"><?= htmlspecialchars($action['desc']) ?></p>
+                        <p class="dash-admin-quick__title font-bold text-slate-800 truncate"><?= htmlspecialchars($action['label']) ?></p>
+                        <p class="dash-admin-quick__desc text-gray-400"><?= htmlspecialchars($action['desc']) ?></p>
                     </div>
                 </a>
                 <?php endforeach; ?>
@@ -414,9 +402,13 @@ function activityIcon(string $action): string
                 <div id="activity-feed-list" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 p-4">
                     <?php foreach ($activities as $act): ?>
                     <div class="flex items-start gap-3 p-3 rounded-xl bg-gray-50/80 border border-gray-100">
-                        <div class="bg-white p-2 rounded-lg text-blue-600 border border-gray-100 shrink-0">
-                            <i data-lucide="<?= activityIcon($act['action']) ?>" class="w-4 h-4"></i>
-                        </div>
+                        <span class="shrink-0 mt-0.5" aria-hidden="true">
+                            <?= $act['staff_avatar_html'] ?? renderStaffAvatar(
+                                $act['staff_photo_path'] ?? null,
+                                (string) ($act['staff_display_name'] ?? (staffId() ?: 'Staff')),
+                                'w-9 h-9 text-xs'
+                            ) ?>
+                        </span>
                         <div class="min-w-0">
                             <p class="text-xs font-bold text-slate-800"><?= htmlspecialchars($act['action']) ?></p>
                             <?php if (!empty($act['details'])): ?>

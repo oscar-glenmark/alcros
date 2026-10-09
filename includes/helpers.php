@@ -4655,6 +4655,7 @@ function appointmentViewData(array $row, ?PDO $pdo = null): array
         'rejection_reason'   => !empty($row['rejection_reason']) ? (string) $row['rejection_reason'] : null,
         'can_schedule_follow_up' => false,
         'follow_up'        => null,
+        'follow_up_log'    => [],
     ];
 
     $pendingFollowUp = null;
@@ -4664,6 +4665,10 @@ function appointmentViewData(array $row, ?PDO $pdo = null): array
         $view['can_schedule_follow_up'] = $statusKey === 'completed';
         $pendingFollowUp = fetchPendingFollowUpByAppointmentId($pdo, (int) ($row['id'] ?? 0));
         $view['follow_up'] = appointmentFollowUpViewData($pendingFollowUp);
+        $view['follow_up_log'] = array_map(
+            static fn (array $entry) => appointmentFollowUpLogEntryViewData($entry),
+            fetchFollowUpLogByAppointmentId($pdo, (int) ($row['id'] ?? 0))
+        );
     }
 
     $view['revision'] = appointmentRevision($row, $pendingFollowUp);

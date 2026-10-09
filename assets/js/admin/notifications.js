@@ -225,7 +225,12 @@
                 deleteBtn + '</div>';
         }).join('');
 
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+        if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
+            var icons = listEl.querySelectorAll('[data-lucide]');
+            if (icons.length) {
+                lucide.createIcons({ nameAttr: 'data-lucide', nodes: Array.prototype.slice.call(icons) });
+            }
+        }
     }
 
     function renderAllLists(all) {

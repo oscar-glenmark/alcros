@@ -589,6 +589,78 @@
             '<input type="hidden" name="redirect_q" value="' + escapeHtml(pageConfig.redirectQ || '') + '">';
     }
 
+    function wireFollowUpPopovers(wrap) {
+        if (!wrap || wrap.getAttribute('data-follow-up-popovers-wired') === '1') {
+            return;
+        }
+        wrap.setAttribute('data-follow-up-popovers-wired', '1');
+
+        var logDetails = wrap.querySelector('[data-follow-up-log]');
+        var infoDetails = wrap.querySelector('.manage-follow-up-info');
+        var popovers = [logDetails, infoDetails].filter(Boolean);
+
+        function closeOthers(exceptEl) {
+            popovers.forEach(function (el) {
+                if (el !== exceptEl && el.open) {
+                    el.open = false;
+                }
+            });
+        }
+
+        popovers.forEach(function (el) {
+            el.addEventListener('toggle', function () {
+                if (el.open) {
+                    closeOthers(el);
+                }
+            });
+        });
+    }
+
+    function renderFollowUpLog(wrap, data) {
+        if (!wrap) return;
+        wireFollowUpPopovers(wrap);
+        var logDetails = wrap.querySelector('[data-follow-up-log]');
+        var panel = wrap.querySelector('[data-follow-up-log-panel]');
+        if (!logDetails || !panel) return;
+
+        var log = Array.isArray(data.follow_up_log) ? data.follow_up_log : [];
+        logDetails.classList.toggle('hidden', log.length === 0);
+
+        if (log.length === 0) {
+            panel.innerHTML = '';
+            return;
+        }
+
+        var html = '<p class="manage-follow-up-log__title">Follow-up history</p><ul class="manage-follow-up-log__list">';
+        log.forEach(function (entry) {
+            var statusClass = 'is-' + String(entry.status || 'pending');
+            html += '<li class="manage-follow-up-log__item ' + statusClass + '">' +
+                '<div class="manage-follow-up-log__item-head">' +
+                '<span class="manage-follow-up-log__status">' + escapeHtml(entry.status_label || entry.status || '—') + '</span>' +
+                '<span class="manage-follow-up-log__date">' + escapeHtml(entry.follow_up_date || '—') + '</span>' +
+                '</div>';
+            if (entry.staff_note) {
+                html += '<p class="manage-follow-up-log__note">' + escapeHtml(entry.staff_note) + '</p>';
+            }
+            if (entry.reminder_summary) {
+                html += '<p class="manage-follow-up-log__meta">' + escapeHtml(entry.reminder_summary) + '</p>';
+            }
+            if (entry.cancel_reason) {
+                html += '<p class="manage-follow-up-log__meta">Cancel reason: ' + escapeHtml(entry.cancel_reason) + '</p>';
+            }
+            var audit = [];
+            if (entry.created_at) audit.push('Set ' + entry.created_at);
+            if (entry.updated_at && entry.updated_at !== entry.created_at) audit.push('Updated ' + entry.updated_at);
+            if (entry.created_by) audit.push('By ' + entry.created_by);
+            if (audit.length) {
+                html += '<p class="manage-follow-up-log__audit">' + escapeHtml(audit.join(' · ')) + '</p>';
+            }
+            html += '</li>';
+        });
+        html += '</ul>';
+        panel.innerHTML = html;
+    }
+
     function renderFollowUp(prefix, data) {
         var wrap = document.getElementById(prefix + 'appt-view-follow-up-wrap');
         var body = document.getElementById(prefix + 'appt-view-follow-up-body');
@@ -597,8 +669,11 @@
         var followUp = data.follow_up;
         var canSchedule = data.can_schedule_follow_up === true;
         var hasPending = followUp && followUp.status === 'pending';
+        var hasLog = Array.isArray(data.follow_up_log) && data.follow_up_log.length > 0;
 
-        if (!canSchedule && !hasPending) {
+        renderFollowUpLog(wrap, data);
+
+        if (!canSchedule && !hasPending && !hasLog) {
             wrap.classList.add('hidden');
             body.innerHTML = '';
             return;
@@ -1272,6 +1347,13 @@
             }
         )
     );
+
+    ['appt-view-follow-up-wrap', 'modal-appt-view-follow-up-wrap'].forEach(function (wrapId) {
+        var followWrap = document.getElementById(wrapId);
+        if (followWrap) {
+            wireFollowUpPopovers(followWrap);
+        }
+    });
 
     if (window.AlcrosPoll && pageConfig.pollUrl && pageConfig.pollEnabled !== false) {
         AlcrosPoll.pollJson(

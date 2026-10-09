@@ -309,10 +309,11 @@
                     actEl.innerHTML = data.activities.map(function (a) {
                         var details = a.details ? '<p class="text-[10px] text-gray-500 mt-0.5 line-clamp-2">' + escapeHtml(a.details) + '</p>' : '';
                         var who = isAdmin ? escapeHtml(a.staff_id || 'System') + ' · ' : '';
-                        return '<div class="flex items-start gap-3 p-3 rounded-xl bg-gray-50/80 border border-gray-100"><div class="bg-white p-2 rounded-lg text-blue-600 border border-gray-100 shrink-0"><i data-lucide="activity" class="w-4 h-4"></i></div><div class="min-w-0"><p class="text-xs font-bold text-slate-800">' + escapeHtml(a.action) + '</p>' + details + '<p class="text-[10px] text-gray-400 mt-1">' + who + escapeHtml(formatTimeAgo(a.created_at)) + '</p></div></div>';
+                        var avatar = a.staff_avatar_html || '';
+                        return '<div class="flex items-start gap-3 p-3 rounded-xl bg-gray-50/80 border border-gray-100"><span class="shrink-0 mt-0.5" aria-hidden="true">' + avatar + '</span><div class="min-w-0"><p class="text-xs font-bold text-slate-800">' + escapeHtml(a.action) + '</p>' + details + '<p class="text-[10px] text-gray-400 mt-1">' + who + escapeHtml(formatTimeAgo(a.created_at)) + '</p></div></div>';
                     }).join('');
                 }
-                if (typeof lucide !== 'undefined') lucide.createIcons();
+                if (adminFeed && typeof lucide !== 'undefined') lucide.createIcons();
             }
 
             if (data.schedule && window.AlcrosDashboardSchedule && window.AlcrosDashboardSchedule.applyPoll) {

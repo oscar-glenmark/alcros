@@ -9,6 +9,9 @@
         if (!form || String(form.method || 'get').toLowerCase() !== 'get') {
             return;
         }
+        if (form.hasAttribute('data-records-ajax-search')) {
+            return;
+        }
 
         var serverQuery = (input.value || '').trim();
         var timer = null;

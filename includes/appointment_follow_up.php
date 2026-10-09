@@ -107,6 +107,24 @@ function fetchPendingFollowUpByAppointmentId(PDO $pdo, int $appointmentId): ?arr
     return $row ?: null;
 }
 
+/** @return list<array<string, mixed>> */
+function fetchFollowUpLogByAppointmentId(PDO $pdo, int $appointmentId): array
+{
+    ensureAppointmentFollowUpsTable($pdo);
+    if ($appointmentId <= 0) {
+        return [];
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT * FROM appointment_follow_ups
+         WHERE appointment_id = ?
+         ORDER BY id DESC'
+    );
+    $stmt->execute([$appointmentId]);
+
+    return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+}
+
 /** @return array<string, mixed>|null */
 function fetchFollowUpById(PDO $pdo, int $followUpId): ?array
 {
@@ -433,6 +451,41 @@ function appointmentFollowUpViewData(?array $row): ?array
         'status'           => (string) ($row['status'] ?? 'pending'),
         'reminder_sent'    => !empty($row['reminder_sent_at']),
         'service_type'     => appointmentServiceLabel((string) ($row['service_type'] ?? '')),
+    ];
+}
+
+function appointmentFollowUpStatusLabel(string $status): string
+{
+    return match ($status) {
+        'completed' => 'Completed',
+        'cancelled' => 'Cancelled',
+        default     => 'Pending',
+    };
+}
+
+/** @param array<string, mixed> $row */
+function appointmentFollowUpLogEntryViewData(array $row): array
+{
+    $status = (string) ($row['status'] ?? 'pending');
+    $reminderBits = [];
+    if (!empty($row['notify_email'])) {
+        $reminderBits[] = !empty($row['reminder_sent_at']) ? 'Email sent' : 'Email pending';
+    }
+    if (!empty($row['notify_sms'])) {
+        $reminderBits[] = !empty($row['sms_reminder_sent_at']) ? 'SMS sent' : 'SMS pending';
+    }
+
+    return [
+        'id'             => (int) ($row['id'] ?? 0),
+        'follow_up_date' => formatDateEmailDisplay((string) ($row['follow_up_date'] ?? '')),
+        'status'         => $status,
+        'status_label'   => appointmentFollowUpStatusLabel($status),
+        'staff_note'     => !empty($row['staff_note']) ? (string) $row['staff_note'] : '',
+        'created_at'     => !empty($row['created_at']) ? formatReportDateTime($row['created_at']) : '',
+        'updated_at'     => !empty($row['updated_at']) ? formatReportDateTime($row['updated_at']) : '',
+        'created_by'     => trim((string) ($row['created_by'] ?? '')),
+        'cancel_reason'  => trim((string) ($row['cancel_reason'] ?? '')),
+        'reminder_summary' => implode(' · ', $reminderBits),
     ];
 }
 

@@ -49,7 +49,7 @@
         if (status === 'rejected' || status === 'cancelled' || status === 'no_show') {
             return 'bg-red-50 text-red-800 border border-red-100';
         }
-        return 'bg-blue-50 text-blue-800 border border-blue-100';
+        return 'bg-amber-50 text-amber-950 border border-amber-100';
     }
 
     function visitStatusLabel(data, entity) {
@@ -94,8 +94,8 @@
         stepLabels.forEach(function (label, i) {
             var active = currentIdx >= 0 && i <= currentIdx;
             html += '<div class="text-center flex-1 min-w-0" data-track-step>' +
-                '<div class="track-step-dot w-3 h-3 rounded-full mx-auto mb-1 ' + (active ? 'bg-blue-600' : 'bg-slate-200') + '"></div>' +
-                '<span class="track-step-label block leading-tight ' + (active ? 'text-blue-600' : '') + '">' + escapeHtml(label) + '</span></div>';
+                '<div class="track-step-dot w-3 h-3 rounded-full mx-auto mb-1 ' + (active ? 'is-active' : 'bg-slate-200') + '"></div>' +
+                '<span class="track-step-label block leading-tight ' + (active ? 'is-active font-bold' : '') + '">' + escapeHtml(label) + '</span></div>';
         });
         return html + '</div></div>';
     }
@@ -133,7 +133,7 @@
             '<div class="rounded-xl border border-slate-100 bg-slate-50/50 p-4">' +
             '<div class="flex justify-between items-start gap-3 mb-4">' +
             '<div><p class="text-[10px] font-bold text-slate-400 uppercase">' + codeLabel + '</p>' +
-            '<p class="text-xl font-black text-blue-600 tracking-widest break-all">' + escapeHtml(code) + '</p></div>' +
+            '<p class="track-floating-result__code">' + escapeHtml(code) + '</p></div>' +
             '<div id="track-status-badge">' + (data.status_html || '') + '</div></div>' +
             '<div id="track-status-message" class="rounded-xl p-4 mb-4 text-sm leading-relaxed ' + messageClass(status) + '">' +
             escapeHtml(data.status_message || '') + '</div>' +

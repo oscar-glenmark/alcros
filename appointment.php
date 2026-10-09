@@ -845,15 +845,23 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                             <section id="appt-view-follow-up-wrap" class="manage-detail-block manage-detail-block--follow-up hidden" aria-label="Follow-up reminder">
                                 <h3 class="manage-follow-up-heading">
                                     <span>Follow-up reminder</span>
-                                    <details class="manage-follow-up-info">
-                                        <summary class="manage-follow-up-info__trigger" aria-label="Citizen notification info">
-                                            <i data-lucide="info" class="manage-follow-up-info__icon"></i>
-                                        </summary>
-                                        <div class="manage-follow-up-info__panel" role="note">
-                                            <p class="manage-follow-up-notice__title">Citizen notification</p>
-                                            <p class="manage-follow-up-notice__text">The <strong>day before</strong> the follow-up date at <strong>8:00 AM</strong> (office time), citizens who opted in at booking receive email or SMS reminding them of their next visit date (no online re-booking).</p>
-                                        </div>
-                                    </details>
+                                    <div class="manage-follow-up-heading__tools">
+                                        <details class="manage-follow-up-log hidden" data-follow-up-log>
+                                            <summary class="manage-follow-up-log__trigger" aria-label="Follow-up history">
+                                                <i data-lucide="scroll-text" class="manage-follow-up-log__icon"></i>
+                                            </summary>
+                                            <div class="manage-follow-up-log__panel" data-follow-up-log-panel role="log"></div>
+                                        </details>
+                                        <details class="manage-follow-up-info">
+                                            <summary class="manage-follow-up-info__trigger" aria-label="Citizen notification info">
+                                                <i data-lucide="info" class="manage-follow-up-info__icon"></i>
+                                            </summary>
+                                            <div class="manage-follow-up-info__panel" role="note">
+                                                <p class="manage-follow-up-notice__title">Citizen notification</p>
+                                                <p class="manage-follow-up-notice__text">The <strong>day before</strong> the follow-up date at <strong>8:00 AM</strong> (office time), citizens who opted in at booking receive email or SMS reminding them of their next visit date (no online re-booking).</p>
+                                            </div>
+                                        </details>
+                                    </div>
                                 </h3>
                                 <div id="appt-view-follow-up-body" class="manage-follow-up"></div>
                             </section>
@@ -885,15 +893,23 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                 <section id="modal-appt-view-follow-up-wrap" class="manage-detail-block manage-detail-block--follow-up hidden" aria-label="Follow-up details">
                     <h3 class="manage-follow-up-heading">
                         <span>Follow-up details</span>
-                        <details class="manage-follow-up-info">
-                            <summary class="manage-follow-up-info__trigger" aria-label="Citizen notification info">
-                                <i data-lucide="info" class="manage-follow-up-info__icon"></i>
-                            </summary>
-                            <div class="manage-follow-up-info__panel" role="note">
-                                <p class="manage-follow-up-notice__title">Citizen notification</p>
-                                <p class="manage-follow-up-notice__text">The <strong>day before</strong> the follow-up date at <strong>8:00 AM</strong> (office time), citizens who opted in at booking receive email or SMS reminding them of their next visit date (no online re-booking).</p>
-                            </div>
-                        </details>
+                        <div class="manage-follow-up-heading__tools">
+                            <details class="manage-follow-up-log hidden" data-follow-up-log>
+                                <summary class="manage-follow-up-log__trigger" aria-label="Follow-up history">
+                                    <i data-lucide="scroll-text" class="manage-follow-up-log__icon"></i>
+                                </summary>
+                                <div class="manage-follow-up-log__panel" data-follow-up-log-panel role="log"></div>
+                            </details>
+                            <details class="manage-follow-up-info">
+                                <summary class="manage-follow-up-info__trigger" aria-label="Citizen notification info">
+                                    <i data-lucide="info" class="manage-follow-up-info__icon"></i>
+                                </summary>
+                                <div class="manage-follow-up-info__panel" role="note">
+                                    <p class="manage-follow-up-notice__title">Citizen notification</p>
+                                    <p class="manage-follow-up-notice__text">The <strong>day before</strong> the follow-up date at <strong>8:00 AM</strong> (office time), citizens who opted in at booking receive email or SMS reminding them of their next visit date (no online re-booking).</p>
+                                </div>
+                            </details>
+                        </div>
                     </h3>
                     <div id="modal-appt-view-follow-up-body" class="manage-follow-up"></div>
                 </section>

@@ -11,6 +11,7 @@ require_once __DIR__ . '/includes/print_fill_controls.php';
 require_once __DIR__ . '/includes/records_form.php';
 require_once __DIR__ . '/includes/records_csv_import.php';
 require_once __DIR__ . '/includes/civil_record_audit.php';
+require_once __DIR__ . '/includes/civil_registry_numbering.php';
 requireStaffLogin();
 requirePageAccess('records.php');
 releaseSessionLock();
@@ -33,6 +34,7 @@ function ensureCivilRecordExtendedColumns(PDO $pdo): void
 ensureCivilRecordExtendedColumns($pdo);
 ensureCivilRecordPrintSchema($pdo);
 syncCivilRecordDerivedFields($pdo);
+ensureCivilRegistryNumberingSchema($pdo);
 
 $validTypes = ['birth', 'death', 'marriage'];
 $validSorts = [
@@ -588,12 +590,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             recordsFlashSet('success', 'Record saved successfully.');
         } elseif ($action === 'update' && !empty($_POST['record_id'])) {
             $id = (int) $_POST['record_id'];
+            $editReason = parseCivilRecordEditReasonFromPost($_POST);
+            if ($editReason === null) {
+                throw new InvalidArgumentException(
+                    'Please select a reason for this update before saving (e.g. typographical error, incorrect date, or encoding mistake).'
+                );
+            }
             assertCivilRecordEditableByStaff($pdo, $id, staffId());
             $recordBefore = fetchFullCivilRecord($pdo, $id);
             $data = normalizeRecordInput(prepareCivilRecordFormInput($_POST), false, $recordBefore);
             saveCivilRecord($pdo, $data, $id);
             if ($recordBefore) {
-                recordCivilRecordAudit($pdo, $id, 'updated', $recordBefore, $data);
+                recordCivilRecordAudit($pdo, $id, 'updated', $recordBefore, $data, $editReason);
             }
             releaseCivilRecordEditLock($pdo, $id, staffId());
             logActivity(staffId(), 'Record Updated', "Updated record #$id: " . civilRecordDisplayName($data));
@@ -976,8 +984,8 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                     <button type="button"
                             id="recordUpdatesInfoBtn"
                             class="records-updates-info-btn"
-                            aria-label="Information â€” recent updates to this record"
-                            title="Information â€” recent updates">
+                            aria-label="Information — edit policy and recent updates"
+                            title="Information — edit policy and recent updates">
                         <?= lucideSvg('info', 'w-4 h-4') ?>
                     </button>
                     <?php endif; ?>
@@ -1020,11 +1028,16 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
 
 
                     <div class="records-entry-print-fill-bottom">
-                        <?php renderRecordsEntryPrintFillSection($pdo, 'birth', $modalRecord, $defaultRecordType === 'birth'); ?>
-                        <?php renderRecordsEntryPrintFillSection($pdo, 'death', $modalRecord, $defaultRecordType === 'death'); ?>
-                        <?php renderRecordsEntryPrintFillSection($pdo, 'marriage', $modalRecord, $defaultRecordType === 'marriage'); ?>
+                        <?php renderRecordsEntryPrintFillSection($pdo, 'birth', $modalRecord, $defaultRecordType === 'birth', $entryFormEditMode); ?>
+                        <?php renderRecordsEntryPrintFillSection($pdo, 'death', $modalRecord, $defaultRecordType === 'death', $entryFormEditMode); ?>
+                        <?php renderRecordsEntryPrintFillSection($pdo, 'marriage', $modalRecord, $defaultRecordType === 'marriage', $entryFormEditMode); ?>
                     </div>
                 </fieldset>
+
+                <?php if ($entryFormEditMode && !$entryFormReadOnly): ?>
+                <input type="hidden" name="edit_reason_category" id="editReasonCategory" value="">
+                <input type="hidden" name="edit_reason_detail" id="editReasonDetail" value="">
+                <?php endif; ?>
                 </div>
 
                 <div class="records-entry-footer">
@@ -1039,20 +1052,27 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
         </div>
     </div>
 
+    <?= renderCivilRecordEditReasonModalMarkup() ?>
+
     <div id="recordUpdatesModal" class="records-updates-modal hidden" aria-hidden="true">
         <div class="records-updates-modal__backdrop" data-record-updates-close tabindex="-1" aria-hidden="true"></div>
         <div class="records-updates-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="recordUpdatesModalTitle">
             <div class="records-updates-modal__header">
                 <div>
                     <h2 id="recordUpdatesModalTitle" class="records-updates-modal__title">Recent updates</h2>
-                    <p class="records-updates-modal__subtitle">Staff and administrator edits to this registry entry</p>
+                    <p class="records-updates-modal__subtitle">Edit policy and audit history for this registry entry</p>
                 </div>
                 <button type="button" class="records-updates-modal__close" data-record-updates-close aria-label="Close recent updates">
                     <?= lucideSvg('x', 'w-5 h-5') ?>
                 </button>
             </div>
             <div id="recordUpdatesModalBody" class="records-updates-modal__body">
-                <?= renderCivilRecordUpdateHistoryMarkup($recordUpdateHistory) ?>
+                <div id="recordUpdatesEditNotice" class="hidden" hidden>
+                    <?= renderCivilRecordEditReasonNoticeMarkup() ?>
+                </div>
+                <div id="recordUpdatesHistoryPanel">
+                    <?= renderCivilRecordUpdateHistoryMarkup($recordUpdateHistory) ?>
+                </div>
             </div>
         </div>
     </div>
@@ -1155,6 +1175,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
     <?= scriptTag('core/admin-search.js') ?>
     <?= scriptTag('core/cascading-location.js') ?>
     <?= scriptTag('admin/civil-record-entry-validation.js') ?>
+    <?= scriptTag('core/confirm.js') ?>
     <?= scriptTag('admin/records.js') ?>
     <?= lucideInitScript() ?>
 </body>

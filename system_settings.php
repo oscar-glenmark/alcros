@@ -734,14 +734,14 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                 </div>
                             </div>
                             <div class="sm:col-span-2 grid grid-cols-1 sm:grid-cols-[min(100%,11rem)_minmax(0,1fr)] gap-4">
-                                <div>
-                                    <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Staff ID</label>
-                                    <input type="text" name="staff_id_new" required placeholder="ALORAN-002" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm uppercase focus:outline-none focus:border-blue-500">
-                                </div>
+                            <div>
+                                <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Staff ID</label>
+                                <input type="text" name="staff_id_new" required placeholder="ALORAN-002" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm uppercase focus:outline-none focus:border-blue-500">
+                            </div>
                                 <div class="min-w-0">
-                                    <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Recovery Gmail *</label>
-                                    <input type="email" name="staff_email" required placeholder="staff@gmail.com" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
-                                    <p class="text-[10px] text-slate-400 mt-1">Gmail with Google 2-Step Verification required.</p>
+                                <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Recovery Gmail *</label>
+                                <input type="email" name="staff_email" required placeholder="staff@gmail.com" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+                                <p class="text-[10px] text-slate-400 mt-1">Gmail with Google 2-Step Verification required.</p>
                                 </div>
                             </div>
                             <div>
@@ -902,7 +902,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                             <p class="text-[10px] text-slate-500 -mt-2"><?= htmlspecialchars($feeMeta['hint']) ?></p>
                                             <?php endif; ?>
 
-                                            <div>
+                                    <div>
                                                 <label class="block text-[10px] font-bold text-slate-600 uppercase mb-1" for="office-fee-<?= htmlspecialchars($feeKey) ?>">Office fees</label>
                                                 <textarea
                                                     id="office-fee-<?= htmlspecialchars($feeKey) ?>"
@@ -910,7 +910,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                                     rows="<?= max(2, min(4, count($feeMeta['defaults'] ?? []))) ?>"
                                                     class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-mono leading-relaxed bg-white"
                                                     placeholder="Example:&#10;Processing fee: PHP 100.00"><?= htmlspecialchars($officeFeesForm[$feeKey] ?? '') ?></textarea>
-                                            </div>
+                                    </div>
 
                                             <?php if ($hasRequirements && is_array($reqForm)): ?>
                                             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-2 border-t border-slate-200/80">
@@ -918,7 +918,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                                     <div>
                                                         <label class="block text-[10px] font-bold text-slate-600 uppercase mb-1" for="office-req-subtitle-<?= htmlspecialchars($feeKey) ?>">Requirements subtitle</label>
                                                         <input type="text" id="office-req-subtitle-<?= htmlspecialchars($feeKey) ?>" name="office_requirements[<?= htmlspecialchars($feeKey) ?>][subtitle]" value="<?= htmlspecialchars($reqForm['subtitle'] ?? '') ?>" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white" placeholder="e.g. R.A. 9048">
-                                                    </div>
+                                    </div>
                                                     <div class="sm:col-span-1">
                                                         <label class="block text-[10px] font-bold text-slate-600 uppercase mb-1" for="office-req-lead-<?= htmlspecialchars($feeKey) ?>">Intro / lead</label>
                                                         <textarea id="office-req-lead-<?= htmlspecialchars($feeKey) ?>" name="office_requirements[<?= htmlspecialchars($feeKey) ?>][lead]" rows="2" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white"><?= htmlspecialchars($reqForm['lead'] ?? '') ?></textarea>
@@ -1245,7 +1245,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                                 <input type="url" name="registry_backup_public_url" value="<?= htmlspecialchars($registryBackupPublicUrl) ?>" placeholder="https://yourdomain.com" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
                                                 <p class="text-[11px] text-slate-400 mt-1">Use if the cron URL shown below is wrong; must match HTTPS domain.</p>
                                             </div>
-                                        </div>
+                                            </div>
                                         <button type="submit" class="inline-flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold">
                                             <i data-lucide="save" class="w-4 h-4"></i> Save registry backup settings
                                         </button>
@@ -1303,10 +1303,10 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                                 <p class="text-[11px] font-bold uppercase text-slate-500 mb-1">Registry backup — once daily (recommended 2:00 AM server time)</p>
                                                 <div class="rounded-lg border border-violet-100 bg-white px-3 py-2 font-mono text-[11px] text-slate-800 break-all"><?= htmlspecialchars($registryBackupCronUrl) ?></div>
                                                 <p class="text-[11px] text-amber-800 mt-2">Turn on <strong>Enable scheduled registry backup</strong> above before relying on this task. First run: open the URL once in a browser (while logged in is not required) — expect JSON <code class="bg-white px-1 rounded">{"ok":true,...}</code>.</p>
-                                            </div>
+                                        </div>
                                         </div>
                                     </div>
-                                    <?php else: ?>
+                                        <?php else: ?>
                                     <p class="text-[11px] text-slate-500 mb-4">Cron URL (for any host that supports HTTP GET schedules): <span class="font-mono break-all"><?= htmlspecialchars($registryBackupCronUrl) ?></span></p>
                                     <?php endif; ?>
 
@@ -1322,9 +1322,9 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                                 <i data-lucide="download" class="w-3.5 h-3.5"></i> Download
                                             </a>
                                         </li>
-                                        <?php endforeach; ?>
+                                                    <?php endforeach; ?>
                                     </ul>
-                                    <?php endif; ?>
+                                        <?php endif; ?>
                                 </div>
 
                                 <?php if ($backupIsLocalOffice): ?>

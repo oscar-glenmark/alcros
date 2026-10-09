@@ -220,6 +220,7 @@ function adminCoreScripts(): string
     $scripts = [
         'admin/sidebar.js',
         'core/date-display.js',
+        'core/print-fill-dates.js',
         'core/admin-auth.js',
         'core/confirm.js',
         'core/loading.js',

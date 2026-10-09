@@ -70,6 +70,14 @@
         if (form.id === 'identificationForm' || form.id === 'requirementsForm' || form.id === 'requestScheduleForm') return true;
         if (form.id === 'bookAppointmentForm') return true;
 
+        if (form.id === 'entryForm') {
+            var entryActionEl = form.querySelector('#entryAction') || form.querySelector('[name="action"]');
+            var entryAction = entryActionEl ? String(entryActionEl.value || '').trim().toLowerCase() : '';
+            if (entryAction === 'update' && form.dataset.alcrosEditReasonConfirmed !== '1') {
+                return true;
+            }
+        }
+
         return false;
     }
 

@@ -21,6 +21,16 @@
         navPrev = dialog.querySelector('[data-staff-id-nav="prev"]');
         navNext = dialog.querySelector('[data-staff-id-nav="next"]');
 
+        if (dialog.open) {
+            close();
+        }
+
+        window.addEventListener('pageshow', function (e) {
+            if (e.persisted && dialog && dialog.open) {
+                close();
+            }
+        });
+
         dialog.addEventListener('click', function (e) {
             if (e.target === dialog) {
                 close();

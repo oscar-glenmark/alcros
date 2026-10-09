@@ -6,11 +6,363 @@ if (!function_exists('printFillFieldGroup')) {
     require_once __DIR__ . '/printing.php';
 }
 
+/** @var array<string, mixed> */
+$GLOBALS['alcros_print_fill_entry_ctx'] = [];
+
+function printFillEntryFormSetContext(array $context): void
+{
+    $GLOBALS['alcros_print_fill_entry_ctx'] = $context;
+}
+
+/** Registry auto-number + book suggestions for Documents → Fill-in Data (always new record). */
+function printFillSetDocumentWorkspaceContext(PDO $pdo, string $certificateType): void
+{
+    require_once __DIR__ . '/civil_registry_numbering.php';
+    printFillEntryFormSetContext([
+        'registry_ui'  => 'auto',
+        'book_options' => civilRegistryDistinctBookNumbers($pdo, $certificateType),
+        'context_id'   => 'documents-' . $certificateType,
+    ]);
+}
+
+/** @return array<string, mixed> */
+function printFillEntryFormContext(): array
+{
+    return is_array($GLOBALS['alcros_print_fill_entry_ctx'] ?? null)
+        ? $GLOBALS['alcros_print_fill_entry_ctx']
+        : [];
+}
+
+/** Month name as stored on certificates after save (see printDateParts). */
+function printFillMonthPlaceholderExample(): string
+{
+    return 'January';
+}
+
+/** Combined date fields saved as "Month DD, YYYY" (see printFormatDateField). */
+function printFillSpelledDatePlaceholder(): string
+{
+    return printFillMonthPlaceholderExample() . ' 00, 0000';
+}
+
+function printFillDefaultPlaceholder(string $fieldName, string $label): string
+{
+    static $exact = [
+        'page_number'              => 'Page in the register book',
+        'province'                 => 'Province',
+        'city_municipality'        => 'City or municipality',
+        'sex'                      => 'Male or Female',
+        'birth_type'               => 'e.g. Single, Twin, Triplet',
+        'birth_weight'             => 'e.g. 3.2 kg',
+        'birth_time'               => 'e.g. 2:30 AM',
+        'death_time'               => 'e.g. 10:15 PM',
+        'marriage_time'            => 'e.g. 10:00 AM',
+        'birth_order'              => 'Order if multiple birth',
+        'multiple_birth_child_was' => 'e.g. First, Second',
+        'witnesses'                => 'Names, separated by commas',
+        'remarks_annotations'      => 'Optional remarks',
+        'citizenship'              => 'e.g. Filipino',
+        'civil_status'             => 'e.g. Single, Married, Widowed',
+        'occupation'               => 'e.g. Farmer, Teacher',
+        'religion'                 => 'e.g. Roman Catholic',
+        'autopsy_performed'        => 'Yes or No',
+        'solemnizing_officer'      => 'Name of solemnizing officer',
+        'place_of_death'           => 'Hospital, home, or other place',
+        'place_of_burial'          => 'Cemetery or burial place',
+        'marriage_place'           => 'City/municipality and province',
+        'birth_place'              => 'Barangay, municipality, province',
+    ];
+
+    if (isset($exact[$fieldName])) {
+        return $exact[$fieldName];
+    }
+
+    if ($fieldName === 'registration_date' || $fieldName === 'registrar_date') {
+        return printFillSpelledDatePlaceholder();
+    }
+
+    if (preg_match('/citizenship|nationality/i', $fieldName)) {
+        return 'e.g. Filipino';
+    }
+    if (preg_match('/religion/i', $fieldName)) {
+        return 'e.g. Roman Catholic';
+    }
+    if (preg_match('/occupation/i', $fieldName)) {
+        return 'e.g. Farmer, Teacher';
+    }
+    if (preg_match('/_(day)$/', $fieldName)) {
+        return '00';
+    }
+    if (preg_match('/_(month)$/', $fieldName)) {
+        return printFillMonthPlaceholderExample();
+    }
+    if (preg_match('/_(year)$/', $fieldName)) {
+        return '0000';
+    }
+    if (str_contains($fieldName, 'age')) {
+        return 'Age in years';
+    }
+    if (preg_match('/_(email|e_mail)$/i', $fieldName)) {
+        return 'Email address';
+    }
+    if (preg_match('/_(phone|mobile|contact)/i', $fieldName)) {
+        return 'Contact number';
+    }
+    if (preg_match('/first_name|firstname/i', $fieldName)) {
+        return 'First name';
+    }
+    if (preg_match('/last_name|lastname/i', $fieldName)) {
+        return 'Last name';
+    }
+    if (preg_match('/middle_name|middlename/i', $fieldName)) {
+        return 'Middle name (optional)';
+    }
+    if (str_contains($fieldName, 'address') || str_contains($fieldName, 'residence')) {
+        return 'Complete address';
+    }
+    if (str_contains($fieldName, 'signature')) {
+        return 'Name for signature line';
+    }
+    if (str_contains($fieldName, 'title') || str_contains($fieldName, 'position')) {
+        return 'Title or position';
+    }
+    if (str_contains($fieldName, 'date')) {
+        return printFillSpelledDatePlaceholder();
+    }
+    if (str_contains($fieldName, 'cause')) {
+        return 'As on the certificate';
+    }
+    if (str_contains($fieldName, 'name')) {
+        return 'Full name';
+    }
+
+    $label = trim($label);
+    if ($label === '') {
+        return 'Enter value';
+    }
+
+    return 'Enter ' . mb_strtolower($label);
+}
+
+function printFillIsSexField(string $fieldName): bool
+{
+    return $fieldName === 'sex' || (bool) preg_match('/_sex$/', $fieldName);
+}
+
+function printFillIsMarriagePartySexField(string $fieldName): bool
+{
+    return $fieldName === 'husband_sex' || $fieldName === 'wife_sex';
+}
+
+function printFillMarriagePartySexDefault(string $fieldName): ?string
+{
+    if ($fieldName === 'husband_sex') {
+        return 'Male';
+    }
+    if ($fieldName === 'wife_sex') {
+        return 'Female';
+    }
+
+    return null;
+}
+
+function printFillIsOfficeLocationField(string $fieldName): bool
+{
+    return $fieldName === 'province' || $fieldName === 'city_municipality';
+}
+
+function printFillOfficeLocationDefault(string $fieldName): string
+{
+    if (!function_exists('printOfficeLocationFields')) {
+        require_once __DIR__ . '/printing.php';
+    }
+    $office = printOfficeLocationFields();
+
+    return trim((string) ($office[$fieldName] ?? ''));
+}
+
+function printFillIsBirthTypeField(string $fieldName): bool
+{
+    return $fieldName === 'birth_type' || $fieldName === 'child_birth_type';
+}
+
+/** @return list<string> */
+function printFillCalendarDateFieldNames(): array
+{
+    return [
+        'attendant_cert_date',
+        'informant_date',
+        'prepared_by_date',
+        'received_by_date',
+        'registration_date',
+        'registrar_date',
+        'burial_permit_date',
+        'transfer_permit_date',
+    ];
+}
+
+function printFillIsCalendarDateField(string $fieldName): bool
+{
+    return in_array($fieldName, printFillCalendarDateFieldNames(), true);
+}
+
+function printFillCertDateToIso(string $value): string
+{
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $value, $m)) {
+        return sprintf('%04d-%02d-%02d', (int) $m[1], (int) $m[2], (int) $m[3]);
+    }
+
+    $ts = strtotime($value);
+    if ($ts === false) {
+        return '';
+    }
+
+    return date('Y-m-d', $ts);
+}
+
+function printFillNormalizeCalendarDateSubmitted(string $value): string
+{
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+    if (!function_exists('printFormatDateField')) {
+        require_once __DIR__ . '/printing.php';
+    }
+    $iso = printFillCertDateToIso($value);
+    if ($iso !== '') {
+        return printFormatDateField($iso);
+    }
+
+    return $value;
+}
+
+function printFillIsMonthField(string $fieldName): bool
+{
+    return (bool) preg_match('/_(month)$/', $fieldName);
+}
+
+function printFillIsDayField(string $fieldName): bool
+{
+    return (bool) preg_match('/_(day)$/', $fieldName);
+}
+
+function printFillIsYearField(string $fieldName): bool
+{
+    return (bool) preg_match('/_(year)$/', $fieldName);
+}
+
+/** @return list<string> */
+function printFillMonthOptions(): array
+{
+    return [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December',
+    ];
+}
+
+/** @return list<string> */
+function printFillSexOptions(): array
+{
+    return ['Male', 'Female'];
+}
+
+/** @return list<string> */
+function printFillBirthTypeOptions(): array
+{
+    return ['Single', 'Twin', 'Triplet', 'Quadruplet', 'Quintuplet'];
+}
+
+/** @return list<string> */
+function printFillDayOptions(): array
+{
+    $days = [];
+    for ($day = 1; $day <= 31; $day++) {
+        $days[] = str_pad((string) $day, 2, '0', STR_PAD_LEFT);
+    }
+
+    return $days;
+}
+
+/** @return list<string> */
+function printFillYearOptions(): array
+{
+    $years = [];
+    $maxYear = (int) date('Y') + 1;
+    for ($year = $maxYear; $year >= 1900; $year--) {
+        $years[] = (string) $year;
+    }
+
+    return $years;
+}
+
+function printFillOptionMatchesValue(string $value, string $option): bool
+{
+    return strcasecmp(trim($value), trim($option)) === 0;
+}
+
+function printFillOptionMatchesDay(string $value, string $option): bool
+{
+    if ($value === '' || $option === '') {
+        return false;
+    }
+    if (!ctype_digit(trim($value)) || !ctype_digit(trim($option))) {
+        return printFillOptionMatchesValue($value, $option);
+    }
+
+    return (int) $value === (int) $option;
+}
+
+function printFillOptionSelected(string $fieldName, string $value, string $option): bool
+{
+    if (printFillIsDayField($fieldName)) {
+        return printFillOptionMatchesDay($value, $option);
+    }
+
+    return printFillOptionMatchesValue($value, $option);
+}
+
+/** @param list<string> $options */
+function renderPrintFillSelect(array $fillField, array $options, string $placeholder, string $classes, string $inputName): void
+{
+    $fieldName = (string) ($fillField['field_name'] ?? '');
+    $value = trim((string) ($fillField['value'] ?? ''));
+    ?>
+    <select data-field-name="<?= htmlspecialchars($fieldName) ?>"
+            class="<?= htmlspecialchars(trim($classes . ' print-fill-select')) ?>"
+            autocomplete="off"<?= $inputName !== '' ? ' name="' . htmlspecialchars($inputName) . '"' : '' ?>>
+        <option value=""<?= $value === '' ? ' selected' : '' ?>><?= htmlspecialchars($placeholder) ?></option>
+        <?php foreach ($options as $option): ?>
+        <option value="<?= htmlspecialchars($option) ?>"<?= printFillOptionSelected($fieldName, $value, $option) ? ' selected' : '' ?>><?= htmlspecialchars($option) ?></option>
+        <?php endforeach; ?>
+    </select>
+    <?php
+}
+
+function renderPrintFillCalendarDateInput(array $fillField, string $classes, string $inputName): void
+{
+    $fieldName = (string) ($fillField['field_name'] ?? '');
+    $iso = printFillCertDateToIso(trim((string) ($fillField['value'] ?? '')));
+    ?>
+    <input type="date"
+           data-field-name="<?= htmlspecialchars($fieldName) ?>"
+           data-print-fill-date="1"
+           value="<?= htmlspecialchars($iso) ?>"
+           class="<?= htmlspecialchars(trim($classes . ' print-fill-date')) ?>"
+           autocomplete="off"<?= $inputName !== '' ? ' name="' . htmlspecialchars($inputName) . '"' : '' ?>>
+    <?php
+}
+
 /** Render a print fill-in control (plain text or cascading location for birth place / residence). */
 function renderPrintFillFieldInput(array $fillField, array $options = []): void
 {
     $fieldName = (string) ($fillField['field_name'] ?? '');
     $value = (string) ($fillField['value'] ?? '');
+    $entryCtx = printFillEntryFormContext();
     $inputClass = trim((string) ($options['input_class'] ?? ''));
     $inputName = trim((string) ($options['name'] ?? ''));
     $lcroClass = trim((string) ($options['lcro_class'] ?? 'print-cert-fill-field--lcro'));
@@ -30,15 +382,165 @@ function renderPrintFillFieldInput(array $fillField, array $options = []): void
 
     $placeholder = '';
     if ($isPhBirth) {
-        $placeholder = 'Barangay, City/Municipality, Province';
+        $placeholder = 'Barangay, city/municipality, province';
     } elseif ($isPhMarriage) {
-        $placeholder = 'City/Municipality, Province, Country';
+        $placeholder = 'City/municipality, province, country';
     } elseif ($isPhResidence) {
-        $placeholder = 'Barangay, City/Municipality, Province, Country';
+        $placeholder = 'Barangay, city/municipality, province, country';
     } elseif ($isLocation) {
-        $placeholder = 'Barangay, City/Municipality, Province, Country';
+        $placeholder = 'Barangay, city/municipality, province, country';
     } elseif (preg_match('/_(middle_name|middlename)$/i', $fieldName)) {
-        $placeholder = 'Optional';
+        $placeholder = 'Middle name (optional)';
+    }
+
+    if ($placeholder === '') {
+        $placeholder = printFillDefaultPlaceholder($fieldName, (string) ($fillField['label'] ?? ''));
+    }
+
+    if ($fieldName === 'registry_number' && !empty($entryCtx['registry_ui'])) {
+        $isAuto = ($entryCtx['registry_ui'] ?? '') === 'auto';
+        $roClass = trim($classes . ' bg-slate-50 text-slate-600 cursor-not-allowed');
+        if ($isAuto) {
+            $placeholder = 'Assigned automatically when you save';
+            $value = '';
+        } else {
+            $placeholder = 'Registry number (locked on edit)';
+        }
+        ?>
+    <input type="text"
+           data-field-name="<?= htmlspecialchars($fieldName) ?>"
+           value="<?= htmlspecialchars($value) ?>"
+           class="<?= htmlspecialchars($roClass) ?>"
+           autocomplete="off"
+           spellcheck="false"
+           readonly
+           tabindex="-1"
+           aria-readonly="true"<?= $inputName !== '' ? ' name="' . htmlspecialchars($inputName) . '"' : '' ?><?= $placeholder !== '' ? ' placeholder="' . htmlspecialchars($placeholder) . '"' : '' ?>>
+        <?php
+        return;
+    }
+
+    if ($fieldName === 'book_number' && isset($entryCtx['book_options']) && is_array($entryCtx['book_options'])) {
+        $books = $entryCtx['book_options'];
+        $listKey = $inputName !== '' ? $inputName : (string) ($entryCtx['context_id'] ?? 'book') . '-book_number';
+        $listId = 'bookNumberSuggestions-' . md5($listKey);
+        if ($placeholder === '' || $placeholder === 'Enter book number') {
+            $placeholder = 'Type book number or pick from recent books';
+        }
+        ?>
+    <input type="text"
+           data-field-name="<?= htmlspecialchars($fieldName) ?>"
+           value="<?= htmlspecialchars(trim($value)) ?>"
+           class="<?= htmlspecialchars($classes) ?>"
+           list="<?= htmlspecialchars($listId) ?>"
+           autocomplete="off"
+           spellcheck="false"<?= $inputName !== '' ? ' name="' . htmlspecialchars($inputName) . '"' : '' ?>
+           placeholder="<?= htmlspecialchars($placeholder) ?>">
+    <datalist id="<?= htmlspecialchars($listId) ?>">
+        <?php foreach ($books as $book): ?>
+        <option value="<?= htmlspecialchars($book) ?>"></option>
+        <?php endforeach; ?>
+    </datalist>
+        <?php
+        return;
+    }
+
+    if (printFillIsMarriagePartySexField($fieldName)) {
+        $display = trim($value);
+        if ($display === '') {
+            $display = printFillMarriagePartySexDefault($fieldName) ?? '';
+        }
+        ?>
+    <input type="text"
+           data-field-name="<?= htmlspecialchars($fieldName) ?>"
+           value="<?= htmlspecialchars($display) ?>"
+           class="<?= htmlspecialchars($classes) ?>"
+           autocomplete="off"
+           spellcheck="false"<?= $inputName !== '' ? ' name="' . htmlspecialchars($inputName) . '"' : '' ?>
+           placeholder="Male or Female">
+        <?php
+        return;
+    }
+
+    if (printFillIsOfficeLocationField($fieldName)) {
+        $display = trim($value);
+        if ($display === '') {
+            $display = printFillOfficeLocationDefault($fieldName);
+        }
+        if ($placeholder === '' || in_array($placeholder, ['Province', 'City or municipality'], true)) {
+            $placeholder = $fieldName === 'province'
+                ? printFillOfficeLocationDefault('province')
+                : printFillOfficeLocationDefault('city_municipality');
+        }
+        ?>
+    <input type="text"
+           data-field-name="<?= htmlspecialchars($fieldName) ?>"
+           value="<?= htmlspecialchars($display) ?>"
+           class="<?= htmlspecialchars($classes) ?>"
+           autocomplete="off"
+           spellcheck="false"<?= $inputName !== '' ? ' name="' . htmlspecialchars($inputName) . '"' : '' ?><?= $placeholder !== '' ? ' placeholder="' . htmlspecialchars($placeholder) . '"' : '' ?>>
+        <?php
+        return;
+    }
+
+    if (printFillIsSexField($fieldName)) {
+        renderPrintFillSelect($fillField, printFillSexOptions(), 'Select sex', $classes, $inputName);
+
+        return;
+    }
+
+    if (printFillIsBirthTypeField($fieldName)) {
+        renderPrintFillSelect(
+            $fillField,
+            printFillBirthTypeOptions(),
+            'Select type of birth',
+            $classes,
+            $inputName
+        );
+
+        return;
+    }
+
+    if (printFillIsMonthField($fieldName)) {
+        renderPrintFillSelect(
+            $fillField,
+            printFillMonthOptions(),
+            'Select month',
+            $classes,
+            $inputName
+        );
+
+        return;
+    }
+
+    if (printFillIsDayField($fieldName)) {
+        renderPrintFillSelect(
+            $fillField,
+            printFillDayOptions(),
+            '00',
+            $classes,
+            $inputName
+        );
+
+        return;
+    }
+
+    if (printFillIsYearField($fieldName)) {
+        renderPrintFillSelect(
+            $fillField,
+            printFillYearOptions(),
+            '0000',
+            $classes,
+            $inputName
+        );
+
+        return;
+    }
+
+    if (printFillIsCalendarDateField($fieldName)) {
+        renderPrintFillCalendarDateInput($fillField, $classes, $inputName);
+
+        return;
     }
     ?>
     <input type="text"
@@ -498,15 +1000,22 @@ function renderPrintFillGroupedSectionPanels(string $certificateType, array $gro
     }
 }
 
-function renderRecordsEntryPrintFillSection(PDO $pdo, string $type, array $modalRecord, bool $active): void
+function renderRecordsEntryPrintFillSection(PDO $pdo, string $type, array $modalRecord, bool $active, bool $entryFormEditMode = false): void
 {
     if (!function_exists('printFillEditorFields')) {
         require_once __DIR__ . '/printing.php';
     }
+    require_once __DIR__ . '/civil_registry_numbering.php';
 
     $source = ($modalRecord['record_type'] ?? '') === $type && $modalRecord !== []
         ? $modalRecord
         : ['record_type' => $type];
+
+    $hasExistingId = $entryFormEditMode && !empty($modalRecord['id']);
+    printFillEntryFormSetContext([
+        'registry_ui'  => $hasExistingId ? 'locked' : 'auto',
+        'book_options' => civilRegistryDistinctBookNumbers($pdo, $type),
+    ]);
 
     $fields = printFillEditorFields($type, $source, [], $pdo);
     $grouped = groupPrintFillFieldsForEntryForm($type, $fields);
@@ -529,4 +1038,5 @@ function renderRecordsEntryPrintFillSection(PDO $pdo, string $type, array $modal
         <?php endforeach; ?>
     </div>
     <?php
+    printFillEntryFormSetContext([]);
 }

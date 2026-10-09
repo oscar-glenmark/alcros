@@ -1257,6 +1257,9 @@ function printRebuildRecordFillData(array $record, string $certificateType, arra
         if (printIsLcroFooterField($key)) {
             $trimmed = printNormalizeLcroFooterText($trimmed);
         }
+        if (function_exists('printFillIsCalendarDateField') && printFillIsCalendarDateField($key)) {
+            $trimmed = printFillNormalizeCalendarDateSubmitted($trimmed);
+        }
         if ($trimmed !== '') {
             $manual[$key] = $trimmed;
         }
@@ -1359,6 +1362,52 @@ function printDocumentsFillEditorFields(PDO $pdo, string $certificateType, strin
     return printFillEditorFields($certificateType, $record, $options, $pdo);
 }
 
+function printMarriagePartySexDefault(string $fieldName): ?string
+{
+    if ($fieldName === 'husband_sex') {
+        return 'Male';
+    }
+    if ($fieldName === 'wife_sex') {
+        return 'Female';
+    }
+
+    return null;
+}
+
+function printApplyMarriageSexDefaults(array $values, string $certificateType): array
+{
+    if ($certificateType !== 'marriage') {
+        return $values;
+    }
+    foreach (['husband_sex', 'wife_sex'] as $fieldName) {
+        if (trim((string) ($values[$fieldName] ?? '')) !== '') {
+            continue;
+        }
+        $default = printMarriagePartySexDefault($fieldName);
+        if ($default !== null) {
+            $values[$fieldName] = $default;
+        }
+    }
+
+    return $values;
+}
+
+function printApplyOfficeLocationDefaults(array $values): array
+{
+    $office = printOfficeLocationFields();
+    foreach (['province', 'city_municipality'] as $fieldName) {
+        if (trim((string) ($values[$fieldName] ?? '')) !== '') {
+            continue;
+        }
+        $default = trim((string) ($office[$fieldName] ?? ''));
+        if ($default !== '') {
+            $values[$fieldName] = $default;
+        }
+    }
+
+    return $values;
+}
+
 function printBuildFieldValues(array $record, string $certificateType, array $options = []): array
 {
     if (!empty($options['manual_blank'])) {
@@ -1370,7 +1419,9 @@ function printBuildFieldValues(array $record, string $certificateType, array $op
             }
         }
 
-        return $values;
+        return printApplyOfficeLocationDefaults(
+            printApplyMarriageSexDefaults($values, $certificateType)
+        );
     }
 
     $values = printOfficeLocationFields();
@@ -1599,7 +1650,9 @@ function printBuildFieldValues(array $record, string $certificateType, array $op
         );
     }
 
-    return $values;
+    return printApplyOfficeLocationDefaults(
+        printApplyMarriageSexDefaults($values, $certificateType)
+    );
 }
 
 function printDecodeFillOverrides(?string $encoded): array

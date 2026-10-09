@@ -211,7 +211,10 @@ $pageSubtitle = 'Blank certificate and certification forms for manual entry';
                     </div>
                     <?php endif; ?>
                 </div>
-                <?php $printFillGrouped = groupPrintFillFieldsForEntryForm($certificateType, $fillEditorFields); ?>
+                <?php
+                $printFillGrouped = groupPrintFillFieldsForEntryForm($certificateType, $fillEditorFields);
+                printFillSetDocumentWorkspaceContext($pdo, $certificateType);
+                ?>
                 <?php foreach ($isCertification ? ['front'] : ['front', 'back'] as $fillSide): ?>
                 <div class="print-cert-fill-grid<?= $isCertification ? '' : ' print-cert-fill-grid--sectioned' ?>" id="fillFields<?= ucfirst($fillSide) ?>" data-fill-panel="<?= $fillSide ?>" role="tabpanel"<?= $fillSide === 'back' ? ' hidden' : '' ?>>
                     <?php if ($isCertification): ?>
@@ -221,6 +224,7 @@ $pageSubtitle = 'Blank certificate and certification forms for manual entry';
                     <?php endif; ?>
                 </div>
                 <?php endforeach; ?>
+                <?php printFillEntryFormSetContext([]); ?>
             </section>
 
             <section class="print-cert-previews<?= !$isCertification ? ' print-cert-previews--local' : '' ?>"

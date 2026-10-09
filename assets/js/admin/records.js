@@ -6,6 +6,7 @@
     var recordLockTimer = null;
     var activeEditRecordId = null;
     var entryFormSubmitting = false;
+    var pendingEditReasonSubmit = null;
 
     function readPageConfig() {
         if (window.AlcrosPage && typeof AlcrosPage.readConfig === 'function') {
@@ -567,9 +568,11 @@
 
             section.querySelectorAll('[data-field-name]').forEach(function (input) {
                 formatEntryPrintFillInput(input);
-                input.addEventListener('input', function () {
+                function onFillFieldEdit() {
                     formatEntryPrintFillInput(input);
-                });
+                }
+                input.addEventListener('input', onFillFieldEdit);
+                input.addEventListener('change', onFillFieldEdit);
             });
         });
     }
@@ -595,20 +598,213 @@
 
         var birthTypeSelect = document.getElementById('birthTypeSelect');
         if (birthTypeSelect) birthTypeSelect.addEventListener('change', syncSingleBirthDetails);
+    }
 
-        var entryForm = document.getElementById('entryForm');
-        if (entryForm) {
-            if (window.AlcrosCivilRecordEntryValidation) {
-                AlcrosCivilRecordEntryValidation.bindLiveClear(entryForm);
+    function syncEditReasonModalDetailRequired() {
+        var category = document.getElementById('editReasonModalCategory');
+        var detailOptional = document.getElementById('editReasonModalDetailOptional');
+        if (!category || !detailOptional) {
+            return;
+        }
+        var isOther = category.value === 'other';
+        detailOptional.textContent = isOther ? '(required for Other)' : '(optional)';
+    }
+
+    function openRecordEditReasonModal(form, submitter) {
+        var modal = document.getElementById('recordEditReasonModal');
+        if (!modal) {
+            return;
+        }
+        pendingEditReasonSubmit = { form: form, submitter: submitter || null };
+        var categoryHidden = form.querySelector('#editReasonCategory');
+        var detailHidden = form.querySelector('#editReasonDetail');
+        var categoryModal = document.getElementById('editReasonModalCategory');
+        var detailModal = document.getElementById('editReasonModalDetail');
+        if (categoryModal && categoryHidden) {
+            categoryModal.value = categoryHidden.value || '';
+        }
+        if (detailModal && detailHidden) {
+            detailModal.value = detailHidden.value || '';
+        }
+        syncEditReasonModalDetailRequired();
+        if (window.AlcrosCivilRecordEntryValidation && typeof AlcrosCivilRecordEntryValidation.clearValidation === 'function') {
+            AlcrosCivilRecordEntryValidation.clearValidation(modal);
+        }
+        modal.classList.remove('hidden');
+        modal.setAttribute('aria-hidden', 'false');
+        refreshIcons();
+        if (categoryModal && typeof categoryModal.focus === 'function') {
+            categoryModal.focus();
+        }
+    }
+
+    function closeRecordEditReasonModal() {
+        var modal = document.getElementById('recordEditReasonModal');
+        pendingEditReasonSubmit = null;
+        if (!modal) {
+            return;
+        }
+        modal.classList.add('hidden');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+
+    function validateEditReasonModalFields() {
+        var modal = document.getElementById('recordEditReasonModal');
+        var category = document.getElementById('editReasonModalCategory');
+        var detail = document.getElementById('editReasonModalDetail');
+        var V = window.AlcrosCivilRecordEntryValidation;
+        if (V && modal) {
+            V.clearValidation(modal);
+        }
+
+        var invalid = false;
+        if (!category || !category.value) {
+            invalid = true;
+            if (V && category) {
+                V.setFieldError(category, 'Select a reason for this update.');
             }
-            entryForm.addEventListener('submit', function () {
-                clearEntrySectionHtmlRequired();
-                entryFormSubmitting = true;
-                clearRecordLockTimer();
-                var type = document.getElementById('recordTypeInput');
-                if (type && type.value) setRecordType(type.value);
+        }
+        if (category && category.value === 'other' && detail && !String(detail.value || '').trim()) {
+            invalid = true;
+            if (V) {
+                V.setFieldError(detail, 'Describe the reason for this update.');
+            }
+        }
+        if (invalid && V && modal) {
+            V.scrollToFirstError(modal);
+        }
+        return !invalid;
+    }
+
+    function confirmRecordEditReason() {
+        if (!pendingEditReasonSubmit) {
+            return;
+        }
+        if (!validateEditReasonModalFields()) {
+            return;
+        }
+
+        var form = pendingEditReasonSubmit.form;
+        var submitter = pendingEditReasonSubmit.submitter;
+        var category = document.getElementById('editReasonModalCategory');
+        var detail = document.getElementById('editReasonModalDetail');
+        var categoryHidden = form.querySelector('#editReasonCategory');
+        var detailHidden = form.querySelector('#editReasonDetail');
+        if (categoryHidden && category) {
+            categoryHidden.value = category.value;
+        }
+        if (detailHidden && detail) {
+            detailHidden.value = detail.value;
+        }
+        closeRecordEditReasonModal();
+
+        function proceedEntryUpdateSubmit() {
+            form.dataset.alcrosEditReasonConfirmed = '1';
+            if (window.AlcrosConfirm && typeof window.AlcrosConfirm.markConfirmed === 'function') {
+                window.AlcrosConfirm.markConfirmed(form);
+            }
+            if (typeof form.requestSubmit === 'function') {
+                try {
+                    form.requestSubmit(submitter || undefined);
+                    return;
+                } catch (err) {
+                    /* fall through */
+                }
+            }
+            form.submit();
+        }
+
+        var confirmMessage = 'Save changes to this record?';
+        if (window.AlcrosConfirm && typeof window.AlcrosConfirm.ask === 'function') {
+            window.AlcrosConfirm.ask(confirmMessage).then(function (ok) {
+                if (ok) {
+                    proceedEntryUpdateSubmit();
+                }
+            });
+            return;
+        }
+
+        proceedEntryUpdateSubmit();
+    }
+
+    function bindRecordEditReasonModal() {
+        var modal = document.getElementById('recordEditReasonModal');
+        if (!modal) {
+            return;
+        }
+
+        modal.querySelectorAll('[data-edit-reason-close]').forEach(function (el) {
+            el.addEventListener('click', function (e) {
+                e.preventDefault();
+                closeRecordEditReasonModal();
+            });
+        });
+
+        var confirmBtn = document.getElementById('recordEditReasonConfirmBtn');
+        if (confirmBtn) {
+            confirmBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                confirmRecordEditReason();
             });
         }
+
+        var category = document.getElementById('editReasonModalCategory');
+        if (category) {
+            category.addEventListener('change', syncEditReasonModalDetailRequired);
+        }
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key !== 'Escape') {
+                return;
+            }
+            if (modal.classList.contains('hidden')) {
+                return;
+            }
+            e.stopPropagation();
+            closeRecordEditReasonModal();
+        });
+    }
+
+    function bindEntryForm() {
+        var entryForm = document.getElementById('entryForm');
+        if (!entryForm) {
+            return;
+        }
+
+        if (window.AlcrosCivilRecordEntryValidation) {
+            AlcrosCivilRecordEntryValidation.bindLiveClear(entryForm);
+        }
+
+        entryForm.addEventListener('submit', function (e) {
+            readPageConfig();
+            var actionEl = entryForm.querySelector('#entryAction');
+            var isUpdate = actionEl && actionEl.value === 'update';
+            var categoryHidden = entryForm.querySelector('#editReasonCategory');
+
+            if (isUpdate && categoryHidden) {
+                if (entryForm.dataset.alcrosEditReasonConfirmed === '1') {
+                    delete entryForm.dataset.alcrosEditReasonConfirmed;
+                } else {
+                    if (validateEntryFormBeforeConfirm(entryForm)) {
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
+                        return;
+                    }
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    openRecordEditReasonModal(entryForm, e.submitter);
+                    return;
+                }
+            }
+
+            clearEntrySectionHtmlRequired();
+            entryFormSubmitting = true;
+            clearRecordLockTimer();
+            var type = document.getElementById('recordTypeInput');
+            if (type && type.value) {
+                setRecordType(type.value);
+            }
+        }, true);
     }
 
     function stripCsvBom(text) {
@@ -913,34 +1109,45 @@
             });
     }
 
+    function loadRecordUpdatesHistoryPanel(recordId) {
+        var historyPanel = document.getElementById('recordUpdatesHistoryPanel');
+        if (!historyPanel) {
+            return;
+        }
+        if (!recordId) {
+            historyPanel.innerHTML = recordHistoryEmptyMarkup();
+            return;
+        }
+
+        historyPanel.innerHTML = '<p class="records-detail-loading">Loading recent updates…</p>';
+        fetchRecordUpdateHistoryHtml(recordId)
+            .then(function (html) {
+                historyPanel.innerHTML = html || recordHistoryEmptyMarkup();
+            })
+            .catch(function () {
+                historyPanel.innerHTML = '<p class="records-recent-updates__empty">Could not load update history. Close and try again.</p>';
+            });
+    }
+
     function openRecordUpdatesModal(fromView) {
         var modal = document.getElementById('recordUpdatesModal');
         if (!modal) return;
+        var editNotice = document.getElementById('recordUpdatesEditNotice');
+        if (editNotice) {
+            if (fromView) {
+                editNotice.classList.add('hidden');
+                editNotice.setAttribute('hidden', '');
+            } else {
+                editNotice.classList.remove('hidden');
+                editNotice.removeAttribute('hidden');
+            }
+        }
         modal.classList.remove('hidden');
         modal.setAttribute('aria-hidden', 'false');
         refreshIcons();
 
-        if (!fromView) {
-            return;
-        }
-
-        var body = document.getElementById('recordUpdatesModalBody');
-        if (!body) {
-            return;
-        }
-        if (!viewRecordIdForHistory) {
-            body.innerHTML = recordHistoryEmptyMarkup();
-            return;
-        }
-
-        body.innerHTML = '<p class="records-detail-loading">Loading recent updates…</p>';
-        fetchRecordUpdateHistoryHtml(viewRecordIdForHistory)
-            .then(function (html) {
-                body.innerHTML = html || recordHistoryEmptyMarkup();
-            })
-            .catch(function () {
-                body.innerHTML = '<p class="records-recent-updates__empty">Could not load update history. Close and try again.</p>';
-            });
+        var recordId = fromView ? viewRecordIdForHistory : (cfg.editRecordId || null);
+        loadRecordUpdatesHistoryPanel(recordId);
     }
 
     function closeRecordUpdatesModal() {
@@ -1380,6 +1587,8 @@
         bindRecordsExportMenu();
         bindNewEntryMenu();
         bindRecordTypeTabs();
+        bindEntryForm();
+        bindRecordEditReasonModal();
         bindEntryPrintFillTabs();
         bindImportForm();
         bindModalClose();

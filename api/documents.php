@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/api_helpers.php';
 require_once __DIR__ . '/../includes/security.php';
 require_once __DIR__ . '/../includes/records_form.php';
+require_once __DIR__ . '/../includes/civil_registry_numbering.php';
 
 try {
     requireStaffLogin();
@@ -37,6 +38,7 @@ try {
     ensureCivilRecordTypeTables($pdo);
     ensureCivilRecordPrintSchema($pdo);
     syncCivilRecordDerivedFields($pdo);
+    ensureCivilRegistryNumberingSchema($pdo);
 
     try {
         $pdo->query('SELECT deleted_at FROM civil_records LIMIT 1');
@@ -53,10 +55,11 @@ try {
     );
 
     apiJsonResponse([
-        'record_id'    => $result['id'],
-        'record_type'  => $result['record_type'],
-        'display_name' => $result['display_name'],
-        'records_url'  => buildAuthUrl('records.php', [
+        'record_id'       => $result['id'],
+        'record_type'     => $result['record_type'],
+        'display_name'    => $result['display_name'],
+        'registry_number' => $result['registry_number'] ?? null,
+        'records_url'     => buildAuthUrl('records.php', [
             'type' => $result['record_type'],
             'edit' => $result['id'],
         ]),

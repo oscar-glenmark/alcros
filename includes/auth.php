@@ -100,10 +100,25 @@ function hydrateStaffFromDatabase(array $staff): ?array
         $staff['name'] = personNameFromRow($row);
         $staff['role'] = (string) ($row['role'] ?: 'Staff');
     } catch (Throwable $e) {
-        // Use existing payload if database lookup fails temporarily.
+        return null;
     }
 
     return $staff;
+}
+
+function staffAuthTokenForSession(): ?string
+{
+    $sessionStaff = getStaffFromSession();
+    if (!$sessionStaff) {
+        return null;
+    }
+
+    $hydrated = hydrateStaffFromDatabase($sessionStaff);
+    if (!$hydrated) {
+        return null;
+    }
+
+    return createStaffAuthToken($hydrated);
 }
 
 function getAuthenticatedStaff(bool $lightweight = false): ?array
@@ -113,31 +128,53 @@ function getAuthenticatedStaff(bool $lightweight = false): ?array
     static $lightweightResolved = false;
     static $lightweightStaff = null;
 
+    $sessionStaff = getStaffFromSession();
+    $token = authTokenFromRequest();
+    $fromToken = ($token !== null && $token !== '') ? validateStaffAuthToken($token) : null;
+    $tokenTabStaff = null;
+
+    if ($fromToken !== null && $sessionStaff !== null
+        && (string) $fromToken['staff_id'] !== (string) $sessionStaff['staff_id']) {
+        // Two accounts in one browser: this request's tab token (alcros_auth) identifies the user
+        // for this page/API call without overwriting the shared PHP session cookie.
+        $tokenTabStaff = hydrateStaffFromDatabase([
+            'staff_id' => (string) $fromToken['staff_id'],
+            'name'     => (string) ($fromToken['name'] ?? 'User'),
+            'role'     => (string) ($fromToken['role'] ?? 'Staff'),
+        ]);
+        if ($tokenTabStaff === null) {
+            $fromToken = null;
+        }
+    } elseif ($fromToken !== null && $sessionStaff !== null) {
+        $fromToken = null;
+    }
+
     if ($lightweight) {
         if ($lightweightResolved) {
             return $lightweightStaff;
         }
         $lightweightResolved = true;
 
-        $sessionStaff = getStaffFromSession();
+        if ($tokenTabStaff !== null) {
+            $lightweightStaff = $tokenTabStaff;
+
+            return $lightweightStaff;
+        }
+
         if ($sessionStaff) {
             $lightweightStaff = $sessionStaff;
 
             return $lightweightStaff;
         }
 
-        $token = authTokenFromRequest();
-        if ($token) {
-            $fromToken = validateStaffAuthToken($token);
-            if ($fromToken) {
-                $lightweightStaff = [
-                    'staff_id' => (string) $fromToken['staff_id'],
-                    'name'     => (string) ($fromToken['name'] ?? 'User'),
-                    'role'     => (string) ($fromToken['role'] ?? 'Staff'),
-                ];
+        if ($fromToken) {
+            $lightweightStaff = [
+                'staff_id' => (string) $fromToken['staff_id'],
+                'name'     => (string) ($fromToken['name'] ?? 'User'),
+                'role'     => (string) ($fromToken['role'] ?? 'Staff'),
+            ];
 
-                return $lightweightStaff;
-            }
+            return $lightweightStaff;
         }
 
         $lightweightStaff = null;
@@ -150,17 +187,19 @@ function getAuthenticatedStaff(bool $lightweight = false): ?array
     }
     $resolved = true;
 
-    $token = authTokenFromRequest();
-    if ($token) {
-        $fromToken = validateStaffAuthToken($token);
-        if ($fromToken) {
-            $staff = hydrateStaffFromDatabase($fromToken);
-            if ($staff) {
-                staffSessionLogin($staff);
-                $_SESSION['staff_hydrated_at'] = time();
+    if ($tokenTabStaff !== null) {
+        $staff = $tokenTabStaff;
 
-                return $staff;
-            }
+        return $staff;
+    }
+
+    if ($fromToken) {
+        $staff = hydrateStaffFromDatabase($fromToken);
+        if ($staff) {
+            staffSessionLogin($staff);
+            $_SESSION['staff_hydrated_at'] = time();
+
+            return $staff;
         }
     }
 
@@ -196,17 +235,22 @@ function getAuthenticatedStaff(bool $lightweight = false): ?array
 
 function staffAuthToken(): ?string
 {
-    $fromRequest = authTokenFromRequest();
-    if ($fromRequest !== null && validateStaffAuthToken($fromRequest) !== null) {
-        return $fromRequest;
-    }
+    $staff = getAuthenticatedStaff(true);
+    if ($staff === null) {
+        $fromRequest = authTokenFromRequest();
+        if ($fromRequest !== null && validateStaffAuthToken($fromRequest) !== null) {
+            return $fromRequest;
+        }
 
-    $staff = getStaffFromSession();
-    if (!$staff) {
         return null;
     }
 
-    return createStaffAuthToken($staff);
+    $hydrated = hydrateStaffFromDatabase($staff);
+    if ($hydrated === null) {
+        return null;
+    }
+
+    return createStaffAuthToken($hydrated);
 }
 
 function authFormField(): string
@@ -276,9 +320,19 @@ function requireStaffLoginForMedia(): void
     exit;
 }
 
+function sendStaffPortalCacheHeaders(): void
+{
+    if (headers_sent()) {
+        return;
+    }
+    header('Cache-Control: no-store, no-cache, must-revalidate');
+    header('Pragma: no-cache');
+}
+
 function requireStaffLogin(): void
 {
     if (getAuthenticatedStaff()) {
+        sendStaffPortalCacheHeaders();
         requireStaffPostCsrf();
         if (isJsonApiRequest() || (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET')) {
             releaseSessionLock();

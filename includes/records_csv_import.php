@@ -440,8 +440,11 @@ function importCsvRecords(PDO $pdo, string $filePath, string $importType): array
     $headers = [];
     $lineNum = 0;
     $maxErrors = 50;
-    $importOptions = ['insert_details_only' => true];
+    $importOptions = ['insert_details_only' => true, 'from_csv_import' => true];
     $inTransaction = false;
+    $importRegistrySeen = [];
+    require_once __DIR__ . '/civil_registry_numbering.php';
+    ensureCivilRegistryNumberingSchema($pdo);
 
     ensurePrintDocumentKindColumn($pdo);
 
@@ -466,13 +469,21 @@ function importCsvRecords(PDO $pdo, string $filePath, string $importType): array
                             $errors[] = 'Row 1: ' . ($rowError ?: 'invalid data.');
                         }
                     } else {
-                        try {
-                            insertCivilRecord($pdo, $parsed, $importOptions);
-                            $imported++;
-                        } catch (PDOException) {
+                        $importRowError = civilRegistryCsvImportRowError($pdo, $parsed, $importType, $importRegistrySeen);
+                        if ($importRowError !== null) {
                             $skipped++;
                             if (count($errors) < $maxErrors) {
-                                $errors[] = 'Row 1: could not save record.';
+                                $errors[] = 'Row 1: ' . $importRowError;
+                            }
+                        } else {
+                            try {
+                                insertCivilRecord($pdo, $parsed, $importOptions);
+                                $imported++;
+                            } catch (PDOException $e) {
+                                $skipped++;
+                                if (count($errors) < $maxErrors) {
+                                    $errors[] = 'Row 1: ' . civilRegistryCsvImportSaveError($e, $parsed, $importType);
+                                }
                             }
                         }
                     }
@@ -501,13 +512,22 @@ function importCsvRecords(PDO $pdo, string $filePath, string $importType): array
                 continue;
             }
 
+            $importRowError = civilRegistryCsvImportRowError($pdo, $parsed, $importType, $importRegistrySeen);
+            if ($importRowError !== null) {
+                $skipped++;
+                if (count($errors) < $maxErrors) {
+                    $errors[] = "Row $lineNum: " . $importRowError;
+                }
+                continue;
+            }
+
             try {
                 insertCivilRecord($pdo, $parsed, $importOptions);
                 $imported++;
-            } catch (PDOException) {
+            } catch (PDOException $e) {
                 $skipped++;
                 if (count($errors) < $maxErrors) {
-                    $errors[] = 'Row ' . $lineNum . ': could not save "' . civilRecordDisplayName($parsed) . '".';
+                    $errors[] = 'Row ' . $lineNum . ': ' . civilRegistryCsvImportSaveError($e, $parsed, $importType);
                 }
             }
         }
@@ -550,7 +570,10 @@ function importCsvParsedRows(PDO $pdo, string $importType, array $headers, array
     $sampleSkipped = 0;
     $errors = [];
     $maxErrors = 50;
-    $importOptions = ['insert_details_only' => true];
+    $importOptions = ['insert_details_only' => true, 'from_csv_import' => true];
+    $importRegistrySeen = [];
+    require_once __DIR__ . '/civil_registry_numbering.php';
+    ensureCivilRegistryNumberingSchema($pdo);
     $lineNum = max(1, $startLineNum);
 
     foreach ($rows as $row) {
@@ -579,13 +602,23 @@ function importCsvParsedRows(PDO $pdo, string $importType, array $headers, array
             continue;
         }
 
+        $importRowError = civilRegistryCsvImportRowError($pdo, $parsed, $importType, $importRegistrySeen);
+        if ($importRowError !== null) {
+            $skipped++;
+            if (count($errors) < $maxErrors) {
+                $errors[] = "Row $lineNum: " . $importRowError;
+            }
+            $lineNum++;
+            continue;
+        }
+
         try {
             insertCivilRecord($pdo, $parsed, $importOptions);
             $imported++;
-        } catch (PDOException) {
+        } catch (PDOException $e) {
             $skipped++;
             if (count($errors) < $maxErrors) {
-                $errors[] = 'Row ' . $lineNum . ': could not save "' . civilRecordDisplayName($parsed) . '".';
+                $errors[] = 'Row ' . $lineNum . ': ' . civilRegistryCsvImportSaveError($e, $parsed, $importType);
             }
         }
         $lineNum++;

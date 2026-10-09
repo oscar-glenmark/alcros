@@ -50,8 +50,6 @@ function sidebarSectionLabel(string $label): string
 }
 
 ?>
-
-
 <script>(function(){try{if(sessionStorage.getItem('admin_sidebar_minimized')==='1'){document.body.classList.add('admin-sidebar-minimized');}}catch(e){}})();</script>
 <aside class="admin-sidebar" aria-label="Admin navigation">
     <div class="admin-sidebar-brand p-4 sm:p-5 flex items-start justify-between gap-3">
@@ -113,4 +111,15 @@ function sidebarSectionLabel(string $label): string
     </div>
 </div>
 
+<?php
+$staffSyncToken = staffAuthToken();
+if ($staffSyncToken !== null && $staffSyncToken !== '') {
+    echo pageConfigJson([
+        'staffAuthToken' => $staffSyncToken,
+        'staffId'        => staffId(),
+        'sessionStaffId' => (string) (getStaffFromSession()['staff_id'] ?? ''),
+    ], 'alcros-staff-auth-sync');
+}
+echo scriptTag('core/page-config.js');
+?>
 <?= adminCoreScripts() ?>

@@ -15,8 +15,8 @@ function staffIdLightboxChevronSvg(bool $next): string
         ? 'M 18 10 L 46 32 L 18 54'
         : 'M 46 10 L 18 32 L 46 54';
 
-    return '<svg class="alcros-staff-id-dialog__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="80" height="80" aria-hidden="true" focusable="false">'
-        . '<path d="' . $path . '" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>'
+    return '<svg class="alcros-staff-id-dialog__chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" aria-hidden="true" focusable="false">'
+        . '<path d="' . $path . '" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>'
         . '</svg>';
 }
 

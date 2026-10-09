@@ -1,3 +1,7 @@
+.alcros-staff-id-dialog:not([open]) {
+    display: none !important;
+}
+
 .alcros-staff-id-dialog {
     position: fixed;
     inset: 0;
@@ -85,8 +89,8 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    width: 6.5rem;
-    min-width: 6.5rem;
+    width: 5rem;
+    min-width: 5rem;
     height: auto;
     min-height: 7rem;
     align-self: stretch;
@@ -123,8 +127,8 @@
 
 #alcrosStaffIdDialog .alcros-staff-id-dialog__chevron {
     display: block;
-    width: 5.5rem;
-    height: 5.5rem;
+    width: 4.25rem;
+    height: 4.25rem;
     flex-shrink: 0;
     filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.45));
 }
@@ -157,15 +161,15 @@
 
 @media (max-width: 480px) {
     #alcrosStaffIdDialog button.alcros-staff-id-dialog__side-nav {
-        width: 4.25rem;
-        min-width: 4.25rem;
-        min-height: 5rem;
+        width: 3.5rem;
+        min-width: 3.5rem;
+        min-height: 4rem;
         padding: 0.25rem;
     }
 
     #alcrosStaffIdDialog .alcros-staff-id-dialog__chevron {
-        width: 3.75rem;
-        height: 3.75rem;
+        width: 3rem;
+        height: 3rem;
     }
 
     .alcros-staff-id-dialog__body {

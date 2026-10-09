@@ -53,6 +53,79 @@
         return /^lcro_box_/.test(String(fieldName || ''));
     }
 
+    var PRINT_FILL_MONTHS = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    var PRINT_FILL_BIRTH_TYPES = ['Single', 'Twin', 'Triplet', 'Quadruplet', 'Quintuplet'];
+
+    function isPrintFillBirthTypeField(fieldName) {
+        var name = String(fieldName || '');
+        return name === 'birth_type' || name === 'child_birth_type';
+    }
+
+    function isPrintFillChoiceField(fieldName) {
+        var name = String(fieldName || '');
+        if (name === 'sex' || /_sex$/.test(name)) {
+            return true;
+        }
+        if (isPrintFillBirthTypeField(name)) {
+            return true;
+        }
+        if (/_month$/.test(name)) {
+            return true;
+        }
+        if (/_day$/.test(name)) {
+            return true;
+        }
+        return /_year$/.test(name);
+    }
+
+    function normalizePrintFillChoiceValue(value, fieldName) {
+        var trimmed = String(value || '').trim();
+        if (!trimmed || !isPrintFillChoiceField(fieldName)) {
+            return trimmed;
+        }
+        if (fieldName === 'sex' || /_sex$/.test(fieldName)) {
+            var sex = trimmed.toLowerCase();
+            if (sex === 'male') {
+                return 'Male';
+            }
+            if (sex === 'female') {
+                return 'Female';
+            }
+            return trimmed;
+        }
+        if (isPrintFillBirthTypeField(fieldName)) {
+            var birthLower = trimmed.toLowerCase();
+            for (var b = 0; b < PRINT_FILL_BIRTH_TYPES.length; b++) {
+                if (PRINT_FILL_BIRTH_TYPES[b].toLowerCase() === birthLower) {
+                    return PRINT_FILL_BIRTH_TYPES[b];
+                }
+            }
+            return trimmed;
+        }
+        if (/_day$/.test(fieldName)) {
+            var dayNum = parseInt(trimmed, 10);
+            if (dayNum >= 1 && dayNum <= 31) {
+                return dayNum < 10 ? '0' + dayNum : String(dayNum);
+            }
+            return trimmed;
+        }
+        if (/_year$/.test(fieldName)) {
+            var yearDigits = trimmed.replace(/\D/g, '');
+            return yearDigits.length === 4 ? yearDigits : trimmed;
+        }
+        var lower = trimmed.toLowerCase();
+        for (var i = 0; i < PRINT_FILL_MONTHS.length; i++) {
+            if (PRINT_FILL_MONTHS[i].toLowerCase() === lower) {
+                return PRINT_FILL_MONTHS[i];
+            }
+        }
+        return trimmed;
+    }
+
     function normalizeLcroFooterText(value) {
         return String(value || '').replace(/\s+/g, '');
     }
@@ -70,6 +143,9 @@
         if (isLcroFooterField(fieldName)) {
             return normalizeLcroFooterText(trimmed);
         }
+        if (window.AlcrosPrintFillDates && AlcrosPrintFillDates.isPrintFillCalendarDateField(fieldName)) {
+            return AlcrosPrintFillDates.storageValue(trimmed, fieldName);
+        }
         return formatPrintFieldText(trimmed, fieldName);
     }
 
@@ -79,6 +155,12 @@
         }
         if (isLcroFooterField(fieldName)) {
             return formatLcroFooterDisplayText(value);
+        }
+        if (window.AlcrosPrintFillDates && AlcrosPrintFillDates.isPrintFillCalendarDateField(fieldName)) {
+            return AlcrosPrintFillDates.storageValue(value, fieldName);
+        }
+        if (isPrintFillChoiceField(fieldName)) {
+            return normalizePrintFillChoiceValue(value, fieldName);
         }
         return String(value || '').toUpperCase();
     }
@@ -98,10 +180,13 @@
 
     function syncFillInput(fieldName, value) {
         var stored = storedPrintFieldValue(value, fieldName);
-        var formatted = formatPrintFieldText(stored, fieldName);
         var input = document.querySelector('[data-field-name="' + fieldName + '"]');
         if (input && document.activeElement !== input) {
-            input.value = formatted;
+            if (window.AlcrosPrintFillDates && AlcrosPrintFillDates.isPrintFillCalendarDateField(fieldName)) {
+                input.value = AlcrosPrintFillDates.certDateToIso(stored) || '';
+            } else {
+                input.value = formatPrintFieldText(stored, fieldName);
+            }
         }
         if (stored === '') {
             delete fillOverrides[fieldName];
@@ -783,22 +868,41 @@
         });
     }
 
-    function bindFillEditor() {
-        document.querySelectorAll('[data-field-name]').forEach(function (input) {
-            input.addEventListener('input', function () {
-                var name = input.getAttribute('data-field-name');
-                var stored = storedPrintFieldValue(input.value, name);
-                var display = formatPrintFieldText(stored, name);
-                if (input.value !== display) {
-                    input.value = display;
-                }
+    function bindFillFieldControl(input) {
+        function applyFillFieldValue() {
+            var name = input.getAttribute('data-field-name');
+            if (!name) {
+                return;
+            }
+            var stored = storedPrintFieldValue(input.value, name);
+            if (window.AlcrosPrintFillDates && AlcrosPrintFillDates.isPrintFillCalendarDateField(name)) {
                 if (stored === '') {
                     delete fillOverrides[name];
                 } else {
                     fillOverrides[name] = stored;
                 }
                 schedulePreviewRefresh(true);
-            });
+                return;
+            }
+            var display = formatPrintFieldText(stored, name);
+            if (input.value !== display) {
+                input.value = display;
+            }
+            if (stored === '') {
+                delete fillOverrides[name];
+            } else {
+                fillOverrides[name] = stored;
+            }
+            schedulePreviewRefresh(true);
+        }
+
+        input.addEventListener('input', applyFillFieldValue);
+        input.addEventListener('change', applyFillFieldValue);
+    }
+
+    function bindFillEditor() {
+        document.querySelectorAll('[data-field-name]').forEach(function (input) {
+            bindFillFieldControl(input);
         });
 
         var resetBtn = document.getElementById('resetFillData');
@@ -808,7 +912,15 @@
                 document.querySelectorAll('[data-field-name]').forEach(function (input) {
                     var name = input.getAttribute('data-field-name');
                     var stored = fillOverrides[name] || '';
-                    input.value = stored ? formatPrintFieldText(stored, name) : '';
+                    if (!stored) {
+                        input.value = '';
+                        return;
+                    }
+                    if (window.AlcrosPrintFillDates && AlcrosPrintFillDates.isPrintFillCalendarDateField(name)) {
+                        input.value = AlcrosPrintFillDates.certDateToIso(stored) || '';
+                        return;
+                    }
+                    input.value = formatPrintFieldText(stored, name);
                 });
                 refreshPreviews();
             });
@@ -975,7 +1087,13 @@
                     if (data.display_name) {
                         message += ': ' + data.display_name;
                     }
-                    message += '.';
+                    if (data.registry_number) {
+                        message += ' Registry number: ' + data.registry_number + '.';
+                        syncFillInput('registry_number', data.registry_number);
+                        refreshPreviews();
+                    } else {
+                        message += '.';
+                    }
                     showActionResult('success', message);
                 }).catch(function (err) {
                     showActionResult('error', err.message || 'Could not save the record.');

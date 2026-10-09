@@ -59,6 +59,7 @@ function civilRecordNormalizeDate(?string $value): ?string
 
 function insertCivilRecord(PDO $pdo, array $data, array $options = []): void
 {
+    $options['from_csv_import'] = true;
     saveCivilRecord($pdo, $data, null, $options);
 }
 
@@ -163,10 +164,30 @@ function normalizeRecordInput(array $input, bool $fromCsvImport = false, ?array 
         }
     }
 
+    if (!$fromCsvImport && $existingRecord === null) {
+        $input['registry_number'] = '';
+        if (isset($input['print_fill']) && is_array($input['print_fill'])) {
+            $input['print_fill']['registry_number'] = '';
+        }
+    }
+
     if ($fromCsvImport) {
         assertCivilRecordCsvImportComplete($input, $type);
     } else {
         assertCivilRecordManualEntryComplete($input, $type);
+    }
+
+    if ($existingRecord !== null) {
+        $incomingRegistry = trim((string) ($input['registry_number'] ?? ''));
+        if ($incomingRegistry === '' && isset($input['print_fill']) && is_array($input['print_fill'])) {
+            $incomingRegistry = trim((string) ($input['print_fill']['registry_number'] ?? ''));
+        }
+        if ($incomingRegistry === '') {
+            $input['registry_number'] = (string) ($existingRecord['registry_number'] ?? '');
+            if (isset($input['print_fill']) && is_array($input['print_fill'])) {
+                $input['print_fill']['registry_number'] = (string) ($existingRecord['registry_number'] ?? '');
+            }
+        }
     }
 
     $data = array_merge([
@@ -266,8 +287,9 @@ function createCivilRecordFromPrintFill(PDO $pdo, string $recordType, array $pri
     $recordId = saveCivilRecord($pdo, $data, null);
 
     return [
-        'id'           => $recordId,
-        'record_type'  => $data['record_type'],
-        'display_name' => civilRecordDisplayName($data),
+        'id'              => $recordId,
+        'record_type'     => $data['record_type'],
+        'display_name'    => civilRecordDisplayName($data),
+        'registry_number' => trim((string) ($data['registry_number'] ?? '')) ?: null,
     ];
 }

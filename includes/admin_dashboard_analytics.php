@@ -15,6 +15,7 @@ $showDashboardAnalyticsHeader = $adminAnalyticsContext === 'dashboard';
 $showSystemActivityFeed = $adminAnalyticsContext === 'dashboard';
 $recordsUrl = buildAuthUrl('records.php');
 $printsDetailsUrl = buildAuthUrl('report.php', ['section' => 'prints', 'range' => 'month']);
+$intakeQueueDetailsUrl = buildAuthUrl('report.php', ['section' => 'queue', 'range' => 'today']);
 $growth = $a['recordsGrowth'] ?? ['pct' => 0, 'up' => true];
 $trend = $a['recordTypeTrend'] ?? ['max' => 0];
 $thisMo = $a['thisMonthTypes'] ?? ['birth' => 0, 'death' => 0, 'marriage' => 0];
@@ -105,9 +106,12 @@ $activities = $activities ?? [];
             <?php endif; ?>
         </div>
         <div class="analytics-chart-card dash-admin-split__panel">
-            <div class="analytics-chart-head">
-                <h3>Daily intake &amp; queue status</h3>
-                <p>Citizen intake (<?= (int) $a['todayRequests'] ?> online, <?= (int) $a['walkInToday'] ?> walk-in) · queue today</p>
+            <div class="analytics-chart-head dash-admin-chart-head--split">
+                <div>
+                    <h3>Daily intake &amp; queue status</h3>
+                    <p>Citizen intake (<?= (int) $a['todayRequests'] ?> online, <?= (int) $a['walkInToday'] ?> walk-in) · queue today</p>
+                </div>
+                <a href="<?= htmlspecialchars($intakeQueueDetailsUrl) ?>" class="dash-admin-featured__details shrink-0">View details</a>
             </div>
             <?php if ($a['todayIntake'] === 0 && $a['queueWaiting'] === 0 && $a['queueServing'] === 0 && $a['queueServed'] === 0): ?>
             <div class="analytics-empty">No intake or queue activity today.</div>

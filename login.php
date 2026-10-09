@@ -200,7 +200,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <body class="auth-portal">
 
-
+<?php if (!$loggedInStaff && $loginSuccessModal === null): ?>
+<script>try{sessionStorage.removeItem('alcros_auth');}catch(e){}</script>
+<?php endif; ?>
 
     <header class="auth-portal-header">
 

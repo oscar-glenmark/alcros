@@ -1197,6 +1197,44 @@ function saveCivilRecord(PDO $pdo, array $data, ?int $recordId = null, array $op
         throw new InvalidArgumentException('Invalid record type.');
     }
 
+    require_once __DIR__ . '/civil_registry_numbering.php';
+    ensureCivilRegistryNumberingSchema($pdo);
+
+    $isInsert = $recordId === null;
+    $fromCsvImport = !empty($options['from_csv_import']);
+    $registry = civilRegistryNormalizeRegistryNumber($data['registry_number'] ?? null);
+
+    if ($isInsert && !$fromCsvImport && $registry === null) {
+        $eventYear = civilRegistryEventYearFromRecordData($data);
+        $registry = civilRegistryAllocateNextNumber($pdo, $type, [
+            'event_year' => $eventYear,
+        ]);
+        $data['registry_number'] = $registry;
+        if ($type === 'death' && trim((string) ($data['code_number'] ?? '')) === '') {
+            $data['code_number'] = $registry;
+        }
+        if (!empty($data['print_fill_data']) && is_string($data['print_fill_data'])) {
+            $fill = json_decode($data['print_fill_data'], true);
+            if (is_array($fill)) {
+                $fill['registry_number'] = $registry;
+                $encoded = json_encode($fill, JSON_UNESCAPED_UNICODE);
+                if ($encoded !== false) {
+                    $data['print_fill_data'] = $encoded;
+                }
+            }
+        }
+    } elseif ($registry !== null) {
+        $data['registry_number'] = $registry;
+        if (civilRegistryNumberExists($pdo, $type, $registry, $isInsert ? null : $recordId)) {
+            throw new InvalidArgumentException(
+                'Registry number "' . $registry . '" is already used for another '
+                . civilRecordTypeLabel($type) . ' record.'
+            );
+        }
+    } else {
+        $data['registry_number'] = null;
+    }
+
     $baseFields = civilRecordBaseFieldNames();
     $basePayload = [];
     foreach ($baseFields as $field) {

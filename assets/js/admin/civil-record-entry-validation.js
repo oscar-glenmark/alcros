@@ -182,6 +182,7 @@
         validateManualEntrySections: validateManualEntrySections,
         clearValidation: clearValidation,
         clearFieldValidationState: clearFieldValidationState,
+        setFieldError: setFieldError,
         bindLiveClear: bindLiveClear,
         scrollToFirstError: scrollToFirstError,
         fieldContainer: fieldContainer

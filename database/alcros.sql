@@ -172,7 +172,8 @@ CREATE TABLE IF NOT EXISTS civil_records (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_type (record_type),
     INDEX idx_person_name (last_name, first_name),
-    INDEX idx_deleted (deleted_at)
+    INDEX idx_deleted (deleted_at),
+    UNIQUE INDEX uniq_civil_registry_per_type (record_type, registry_number)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS civil_record_edit_locks (

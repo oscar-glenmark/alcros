@@ -78,12 +78,12 @@ $faqs = [
                 </a>
 
                 <nav class="hidden lg:flex items-center gap-1 xl:gap-2">
-                    <a href="index.php" class="nav-link is-active">Home</a>
-                    <a href="#services" class="nav-link">Services</a>
+                    <a href="index.php" class="nav-link" data-nav-section="home">Home</a>
+                    <a href="#services" class="nav-link" data-nav-section="services">Services</a>
                     <button type="button" data-open-track class="nav-link cursor-pointer bg-transparent border-0 border-b-2 border-transparent">Track Request</button>
-                    <a href="#about" class="nav-link">About</a>
-                    <a href="#faqs" class="nav-link">FAQs </a>
-                    <a href="#contact" class="nav-link">Contact Us</a>
+                    <a href="#about" class="nav-link" data-nav-section="about">About</a>
+                    <a href="#faqs" class="nav-link" data-nav-section="faqs">FAQs </a>
+                    <a href="#contact" class="nav-link" data-nav-section="contact">Contact Us</a>
                 </nav>
 
                 <div class="flex items-center gap-2 shrink-0">
@@ -98,12 +98,12 @@ $faqs = [
 
             <div id="mobileNav" class="hidden lg:hidden pb-4 border-t border-white/10 pt-3">
                 <div class="flex flex-col gap-1">
-                    <a href="index.php" class="nav-link is-active">Home</a>
-                    <a href="#services" class="nav-link">Services</a>
+                    <a href="index.php" class="nav-link" data-nav-section="home">Home</a>
+                    <a href="#services" class="nav-link" data-nav-section="services">Services</a>
                     <button type="button" data-open-track class="nav-link text-left cursor-pointer bg-transparent border-0">Track Request</button>
-                    <a href="#about" class="nav-link">About</a>
-                    <a href="#faqs" class="nav-link">FAQs</a>
-                    <a href="#contact" class="nav-link">Contact Us</a>
+                    <a href="#about" class="nav-link" data-nav-section="about">About</a>
+                    <a href="#faqs" class="nav-link" data-nav-section="faqs">FAQs</a>
+                    <a href="#contact" class="nav-link" data-nav-section="contact">Contact Us</a>
                     <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="btn-login inline-block text-center mt-2 w-fit"><?= htmlspecialchars($staffPortalLabel) ?></a>
                 </div>
             </div>
@@ -111,7 +111,7 @@ $faqs = [
     </header>
 
     <!-- HERO -->
-    <section class="hero-section flex items-center">
+    <section id="home" class="hero-section flex items-center scroll-mt-24">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full py-16 lg:py-20">
             <div class="grid lg:grid-cols-2 gap-10 items-center">
                 <div class="relative z-10 max-w-xl">

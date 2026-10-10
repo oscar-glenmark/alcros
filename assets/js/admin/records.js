@@ -1635,10 +1635,13 @@
             if (!btn) {
                 return;
             }
+            if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+                return;
+            }
             e.preventDefault();
             e.stopPropagation();
             openViewRecordFromButton(btn);
-        });
+        }, true);
     }
 
     var recordsListAbort = null;

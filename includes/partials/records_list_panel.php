@@ -63,7 +63,7 @@
                     <?= htmlspecialchars(implode(' · ', $parents) ?: ($r['place'] ?? '—')) ?>
                 </td>
                 <td class="p-4 text-right">
-                    <div class="manage-row-actions" onclick="event.stopPropagation()">
+                    <div class="manage-row-actions">
                         <div class="manage-print-menu">
                             <button type="button"
                                     class="manage-row-action manage-row-action--labeled manage-row-action--print manage-print-trigger"

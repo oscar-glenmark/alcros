@@ -391,7 +391,8 @@
 
         var lastTrackRevision = '';
 
-        function messageClass(status) {
+        function messageClass(status, tone) {
+            if (tone === 'success') return 'bg-emerald-50 text-emerald-800 border border-emerald-100';
             if (status === 'ready' || status === 'completed') return 'bg-green-50 text-green-800 border border-green-100';
             if (status === 'rejected' || status === 'cancelled' || status === 'no_show') return 'bg-red-50 text-red-800 border border-red-100';
             return 'bg-blue-50 text-blue-800 border border-blue-100';
@@ -415,10 +416,16 @@
             if (badgeEl) badgeEl.innerHTML = data.status_html;
 
             var msgEl = document.getElementById('track-status-message');
-            if (msgEl && data.status_message) {
-                msgEl.textContent = data.status_message;
-                var status = data.request ? data.request.status : (data.appointment ? data.appointment.status : '');
-                msgEl.className = 'rounded-xl p-4 mb-5 text-sm leading-relaxed ' + messageClass(status);
+            if (msgEl) {
+                if (data.status_tone === 'success') {
+                    msgEl.classList.add('hidden');
+                    msgEl.textContent = '';
+                } else if (data.status_message) {
+                    msgEl.classList.remove('hidden');
+                    msgEl.textContent = data.status_message;
+                    var status = data.request ? data.request.status : (data.appointment ? data.appointment.status : '');
+                    msgEl.className = 'rounded-xl p-4 mb-5 text-sm leading-relaxed ' + messageClass(status, data.status_tone);
+                }
             }
 
             var entity = data.request || data.appointment || {};

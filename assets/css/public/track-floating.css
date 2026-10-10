@@ -271,3 +271,89 @@
         padding-bottom: 0.85rem;
     }
 }
+
+.track-floating-cancel__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 0.65rem 1rem;
+    border-radius: 0.65rem;
+    border: 1px solid #fecaca;
+    background: #fff;
+    color: #b91c1c;
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.track-floating-cancel__btn:hover:not(:disabled) {
+    background: #fef2f2;
+    border-color: #f87171;
+}
+
+.track-floating-cancel__btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.track-floating-cancel__hint {
+    margin: 0.5rem 0 0;
+    font-size: 0.625rem;
+    line-height: 1.4;
+    color: #94a3b8;
+    text-align: center;
+}
+
+.citizen-success-cancel {
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid #e2e8f0;
+    text-align: center;
+}
+
+.citizen-success-cancel--actions {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+}
+
+.citizen-success-cancel__btn--action {
+    padding: 0.75rem 1.5rem;
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+}
+
+.citizen-success-cancel__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.65rem 1.25rem;
+    border-radius: 9999px;
+    border: 1px solid #fecaca;
+    background: #fff;
+    color: #b91c1c;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.citizen-success-cancel__btn:hover:not(:disabled) {
+    background: #fef2f2;
+}
+
+.citizen-success-cancel__hint {
+    margin: 0.5rem 0 0;
+    font-size: 0.625rem;
+    color: #94a3b8;
+}
+
+.citizen-success-cancel__done {
+    margin: 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #047857;
+}

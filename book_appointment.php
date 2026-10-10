@@ -291,12 +291,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php endif; ?>
             </div>
 
-            <div class="flex flex-col sm:flex-row justify-center gap-3">
-                <button type="button" data-open-track data-track-code="<?= htmlspecialchars($appointmentCode, ENT_QUOTES) ?>" class="citizen-btn-gold px-6 py-3 rounded-full text-xs text-center">Track My Appointment</button>
-                <a href="services.php" class="back-home back-home--btn">Back to Services</a>
+            <div id="citizen-success-cancel-wrap" class="citizen-success-cancel citizen-success-cancel--actions"
+                 data-cancel-type="appointment"
+                 data-cancel-code="<?= htmlspecialchars($appointmentCode, ENT_QUOTES) ?>"
+                 data-cancel-label="Cancel Appointment">
+                <?= publicCsrfField() ?>
+                <div class="flex flex-col sm:flex-row justify-center gap-3">
+                    <button type="button" id="citizen-success-cancel-btn" class="citizen-success-cancel__btn citizen-success-cancel__btn--action">Cancel Appointment</button>
+                    <button type="button" data-open-track data-track-code="<?= htmlspecialchars($appointmentCode, ENT_QUOTES) ?>" class="citizen-btn-gold px-6 py-3 rounded-full text-xs text-center">Track My Appointment</button>
+                </div>
             </div>
         </div>
-        <?= pageConfigJson(['trackingCode' => $appointmentCode], 'request-success-config') ?>
+        <?= pageConfigJson([
+            'trackingCode' => $appointmentCode,
+            'cancelType'   => 'appointment',
+            'canCancel'    => true,
+        ], 'request-success-config') ?>
         <?= scriptTag('core/page-config.js') ?>
         <?= scriptTag('public/request-success.js') ?>
         <?php else: ?>

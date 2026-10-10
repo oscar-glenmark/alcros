@@ -17,6 +17,8 @@
     var activeCode = '';
     var lastTrackRevision = '';
     var trackPollFails = 0;
+    var lastTrackIsAppointment = false;
+    var cancelInFlight = false;
 
     function escapeHtml(str) {
         return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -42,7 +44,10 @@
             ' · ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     }
 
-    function messageClass(status) {
+    function messageClass(status, tone) {
+        if (tone === 'success') {
+            return 'bg-emerald-50 text-emerald-800 border border-emerald-100';
+        }
         if (status === 'verified' || status === 'ready' || status === 'completed') {
             return 'bg-emerald-50 text-emerald-800 border border-emerald-100';
         }
@@ -106,6 +111,7 @@
 
         var code = isAppointment ? entity.appointment_code : entity.tracking_code;
         var status = entity.status;
+        var statusTone = data.status_tone || '';
         var hideProgress = isAppointment
             ? (status === 'cancelled' || status === 'no_show')
             : (status === 'rejected');
@@ -125,9 +131,26 @@
             }());
 
         var codeLabel = isAppointment ? 'Appointment Code' : 'Tracking Code';
-        var footerNote = hideProgress
+        var footerNote = hideProgress && statusTone !== 'success'
             ? '<p class="text-red-600 text-sm font-semibold mb-4">Please contact the registry office for assistance.</p>'
             : '';
+
+        var cancelBlock = '';
+        if (data.can_cancel && data.cancel_type && data.cancel_label) {
+            cancelBlock =
+                '<div class="track-floating-cancel mb-4 pt-3 border-t border-slate-100">' +
+                '<button type="button" id="track-floating-cancel-btn" class="track-floating-cancel__btn" ' +
+                'data-cancel-type="' + escapeHtml(data.cancel_type) + '" data-cancel-code="' + escapeHtml(code) + '">' +
+                escapeHtml(data.cancel_label) + '</button>' +
+                '<p class="track-floating-cancel__hint">Only available while your submission is still awaiting staff review.</p>' +
+                '</div>';
+        }
+
+        var statusMsg = String(data.status_message || '').trim();
+        var statusMessageBlock = statusTone === 'success' || statusMsg === ''
+            ? ''
+            : '<div id="track-status-message" class="rounded-xl p-4 mb-4 text-sm leading-relaxed ' +
+                messageClass(status, statusTone) + '">' + escapeHtml(statusMsg) + '</div>';
 
         resultEl.innerHTML =
             '<div class="rounded-xl border border-slate-100 bg-slate-50/50 p-4">' +
@@ -135,9 +158,9 @@
             '<div><p class="text-[10px] font-bold text-slate-400 uppercase">' + codeLabel + '</p>' +
             '<p class="track-floating-result__code">' + escapeHtml(code) + '</p></div>' +
             '<div id="track-status-badge">' + (data.status_html || '') + '</div></div>' +
-            '<div id="track-status-message" class="rounded-xl p-4 mb-4 text-sm leading-relaxed ' + messageClass(status) + '">' +
-            escapeHtml(data.status_message || '') + '</div>' +
+            statusMessageBlock +
             '<div class="space-y-2 text-sm mb-4 text-slate-700">' + details + '</div>' +
+            cancelBlock +
             footerNote +
             renderProgress(data.step_labels, data.current_idx, hideProgress) +
             '<p id="track-updated-at" class="text-[10px] text-slate-400 text-center">Status updates automatically · Last checked ' +
@@ -148,6 +171,102 @@
 
         resultEl.classList.remove('hidden');
         errorEl.classList.add('hidden');
+
+        var cancelBtn = document.getElementById('track-floating-cancel-btn');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', function () {
+                submitCitizenCancel(cancelBtn.getAttribute('data-cancel-type'), cancelBtn.getAttribute('data-cancel-code'));
+            });
+        }
+    }
+
+    function csrfToken() {
+        var fromRoot = root.getAttribute('data-csrf-token');
+        if (fromRoot) {
+            return fromRoot;
+        }
+        var input = document.querySelector('#citizen-success-cancel-wrap input[name="csrf_token"]')
+            || document.querySelector('input[name="csrf_token"]');
+        return input ? input.value : '';
+    }
+
+    function askCitizenCancelConfirm(message) {
+        if (window.AlcrosConfirm && typeof window.AlcrosConfirm.ask === 'function') {
+            return window.AlcrosConfirm.ask(message);
+        }
+        return Promise.resolve(window.confirm(message));
+    }
+
+    function showCitizenCancelSuccessModal(data) {
+        if (!data || data.status_tone !== 'success') {
+            return;
+        }
+        var text = data.status_message || data.message || 'Your cancellation is complete.';
+        if (window.AlcrosActionResult && typeof window.AlcrosActionResult.show === 'function') {
+            window.AlcrosActionResult.show('success', text, {
+                title: 'Cancellation complete',
+                badge: 'Success',
+                buttonLabel: 'Done'
+            });
+            return;
+        }
+        window.alert(text);
+    }
+
+    function submitCitizenCancel(cancelType, code) {
+        if (cancelInFlight || !cancelType || !code) {
+            return;
+        }
+        var confirmMsg = cancelType === 'appointment'
+            ? 'Cancel this appointment? Your time slot will be released and staff will not confirm this visit.'
+            : 'Cancel this document request? Staff will stop processing it.';
+
+        askCitizenCancelConfirm(confirmMsg).then(function (ok) {
+            if (!ok) {
+                return;
+            }
+            runCitizenCancel(cancelType, code);
+        });
+    }
+
+    function runCitizenCancel(cancelType, code) {
+        if (cancelInFlight) {
+            return;
+        }
+        cancelInFlight = true;
+        var cancelBtn = document.getElementById('track-floating-cancel-btn');
+        if (cancelBtn) {
+            cancelBtn.disabled = true;
+            cancelBtn.textContent = 'Cancelling…';
+        }
+
+        var body = new FormData();
+        body.append('csrf_token', csrfToken());
+        body.append('type', cancelType);
+        body.append('code', code);
+
+        fetch('api/citizen_cancel.php', { method: 'POST', body: body, credentials: 'same-origin' })
+            .then(function (r) {
+                return r.json().then(function (data) {
+                    return { ok: r.ok, data: data };
+                });
+            })
+            .then(function (result) {
+                if (!result.ok || !result.data || !result.data.ok) {
+                    throw new Error((result.data && result.data.error) || 'Cancellation failed.');
+                }
+                var isAppointment = cancelType === 'appointment';
+                lastTrackRevision = '';
+                renderResult(result.data, isAppointment);
+                showCitizenCancelSuccessModal(result.data);
+                startPolling(code, isAppointment);
+            })
+            .catch(function (err) {
+                showError(err.message || 'Unable to cancel. Please try again or contact the office.');
+            })
+            .finally(function () {
+                cancelInFlight = false;
+            });
     }
 
     function applyPollUpdate(data, isAppointment) {
@@ -213,10 +332,11 @@
 
         activeCode = code;
         lastTrackRevision = '';
+        lastTrackIsAppointment = isAppointmentCode(code);
         stopPolling();
         showLoading(true);
 
-        var isAppointment = isAppointmentCode(code);
+        var isAppointment = lastTrackIsAppointment;
         var endpoint = isAppointment ? 'api/appointment_status.php' : 'api/request_status.php';
 
         fetch(endpoint + '?code=' + encodeURIComponent(code), { credentials: 'same-origin', cache: 'no-store' })
@@ -300,7 +420,12 @@
         openPanel(code);
     });
 
-    window.AlcrosTrack = { open: openPanel, close: closePanel, lookup: lookup };
+    window.AlcrosTrack = {
+        open: openPanel,
+        close: closePanel,
+        lookup: lookup,
+        cancel: submitCitizenCancel
+    };
 
     var initial = root.dataset.initialCode || '';
     if (initial) {

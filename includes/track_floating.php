@@ -1,12 +1,14 @@
 <?php
 /** Floating track panel — include on public citizen pages. */
+require_once __DIR__ . '/security.php';
 $trackSite = $trackSite ?? getSiteSettings();
 $initialTrackCode = strtoupper(trim($_GET['track'] ?? $_GET['code'] ?? ''));
 ?>
 <div id="track-floating-root" class="hidden" aria-hidden="true"
      data-initial-code="<?= htmlspecialchars($initialTrackCode, ENT_QUOTES, 'UTF-8') ?>"
      data-office-hours="<?= htmlspecialchars($trackSite['hours'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
-     data-office-phone="<?= htmlspecialchars($trackSite['phone'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+     data-office-phone="<?= htmlspecialchars($trackSite['phone'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+     data-csrf-token="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
     <div id="track-floating-backdrop" class="fixed inset-0 bg-slate-900/45 backdrop-blur-sm z-[60]"></div>
     <div id="track-floating-panel" class="fixed z-[70] left-1/2 top-20 -translate-x-1/2 w-[calc(100%-2rem)] max-w-lg" role="dialog" aria-modal="true" aria-labelledby="track-floating-title">
         <div class="track-floating-card">
@@ -54,4 +56,6 @@ $initialTrackCode = strtoupper(trim($_GET['track'] ?? $_GET['code'] ?? ''));
 require_once __DIR__ . '/scripts.php';
 echo actionCoreStyles();
 echo publicStylesheet('track-floating');
+echo scriptTag('core/confirm.js');
+echo scriptTag('core/action-result.js');
 ?>

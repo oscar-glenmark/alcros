@@ -397,12 +397,22 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 <?php endif; ?>
             </div>
 
-            <div class="flex flex-col sm:flex-row justify-center gap-3">
-                <button type="button" data-open-track data-track-code="<?= htmlspecialchars($successData['tracking_code'], ENT_QUOTES) ?>" class="citizen-btn-gold px-6 py-3 rounded-full text-xs text-center">Track My Request</button>
-                <a href="index.php" class="back-home back-home--btn">Back to Home</a>
+            <div id="citizen-success-cancel-wrap" class="citizen-success-cancel citizen-success-cancel--actions"
+                 data-cancel-type="request"
+                 data-cancel-code="<?= htmlspecialchars($successData['tracking_code'], ENT_QUOTES) ?>"
+                 data-cancel-label="Cancel Request">
+                <?= publicCsrfField() ?>
+                <div class="flex flex-col sm:flex-row justify-center gap-3">
+                    <button type="button" id="citizen-success-cancel-btn" class="citizen-success-cancel__btn citizen-success-cancel__btn--action">Cancel Request</button>
+                    <button type="button" data-open-track data-track-code="<?= htmlspecialchars($successData['tracking_code'], ENT_QUOTES) ?>" class="citizen-btn-gold px-6 py-3 rounded-full text-xs text-center">Track My Request</button>
+                </div>
             </div>
         </div>
-        <?= pageConfigJson(['trackingCode' => $successData['tracking_code']], 'request-success-config') ?>
+        <?= pageConfigJson([
+            'trackingCode' => $successData['tracking_code'],
+            'cancelType'   => 'request',
+            'canCancel'    => true,
+        ], 'request-success-config') ?>
         <?= scriptTag('core/page-config.js') ?>
         <?= scriptTag('public/request-success.js') ?>
 

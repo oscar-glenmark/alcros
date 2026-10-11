@@ -7,6 +7,8 @@
 /** @var string $sort */
 /** @var string $dir */
 /** @var array<string, string> $typeBadgeClass */
+/** @var bool $canManageCivilRecords */
+$canManageCivilRecords = $canManageCivilRecords ?? true;
 ?>
 <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden records-list-panel" id="recordsListPanel">
     <?php if ($records === []): ?>
@@ -38,24 +40,25 @@
             ?>
             <tr class="hover:bg-gray-50/50 transition-colors records-table-row">
                 <td class="p-4">
-                    <button type="button" class="view-record-btn text-left w-full" data-record="<?= htmlspecialchars(json_encode($r, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), ENT_QUOTES, 'UTF-8') ?>">
-                        <div class="flex items-center space-x-3">
-                            <div class="w-8 h-8 bg-blue-100 rounded flex items-center justify-center text-blue-600 font-bold text-xs"><?= htmlspecialchars(recordsListRecordInitial(civilRecordDisplayName($r))) ?></div>
-                            <div>
-                                <div class="flex items-center space-x-2">
-                                    <span class="text-sm font-bold text-slate-800 hover:text-blue-600"><?= htmlspecialchars(civilRecordDisplayName($r)) ?></span>
-                                    <?php $displayRegistry = civilRecordRegistryNumber($r); ?>
-                                    <?php if ($displayRegistry): ?>
-                                    <span class="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 font-bold">#<?= htmlspecialchars($displayRegistry) ?></span>
-                                    <?php endif; ?>
-                                    <?php if (!empty($r['book_number']) || !empty($r['page_number'])): ?>
-                                    <span class="text-[9px] bg-amber-50 px-1.5 py-0.5 rounded text-amber-700 font-bold">Bk <?= htmlspecialchars((string) ($r['book_number'] ?? '—')) ?> · Pg <?= htmlspecialchars((string) ($r['page_number'] ?? '—')) ?></span>
-                                    <?php endif; ?>
-                                </div>
-                                <p class="text-[10px] text-gray-400 font-medium">ID: <?= (int) $r['id'] ?> · Added <?= formatRecordDate(substr($r['created_at'], 0, 10)) ?></p>
-                            </div>
-                        </div>
-                    </button>
+                    <?php
+                    $recordJson = htmlspecialchars(json_encode($r, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), ENT_QUOTES, 'UTF-8');
+                    $nameInner = '<div class="flex items-center space-x-3">'
+                        . '<div class="w-8 h-8 bg-blue-100 rounded flex items-center justify-center text-blue-600 font-bold text-xs">' . htmlspecialchars(recordsListRecordInitial(civilRecordDisplayName($r))) . '</div>'
+                        . '<div><div class="flex items-center space-x-2">'
+                        . '<span class="text-sm font-bold text-slate-800' . ($canManageCivilRecords ? ' hover:text-blue-600' : '') . '">' . htmlspecialchars(civilRecordDisplayName($r)) . '</span>';
+                    $displayRegistry = civilRecordRegistryNumber($r);
+                    if ($displayRegistry) {
+                        $nameInner .= '<span class="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 font-bold">#' . htmlspecialchars($displayRegistry) . '</span>';
+                    }
+                    if (!empty($r['book_number']) || !empty($r['page_number'])) {
+                        $nameInner .= '<span class="text-[9px] bg-amber-50 px-1.5 py-0.5 rounded text-amber-700 font-bold">Bk ' . htmlspecialchars((string) ($r['book_number'] ?? '—')) . ' · Pg ' . htmlspecialchars((string) ($r['page_number'] ?? '—')) . '</span>';
+                    }
+                    $nameInner .= '</div><p class="text-[10px] text-gray-400 font-medium">ID: ' . (int) $r['id'] . ' · Added ' . formatRecordDate(substr($r['created_at'], 0, 10)) . '</p></div></div>';
+                    if ($canManageCivilRecords): ?>
+                    <button type="button" class="view-record-btn text-left w-full" data-record="<?= $recordJson ?>"><?= $nameInner ?></button>
+                    <?php else: ?>
+                    <div class="text-left w-full"><?= $nameInner ?></div>
+                    <?php endif; ?>
                 </td>
                 <td class="p-4"><span class="text-[9px] font-black <?= $badge ?> px-2 py-0.5 rounded uppercase"><?= htmlspecialchars($r['record_type']) ?></span></td>
                 <td class="p-4 text-[10px] text-gray-500 font-medium"><?= formatRecordDate($keyDate) ?></td>
@@ -64,6 +67,7 @@
                 </td>
                 <td class="p-4 text-right">
                     <div class="manage-row-actions">
+                        <?php if ($canManageCivilRecords): ?>
                         <div class="manage-print-menu">
                             <button type="button"
                                     class="manage-row-action manage-row-action--labeled manage-row-action--print manage-print-trigger"
@@ -82,11 +86,14 @@
                                    role="menuitem">Certification</a>
                             </div>
                         </div>
+                        <?php endif; ?>
                         <button type="button" class="view-record-btn manage-row-action" title="View" aria-label="View record"
-                                data-record="<?= htmlspecialchars(json_encode($r, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), ENT_QUOTES, 'UTF-8') ?>">
+                                data-record="<?= $recordJson ?>">
                             <?= lucideSvg('eye', 'w-4 h-4') ?>
                         </button>
+                        <?php if ($canManageCivilRecords): ?>
                         <a href="<?= buildRecordsUrlFromFilters($filters, ['edit' => $r['id']]) ?>" class="manage-row-action" title="Edit" aria-label="Edit record"><?= lucideSvg('edit-3', 'w-4 h-4') ?></a>
+                        <?php endif; ?>
                     </div>
                 </td>
             </tr>

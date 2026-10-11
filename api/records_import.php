@@ -12,6 +12,7 @@ require_once __DIR__ . '/../includes/records_csv_import.php';
 
 requireStaffLogin();
 requirePageAccess('records.php');
+assertStaffCanManageCivilRecords();
 
 while (ob_get_level() > 0) {
     ob_end_clean();

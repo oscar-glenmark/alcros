@@ -22,12 +22,15 @@ try {
             handleRecordLockStatus($pdo);
             break;
         case 'acquire_lock':
+            assertStaffCanManageCivilRecords();
             handleAcquireRecordLock($pdo);
             break;
         case 'refresh_lock':
+            assertStaffCanManageCivilRecords();
             handleRefreshRecordLock($pdo);
             break;
         case 'release_lock':
+            assertStaffCanManageCivilRecords();
             handleReleaseRecordLock($pdo);
             break;
         default:

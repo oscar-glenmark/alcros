@@ -1399,7 +1399,7 @@
         var viewModalTitle = document.getElementById('viewModalTitle');
         var viewModalSubtitle = document.getElementById('viewModalSubtitle');
         var viewModalBadge = document.getElementById('viewModalBadge');
-        if (!viewContent || !viewEditLink || !r || !r.id) {
+        if (!viewContent || !r || !r.id) {
             return;
         }
 
@@ -1418,8 +1418,9 @@
             viewModalBadge.className = presentation.badgeClass;
         }
 
+        var canManage = cfg.canManageCivilRecords !== false;
         var lock = r.edit_lock || null;
-        var lockActive = lock && lock.active && !lock.held_by_you;
+        var lockActive = canManage && lock && lock.active && !lock.held_by_you;
         var existingNote = viewContent ? viewContent.querySelector('.records-view-lock-note') : null;
         if (existingNote) {
             existingNote.remove();
@@ -1431,19 +1432,21 @@
             viewContent.insertBefore(note, viewContent.firstChild);
         }
 
-        viewEditLink.href = recordsAuthUrl + (recordsAuthUrl.indexOf('?') !== -1 ? '&' : '?') + 'edit=' + r.id;
-        viewEditLink.classList.toggle('is-disabled', !!lockActive);
-        viewEditLink.setAttribute('aria-disabled', lockActive ? 'true' : 'false');
-        viewEditLink.onclick = lockActive
-            ? function (event) {
-                event.preventDefault();
-            }
-            : null;
-        if (viewPrintCertificateLink) {
+        if (canManage && viewEditLink) {
+            viewEditLink.href = recordsAuthUrl + (recordsAuthUrl.indexOf('?') !== -1 ? '&' : '?') + 'edit=' + r.id;
+            viewEditLink.classList.toggle('is-disabled', !!lockActive);
+            viewEditLink.setAttribute('aria-disabled', lockActive ? 'true' : 'false');
+            viewEditLink.onclick = lockActive
+                ? function (event) {
+                    event.preventDefault();
+                }
+                : null;
+        }
+        if (canManage && viewPrintCertificateLink) {
             var printBase = cfg.printCertificateUrl || 'print_certificate.php';
             viewPrintCertificateLink.href = printBase + (printBase.indexOf('?') !== -1 ? '&' : '?') + 'record_id=' + r.id;
         }
-        if (viewPrintCertificationLink) {
+        if (canManage && viewPrintCertificationLink) {
             var certBase = cfg.printCertificationUrl || 'print_certificate.php?kind=certification';
             viewPrintCertificationLink.href = certBase + (certBase.indexOf('?') !== -1 ? '&' : '?') + 'record_id=' + r.id;
         }

@@ -279,6 +279,7 @@ function renderRecordsListPanelFromList(array $list): string
     $sort = $filters['sort'];
     $dir = $filters['dir'];
     $typeBadgeClass = recordsListTypeBadgeClass();
+    $canManageCivilRecords = function_exists('staffCanManageCivilRecords') ? staffCanManageCivilRecords() : true;
 
     ob_start();
     include __DIR__ . '/partials/records_list_panel.php';

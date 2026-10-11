@@ -18,6 +18,7 @@ requirePageAccess('records.php');
 releaseSessionLock();
 
 $activePage = 'records.php';
+$canManageCivilRecords = staffCanManageCivilRecords();
 $pdo = getDB();
 ensurePersonNamePartColumns($pdo);
 
@@ -409,6 +410,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'view_record') {
 
 // Import template download
 if (isset($_GET['action']) && $_GET['action'] === 'template') {
+    if (!$canManageCivilRecords) {
+        assertStaffCanManageCivilRecords();
+    }
     $tplType = $_GET['type'] ?? 'birth';
     if (!in_array($tplType, $validTypes, true)) {
         $tplType = 'birth';
@@ -452,6 +456,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = trim((string) ($_POST['action'] ?? ''));
 
     if ($action !== '') {
+    if (!$canManageCivilRecords) {
+        assertStaffCanManageCivilRecords();
+    }
     try {
         if ($action === 'create') {
             $data = normalizeRecordInput(prepareCivilRecordFormInput($_POST));
@@ -557,6 +564,9 @@ $recordsListHtml = renderRecordsListPanel($pdo, $filters);
 $editRecord = null;
 $editLockBlocked = null;
 $editLockHeld = false;
+if ((isset($_GET['edit']) || isset($_GET['new'])) && !$canManageCivilRecords) {
+    redirectWithAuth('records.php', currentRecordsFilters());
+}
 if (isset($_GET['edit'])) {
     $editId = (int) $_GET['edit'];
     $editRecord = fetchFullCivilRecord($pdo, $editId);
@@ -571,6 +581,7 @@ if (isset($_GET['edit'])) {
 }
 
 $showModal = isset($_GET['new']);
+$recordUpdateHistory = [];
 $flash = recordsFlashGet();
 
 $pageTitle = 'Civil Records';
@@ -631,6 +642,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                             <p class="px-3 py-2 border-t border-gray-100 text-[10px] text-gray-400 leading-snug">Exports every record for the option you choose. Search does not affect downloads.</p>
                         </div>
                     </div>
+                    <?php if ($canManageCivilRecords): ?>
                     <div class="relative" id="newEntryWrapper">
                         <button type="button" id="newEntryBtn"
                             class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-[11px] font-bold uppercase flex items-center shadow-md transition">
@@ -654,6 +666,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                             <?php endforeach; ?>
                         </div>
                     </div>
+                    <?php endif; ?>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
@@ -707,7 +720,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
         </div>
     </main>
 
-    <?php
+    <?php if ($canManageCivilRecords):
     $modalRecord = $editRecord ?: [];
     $modalMode = $editRecord ? 'edit' : 'create';
     $entryFormReadOnly = $editRecord && $editLockBlocked;
@@ -799,6 +812,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
     </div>
 
     <?= renderCivilRecordEditReasonModalMarkup() ?>
+    <?php endif; ?>
 
     <div id="recordUpdatesModal" class="records-updates-modal hidden" aria-hidden="true">
         <div class="records-updates-modal__backdrop" data-record-updates-close tabindex="-1" aria-hidden="true"></div>
@@ -849,16 +863,19 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
             </div>
             <div id="viewContent" class="records-view-modal__body"></div>
             <div class="records-view-modal__actions">
+                <?php if ($canManageCivilRecords): ?>
                 <a href="#" id="viewEditLink" class="records-view-action records-view-action--primary">Edit Record</a>
                 <div class="records-view-print-group">
                     <a href="#" id="viewPrintCertificateLink" class="records-view-action records-view-action--print">Print Certificate</a>
                     <a href="#" id="viewPrintCertificationLink" class="records-view-action records-view-action--print-secondary">Print Certification</a>
                 </div>
+                <?php endif; ?>
                 <button type="button" class="records-view-action close-modal">Close</button>
             </div>
         </div>
     </div>
 
+    <?php if ($canManageCivilRecords): ?>
     <div class="fixed inset-0 bg-black/40 z-50 hidden items-center justify-center p-4" id="importModal">
         <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
             <div class="flex justify-between items-center mb-6">
@@ -890,10 +907,12 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
             </form>
         </div>
     </div>
+    <?php endif; ?>
 
     <?= actionResultScript($flash) ?>
     <?= pageConfigJson([
         'recordsAuthUrl' => buildAuthUrl('records.php'),
+        'canManageCivilRecords' => $canManageCivilRecords,
         'printCertificateUrl' => buildAuthUrl('print_certificate.php'),
         'printCertificationUrl' => buildAuthUrl('print_certificate.php', ['kind' => 'certification']),
         'recordViewSections' => [
@@ -906,12 +925,12 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
             'death' => printFillFieldLabelsForType($pdo, 'death'),
             'marriage' => printFillFieldLabelsForType($pdo, 'marriage'),
         ],
-        'openEntryModal' => (bool) ($showModal || $editRecord),
-        'defaultEntryType' => $defaultRecordType,
-        'editRecordId' => $editRecord ? (int) $editRecord['id'] : null,
-        'lockRecordType' => $entryFormEditMode ?? false,
-        'editLockHeld' => $editLockHeld,
-        'editLockBlocked' => $editLockBlocked,
+        'openEntryModal' => $canManageCivilRecords && (bool) ($showModal || $editRecord),
+        'defaultEntryType' => $editRecord['record_type'] ?? ($type !== 'all' ? $type : 'birth'),
+        'editRecordId' => ($canManageCivilRecords && $editRecord) ? (int) $editRecord['id'] : null,
+        'lockRecordType' => $canManageCivilRecords && (bool) $editRecord,
+        'editLockHeld' => $canManageCivilRecords && $editLockHeld,
+        'editLockBlocked' => $canManageCivilRecords ? $editLockBlocked : null,
         'recordsLockApiUrl' => buildAuthUrl('api/records.php'),
         'recordsImportApiUrl' => buildAuthUrl('api/records_import.php'),
         'locationsApiUrl' => buildAuthUrl('api/locations.php'),

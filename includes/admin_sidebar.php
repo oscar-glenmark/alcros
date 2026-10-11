@@ -76,7 +76,9 @@ function sidebarSectionLabel(string $label): string
         <?php if (!isAdmin()): ?>
         <?= sidebarLink('live-queue.php', 'Manage live queue', 'users', $activePage, true) ?>
         <?php endif; ?>
+        <?php if (!isAdmin()): ?>
         <?= sidebarLink('documents.php', 'Documents', 'files', $activePage) ?>
+        <?php endif; ?>
         <?php if (isAdmin()): ?>
         <?= sidebarSectionLabel('Administration') ?>
         <?= sidebarLink('print_calibration.php', 'Print calibration', 'crosshair', $activePage) ?>

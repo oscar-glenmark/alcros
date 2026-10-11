@@ -407,6 +407,26 @@ function isAdmin(): bool
     return staffRole() === 'Administrator';
 }
 
+/** Staff add/edit/import civil registry entries; Administrators are view-only on Records. */
+function staffCanManageCivilRecords(): bool
+{
+    return !isAdmin();
+}
+
+function assertStaffCanManageCivilRecords(): void
+{
+    if (staffCanManageCivilRecords()) {
+        return;
+    }
+    if (isJsonApiRequest()) {
+        jsonClientError(403, 'forbidden', 'Administrators can view records only. Staff accounts add and edit civil registry entries.');
+    }
+    if (function_exists('recordsFlashSet')) {
+        recordsFlashSet('error', 'Administrators can view records only.');
+    }
+    redirectWithAuth('records.php');
+}
+
 /** Sidebar / header label for notifications.php (Administrator = system alerts only). */
 function staffPortalInboxLabel(): string
 {
@@ -504,6 +524,9 @@ function requirePageAccess(string $page): void
     if (isAdmin()) {
         if (isStaffOperationalPage($page)) {
             denyAdministratorStaffOperations($page);
+        }
+        if ($page === 'documents.php') {
+            redirectWithAuth('dashboard.php');
         }
 
         return;

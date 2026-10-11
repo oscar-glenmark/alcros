@@ -154,6 +154,23 @@
     function openModal(id) {
         var el = document.getElementById(id);
         if (!el) return;
+        if (id === 'entryModal') {
+            var viewModal = document.getElementById('viewModal');
+            if (viewModal && !viewModal.classList.contains('hidden')) {
+                viewModal.classList.add('hidden');
+                viewModal.setAttribute('aria-hidden', 'true');
+                document.body.classList.remove('records-view-modal-open');
+            }
+            if (typeof closeRecordUpdatesModal === 'function') {
+                closeRecordUpdatesModal();
+            }
+            if (window.AlcrosCascadingLocation && typeof window.AlcrosCascadingLocation.closeAll === 'function') {
+                window.AlcrosCascadingLocation.closeAll();
+            }
+            if (window.AlcrosLoading && typeof window.AlcrosLoading.page === 'function') {
+                window.AlcrosLoading.page(false);
+            }
+        }
         el.classList.remove('hidden');
         if (id === 'viewModal') {
             el.setAttribute('aria-hidden', 'false');
@@ -299,8 +316,74 @@
         return el.parentElement;
     }
 
+    function entryPrintFillFieldVisible(el) {
+        if (!el || el.disabled) {
+            return false;
+        }
+        if (String(el.type || '').toLowerCase() === 'hidden') {
+            return false;
+        }
+        var typePanel = el.closest('.records-entry-print-fill');
+        if (typePanel && typePanel.classList.contains('hidden')) {
+            return false;
+        }
+        var fillSide = el.closest('[data-entry-fill-panel]');
+        if (fillSide && fillSide.hidden) {
+            return false;
+        }
+        return true;
+    }
+
     function entryPrintFillField(form, fieldName) {
+        if (!form || !fieldName) {
+            return null;
+        }
+        var typeInput = form.querySelector('#recordTypeInput');
+        var recordType = typeInput ? String(typeInput.value || '').trim() : '';
+        var panel = recordType ? document.getElementById(recordType + 'PrintFillPanel') : null;
+        if (panel) {
+            var byData = panel.querySelectorAll('[data-field-name="' + fieldName + '"]');
+            for (var i = 0; i < byData.length; i++) {
+                if (entryPrintFillFieldVisible(byData[i])) {
+                    return byData[i];
+                }
+            }
+        }
+        var named = form.elements['print_fill[' + fieldName + ']'];
+        if (named) {
+            var list = typeof named.length === 'number' && named.length > 0
+                ? Array.prototype.slice.call(named)
+                : [named];
+            for (var j = 0; j < list.length; j++) {
+                if (entryPrintFillFieldVisible(list[j])) {
+                    return list[j];
+                }
+            }
+        }
         return enabledEntryField(form, 'print_fill[' + fieldName + ']');
+    }
+
+    function normalizeEntryBirthTypeSelect(form) {
+        var panel = document.getElementById('birthPrintFillPanel');
+        if (!panel || panel.classList.contains('hidden')) {
+            return;
+        }
+        var select = entryPrintFillField(form, 'birth_type');
+        if (!select || select.tagName !== 'SELECT') {
+            return;
+        }
+        var val = String(select.value || '').trim();
+        if (val !== '') {
+            return;
+        }
+        var i;
+        for (i = 0; i < select.options.length; i++) {
+            var opt = select.options[i];
+            if (opt.selected && String(opt.value || '').trim() !== '') {
+                select.value = opt.value;
+                return;
+            }
+        }
     }
 
     function ensureEntryFieldErrorEl(container) {
@@ -364,6 +447,7 @@
         if (!V) {
             return false;
         }
+        normalizeEntryBirthTypeSelect(form);
         var typeInput = form.querySelector('#recordTypeInput');
         var type = typeInput ? String(typeInput.value || '').trim() : '';
         return V.validateManualEntrySections(type, cfg.manualEntryRequiredFields || {}, {
@@ -378,16 +462,25 @@
     window.__alcrosValidateEntryForm = validateEntryFormBeforeConfirm;
 
     function syncSingleBirthDetails() {
-        var panel = document.getElementById('singleBirthDetails');
-        var select = document.getElementById('birthTypeSelect');
-        var birthPanel = document.getElementById('birthFieldsPanel');
-        if (!panel || !select || !birthPanel) return;
-        var isSingle = select.value === 'Single';
-        var birthActive = !birthPanel.classList.contains('hidden');
-        panel.classList.toggle('hidden', !isSingle);
-        panel.querySelectorAll('input, select, textarea').forEach(function (el) {
-            el.disabled = !isSingle || !birthActive;
-        });
+        var birthFillPanel = document.getElementById('birthPrintFillPanel');
+        if (!birthFillPanel || birthFillPanel.classList.contains('hidden')) {
+            return;
+        }
+        var select = birthFillPanel.querySelector('[data-field-name="birth_type"]')
+            || document.getElementById('birthTypeSelect');
+        if (!select) {
+            return;
+        }
+        var isSingle = String(select.value || '').trim() === 'Single';
+        var legacyPanel = document.getElementById('singleBirthDetails');
+        var legacyBirthPanel = document.getElementById('birthFieldsPanel');
+        if (legacyPanel && legacyBirthPanel && select.id === 'birthTypeSelect') {
+            var birthActive = !legacyBirthPanel.classList.contains('hidden');
+            legacyPanel.classList.toggle('hidden', !isSingle);
+            legacyPanel.querySelectorAll('input, select, textarea').forEach(function (el) {
+                el.disabled = !isSingle || !birthActive;
+            });
+        }
     }
 
     function setRecordType(type) {
@@ -605,8 +698,18 @@
             });
         });
 
-        var birthTypeSelect = document.getElementById('birthTypeSelect');
-        if (birthTypeSelect) birthTypeSelect.addEventListener('change', syncSingleBirthDetails);
+        var entryForm = document.getElementById('entryForm');
+        if (entryForm) {
+            entryForm.addEventListener('change', function (e) {
+                var target = e.target;
+                if (!target || !target.getAttribute) {
+                    return;
+                }
+                if (target.getAttribute('data-field-name') === 'birth_type' || target.id === 'birthTypeSelect') {
+                    syncSingleBirthDetails();
+                }
+            });
+        }
     }
 
     function syncEditReasonModalDetailRequired() {
@@ -782,6 +885,15 @@
 
         if (window.AlcrosCivilRecordEntryValidation) {
             AlcrosCivilRecordEntryValidation.bindLiveClear(entryForm);
+        }
+
+        var entryFooter = entryForm.querySelector('.records-entry-footer');
+        if (entryFooter) {
+            entryFooter.addEventListener('pointerdown', function () {
+                if (window.AlcrosCascadingLocation && typeof window.AlcrosCascadingLocation.closeAll === 'function') {
+                    window.AlcrosCascadingLocation.closeAll();
+                }
+            }, true);
         }
 
         entryForm.addEventListener('submit', function (e) {
@@ -2002,8 +2114,13 @@
         bindRecordsPrintMenus();
 
         var recordTypeInput = document.getElementById('recordTypeInput');
+        var entryFormEl = document.getElementById('entryForm');
         if (recordTypeInput) {
             setRecordType(recordTypeInput.value || 'birth');
+        }
+        if (entryFormEl) {
+            normalizeEntryBirthTypeSelect(entryFormEl);
+            syncSingleBirthDetails();
         }
 
         if (cfg.openEntryModal && !entryAlreadyOpen) {
@@ -2015,6 +2132,15 @@
 
         if (window.AlcrosLoading && typeof window.AlcrosLoading.page === 'function') {
             window.AlcrosLoading.page(false);
+        }
+
+        if (entryAlreadyOpen) {
+            if (typeof closeRecordUpdatesModal === 'function') {
+                closeRecordUpdatesModal();
+            }
+            if (window.AlcrosCascadingLocation && typeof window.AlcrosCascadingLocation.closeAll === 'function') {
+                window.AlcrosCascadingLocation.closeAll();
+            }
         }
 
         if (cfg.editRecordId && cfg.editLockHeld) {

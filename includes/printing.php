@@ -1430,6 +1430,9 @@ function printBuildFieldValues(array $record, string $certificateType, array $op
     $values['page_number'] = trim((string) ($record['page_number'] ?? ''));
 
     if ($certificateType === 'birth') {
+        if (!function_exists('printFillNormalizeBirthTypeValue')) {
+            require_once __DIR__ . '/print_fill_controls.php';
+        }
         $values['child_first_name'] = trim((string) ($record['first_name'] ?? ''));
         $values['child_middle_name'] = trim((string) ($record['middle_name'] ?? ''));
         $values['child_last_name'] = trim((string) ($record['last_name'] ?? ''));
@@ -1439,7 +1442,7 @@ function printBuildFieldValues(array $record, string $certificateType, array $op
         $values['birth_month'] = $birth['month'];
         $values['birth_year'] = $birth['year'];
         $values['birth_place'] = trim((string) ($record['place'] ?? ''));
-        $values['birth_type'] = trim((string) ($record['birth_type'] ?? ''));
+        $values['birth_type'] = printFillNormalizeBirthTypeValue(trim((string) ($record['birth_type'] ?? '')));
         $values['multiple_birth_child_was'] = trim((string) ($record['birth_order'] ?? ''));
         $values['birth_order'] = trim((string) ($record['birth_order'] ?? ''));
         $values['birth_weight'] = trim((string) ($record['birth_weight'] ?? ''));

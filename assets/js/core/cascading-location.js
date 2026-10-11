@@ -1,6 +1,8 @@
 (function (global) {
     'use strict';
 
+    var registeredPickers = [];
+
     var STEPS = ['country', 'province', 'municipality', 'barangay'];
     var STEP_LABELS = {
         country: 'Country',
@@ -254,6 +256,15 @@
 
         this.bindEvents();
         this.seedFromValue(this.input.value || '');
+        registeredPickers.push(this);
+    }
+
+    function closeAllOpenPickers() {
+        registeredPickers.forEach(function (picker) {
+            if (picker.open) {
+                picker.toggle(false);
+            }
+        });
     }
 
     CascadingLocationPicker.prototype.getStreetParts = function () {
@@ -821,6 +832,7 @@
 
     global.AlcrosCascadingLocation = {
         init: initCascadingLocationFields,
+        closeAll: closeAllOpenPickers,
         formatValue: formatValueFull,
         formatValuePhBirth: formatValuePhBirth,
         formatValuePhDeath: formatValuePhDeath,

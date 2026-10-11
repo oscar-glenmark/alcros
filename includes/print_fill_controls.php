@@ -277,6 +277,34 @@ function printFillBirthTypeOptions(): array
     return ['Single', 'Twin', 'Triplet', 'Quadruplet', 'Quintuplet'];
 }
 
+function printFillNormalizeBirthTypeValue(string $value): string
+{
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+    foreach (printFillBirthTypeOptions() as $option) {
+        if (printFillOptionMatchesValue($value, $option)) {
+            return $option;
+        }
+    }
+    if (preg_match('/\b(single|live\s*birth)\b/i', $value)) {
+        return 'Single';
+    }
+
+    return $value;
+}
+
+function printFillEntryFormControlDisabledAttr(): string
+{
+    $ctx = printFillEntryFormContext();
+    if (array_key_exists('panel_active', $ctx) && empty($ctx['panel_active'])) {
+        return ' disabled';
+    }
+
+    return '';
+}
+
 /** @return list<string> */
 function printFillDayOptions(): array
 {
@@ -331,10 +359,17 @@ function renderPrintFillSelect(array $fillField, array $options, string $placeho
 {
     $fieldName = (string) ($fillField['field_name'] ?? '');
     $value = trim((string) ($fillField['value'] ?? ''));
+    if (printFillIsBirthTypeField($fieldName)) {
+        $value = printFillNormalizeBirthTypeValue($value);
+    }
+    $disabledAttr = printFillEntryFormControlDisabledAttr();
+    $idAttr = ($fieldName === 'birth_type' && $inputName !== '' && str_starts_with($inputName, 'print_fill['))
+        ? ' id="birthTypeSelect"'
+        : '';
     ?>
     <select data-field-name="<?= htmlspecialchars($fieldName) ?>"
             class="<?= htmlspecialchars(trim($classes . ' print-fill-select')) ?>"
-            autocomplete="off"<?= $inputName !== '' ? ' name="' . htmlspecialchars($inputName) . '"' : '' ?>>
+            autocomplete="off"<?= $idAttr ?><?= $inputName !== '' ? ' name="' . htmlspecialchars($inputName) . '"' : '' ?><?= $disabledAttr ?>>
         <option value=""<?= $value === '' ? ' selected' : '' ?>><?= htmlspecialchars($placeholder) ?></option>
         <?php foreach ($options as $option): ?>
         <option value="<?= htmlspecialchars($option) ?>"<?= printFillOptionSelected($fieldName, $value, $option) ? ' selected' : '' ?>><?= htmlspecialchars($option) ?></option>
@@ -363,6 +398,7 @@ function renderPrintFillFieldInput(array $fillField, array $options = []): void
     $fieldName = (string) ($fillField['field_name'] ?? '');
     $value = (string) ($fillField['value'] ?? '');
     $entryCtx = printFillEntryFormContext();
+    $disabledAttr = printFillEntryFormControlDisabledAttr();
     $inputClass = trim((string) ($options['input_class'] ?? ''));
     $inputName = trim((string) ($options['name'] ?? ''));
     $lcroClass = trim((string) ($options['lcro_class'] ?? 'print-cert-fill-field--lcro'));
@@ -415,7 +451,7 @@ function renderPrintFillFieldInput(array $fillField, array $options = []): void
            spellcheck="false"
            readonly
            tabindex="-1"
-           aria-readonly="true"<?= $inputName !== '' ? ' name="' . htmlspecialchars($inputName) . '"' : '' ?><?= $placeholder !== '' ? ' placeholder="' . htmlspecialchars($placeholder) . '"' : '' ?>>
+           aria-readonly="true"<?= $inputName !== '' ? ' name="' . htmlspecialchars($inputName) . '"' : '' ?><?= $placeholder !== '' ? ' placeholder="' . htmlspecialchars($placeholder) . '"' : '' ?><?= $disabledAttr ?>>
         <?php
         return;
     }
@@ -435,7 +471,7 @@ function renderPrintFillFieldInput(array $fillField, array $options = []): void
            list="<?= htmlspecialchars($listId) ?>"
            autocomplete="off"
            spellcheck="false"<?= $inputName !== '' ? ' name="' . htmlspecialchars($inputName) . '"' : '' ?>
-           placeholder="<?= htmlspecialchars($placeholder) ?>">
+           placeholder="<?= htmlspecialchars($placeholder) ?>"<?= $disabledAttr ?>>
     <datalist id="<?= htmlspecialchars($listId) ?>">
         <?php foreach ($books as $book): ?>
         <option value="<?= htmlspecialchars($book) ?>"></option>
@@ -1013,8 +1049,9 @@ function renderRecordsEntryPrintFillSection(PDO $pdo, string $type, array $modal
 
     $hasExistingId = $entryFormEditMode && !empty($modalRecord['id']);
     printFillEntryFormSetContext([
-        'registry_ui'  => $hasExistingId ? 'locked' : 'auto',
-        'book_options' => civilRegistryDistinctBookNumbers($pdo, $type),
+        'registry_ui'   => $hasExistingId ? 'locked' : 'auto',
+        'book_options'  => civilRegistryDistinctBookNumbers($pdo, $type),
+        'panel_active'  => $active,
     ]);
 
     $fields = printFillEditorFields($type, $source, [], $pdo);

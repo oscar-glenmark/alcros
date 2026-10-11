@@ -862,16 +862,15 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                 </div>
             </div>
             <div id="viewContent" class="records-view-modal__body"></div>
+            <?php if ($canManageCivilRecords): ?>
             <div class="records-view-modal__actions">
-                <?php if ($canManageCivilRecords): ?>
-                <a href="#" id="viewEditLink" class="records-view-action records-view-action--primary">Edit Record</a>
                 <div class="records-view-print-group">
                     <a href="#" id="viewPrintCertificateLink" class="records-view-action records-view-action--print">Print Certificate</a>
                     <a href="#" id="viewPrintCertificationLink" class="records-view-action records-view-action--print-secondary">Print Certification</a>
                 </div>
-                <?php endif; ?>
-                <button type="button" class="records-view-action close-modal">Close</button>
+                <a href="#" id="viewEditLink" class="records-view-action records-view-action--primary records-view-action--edit-trailing">Edit Records</a>
             </div>
+            <?php endif; ?>
         </div>
     </div>
 

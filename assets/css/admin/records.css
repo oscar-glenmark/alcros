@@ -919,8 +919,15 @@ a.manage-row-action:hover {
 
 .records-view-print-group {
     display: flex;
+    flex: 1;
     flex-wrap: wrap;
     gap: 0.5rem;
+    min-width: 0;
+}
+
+.records-view-action--edit-trailing {
+    flex: 0 0 auto;
+    min-width: 8.5rem;
 }
 
 .records-view-action--print-secondary {

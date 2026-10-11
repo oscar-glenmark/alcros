@@ -91,6 +91,29 @@ function activityLogPageUrl(array $overrides = []): string
     return buildAuthUrl('activity-log.php', $params);
 }
 
+function activityLogFormatWhenFull(string $datetime): string
+{
+    $ts = strtotime($datetime);
+
+    return $ts ? date('F j, Y g:i A', $ts) : $datetime;
+}
+
+function activityLogRowPayload(array $log, string $staffName, string $staffId): string
+{
+    $payload = [
+        'id'        => (int) ($log['id'] ?? 0),
+        'action'    => (string) ($log['action'] ?? ''),
+        'details'   => (string) ($log['details'] ?? ''),
+        'staffId'   => $staffId,
+        'staffName' => $staffName,
+        'whenDate'  => formatDateDisplay((string) ($log['created_at'] ?? '')),
+        'whenTime'  => formatTimeAgo((string) ($log['created_at'] ?? '')),
+        'whenFull'  => activityLogFormatWhenFull((string) ($log['created_at'] ?? '')),
+    ];
+
+    return json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?: '{}';
+}
+
 function activityLogExportUrl(): string
 {
     global $search, $staffFilter, $range;
@@ -294,21 +317,28 @@ $showingTo = min($offset + $perPage, $totalCount);
                                 <th class="px-4 sm:px-5 py-3 font-bold">Staff</th>
                                 <th class="px-4 sm:px-5 py-3 font-bold">Action</th>
                                 <th class="px-4 sm:px-5 py-3 font-bold hidden md:table-cell">Details</th>
+                                <th class="px-3 py-3 font-bold w-8 hidden lg:table-cell" aria-hidden="true"><span class="sr-only">Open</span></th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-50">
                             <?php foreach ($logs as $log): ?>
-                            <tr class="hover:bg-slate-50/60">
+                            <?php
+                            $logStaffId = trim((string) ($log['staff_id'] ?? ''));
+                            $logStaff = $logStaffId !== '' ? ($staffById[$logStaffId] ?? null) : null;
+                            $logStaffName = $logStaff ? personNameFromRow($logStaff) : ($logStaffId !== '' ? $logStaffId : 'System');
+                            $logPayloadJson = activityLogRowPayload($log, $logStaffName, $logStaffId);
+                            $logAriaLabel = 'View full details: ' . ($log['action'] ?? 'Activity');
+                            ?>
+                            <tr class="activity-log-row hover:bg-slate-50/60"
+                                tabindex="0"
+                                role="button"
+                                data-activity-log="<?= htmlspecialchars($logPayloadJson, ENT_QUOTES, 'UTF-8') ?>"
+                                aria-label="<?= htmlspecialchars($logAriaLabel) ?>">
                                 <td class="px-4 sm:px-5 py-3.5 whitespace-nowrap align-top">
                                     <p class="font-semibold text-slate-800 text-xs"><?= htmlspecialchars(formatDateDisplay($log['created_at'])) ?></p>
                                     <p class="text-[11px] text-slate-400 mt-0.5"><?= htmlspecialchars(formatTimeAgo($log['created_at'])) ?></p>
                                 </td>
                                 <td class="px-4 sm:px-5 py-3.5 align-top">
-                                    <?php
-                                    $logStaffId = trim((string) ($log['staff_id'] ?? ''));
-                                    $logStaff = $logStaffId !== '' ? ($staffById[$logStaffId] ?? null) : null;
-                                    $logStaffName = $logStaff ? personNameFromRow($logStaff) : ($logStaffId !== '' ? $logStaffId : 'System');
-                                    ?>
                                     <span class="inline-flex items-center gap-2.5 text-xs font-bold text-slate-700">
                                         <?php if ($logStaffId !== ''): ?>
                                             <?= renderStaffAvatar($logStaff ? ($logStaff['profile_photo_path'] ?? null) : null, $logStaffName, 'w-8 h-8 text-[10px]') ?>
@@ -332,7 +362,13 @@ $showingTo = min($offset + $perPage, $totalCount);
                                     <?php endif; ?>
                                 </td>
                                 <td class="px-4 sm:px-5 py-3.5 text-xs text-slate-500 hidden md:table-cell align-top max-w-md">
-                                    <?= htmlspecialchars($log['details'] ?? '—') ?>
+                                    <span class="line-clamp-2"><?= htmlspecialchars($log['details'] ?? '—') ?></span>
+                                </td>
+                                <td class="px-3 py-3.5 hidden lg:table-cell align-top text-right">
+                                    <span class="activity-log-row__hint">
+                                        View
+                                        <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                                    </span>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
@@ -343,27 +379,46 @@ $showingTo = min($offset + $perPage, $totalCount);
             </div>
         </div>
     </main>
-    <script>
-    (function () {
-        var form = document.getElementById('activityLogFilterForm');
-        var staff = document.getElementById('activityLogStaff');
-        if (!form) return;
 
-        function submitFilter() {
-            var pageInput = form.querySelector('input[name="page"]');
-            if (pageInput) {
-                pageInput.remove();
-            }
-            // requestSubmit() does nothing when the form has no submit button (Apply was removed).
-            form.submit();
-        }
+    <div id="activityLogDetailModal" class="activity-log-detail-modal hidden" aria-hidden="true">
+        <div class="activity-log-detail-modal__backdrop" data-activity-log-close tabindex="-1" aria-hidden="true"></div>
+        <div class="activity-log-detail-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="activityLogDetailTitle">
+            <div class="activity-log-detail-modal__header">
+                <div class="min-w-0">
+                    <h2 id="activityLogDetailTitle" class="activity-log-detail-modal__title">Activity</h2>
+                    <p id="activityLogDetailSubtitle" class="activity-log-detail-modal__subtitle"></p>
+                    <p id="activityLogDetailLogId" class="activity-log-detail-modal__log-id"></p>
+                </div>
+                <button type="button" class="activity-log-detail-modal__close" data-activity-log-close aria-label="Close activity details">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="activity-log-detail-modal__body">
+                <div class="activity-log-detail-modal__grid">
+                    <div>
+                        <span class="activity-log-detail-modal__label">When</span>
+                        <p id="activityLogDetailWhen" class="activity-log-detail-modal__value"></p>
+                    </div>
+                    <div>
+                        <span class="activity-log-detail-modal__label">Staff</span>
+                        <p id="activityLogDetailStaff" class="activity-log-detail-modal__value"></p>
+                        <p id="activityLogDetailStaffId" class="activity-log-detail-modal__value activity-log-detail-modal__value--muted text-xs mt-0.5 hidden"></p>
+                    </div>
+                    <div class="activity-log-detail-modal__grid-item--wide">
+                        <span class="activity-log-detail-modal__label">Action</span>
+                        <p id="activityLogDetailAction" class="activity-log-detail-modal__value"></p>
+                    </div>
+                    <div class="activity-log-detail-modal__grid-item--wide">
+                        <span class="activity-log-detail-modal__label">Details</span>
+                        <div id="activityLogDetailDetails" class="activity-log-detail-modal__details"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-        if (staff) {
-            staff.addEventListener('change', submitFilter);
-        }
-    })();
-    </script>
     <?= scriptTag('core/admin-search.js') ?>
+    <?= scriptTag('admin/activity-log.js') ?>
     <?= lucideInitScript() ?>
 </body>
 </html>

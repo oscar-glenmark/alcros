@@ -340,7 +340,7 @@ function exportCivilRecordTemplateXlsx(PDO $pdo, string $type): void
         ['Required', $type === 'marriage'
             ? 'Husband and wife name columns (see template headers).'
             : ($type === 'death'
-                ? 'deceased_first_name and deceased_last_name'
+                ? 'Deceased first and last name, date of death (death_date), and registry_number. Other certificate fields are optional on import.'
                 : 'child_first_name and child_last_name')],
     ], $row);
 

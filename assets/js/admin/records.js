@@ -553,10 +553,13 @@
         var requiredHint = type === 'marriage'
             ? 'husband and wife first and last names'
             : (type === 'death'
-                ? 'deceased first and last name'
+                ? 'deceased first and last name, date of death, and registry number'
                 : 'child first and last name');
+        var optionalHint = type === 'death'
+            ? ' Other death certificate fields are optional—you can complete them later in the record editor.'
+            : '';
         importColumnsHelp.textContent =
-            'Download the Excel template below, enter one record per row, then upload the file. Required: ' + requiredHint + '. The sample row is skipped automatically.';
+            'Download the Excel template below, enter one record per row, then upload the file. Required: ' + requiredHint + '.' + optionalHint + ' The sample row is skipped automatically.';
         var fileInput = document.querySelector('#importForm input[name="csv_file"]');
         if (fileInput) fileInput.value = '';
         openModal('importModal');
@@ -1745,17 +1748,51 @@
             return;
         }
         document.documentElement.dataset.alcrosRecordsViewDelegation = '1';
+
+        function shouldIgnoreRecordRowTarget(target) {
+            return !!target.closest('.manage-row-actions, .records-list-nav, a[href], button, input, select, textarea, label');
+        }
+
+        function openRecordFromRow(row) {
+            if (!row || !row.getAttribute('data-record')) {
+                return;
+            }
+            openViewRecordFromButton(row);
+        }
+
         document.addEventListener('click', function (e) {
             var btn = e.target.closest('#recordsListPanel .view-record-btn');
-            if (!btn) {
+            if (btn) {
+                if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+                    return;
+                }
+                e.preventDefault();
+                e.stopPropagation();
+                openViewRecordFromButton(btn);
+                return;
+            }
+
+            var row = e.target.closest('#recordsListPanel tr.records-table-row--clickable');
+            if (!row || shouldIgnoreRecordRowTarget(e.target)) {
                 return;
             }
             if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
                 return;
             }
             e.preventDefault();
-            e.stopPropagation();
-            openViewRecordFromButton(btn);
+            openRecordFromRow(row);
+        }, true);
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key !== 'Enter' && e.key !== ' ') {
+                return;
+            }
+            var row = e.target.closest('#recordsListPanel tr.records-table-row--clickable');
+            if (!row || shouldIgnoreRecordRowTarget(e.target)) {
+                return;
+            }
+            e.preventDefault();
+            openRecordFromRow(row);
         }, true);
     }
 

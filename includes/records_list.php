@@ -280,6 +280,7 @@ function renderRecordsListPanelFromList(array $list): string
     $dir = $filters['dir'];
     $typeBadgeClass = recordsListTypeBadgeClass();
     $canManageCivilRecords = function_exists('staffCanManageCivilRecords') ? staffCanManageCivilRecords() : true;
+    $canOpenRecordView = true;
 
     ob_start();
     include __DIR__ . '/partials/records_list_panel.php';

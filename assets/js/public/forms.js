@@ -248,29 +248,69 @@
         var firstNameInput = document.getElementById('firstNameInput');
         var middleNameInput = document.getElementById('middleNameInput');
         var lastNameInput = document.getElementById('lastNameInput');
+        var deceasedFirstNameInput = document.getElementById('deceasedFirstNameInput');
+        var deceasedMiddleNameInput = document.getElementById('deceasedMiddleNameInput');
+        var deceasedLastNameInput = document.getElementById('deceasedLastNameInput');
+        var husbandFirstNameInput = document.getElementById('husbandFirstNameInput');
+        var husbandMiddleNameInput = document.getElementById('husbandMiddleNameInput');
+        var husbandLastNameInput = document.getElementById('husbandLastNameInput');
+        var wifeFirstNameInput = document.getElementById('wifeFirstNameInput');
+        var wifeMiddleNameInput = document.getElementById('wifeMiddleNameInput');
+        var wifeLastNameInput = document.getElementById('wifeLastNameInput');
         var dobInput = document.getElementById('dateOfBirthInput');
         var domInput = document.getElementById('dateOfMarriageInput');
-        var domWrap = document.getElementById('dateOfMarriageWrap');
+        var dodInput = document.getElementById('dateOfDeathInput');
+        var birthBlock = document.getElementById('identificationBirthBlock');
+        var marriageBlock = document.getElementById('identificationMarriageBlock');
+        var deathBlock = document.getElementById('identificationDeathBlock');
+        var recordCheckHint = document.getElementById('recordCheckHint');
         var documentTypeSelect = document.querySelector('#identificationForm select[name="document_type"]');
         var recordVerified = document.getElementById('recordVerified');
         var recordStatus = document.getElementById('recordStatus');
         var form = document.getElementById('identificationForm');
 
-        function syncMarriageField() {
-            var isMarriage = documentTypeSelect && documentTypeSelect.value === 'marriage';
-            if (domWrap) domWrap.classList.toggle('hidden', !isMarriage);
-            if (domInput) {
-                domInput.required = isMarriage;
-                if (!isMarriage) domInput.value = '';
+        function activeDocumentType() {
+            return documentTypeSelect ? documentTypeSelect.value : 'birth';
+        }
+
+        function syncIdentificationBlocks() {
+            var type = activeDocumentType();
+            var isBirth = type === 'birth' || type === '';
+            var isMarriage = type === 'marriage';
+            var isDeath = type === 'death';
+
+            if (birthBlock) birthBlock.classList.toggle('hidden', !isBirth);
+            if (marriageBlock) marriageBlock.classList.toggle('hidden', !isMarriage);
+            if (deathBlock) deathBlock.classList.toggle('hidden', !isDeath);
+
+            form.querySelectorAll('.identification-type-block').forEach(function (block) {
+                var active = !block.classList.contains('hidden');
+                block.querySelectorAll('input, select, textarea').forEach(function (el) {
+                    el.disabled = !active;
+                    if (el.hasAttribute('data-ident-required')) {
+                        var reqType = el.getAttribute('data-ident-required');
+                        el.required = active && reqType === type;
+                    }
+                });
+            });
+
+            if (recordCheckHint) {
+                if (isMarriage) {
+                    recordCheckHint.textContent = 'We verify the couple\'s names and date of marriage against LCRO records before you can continue.';
+                } else if (isDeath) {
+                    recordCheckHint.textContent = 'We verify the deceased name and date of death against LCRO records before you can continue.';
+                } else {
+                    recordCheckHint.textContent = 'We verify that your birth name and date of birth are registered in LCRO civil records before you can continue.';
+                }
             }
         }
 
         if (documentTypeSelect) {
             documentTypeSelect.addEventListener('change', function () {
-                syncMarriageField();
+                syncIdentificationBlocks();
                 resetRecordCheck();
             });
-            syncMarriageField();
+            syncIdentificationBlocks();
         }
 
         function setRecordStatus(text, type) {
@@ -291,33 +331,90 @@
             if (recordStatus) recordStatus.classList.add('hidden');
         }
 
-        if (checkBtn && firstNameInput && lastNameInput && dobInput) {
+        if (checkBtn && form) {
             checkBtn.addEventListener('click', function () {
+                syncIdentificationBlocks();
                 clearFormValidation(form);
-                var firstName = firstNameInput.value.trim();
-                var middleName = middleNameInput ? middleNameInput.value.trim() : '';
-                var lastName = lastNameInput.value.trim();
-                var dob = dobInput.value.trim();
-                var documentType = documentTypeSelect ? documentTypeSelect.value : '';
-                var dom = domInput ? domInput.value.trim() : '';
+                var documentType = activeDocumentType();
                 var ok = true;
 
                 if (!documentType) {
                     setFieldError(documentTypeSelect, 'Select the document type you need.');
                     ok = false;
                 }
-                if (!firstName || !lastName) {
-                    setGroupError(firstNameInput.closest('.grid').parentElement, 'Enter your first name and last name on record.');
-                    ok = false;
+
+                var body = new FormData();
+                body.append('document_type', documentType);
+
+                if (documentType === 'marriage') {
+                    var hFirst = husbandFirstNameInput ? husbandFirstNameInput.value.trim() : '';
+                    var hMiddle = husbandMiddleNameInput ? husbandMiddleNameInput.value.trim() : '';
+                    var hLast = husbandLastNameInput ? husbandLastNameInput.value.trim() : '';
+                    var wFirst = wifeFirstNameInput ? wifeFirstNameInput.value.trim() : '';
+                    var wMiddle = wifeMiddleNameInput ? wifeMiddleNameInput.value.trim() : '';
+                    var wLast = wifeLastNameInput ? wifeLastNameInput.value.trim() : '';
+                    var dom = domInput ? domInput.value.trim() : '';
+
+                    if (!hFirst || !hLast) {
+                        setGroupError(husbandFirstNameInput.closest('.grid').parentElement, 'Enter the husband\'s first and last name on record.');
+                        ok = false;
+                    }
+                    if (!wFirst || !wLast) {
+                        setGroupError(wifeFirstNameInput.closest('.grid').parentElement, 'Enter the wife\'s first and last name on record.');
+                        ok = false;
+                    }
+                    if (!dom) {
+                        setFieldError(domInput, 'Enter your date of marriage.');
+                        ok = false;
+                    }
+
+                    body.append('husband_first_name', hFirst);
+                    body.append('husband_middle_name', hMiddle);
+                    body.append('husband_last_name', hLast);
+                    body.append('wife_first_name', wFirst);
+                    body.append('wife_middle_name', wMiddle);
+                    body.append('wife_last_name', wLast);
+                    body.append('date_of_marriage', dom);
+                } else if (documentType === 'death') {
+                    var dFirst = deceasedFirstNameInput ? deceasedFirstNameInput.value.trim() : '';
+                    var dMiddle = deceasedMiddleNameInput ? deceasedMiddleNameInput.value.trim() : '';
+                    var dLast = deceasedLastNameInput ? deceasedLastNameInput.value.trim() : '';
+                    var dod = dodInput ? dodInput.value.trim() : '';
+
+                    if (!dFirst || !dLast) {
+                        setGroupError(deceasedFirstNameInput.closest('.grid').parentElement, 'Enter the deceased first and last name on record.');
+                        ok = false;
+                    }
+                    if (!dod) {
+                        setFieldError(dodInput, 'Enter the date of death.');
+                        ok = false;
+                    }
+
+                    body.append('first_name', dFirst);
+                    body.append('middle_name', dMiddle);
+                    body.append('last_name', dLast);
+                    body.append('date_of_death', dod);
+                } else {
+                    var firstName = firstNameInput ? firstNameInput.value.trim() : '';
+                    var middleName = middleNameInput ? middleNameInput.value.trim() : '';
+                    var lastName = lastNameInput ? lastNameInput.value.trim() : '';
+                    var dob = dobInput ? dobInput.value.trim() : '';
+
+                    if (!firstName || !lastName) {
+                        setGroupError(firstNameInput.closest('.grid').parentElement, 'Enter your first and last name on record.');
+                        ok = false;
+                    }
+                    if (!dob) {
+                        setFieldError(dobInput, 'Enter your date of birth.');
+                        ok = false;
+                    }
+
+                    body.append('first_name', firstName);
+                    body.append('middle_name', middleName);
+                    body.append('last_name', lastName);
+                    body.append('date_of_birth', dob);
                 }
-                if (!dob) {
-                    setFieldError(dobInput, 'Enter your date of birth.');
-                    ok = false;
-                }
-                if (documentType === 'marriage' && !dom) {
-                    setFieldError(domInput, 'Enter your date of marriage.');
-                    ok = false;
-                }
+
                 if (!ok) {
                     scrollToFirstError(form);
                     return;
@@ -326,14 +423,6 @@
                 setRecordVerified(false);
                 checkBtn.disabled = true;
                 checkBtn.textContent = 'Checking…';
-
-                var body = new FormData();
-                body.append('first_name', firstName);
-                body.append('middle_name', middleName);
-                body.append('last_name', lastName);
-                body.append('date_of_birth', dob);
-                if (documentType) body.append('document_type', documentType);
-                if (documentType === 'marriage') body.append('date_of_marriage', dom);
 
                 fetch('api/check_civil_record.php', { method: 'POST', body: body, credentials: 'same-origin' })
                     .then(function (r) { return r.json(); })
@@ -357,33 +446,59 @@
             });
         }
 
-        if (firstNameInput) firstNameInput.addEventListener('input', resetRecordCheck);
-        if (middleNameInput) middleNameInput.addEventListener('input', resetRecordCheck);
-        if (lastNameInput) lastNameInput.addEventListener('input', resetRecordCheck);
-        if (dobInput) dobInput.addEventListener('input', resetRecordCheck);
-        if (domInput) domInput.addEventListener('input', resetRecordCheck);
+        [
+            firstNameInput, middleNameInput, lastNameInput,
+            deceasedFirstNameInput, deceasedMiddleNameInput, deceasedLastNameInput,
+            husbandFirstNameInput, husbandMiddleNameInput, husbandLastNameInput,
+            wifeFirstNameInput, wifeMiddleNameInput, wifeLastNameInput,
+            dobInput, domInput, dodInput
+        ].forEach(function (el) {
+            if (el) el.addEventListener('input', resetRecordCheck);
+        });
 
         if (form) {
             form.addEventListener('submit', function (e) {
+                syncIdentificationBlocks();
                 clearFormValidation(form);
                 var ok = true;
-                var documentType = documentTypeSelect ? documentTypeSelect.value : '';
+                var documentType = activeDocumentType();
 
                 if (!documentType) {
                     setFieldError(documentTypeSelect, 'Select the document type you need.');
                     ok = false;
                 }
-                if (!firstNameInput.value.trim() || !lastNameInput.value.trim()) {
-                    setGroupError(firstNameInput.closest('.grid').parentElement, 'Enter your first name and last name on record.');
-                    ok = false;
-                }
-                if (!dobInput.value.trim()) {
-                    setFieldError(dobInput, 'Enter your date of birth.');
-                    ok = false;
-                }
-                if (documentType === 'marriage' && domInput && !domInput.value.trim()) {
-                    setFieldError(domInput, 'Enter your date of marriage.');
-                    ok = false;
+
+                if (documentType === 'marriage') {
+                    if (!husbandFirstNameInput.value.trim() || !husbandLastNameInput.value.trim()) {
+                        setGroupError(husbandFirstNameInput.closest('.grid').parentElement, 'Enter the husband\'s first and last name on record.');
+                        ok = false;
+                    }
+                    if (!wifeFirstNameInput.value.trim() || !wifeLastNameInput.value.trim()) {
+                        setGroupError(wifeFirstNameInput.closest('.grid').parentElement, 'Enter the wife\'s first and last name on record.');
+                        ok = false;
+                    }
+                    if (domInput && !domInput.value.trim()) {
+                        setFieldError(domInput, 'Enter your date of marriage.');
+                        ok = false;
+                    }
+                } else if (documentType === 'death') {
+                    if (!deceasedFirstNameInput.value.trim() || !deceasedLastNameInput.value.trim()) {
+                        setGroupError(deceasedFirstNameInput.closest('.grid').parentElement, 'Enter the deceased first and last name on record.');
+                        ok = false;
+                    }
+                    if (dodInput && !dodInput.value.trim()) {
+                        setFieldError(dodInput, 'Enter the date of death.');
+                        ok = false;
+                    }
+                } else {
+                    if (!firstNameInput.value.trim() || !lastNameInput.value.trim()) {
+                        setGroupError(firstNameInput.closest('.grid').parentElement, 'Enter your first and last name on record.');
+                        ok = false;
+                    }
+                    if (!dobInput.value.trim()) {
+                        setFieldError(dobInput, 'Enter your date of birth.');
+                        ok = false;
+                    }
                 }
 
                 if (recordVerified && recordVerified.value !== '1') {

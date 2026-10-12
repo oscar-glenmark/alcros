@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS document_requests (
     last_name VARCHAR(80) NOT NULL,
     date_of_birth DATE DEFAULT NULL,
     date_of_marriage DATE DEFAULT NULL,
+    date_of_death DATE DEFAULT NULL,
     sex ENUM('male','female') DEFAULT NULL,
     email VARCHAR(150) DEFAULT NULL,
     email_verified TINYINT(1) NOT NULL DEFAULT 0,

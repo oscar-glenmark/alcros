@@ -35,12 +35,7 @@ if ($type && in_array($type, $validTypes, true)) {
 }
 
 $step = max(1, min(4, (int) ($_GET['step'] ?? $_POST['step'] ?? 1)));
-$recordVerified = isCivilRecordVerifiedInSession(
-    $draftCitizenName,
-    (string) ($draft['date_of_birth'] ?? ''),
-    (string) ($draft['document_type'] ?? ''),
-    !empty($draft['date_of_marriage']) ? (string) $draft['date_of_marriage'] : null
-);
+$recordVerified = isRequestDraftIdentificationVerified($draft);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
     requirePublicPostCsrf();
@@ -53,33 +48,97 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
     }
 
     if ($step === 1) {
-        $nameParts    = personNamePartsFromInput($_POST);
-        $dateOfBirth    = $_POST['date_of_birth'] ?? '';
-        $dateOfMarriage = trim($_POST['date_of_marriage'] ?? '');
         $documentType   = $_POST['document_type'] ?? '';
-        $citizenName    = formatPersonName($nameParts['first_name'], $nameParts['middle_name'], $nameParts['last_name']);
         $sex            = verifiedCivilRecordSexFromSession();
 
-        if (($nameError = validatePersonNameParts($nameParts)) !== null || !in_array($documentType, $validTypes, true)) {
-            $error = $nameError ?? 'Please enter your name and select a service type.';
-        } elseif ($dateOfBirth === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfBirth)) {
-            $error = 'Please enter a valid date of birth.';
-        } elseif ($documentType === 'marriage' && ($dateOfMarriage === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfMarriage))) {
-            $error = 'Please enter a valid date of marriage.';
-        } elseif (!isCivilRecordVerifiedInSession($citizenName, $dateOfBirth, $documentType, $dateOfMarriage !== '' ? $dateOfMarriage : null)) {
-            $error = 'Please check your civil registry record before continuing. If you are not registered, visit the LCRO office in person.';
-            $recordVerified = false;
+        if (!in_array($documentType, $validTypes, true)) {
+            $error = 'Please select a service type.';
+        } elseif ($documentType === 'marriage') {
+            $husbandParts   = personNamePartsFromInput($_POST, 'husband_');
+            $wifeParts      = personNamePartsFromInput($_POST, 'wife_');
+            $dateOfMarriage = trim($_POST['date_of_marriage'] ?? '');
+
+            if (($nameError = validatePersonNameParts($husbandParts)) !== null) {
+                $error = 'Please enter the husband\'s first and last name on record.';
+            } elseif (($nameError = validatePersonNameParts($wifeParts)) !== null) {
+                $error = 'Please enter the wife\'s first and last name on record.';
+            } elseif ($dateOfMarriage === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfMarriage)) {
+                $error = 'Please enter a valid date of marriage.';
+            } elseif (!isMarriageIdentificationVerifiedInSession($husbandParts, $wifeParts, $dateOfMarriage)) {
+                $error = 'Please check your civil registry record before continuing. If you are not registered, visit the LCRO office in person.';
+                $recordVerified = false;
+            } else {
+                $draft['husband_first_name']  = $husbandParts['first_name'];
+                $draft['husband_middle_name'] = $husbandParts['middle_name'];
+                $draft['husband_last_name']   = $husbandParts['last_name'];
+                $draft['wife_first_name']     = $wifeParts['first_name'];
+                $draft['wife_middle_name']    = $wifeParts['middle_name'];
+                $draft['wife_last_name']      = $wifeParts['last_name'];
+                $draft['first_name']          = $husbandParts['first_name'];
+                $draft['middle_name']         = $husbandParts['middle_name'];
+                $draft['last_name']           = $husbandParts['last_name'];
+                $draft['date_of_birth']       = null;
+                $draft['date_of_death']       = null;
+                $draft['date_of_marriage']    = $dateOfMarriage;
+                $draft['sex']                 = $sex;
+                $draft['document_type']       = $documentType;
+                unset($draft['citizen_name']);
+                header('Location: request.php?step=2');
+                exit;
+            }
+        } elseif ($documentType === 'death') {
+            $nameParts    = personNamePartsFromInput($_POST);
+            $dateOfDeath  = trim($_POST['date_of_death'] ?? '');
+
+            if (($nameError = validatePersonNameParts($nameParts)) !== null) {
+                $error = $nameError;
+            } elseif ($dateOfDeath === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfDeath)) {
+                $error = 'Please enter a valid date of death.';
+            } elseif (!isDeathIdentificationVerifiedInSession($nameParts, $dateOfDeath)) {
+                $error = 'Please check your civil registry record before continuing. If you are not registered, visit the LCRO office in person.';
+                $recordVerified = false;
+            } else {
+                $draft['first_name']        = $nameParts['first_name'];
+                $draft['middle_name']       = $nameParts['middle_name'];
+                $draft['last_name']         = $nameParts['last_name'];
+                $draft['date_of_birth']     = null;
+                $draft['date_of_death']     = $dateOfDeath;
+                $draft['date_of_marriage']  = null;
+                $draft['sex']               = $sex;
+                $draft['document_type']     = $documentType;
+                unset($draft['husband_first_name'], $draft['husband_middle_name'], $draft['husband_last_name']);
+                unset($draft['wife_first_name'], $draft['wife_middle_name'], $draft['wife_last_name']);
+                unset($draft['citizen_name']);
+                header('Location: request.php?step=2');
+                exit;
+            }
         } else {
-            $draft['first_name']        = $nameParts['first_name'];
-            $draft['middle_name']       = $nameParts['middle_name'];
-            $draft['last_name']         = $nameParts['last_name'];
-            $draft['date_of_birth']     = $dateOfBirth;
-            $draft['date_of_marriage']  = $documentType === 'marriage' ? $dateOfMarriage : null;
-            $draft['sex']               = $sex;
-            $draft['document_type']     = $documentType;
-            unset($draft['citizen_name']);
-            header('Location: request.php?step=2');
-            exit;
+            $nameParts    = personNamePartsFromInput($_POST);
+            $dateOfBirth  = $_POST['date_of_birth'] ?? '';
+            $citizenName  = formatPersonName($nameParts['first_name'], $nameParts['middle_name'], $nameParts['last_name']);
+
+            if (($nameError = validatePersonNameParts($nameParts)) !== null) {
+                $error = $nameError;
+            } elseif ($dateOfBirth === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfBirth)) {
+                $error = 'Please enter a valid date of birth.';
+            } elseif (!isCivilRecordVerifiedInSession($citizenName, $dateOfBirth, $documentType)) {
+                $error = 'Please check your civil registry record before continuing. If you are not registered, visit the LCRO office in person.';
+                $recordVerified = false;
+            } else {
+                $draft['first_name']        = $nameParts['first_name'];
+                $draft['middle_name']       = $nameParts['middle_name'];
+                $draft['last_name']         = $nameParts['last_name'];
+                $draft['date_of_birth']     = $dateOfBirth;
+                $draft['date_of_marriage']  = null;
+                $draft['date_of_death']     = null;
+                $draft['sex']               = $sex;
+                $draft['document_type']     = $documentType;
+                unset($draft['husband_first_name'], $draft['husband_middle_name'], $draft['husband_last_name']);
+                unset($draft['wife_first_name'], $draft['wife_middle_name'], $draft['wife_last_name']);
+                unset($draft['citizen_name']);
+                header('Location: request.php?step=2');
+                exit;
+            }
         }
     }
 
@@ -167,20 +226,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                         $error = $bookingError;
                     } else {
                         $trackingCode = generateTrackingCode();
+                        $marriagePrintFill = null;
+                        if (($draft['document_type'] ?? '') === 'marriage') {
+                            $marriagePrintFill = json_encode([
+                                'husband_first_name'  => $draft['husband_first_name'] ?? '',
+                                'husband_middle_name' => $draft['husband_middle_name'] ?? '',
+                                'husband_last_name'   => $draft['husband_last_name'] ?? '',
+                                'wife_first_name'     => $draft['wife_first_name'] ?? '',
+                                'wife_middle_name'    => $draft['wife_middle_name'] ?? '',
+                                'wife_last_name'      => $draft['wife_last_name'] ?? '',
+                            ], JSON_UNESCAPED_UNICODE);
+                        }
                         $stmt = $pdo->prepare(
                             'INSERT INTO document_requests
-                             (tracking_code, first_name, middle_name, last_name, date_of_birth, date_of_marriage, sex, email, email_verified, phone,
+                             (tracking_code, first_name, middle_name, last_name, date_of_birth, date_of_marriage, date_of_death, sex, email, email_verified, phone,
                               document_type, purpose, id_front_path, id_back_path, privacy_agreed, notify_email, notify_sms,
-                              appointment_date, appointment_time, status)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                              appointment_date, appointment_time, status, print_fill_data)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
                         );
                         $stmt->execute([
                             $trackingCode,
                             $draft['first_name'],
                             $draft['middle_name'] ?? null,
                             $draft['last_name'],
-                            $draft['date_of_birth'],
+                            !empty($draft['date_of_birth']) ? $draft['date_of_birth'] : null,
                             !empty($draft['date_of_marriage']) ? $draft['date_of_marriage'] : null,
+                            !empty($draft['date_of_death']) ? $draft['date_of_death'] : null,
                             $draft['sex'],
                             $draft['email'],
                             (int) ($draft['email_verified'] ?? 0),
@@ -195,6 +266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                             $draft['appointment_date'],
                             normalizeAppointmentTime($draft['appointment_time']),
                             'pending',
+                            $marriagePrintFill,
                         ]);
 
                         $requestId = (int) $pdo->lastInsertId();
@@ -417,10 +489,10 @@ $requestDocumentLabel = !empty($draft['document_type'])
         <?= scriptTag('public/request-success.js') ?>
 
         <?php else: ?>
+        <?php $identDocType = (string) ($draft['document_type'] ?? ''); ?>
         <p class="citizen-request-step-mobile sm:hidden text-center text-[10px] font-bold uppercase tracking-wide mb-3 citizen-request-step-active">
             Step <?= min($step, 3) ?> of 3 — <?= htmlspecialchars($stepLabels[$step]['label'] ?? '') ?>
         </p>
-        <!-- Progress bar -->
         <div class="flex justify-center mb-6 sm:mb-10 px-2 sm:px-4 overflow-x-auto">
             <?php foreach ($stepLabels as $i => $s): ?>
             <?php if ($i <= 3): ?>
@@ -467,43 +539,104 @@ $requestDocumentLabel = !empty($draft['document_type'])
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div>
-                    <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                        <i data-lucide="user" class="w-3.5 h-3.5 text-blue-500"></i> Name on Record *
-                    </label>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <input type="text" id="firstNameInput" name="first_name" required placeholder="First name"
-                               value="<?= htmlspecialchars($draft['first_name'] ?? '') ?>"
-                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                        <input type="text" id="middleNameInput" name="middle_name" placeholder="Middle name (optional)"
-                               value="<?= htmlspecialchars($draft['middle_name'] ?? '') ?>"
-                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                        <input type="text" id="lastNameInput" name="last_name" required placeholder="Last name"
-                               value="<?= htmlspecialchars($draft['last_name'] ?? '') ?>"
+                <div id="identificationBirthBlock" class="identification-type-block space-y-5 <?= $identDocType === 'birth' || $identDocType === '' ? '' : 'hidden' ?>">
+                    <div>
+                        <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
+                            <i data-lucide="user" class="w-3.5 h-3.5 text-blue-500"></i> Birth Name on Record *
+                        </label>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3" id="birthNameGrid">
+                            <input type="text" id="firstNameInput" name="first_name" data-ident-required="birth" placeholder="First name"
+                                   value="<?= htmlspecialchars($draft['first_name'] ?? '') ?>"
+                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            <input type="text" id="middleNameInput" name="middle_name" placeholder="Middle name (optional)"
+                                   value="<?= htmlspecialchars($draft['middle_name'] ?? '') ?>"
+                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            <input type="text" id="lastNameInput" name="last_name" data-ident-required="birth" placeholder="Last name"
+                                   value="<?= htmlspecialchars($draft['last_name'] ?? '') ?>"
+                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
+                            <i data-lucide="calendar" class="w-3.5 h-3.5 text-blue-500"></i> Date of Birth *
+                        </label>
+                        <input type="date" id="dateOfBirthInput" name="date_of_birth" data-ident-required="birth" value="<?= htmlspecialchars($draft['date_of_birth'] ?? '') ?>"
                                class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
                     </div>
                 </div>
-                <div>
-                    <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                        <i data-lucide="calendar" class="w-3.5 h-3.5 text-blue-500"></i> Date of Birth *
-                    </label>
-                    <input type="date" id="dateOfBirthInput" name="date_of_birth" required value="<?= htmlspecialchars($draft['date_of_birth'] ?? '') ?>"
-                           class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+
+                <div id="identificationMarriageBlock" class="identification-type-block space-y-5 <?= $identDocType === 'marriage' ? '' : 'hidden' ?>">
+                    <div>
+                        <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-2">
+                            <i data-lucide="users" class="w-3.5 h-3.5 text-blue-500"></i> Couples Name on Record *
+                        </label>
+                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">Husband Name</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4" id="husbandNameGrid">
+                            <input type="text" id="husbandFirstNameInput" name="husband_first_name" data-ident-required="marriage" placeholder="First name"
+                                   value="<?= htmlspecialchars($draft['husband_first_name'] ?? '') ?>"
+                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            <input type="text" id="husbandMiddleNameInput" name="husband_middle_name" placeholder="Middle name (optional)"
+                                   value="<?= htmlspecialchars($draft['husband_middle_name'] ?? '') ?>"
+                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            <input type="text" id="husbandLastNameInput" name="husband_last_name" data-ident-required="marriage" placeholder="Last name"
+                                   value="<?= htmlspecialchars($draft['husband_last_name'] ?? '') ?>"
+                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                        </div>
+                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">Wife Name</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3" id="wifeNameGrid">
+                            <input type="text" id="wifeFirstNameInput" name="wife_first_name" data-ident-required="marriage" placeholder="First name"
+                                   value="<?= htmlspecialchars($draft['wife_first_name'] ?? '') ?>"
+                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            <input type="text" id="wifeMiddleNameInput" name="wife_middle_name" placeholder="Middle name (optional)"
+                                   value="<?= htmlspecialchars($draft['wife_middle_name'] ?? '') ?>"
+                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            <input type="text" id="wifeLastNameInput" name="wife_last_name" data-ident-required="marriage" placeholder="Last name"
+                                   value="<?= htmlspecialchars($draft['wife_last_name'] ?? '') ?>"
+                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
+                            <i data-lucide="heart" class="w-3.5 h-3.5 text-blue-500"></i> Date of Marriage *
+                        </label>
+                        <input type="date" id="dateOfMarriageInput" name="date_of_marriage" data-ident-required="marriage" value="<?= htmlspecialchars($draft['date_of_marriage'] ?? '') ?>"
+                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                    </div>
                 </div>
-                <div id="dateOfMarriageWrap" class="<?= ($draft['document_type'] ?? '') === 'marriage' ? '' : 'hidden' ?>">
-                    <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                        <i data-lucide="heart" class="w-3.5 h-3.5 text-blue-500"></i> Date of Marriage *
-                    </label>
-                    <input type="date" id="dateOfMarriageInput" name="date_of_marriage" <?= ($draft['document_type'] ?? '') === 'marriage' ? 'required' : '' ?> value="<?= htmlspecialchars($draft['date_of_marriage'] ?? '') ?>"
-                           class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+
+                <div id="identificationDeathBlock" class="identification-type-block space-y-5 <?= $identDocType === 'death' ? '' : 'hidden' ?>">
+                    <div>
+                        <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
+                            <i data-lucide="user" class="w-3.5 h-3.5 text-blue-500"></i> Deceased Name on Record *
+                        </label>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3" id="deceasedNameGrid">
+                            <input type="text" id="deceasedFirstNameInput" name="first_name" data-ident-required="death" placeholder="First name"
+                                   value="<?= htmlspecialchars($identDocType === 'death' ? ($draft['first_name'] ?? '') : '') ?>"
+                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            <input type="text" id="deceasedMiddleNameInput" name="middle_name" placeholder="Middle name (optional)"
+                                   value="<?= htmlspecialchars($identDocType === 'death' ? ($draft['middle_name'] ?? '') : '') ?>"
+                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                            <input type="text" id="deceasedLastNameInput" name="last_name" data-ident-required="death" placeholder="Last name"
+                                   value="<?= htmlspecialchars($identDocType === 'death' ? ($draft['last_name'] ?? '') : '') ?>"
+                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
+                            <i data-lucide="calendar" class="w-3.5 h-3.5 text-blue-500"></i> Date of Death *
+                        </label>
+                        <input type="date" id="dateOfDeathInput" name="date_of_death" data-ident-required="death" value="<?= htmlspecialchars($draft['date_of_death'] ?? '') ?>"
+                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                    </div>
                 </div>
+
                 <div>
                     <div class="flex justify-end">
                         <button type="button" id="checkRecordBtn" class="citizen-btn-navy px-4 py-2.5 rounded-xl text-xs whitespace-nowrap shrink-0">
                             Check Record
                         </button>
                     </div>
-                    <p class="text-[10px] text-gray-500 mt-2">We verify that your name and date of birth are registered in LCRO civil records before you can continue.</p>
+                    <p id="recordCheckHint" class="text-[10px] text-gray-500 mt-2">We verify that your details match LCRO civil records before you can continue.</p>
                     <p id="recordStatus" class="text-xs mt-2 <?= $recordVerified ? 'font-semibold text-green-600' : 'hidden' ?>"><?= $recordVerified ? 'Record found — you are registered with the Local Civil Registry Office.' : '' ?></p>
                 </div>
                 <div class="citizen-form-actions">
@@ -614,7 +747,18 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 <?= publicCsrfField() ?>
                 <input type="hidden" name="step" value="3">
                 <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-2">
+                    <?php if (($draft['document_type'] ?? '') === 'marriage'): ?>
+                    <p class="text-xs text-blue-800">
+                        <strong><?= htmlspecialchars(formatPersonName($draft['husband_first_name'] ?? '', $draft['husband_middle_name'] ?? null, $draft['husband_last_name'] ?? '')) ?></strong>
+                        &amp;
+                        <strong><?= htmlspecialchars(formatPersonName($draft['wife_first_name'] ?? '', $draft['wife_middle_name'] ?? null, $draft['wife_last_name'] ?? '')) ?></strong>
+                        — <?= htmlspecialchars(documentTypeLabel($draft['document_type'] ?? '')) ?>
+                    </p>
+                    <?php elseif (($draft['document_type'] ?? '') === 'death'): ?>
+                    <p class="text-xs text-blue-800"><strong><?= htmlspecialchars($draftCitizenName) ?></strong> — <?= htmlspecialchars(documentTypeLabel($draft['document_type'] ?? '')) ?><?php if (!empty($draft['date_of_death'])): ?> · <?= htmlspecialchars(formatDateDisplay($draft['date_of_death'])) ?><?php endif; ?></p>
+                    <?php else: ?>
                     <p class="text-xs text-blue-800"><strong><?= htmlspecialchars($draftCitizenName) ?></strong> — <?= htmlspecialchars(documentTypeLabel($draft['document_type'] ?? '')) ?></p>
+                    <?php endif; ?>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     <div>

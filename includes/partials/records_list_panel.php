@@ -9,6 +9,8 @@
 /** @var array<string, string> $typeBadgeClass */
 /** @var bool $canManageCivilRecords */
 $canManageCivilRecords = $canManageCivilRecords ?? true;
+/** @var bool $canOpenRecordView View modal / row click (Administrators are view-only but still need this). */
+$canOpenRecordView = $canOpenRecordView ?? true;
 ?>
 <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden records-list-panel" id="recordsListPanel">
     <?php if ($records === []): ?>
@@ -37,15 +39,16 @@ $canManageCivilRecords = $canManageCivilRecords ?? true;
                     $keyDate = $r['birth_date'] ?: $r['event_date'];
                 }
                 $parents = array_filter([$r['father_name'] ? 'Father: ' . $r['father_name'] : '', $r['mother_name'] ? 'Mother: ' . $r['mother_name'] : '']);
+                $recordJson = htmlspecialchars(json_encode($r, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), ENT_QUOTES, 'UTF-8');
             ?>
-            <tr class="hover:bg-gray-50/50 transition-colors records-table-row">
+            <tr class="hover:bg-gray-50/50 transition-colors records-table-row<?= $canOpenRecordView ? ' records-table-row--clickable' : '' ?>"
+                <?= $canOpenRecordView ? ' data-record="' . $recordJson . '" tabindex="0" role="link" aria-label="View record details for ' . htmlspecialchars(civilRecordDisplayName($r), ENT_QUOTES) . '"' : '' ?>>
                 <td class="p-4">
                     <?php
-                    $recordJson = htmlspecialchars(json_encode($r, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), ENT_QUOTES, 'UTF-8');
                     $nameInner = '<div class="flex items-center space-x-3">'
                         . '<div class="w-8 h-8 bg-blue-100 rounded flex items-center justify-center text-blue-600 font-bold text-xs">' . htmlspecialchars(recordsListRecordInitial(civilRecordDisplayName($r))) . '</div>'
                         . '<div><div class="flex items-center space-x-2">'
-                        . '<span class="text-sm font-bold text-slate-800' . ($canManageCivilRecords ? ' hover:text-blue-600' : '') . '">' . htmlspecialchars(civilRecordDisplayName($r)) . '</span>';
+                        . '<span class="text-sm font-bold text-slate-800' . ($canOpenRecordView ? ' hover:text-blue-600' : '') . '">' . htmlspecialchars(civilRecordDisplayName($r)) . '</span>';
                     $displayRegistry = civilRecordRegistryNumber($r);
                     if ($displayRegistry) {
                         $nameInner .= '<span class="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 font-bold">#' . htmlspecialchars($displayRegistry) . '</span>';
@@ -54,7 +57,7 @@ $canManageCivilRecords = $canManageCivilRecords ?? true;
                         $nameInner .= '<span class="text-[9px] bg-amber-50 px-1.5 py-0.5 rounded text-amber-700 font-bold">Bk ' . htmlspecialchars((string) ($r['book_number'] ?? '—')) . ' · Pg ' . htmlspecialchars((string) ($r['page_number'] ?? '—')) . '</span>';
                     }
                     $nameInner .= '</div><p class="text-[10px] text-gray-400 font-medium">ID: ' . (int) $r['id'] . ' · Added ' . formatRecordDate(substr($r['created_at'], 0, 10)) . '</p></div></div>';
-                    if ($canManageCivilRecords): ?>
+                    if ($canOpenRecordView): ?>
                     <button type="button" class="view-record-btn text-left w-full" data-record="<?= $recordJson ?>"><?= $nameInner ?></button>
                     <?php else: ?>
                     <div class="text-left w-full"><?= $nameInner ?></div>

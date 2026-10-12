@@ -4,6 +4,7 @@
  */
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/civil_record_schema.php';
 require_once __DIR__ . '/../includes/api_helpers.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -12,20 +13,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 rateLimitOrAbort(rateLimitKey('civil_record_check'), 20, 900, 'Too many verification attempts. Please try again later.');
 
-$nameParts = personNamePartsFromInput($_POST);
-$dateOfBirth = trim($_POST['date_of_birth'] ?? '');
-$documentType = trim($_POST['document_type'] ?? '');
-$dateOfMarriage = trim($_POST['date_of_marriage'] ?? '');
-
 try {
     $pdo = getDB();
-    apiJsonResponse(verifyCitizenCivilRecord(
-        $pdo,
-        $nameParts,
-        $dateOfBirth,
-        $documentType,
-        $dateOfMarriage !== '' ? $dateOfMarriage : null
-    ));
+    ensureCivilRecordLookupSchema($pdo);
+    apiJsonResponse(verifyCitizenCivilRecordFromInput($pdo, $_POST));
 } catch (PDOException $e) {
     error_log('check_civil_record: ' . $e->getMessage());
     $message = dbConnectionHelpMessage();

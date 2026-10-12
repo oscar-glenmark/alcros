@@ -6,6 +6,15 @@
     letter-spacing: 0.05em;
 }
 
+.records-table-row--clickable {
+    cursor: pointer;
+}
+
+.records-table-row--clickable:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: -2px;
+}
+
 .filter-chip {
     font-size: 10px;
     font-weight: 600;

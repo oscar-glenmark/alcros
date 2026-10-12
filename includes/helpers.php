@@ -949,6 +949,15 @@ function ensureCitizenNotifyColumns(PDO $pdo): void
     }
 
     try {
+        $pdo->query('SELECT date_of_death FROM document_requests LIMIT 1');
+    } catch (Throwable $e) {
+        try {
+            $pdo->exec('ALTER TABLE document_requests ADD COLUMN date_of_death DATE DEFAULT NULL AFTER date_of_marriage');
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    try {
         $pdo->query('SELECT notify_email FROM appointments LIMIT 1');
     } catch (Throwable $e) {
         try {
@@ -3076,20 +3085,15 @@ function findMarriageCivilRecordMatch(PDO $pdo, array $nameParts, string $dateOf
     if (!function_exists('splitFullName')) {
         require_once __DIR__ . '/printing.php';
     }
-
-    $sql = 'SELECT id, record_type, husband_name, wife_name, husband_birth_date, wife_birth_date, event_date, registry_number
-            FROM civil_records
-            WHERE deleted_at IS NULL AND record_type = \'marriage\'';
-    $params = [];
-    if ($dateOfMarriage !== null && $dateOfMarriage !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfMarriage)) {
-        $sql .= ' AND event_date = ?';
-        $params[] = $dateOfMarriage;
+    if (!function_exists('fetchMarriageCivilRecordsForLookup')) {
+        require_once __DIR__ . '/civil_record_schema.php';
     }
-    $sql .= ' ORDER BY event_date DESC';
 
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    $dom = ($dateOfMarriage !== null && $dateOfMarriage !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfMarriage))
+        ? $dateOfMarriage
+        : null;
+
+    foreach (fetchMarriageCivilRecordsForLookup($pdo, $dom) as $row) {
         $husbandDob = (string) ($row['husband_birth_date'] ?? '');
         $wifeDob = (string) ($row['wife_birth_date'] ?? '');
 
@@ -3125,10 +3129,94 @@ function findMarriageCivilRecordMatch(PDO $pdo, array $nameParts, string $dateOf
     return null;
 }
 
+function findMarriageCivilRecordMatchByCouple(PDO $pdo, array $husbandParts, array $wifeParts, string $dateOfMarriage): ?array
+{
+    $husbandParts = normalizeCitizenNameParts($husbandParts);
+    $wifeParts = normalizeCitizenNameParts($wifeParts);
+    if ($husbandParts['first_name'] === '' || $husbandParts['last_name'] === ''
+        || $wifeParts['first_name'] === '' || $wifeParts['last_name'] === ''
+        || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfMarriage)) {
+        return null;
+    }
+
+    if (!function_exists('splitFullName')) {
+        require_once __DIR__ . '/printing.php';
+    }
+    if (!function_exists('fetchMarriageCivilRecordsForLookup')) {
+        require_once __DIR__ . '/civil_record_schema.php';
+    }
+
+    foreach (fetchMarriageCivilRecordsForLookup($pdo, $dateOfMarriage) as $row) {
+        $husband = splitFullName((string) ($row['husband_name'] ?? ''));
+        $wife = splitFullName((string) ($row['wife_name'] ?? ''));
+        if (!personNamePartsMatchOptionalMiddle(
+            $husbandParts['first_name'],
+            $husbandParts['middle_name'],
+            $husbandParts['last_name'],
+            $husband['first'],
+            $husband['middle'] !== '' ? $husband['middle'] : null,
+            $husband['last']
+        )) {
+            continue;
+        }
+        if (!personNamePartsMatchOptionalMiddle(
+            $wifeParts['first_name'],
+            $wifeParts['middle_name'],
+            $wifeParts['last_name'],
+            $wife['first'],
+            $wife['middle'] !== '' ? $wife['middle'] : null,
+            $wife['last']
+        )) {
+            continue;
+        }
+
+        return $row;
+    }
+
+    return null;
+}
+
+function findDeathCivilRecordMatch(PDO $pdo, array $nameParts, string $dateOfDeath): ?array
+{
+    $nameParts = normalizeCitizenNameParts($nameParts);
+    if ($nameParts['first_name'] === '' || $nameParts['last_name'] === ''
+        || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfDeath)) {
+        return null;
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT id, record_type, first_name, middle_name, last_name, birth_date, event_date, registry_number
+         FROM civil_records
+         WHERE deleted_at IS NULL AND record_type = \'death\' AND event_date = ?
+         ORDER BY last_name ASC, first_name ASC'
+    );
+    $stmt->execute([$dateOfDeath]);
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        if (!personNamePartsMatchOptionalMiddle(
+            $nameParts['first_name'],
+            $nameParts['middle_name'],
+            $nameParts['last_name'],
+            (string) ($row['first_name'] ?? ''),
+            $row['middle_name'] ?? null,
+            (string) ($row['last_name'] ?? '')
+        )) {
+            continue;
+        }
+        if (!function_exists('hydrateCivilRecordRow')) {
+            require_once __DIR__ . '/civil_record_schema.php';
+        }
+        ensureCivilRecordTypeTables($pdo);
+
+        return hydrateCivilRecordRow($pdo, $row);
+    }
+
+    return null;
+}
+
 /**
  * @param array<string, mixed>|string $citizenNameOrParts Name parts array, or legacy full-name string
  */
-function findCivilRecordMatch(PDO $pdo, array|string $citizenNameOrParts, string $dateOfBirth, string $documentType = '', ?string $dateOfMarriage = null): ?array
+function findCivilRecordMatch(PDO $pdo, array|string $citizenNameOrParts, string $dateOfBirth, string $documentType = '', ?string $dateOfMarriage = null, ?string $dateOfDeath = null): ?array
 {
     $nameParts = is_array($citizenNameOrParts)
         ? normalizeCitizenNameParts($citizenNameOrParts)
@@ -3136,6 +3224,10 @@ function findCivilRecordMatch(PDO $pdo, array|string $citizenNameOrParts, string
 
     if ($documentType === 'marriage') {
         return findMarriageCivilRecordMatch($pdo, $nameParts, $dateOfBirth, $dateOfMarriage);
+    }
+
+    if ($documentType === 'death' && $dateOfDeath !== null && $dateOfDeath !== '') {
+        return findDeathCivilRecordMatch($pdo, $nameParts, $dateOfDeath);
     }
 
     if ($nameParts['first_name'] === '' || $nameParts['last_name'] === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfBirth)) {
@@ -3223,6 +3315,153 @@ function markCivilRecordVerified(
         'sex'               => in_array($sex, ['male', 'female'], true) ? $sex : null,
         'expires'           => time() + 7200,
     ];
+}
+
+function markMarriageCoupleCivilRecordVerified(array $husbandParts, array $wifeParts, string $dateOfMarriage, ?string $sex = null): void
+{
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    $husbandParts = normalizeCitizenNameParts($husbandParts);
+    $wifeParts = normalizeCitizenNameParts($wifeParts);
+    $_SESSION['alcros_civil_record_verified'] = [
+        'document_type'        => 'marriage',
+        'date_of_marriage'     => $dateOfMarriage,
+        'husband_first_name'   => $husbandParts['first_name'],
+        'husband_middle_name'  => $husbandParts['middle_name'] ?? '',
+        'husband_last_name'    => $husbandParts['last_name'],
+        'wife_first_name'      => $wifeParts['first_name'],
+        'wife_middle_name'     => $wifeParts['middle_name'] ?? '',
+        'wife_last_name'       => $wifeParts['last_name'],
+        'sex'                  => in_array($sex, ['male', 'female'], true) ? $sex : null,
+        'expires'              => time() + 7200,
+    ];
+}
+
+function markDeathCivilRecordVerified(array $nameParts, string $dateOfDeath): void
+{
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    $nameParts = normalizeCitizenNameParts($nameParts);
+    $_SESSION['alcros_civil_record_verified'] = [
+        'document_type'    => 'death',
+        'date_of_death'    => $dateOfDeath,
+        'first_name'       => $nameParts['first_name'],
+        'middle_name'      => $nameParts['middle_name'] ?? '',
+        'last_name'        => $nameParts['last_name'],
+        'expires'          => time() + 7200,
+    ];
+}
+
+function personNamePartsFromDraftRow(array $row, string $prefix = ''): array
+{
+    return [
+        'first_name'  => trim((string) ($row[$prefix . 'first_name'] ?? '')),
+        'middle_name' => trim((string) ($row[$prefix . 'middle_name'] ?? '')) ?: null,
+        'last_name'   => trim((string) ($row[$prefix . 'last_name'] ?? '')),
+    ];
+}
+
+function verifiedSessionNamePartsMatch(array $verified, array $inputParts, string $prefix = ''): bool
+{
+    $firstKey = $prefix === '' ? 'first_name' : $prefix . 'first_name';
+    $middleKey = $prefix === '' ? 'middle_name' : $prefix . 'middle_name';
+    $lastKey = $prefix === '' ? 'last_name' : $prefix . 'last_name';
+
+    return personNamePartsMatchOptionalMiddle(
+        $inputParts['first_name'],
+        $inputParts['middle_name'],
+        $inputParts['last_name'],
+        (string) ($verified[$firstKey] ?? ''),
+        ($verified[$middleKey] ?? '') !== '' ? (string) $verified[$middleKey] : null,
+        (string) ($verified[$lastKey] ?? '')
+    );
+}
+
+function isMarriageIdentificationVerifiedInSession(array $husbandParts, array $wifeParts, string $dateOfMarriage): bool
+{
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    if ($dateOfMarriage === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfMarriage)) {
+        return false;
+    }
+
+    $verified = $_SESSION['alcros_civil_record_verified'] ?? null;
+    if (!$verified || ($verified['document_type'] ?? '') !== 'marriage') {
+        return false;
+    }
+    if ($dateOfMarriage !== ($verified['date_of_marriage'] ?? '')) {
+        return false;
+    }
+    if (!verifiedSessionNamePartsMatch($verified, normalizeCitizenNameParts($husbandParts), 'husband_')
+        || !verifiedSessionNamePartsMatch($verified, normalizeCitizenNameParts($wifeParts), 'wife_')) {
+        return false;
+    }
+    if (time() > (int) ($verified['expires'] ?? 0)) {
+        unset($_SESSION['alcros_civil_record_verified']);
+
+        return false;
+    }
+
+    return true;
+}
+
+function isDeathIdentificationVerifiedInSession(array $nameParts, string $dateOfDeath): bool
+{
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    if ($dateOfDeath === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfDeath)) {
+        return false;
+    }
+
+    $verified = $_SESSION['alcros_civil_record_verified'] ?? null;
+    if (!$verified || ($verified['document_type'] ?? '') !== 'death') {
+        return false;
+    }
+    if ($dateOfDeath !== ($verified['date_of_death'] ?? '')) {
+        return false;
+    }
+    if (!verifiedSessionNamePartsMatch($verified, normalizeCitizenNameParts($nameParts))) {
+        return false;
+    }
+    if (time() > (int) ($verified['expires'] ?? 0)) {
+        unset($_SESSION['alcros_civil_record_verified']);
+
+        return false;
+    }
+
+    return true;
+}
+
+function isRequestDraftIdentificationVerified(array $draft): bool
+{
+    $documentType = (string) ($draft['document_type'] ?? '');
+    if ($documentType === 'marriage') {
+        return isMarriageIdentificationVerifiedInSession(
+            personNamePartsFromDraftRow($draft, 'husband_'),
+            personNamePartsFromDraftRow($draft, 'wife_'),
+            (string) ($draft['date_of_marriage'] ?? '')
+        );
+    }
+    if ($documentType === 'death') {
+        return isDeathIdentificationVerifiedInSession(
+            personNamePartsFromDraftRow($draft),
+            (string) ($draft['date_of_death'] ?? '')
+        );
+    }
+
+    $citizenName = personNameFromRow($draft);
+    $dateOfBirth = (string) ($draft['date_of_birth'] ?? '');
+
+    return isCivilRecordVerifiedInSession(
+        $citizenName,
+        $dateOfBirth,
+        $documentType,
+        !empty($draft['date_of_marriage']) ? (string) $draft['date_of_marriage'] : null
+    );
 }
 
 function verifiedCivilRecordSexFromSession(): ?string
@@ -3315,6 +3554,82 @@ function verifyCitizenCivilRecord(PDO $pdo, array $nameParts, string $dateOfBirt
         'ok'    => false,
         'error' => 'No civil registry record was found for this name and date of birth. Please visit the Local Civil Registry Office (LCRO) in person to register before submitting an online request.',
     ];
+}
+
+function verifyCitizenCivilRecordFromInput(PDO $pdo, array $input): array
+{
+    $documentType = trim((string) ($input['document_type'] ?? ''));
+
+    if ($documentType === 'marriage') {
+        $husbandParts = personNamePartsFromInput($input, 'husband_');
+        $wifeParts = personNamePartsFromInput($input, 'wife_');
+        $dateOfMarriage = trim((string) ($input['date_of_marriage'] ?? ''));
+
+        if (($husbandErr = validatePersonNameParts($husbandParts)) !== null) {
+            return ['ok' => false, 'error' => 'Enter the husband\'s first and last name on record.'];
+        }
+        if (($wifeErr = validatePersonNameParts($wifeParts)) !== null) {
+            return ['ok' => false, 'error' => 'Enter the wife\'s first and last name on record.'];
+        }
+        if ($dateOfMarriage === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfMarriage)) {
+            return ['ok' => false, 'error' => 'Enter your date of marriage first.'];
+        }
+
+        $row = findMarriageCivilRecordMatchByCouple($pdo, $husbandParts, $wifeParts, $dateOfMarriage);
+        if ($row) {
+            markMarriageCoupleCivilRecordVerified($husbandParts, $wifeParts, $dateOfMarriage, civilRecordSexForRequest($row));
+
+            return [
+                'ok'          => true,
+                'message'     => 'Record found — you are registered with the Local Civil Registry Office.',
+                'record_type' => civilRecordTypeLabel('marriage'),
+            ];
+        }
+
+        return [
+            'ok'    => false,
+            'error' => 'No marriage record was found for these names and date of marriage. Please visit the Local Civil Registry Office (LCRO) in person.',
+        ];
+    }
+
+    if ($documentType === 'death') {
+        $nameParts = personNamePartsFromInput($input);
+        $dateOfDeath = trim((string) ($input['date_of_death'] ?? ''));
+
+        if (($nameError = validatePersonNameParts($nameParts)) !== null) {
+            return ['ok' => false, 'error' => 'Enter the deceased first and last name on record.'];
+        }
+        if ($dateOfDeath === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfDeath)) {
+            return ['ok' => false, 'error' => 'Enter the date of death first.'];
+        }
+
+        $row = findDeathCivilRecordMatch($pdo, $nameParts, $dateOfDeath);
+        if ($row) {
+            markDeathCivilRecordVerified($nameParts, $dateOfDeath);
+
+            return [
+                'ok'          => true,
+                'message'     => 'Record found — you are registered with the Local Civil Registry Office.',
+                'record_type' => civilRecordTypeLabel('death'),
+            ];
+        }
+
+        return [
+            'ok'    => false,
+            'error' => 'No death record was found for this name and date of death. Please visit the Local Civil Registry Office (LCRO) in person.',
+        ];
+    }
+
+    $dateOfBirth = trim((string) ($input['date_of_birth'] ?? ''));
+    $dateOfMarriage = trim((string) ($input['date_of_marriage'] ?? ''));
+
+    return verifyCitizenCivilRecord(
+        $pdo,
+        personNamePartsFromInput($input),
+        $dateOfBirth,
+        $documentType,
+        $dateOfMarriage !== '' ? $dateOfMarriage : null
+    );
 }
 
 function saveIdUpload(array $file, string $prefix): ?string

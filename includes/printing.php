@@ -758,16 +758,36 @@ function printRecordFromRequest(array $request): array
 
     if ($type === 'marriage') {
         $record['event_date'] = (string) ($request['date_of_marriage'] ?? '');
-        $sex = strtolower((string) ($request['sex'] ?? ''));
-        if ($sex === 'female') {
-            $record['wife_name'] = $fullName;
-            $record['wife_birth_date'] = (string) ($request['date_of_birth'] ?? '');
-        } else {
-            $record['husband_name'] = $fullName;
-            $record['husband_birth_date'] = (string) ($request['date_of_birth'] ?? '');
+        $husbandParts = personNamePartsFromInput($request, 'husband_');
+        $wifeParts = personNamePartsFromInput($request, 'wife_');
+        if ($husbandParts['first_name'] !== '' && $husbandParts['last_name'] !== '') {
+            $record['husband_name'] = formatPersonName(
+                $husbandParts['first_name'],
+                $husbandParts['middle_name'],
+                $husbandParts['last_name']
+            );
+            $record['husband_birth_date'] = (string) ($request['husband_birth_date'] ?? $request['date_of_birth'] ?? '');
+        }
+        if ($wifeParts['first_name'] !== '' && $wifeParts['last_name'] !== '') {
+            $record['wife_name'] = formatPersonName(
+                $wifeParts['first_name'],
+                $wifeParts['middle_name'],
+                $wifeParts['last_name']
+            );
+            $record['wife_birth_date'] = (string) ($request['wife_birth_date'] ?? '');
+        }
+        if (empty($record['husband_name']) && empty($record['wife_name'])) {
+            $sex = strtolower((string) ($request['sex'] ?? ''));
+            if ($sex === 'female') {
+                $record['wife_name'] = $fullName;
+                $record['wife_birth_date'] = (string) ($request['date_of_birth'] ?? '');
+            } else {
+                $record['husband_name'] = $fullName;
+                $record['husband_birth_date'] = (string) ($request['date_of_birth'] ?? '');
+            }
         }
     } elseif ($type === 'death') {
-        $record['event_date'] = null;
+        $record['event_date'] = !empty($request['date_of_death']) ? (string) $request['date_of_death'] : null;
     }
 
     return $record;
@@ -787,12 +807,39 @@ function resolveCivilRecordForRequest(PDO $pdo, array $request): ?array
     $dob = (string) ($request['date_of_birth'] ?? '');
     $type = (string) ($request['document_type'] ?? '');
     $dom = $request['date_of_marriage'] ?? null;
+    $dod = !empty($request['date_of_death']) ? (string) $request['date_of_death'] : null;
 
     if ($type === 'cenomar') {
         return null;
     }
 
-    $match = findCivilRecordMatch($pdo, $nameParts, $dob, $type, $dom);
+    if ($type === 'marriage' && $dom) {
+        $husbandParts = personNamePartsFromInput($request, 'husband_');
+        $wifeParts = personNamePartsFromInput($request, 'wife_');
+        if ($husbandParts['first_name'] === '' || $wifeParts['first_name'] === '') {
+            $fill = printParseFillData($request['print_fill_data'] ?? null);
+            if ($husbandParts['first_name'] === '') {
+                $husbandParts = [
+                    'first_name'  => trim((string) ($fill['husband_first_name'] ?? '')),
+                    'middle_name' => trim((string) ($fill['husband_middle_name'] ?? '')) ?: null,
+                    'last_name'   => trim((string) ($fill['husband_last_name'] ?? '')),
+                ];
+            }
+            if ($wifeParts['first_name'] === '') {
+                $wifeParts = [
+                    'first_name'  => trim((string) ($fill['wife_first_name'] ?? '')),
+                    'middle_name' => trim((string) ($fill['wife_middle_name'] ?? '')) ?: null,
+                    'last_name'   => trim((string) ($fill['wife_last_name'] ?? '')),
+                ];
+            }
+        }
+        $coupleMatch = findMarriageCivilRecordMatchByCouple($pdo, $husbandParts, $wifeParts, (string) $dom);
+        if ($coupleMatch) {
+            return fetchFullCivilRecord($pdo, (int) $coupleMatch['id']);
+        }
+    }
+
+    $match = findCivilRecordMatch($pdo, $nameParts, $dob, $type, $dom, $dod);
     if ($match) {
         return fetchFullCivilRecord($pdo, (int) $match['id']);
     }

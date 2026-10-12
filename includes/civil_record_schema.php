@@ -142,7 +142,7 @@ function civilRecordBirthChildEntryRequiredKeys(): array
     ];
 }
 
-/** @return list<string> */
+/** @return list<string> Manual death entry + legacy strict CSV (superseded for import by civilRecordDeathCsvImportRequiredKeys). */
 function civilRecordDeathDeceasedEntryRequiredKeys(): array
 {
     return [
@@ -168,6 +168,12 @@ function civilRecordDeathDeceasedEntryRequiredKeys(): array
         'surviving_spouse_name',
         'surviving_spouse_address',
     ];
+}
+
+/** @return list<string> Minimum columns for bulk death CSV import (staff can complete other fields later). */
+function civilRecordDeathCsvImportRequiredKeys(): array
+{
+    return ['first_name', 'last_name'];
 }
 
 /** @return list<string> */
@@ -312,12 +318,34 @@ function assertCivilRecordManualEntryComplete(array $input, string $type): void
     }
 }
 
-/** Legacy CSV row validation (storage field names, not print-fill sections). */
+function assertCivilRecordDeathCsvImportComplete(array $input): void
+{
+    foreach (civilRecordDeathCsvImportRequiredKeys() as $key) {
+        if (civilRecordInputFieldEmpty($input, $key)) {
+            throw new InvalidArgumentException(civilRecordViewFieldLabel($key) . ' is required.');
+        }
+    }
+
+    $deathDate = trim((string) ($input['death_date'] ?? ''));
+    if ($deathDate === '') {
+        $deathDate = trim((string) ($input['event_date'] ?? ''));
+    }
+    if ($deathDate === '') {
+        throw new InvalidArgumentException('Date of Death is required.');
+    }
+}
+
+/** CSV row validation (storage field names, not print-fill sections). */
 function assertCivilRecordCsvImportComplete(array $input, string $type): void
 {
+    if ($type === 'death') {
+        assertCivilRecordDeathCsvImportComplete($input);
+
+        return;
+    }
+
     $keys = match ($type) {
         'birth' => civilRecordBirthChildEntryRequiredKeys(),
-        'death' => civilRecordDeathDeceasedEntryRequiredKeys(),
         'marriage' => array_merge(
             civilRecordMarriageSpouseEntryRequiredKeys('husband'),
             civilRecordMarriageSpouseEntryRequiredKeys('wife')
@@ -712,6 +740,76 @@ function civilRecordDetailTableName(string $type): string
         'marriage' => 'marriage_record_details',
         default    => '',
     };
+}
+
+function civilRecordTableHasColumn(PDO $pdo, string $table, string $column): bool
+{
+    static $cache = [];
+    $key = $table . '.' . $column;
+    if (array_key_exists($key, $cache)) {
+        return $cache[$key];
+    }
+
+    try {
+        $pdo->query("SELECT `$column` FROM `$table` LIMIT 1");
+        $cache[$key] = true;
+    } catch (Throwable $e) {
+        $cache[$key] = false;
+    }
+
+    return $cache[$key];
+}
+
+/** Ensure tables/columns needed for public civil-record lookup (Check Record on request form). */
+function ensureCivilRecordLookupSchema(PDO $pdo): void
+{
+    ensureCivilRecordTypeTables($pdo);
+
+    try {
+        $pdo->query('SELECT deleted_at FROM civil_records LIMIT 1');
+    } catch (Throwable $e) {
+        try {
+            $pdo->exec('ALTER TABLE civil_records ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL AFTER notes');
+        } catch (Throwable $ignored) {
+        }
+    }
+}
+
+/**
+ * Marriage rows for citizen lookup — uses detail table when flat columns were migrated off civil_records.
+ *
+ * @return list<array<string, mixed>>
+ */
+function fetchMarriageCivilRecordsForLookup(PDO $pdo, ?string $eventDate = null): array
+{
+    ensureCivilRecordLookupSchema($pdo);
+
+    $params = [];
+    $dateFilter = '';
+    if ($eventDate !== null && $eventDate !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $eventDate)) {
+        $dateFilter = ' AND cr.event_date = ?';
+        $params[] = $eventDate;
+    }
+
+    if (civilRecordTableHasColumn($pdo, 'civil_records', 'husband_name')) {
+        $sql = 'SELECT cr.id, cr.record_type, cr.husband_name, cr.wife_name, cr.husband_birth_date, cr.wife_birth_date, cr.event_date, cr.registry_number
+                FROM civil_records cr
+                WHERE cr.deleted_at IS NULL AND cr.record_type = \'marriage\'' . $dateFilter . '
+                ORDER BY cr.event_date DESC, cr.id DESC';
+    } else {
+        $detailTable = civilRecordDetailTableName('marriage');
+        $sql = 'SELECT cr.id, cr.record_type, cr.event_date, cr.registry_number,
+                       m.husband_name, m.wife_name, m.husband_birth_date, m.wife_birth_date
+                FROM civil_records cr
+                INNER JOIN `' . $detailTable . '` m ON m.civil_record_id = cr.id
+                WHERE cr.deleted_at IS NULL AND cr.record_type = \'marriage\'' . $dateFilter . '
+                ORDER BY cr.event_date DESC, cr.id DESC';
+    }
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
 /** @return list<string> */

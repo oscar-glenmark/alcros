@@ -1,17 +1,12 @@
 <?php
 /**
- * Remote MySQL — copy to database.local.php on the server (File Manager / FTP).
- * Not in git. Local XAMPP does not need this file (uses localhost / root in config/database.php).
+ * SmarterASP / remote MySQL — copy to database.local.php on the server only.
+ * Return this array (no define() calls — avoids “Constant already defined” warnings).
+ * XAMPP: do not create database.local.php (database.php defaults apply).
  */
-
-/* --- InfinityFree (e.g. alcros.42web.io) --- */
-define('DB_HOST', 'sql123.infinityfree.com');
-define('DB_NAME', 'if0_12345678_alcros');
-define('DB_USER', 'if0_12345678');
-define('DB_PASS', 'your_mysql_password');
-
-/* --- SmarterASP.NET Premium (use instead of the block above on that host) --- */
-// define('DB_HOST', 'mysqlXXXX.smarterasp.net');
-// define('DB_NAME', 'DB_name_from_control_panel');
-// define('DB_USER', 'DB_user_from_control_panel');
-// define('DB_PASS', 'your_mysql_password');
+return [
+    'DB_HOST' => 'mysqlXXXX.smarterasp.net',
+    'DB_NAME' => 'db_acfa0a_alcros',
+    'DB_USER' => 'acfa0a_alcros',
+    'DB_PASS' => 'your_mysql_password',
+];

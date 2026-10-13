@@ -34,10 +34,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('SQL file not found: database/alcros.sql');
             }
 
-            $pdo = new PDO('mysql:host=' . DB_HOST . ';charset=' . DB_CHARSET, DB_USER, DB_PASS, [
+            $sql = file_get_contents($sqlFile);
+            if (alcrosIsHostedEnvironment()) {
+                // Shared hosts (SmarterASP): one pre-created DB — no CREATE DATABASE / USE alcros_db.
+                $sql = preg_replace('/^\s*CREATE\s+DATABASE\b.*?;\s*\r?\n/im', '', $sql);
+                $sql = preg_replace('/^\s*USE\s+\S+?\s*;\s*\r?\n/im', '', $sql);
+                $dsn = 'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=' . DB_CHARSET;
+            } else {
+                $dsn = 'mysql:host=' . DB_HOST . ';charset=' . DB_CHARSET;
+            }
+            $pdo = new PDO($dsn, DB_USER, DB_PASS, [
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             ]);
-            $pdo->exec(file_get_contents($sqlFile));
+            $pdo->exec($sql);
 
             require_once __DIR__ . '/includes/record_locks.php';
             require_once __DIR__ . '/includes/printing.php';

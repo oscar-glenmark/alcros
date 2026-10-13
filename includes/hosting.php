@@ -11,6 +11,18 @@ if (!defined('ALCROS_TRUST_PROXY_HTTPS')) {
     define('ALCROS_TRUST_PROXY_HTTPS', false);
 }
 
+/** Hide PHP warnings on shared hosting UI (errors still log server-side). */
+$alcrosHost = strtolower((string) ($_SERVER['HTTP_HOST'] ?? ''));
+if (
+    !is_dir('C:\\xampp')
+    && $alcrosHost !== ''
+    && $alcrosHost !== 'localhost'
+    && !str_starts_with($alcrosHost, '127.0.0.1')
+) {
+    ini_set('display_errors', '0');
+    ini_set('display_startup_errors', '0');
+}
+
 /**
  * True when running on a developer machine (XAMPP / localhost).
  */

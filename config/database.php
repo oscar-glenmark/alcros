@@ -1,8 +1,31 @@
 <?php
 /**
- * ALCROS MySQL connection
+ * ALCROS MySQL connection (loader v3 — local credentials via return array in database.local.php).
  */
 require_once __DIR__ . '/environment.php';
+
+if (!defined('ALCROS_DB_LOADER')) {
+    define('ALCROS_DB_LOADER', 3);
+}
+
+$alcrosLocalDbPath = __DIR__ . '/database.local.php';
+if (is_file($alcrosLocalDbPath)) {
+    $alcrosLocalDb = include_once $alcrosLocalDbPath;
+    if (is_array($alcrosLocalDb)) {
+        $map = [
+            'DB_HOST' => 'DB_HOST',
+            'DB_NAME' => 'DB_NAME',
+            'DB_USER' => 'DB_USER',
+            'DB_PASS' => 'DB_PASS',
+            'DB_CHARSET' => 'DB_CHARSET',
+        ];
+        foreach ($map as $key => $const) {
+            if (!defined($const) && isset($alcrosLocalDb[$key]) && $alcrosLocalDb[$key] !== '') {
+                define($const, $alcrosLocalDb[$key]);
+            }
+        }
+    }
+}
 
 if (!defined('DB_HOST')) {
     define('DB_HOST', 'localhost');
@@ -18,10 +41,6 @@ if (!defined('DB_PASS')) {
 }
 if (!defined('DB_CHARSET')) {
     define('DB_CHARSET', 'utf8mb4');
-}
-
-if (is_file(__DIR__ . '/database.local.php')) {
-    require __DIR__ . '/database.local.php';
 }
 
 function dbUnavailablePage(string $title, string $help, string $msg): never

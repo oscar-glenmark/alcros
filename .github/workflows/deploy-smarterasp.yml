@@ -1,0 +1,52 @@
+# Deploy ALCROS to SmarterASP.NET via FTPS when you push to main/master.
+# Setup: deploy/GITHUB_SMARTERASP.md
+
+name: Deploy to SmarterASP.NET
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: smarterasp-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy via FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.SMARTERASP_FTP_SERVER }}
+          username: ${{ secrets.SMARTERASP_FTP_USERNAME }}
+          password: ${{ secrets.SMARTERASP_FTP_PASSWORD }}
+          protocol: ftps
+          port: 21
+          local-dir: ./
+          server-dir: ${{ secrets.SMARTERASP_FTP_REMOTE_DIR }}
+          exclude: |
+            **/.git/**
+            **/.github/**
+            **/.git*
+            **/.vscode/**
+            config/database.local.php
+            config/hosting.local.php
+            storage/**
+            !storage/.htaccess
+            uploads/ids/**
+            !uploads/ids/.htaccess
+            uploads/staff/**
+            !uploads/staff/.htaccess
+            .env
+            **/.env*
+            **/*.log
+            db_loader_check.php
+            Thumbs.db
+            .DS_Store

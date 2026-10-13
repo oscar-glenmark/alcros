@@ -33,3 +33,6 @@ storage/rate_limits/*.json
 .DS_Store
 Thumbs.db
 
+# FTP-Deploy-Action state (local runs only; safe on CI)
+.ftp-deploy-sync-state.json
+

@@ -1,6 +1,14 @@
-# ALCROS on SmarterASP.NET Premium
+# ALCROS on SmarterASP.NET
 
-This guide deploys the full ALCROS stack (PHP + MySQL, queue, requests, printing, email/SMS reminders) on **.NET PREMIUM** without removing features.
+This guide deploys the full ALCROS stack (PHP + MySQL, queue, requests, printing, email/SMS reminders) on SmarterASP (**trial W60**, Basic, Advance, or Premium).
+
+**Deploy from Cursor via GitHub:** see **[deploy/GITHUB_SMARTERASP.md](GITHUB_SMARTERASP.md)** (FTPS on push to `main`).
+
+---
+
+## Manual upload (no GitHub)
+
+If you are not using GitHub Actions, follow the sections below and upload via **File Manager** or **FTP**.
 
 ## 1. Plan requirements
 
@@ -38,9 +46,8 @@ Set the site to **PHP 8.x**.
 
 On the server only:
 
-1. Copy `config/database.local.php.example` → `config/database.local.php`
-2. Paste MySQL credentials from SmarterASP
-3. Copy `config/hosting.local.php.example` → `config/hosting.local.php` (enables HTTPS behind proxy for secure cookies)
+1. Copy `config/database.local.php.example` → `config/database.local.php` and fill the **return array** (exact DB name from MySQL manager, e.g. `db_acfa0a_alcros` — not `alcros_db`)
+2. Copy `config/hosting.local.php.example` → `config/hosting.local.php` (`ALCROS_TRUST_PROXY_HTTPS` for free SSL)
 
 Import schema:
 

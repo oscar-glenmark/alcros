@@ -27,10 +27,15 @@ jobs:
           server: ${{ secrets.SMARTERASP_FTP_SERVER }}
           username: ${{ secrets.SMARTERASP_FTP_USERNAME }}
           password: ${{ secrets.SMARTERASP_FTP_PASSWORD }}
-          protocol: ftps
+          # ftps-legacy avoids ECONNRESET on some Windows/IIS hosts (incl. SmarterASP)
+          protocol: ftps-legacy
           port: 21
+          security: loose
+          timeout: 600000
+          log-level: verbose
           local-dir: ./
           server-dir: ${{ secrets.SMARTERASP_FTP_REMOTE_DIR }}
+          state-name: .ftp-deploy-sync-state.json
           exclude: |
             **/.git/**
             **/.github/**

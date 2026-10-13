@@ -75,6 +75,11 @@ function alcrosDuplicatiFindMysqldump(): ?string
         }
     }
 
+    // Shared hosts (e.g. SmarterASP) disable exec(); use PDO dump fallback instead.
+    if (!function_exists('exec')) {
+        return null;
+    }
+
     $which = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN' ? 'where mysqldump 2>nul' : 'command -v mysqldump 2>/dev/null';
     $output = [];
     $exitCode = 1;
@@ -144,6 +149,10 @@ function alcrosDuplicatiBackupPrintSettingsSql(PDO $pdo): string
 
 function alcrosDuplicatiRunMysqldump(string $mysqldump, string $outputFile): void
 {
+    if (!function_exists('exec')) {
+        throw new RuntimeException('mysqldump via shell is not available on this host.');
+    }
+
     $tables = alcrosDuplicatiBackupTables();
     $args = [
         escapeshellarg($mysqldump),

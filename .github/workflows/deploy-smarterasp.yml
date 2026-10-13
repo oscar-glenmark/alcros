@@ -1,4 +1,4 @@
-# Deploy ALCROS to SmarterASP.NET via FTPS when you push to main/master.
+# Deploy ALCROS to SmarterASP.NET via FTPS (lftp mirror — avoids FTP-Deploy-Action ECONNRESET on IIS).
 # Setup: deploy/GITHUB_SMARTERASP.md
 
 name: Deploy to SmarterASP.NET
@@ -16,42 +16,60 @@ concurrency:
 
 jobs:
   deploy:
-    # Windows runner often works better with SmarterASP IIS FTPS than ubuntu (TLS/data socket).
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Deploy via FTPS
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.SMARTERASP_FTP_SERVER }}
-          username: ${{ secrets.SMARTERASP_FTP_USERNAME }}
-          password: ${{ secrets.SMARTERASP_FTP_PASSWORD }}
-          # Explicit FTPS on 21 (FileZilla: "FTP over explicit TLS"). Do not use ftps-legacy on SmarterASP.
-          protocol: ftps
-          port: 21
-          timeout: 600000
-          log-level: verbose
-          local-dir: ./
-          server-dir: ${{ secrets.SMARTERASP_FTP_REMOTE_DIR }}
-          state-name: .ftp-deploy-sync-state.json
-          exclude: |
-            **/.git/**
-            **/.github/**
-            **/.git*
-            **/.vscode/**
-            config/database.local.php
-            config/hosting.local.php
-            storage/**
-            !storage/.htaccess
-            uploads/ids/**
-            !uploads/ids/.htaccess
-            uploads/staff/**
-            !uploads/staff/.htaccess
-            .env
-            **/.env*
-            **/*.log
-            db_loader_check.php
-            Thumbs.db
-            .DS_Store
+      - name: Install lftp
+        run: sudo apt-get update -qq && sudo apt-get install -y lftp
+
+      - name: Deploy via FTPS (lftp)
+        env:
+          HOST: ${{ secrets.SMARTERASP_FTP_SERVER }}
+          USER: ${{ secrets.SMARTERASP_FTP_USERNAME }}
+          PASS: ${{ secrets.SMARTERASP_FTP_PASSWORD }}
+          REMOTE: ${{ secrets.SMARTERASP_FTP_REMOTE_DIR }}
+        run: |
+          set -euo pipefail
+          REMOTE_DIR="${REMOTE:-/alcros/}"
+          REMOTE_DIR="${REMOTE_DIR#/}"
+          REMOTE_DIR="${REMOTE_DIR%/}"
+
+          printf 'machine %s login %s password %s\n' "$HOST" "$USER" "$PASS" > ~/.netrc
+          chmod 600 ~/.netrc
+
+          lftp -c "
+          set cmd:fail-exit yes
+          set ftp:ssl-force true
+          set ftp:ssl-protect-data true
+          set ssl:verify-certificate no
+          set ftp:passive-mode on
+          set net:max-retries 5
+          set net:reconnect-interval-base 5
+          set net:timeout 120
+          open ftps://${HOST}:21
+          cd ${REMOTE_DIR}
+          lcd ${GITHUB_WORKSPACE}
+          mirror --reverse --continue --verbose --parallel=1 \
+            --exclude-glob .git/ \
+            --exclude-glob .git/** \
+            --exclude-glob .github/** \
+            --exclude-glob .vscode/** \
+            --exclude-glob config/database.local.php \
+            --exclude-glob config/hosting.local.php \
+            --exclude-glob storage/** \
+            --exclude-glob uploads/ids/** \
+            --exclude-glob uploads/staff/** \
+            --exclude-glob .env \
+            --exclude-glob .env.* \
+            --exclude-glob '**/*.log' \
+            --exclude-glob db_loader_check.php \
+            --exclude-glob Thumbs.db \
+            --exclude-glob .DS_Store \
+            --exclude-glob .ftp-deploy-sync-state.json \
+            .
+          bye
+          "
+
+          rm -f ~/.netrc

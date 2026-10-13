@@ -1,4 +1,4 @@
-# Deploy ALCROS to SmarterASP.NET via FTPS (lftp mirror — avoids FTP-Deploy-Action ECONNRESET on IIS).
+# Deploy ALCROS to SmarterASP.NET via FTPS (lftp mirror).
 # Setup: deploy/GITHUB_SMARTERASP.md
 
 name: Deploy to SmarterASP.NET
@@ -32,44 +32,71 @@ jobs:
           REMOTE: ${{ secrets.SMARTERASP_FTP_REMOTE_DIR }}
         run: |
           set -euo pipefail
+
+          if [ -z "${HOST:-}" ] || [ -z "${USER:-}" ] || [ -z "${PASS:-}" ]; then
+            echo "::error::Missing GitHub secrets. Add SMARTERASP_FTP_SERVER, USERNAME, and PASSWORD under Settings → Secrets → Actions."
+            exit 1
+          fi
+
+          HOST="${HOST#ftp://}"
+          HOST="${HOST#ftps://}"
+          HOST="${HOST%%/*}"
+          HOST="${HOST%%:*}"
+
           REMOTE_DIR="${REMOTE:-/alcros/}"
           REMOTE_DIR="${REMOTE_DIR#/}"
           REMOTE_DIR="${REMOTE_DIR%/}"
+          if [ -z "$REMOTE_DIR" ]; then
+            REMOTE_DIR="alcros"
+          fi
 
-          printf 'machine %s login %s password %s\n' "$HOST" "$USER" "$PASS" > ~/.netrc
-          chmod 600 ~/.netrc
+          export HOST USER PASS REMOTE_DIR
 
-          lftp -c "
-          set cmd:fail-exit yes
+          python3 << 'PY'
+          import os
+          host = os.environ["HOST"].strip()
+          user = os.environ["USER"]
+          password = os.environ["PASS"]
+          remote = os.environ["REMOTE_DIR"]
+          workspace = os.environ["GITHUB_WORKSPACE"]
+
+          script = f"""set cmd:fail-exit yes
           set ftp:ssl-force true
           set ftp:ssl-protect-data true
           set ssl:verify-certificate no
           set ftp:passive-mode on
+          set ftp:use-feat no
           set net:max-retries 5
           set net:reconnect-interval-base 5
           set net:timeout 120
-          open ftps://${HOST}:21
-          cd ${REMOTE_DIR}
-          lcd ${GITHUB_WORKSPACE}
+          debug 3
+          open ftp://{host}:21
+          user {user} {password}
+          cd {remote}
+          lcd {workspace}
           mirror --reverse --continue --verbose --parallel=1 \
-            --exclude-glob .git/ \
-            --exclude-glob .git/** \
-            --exclude-glob .github/** \
-            --exclude-glob .vscode/** \
-            --exclude-glob config/database.local.php \
-            --exclude-glob config/hosting.local.php \
-            --exclude-glob storage/** \
-            --exclude-glob uploads/ids/** \
-            --exclude-glob uploads/staff/** \
-            --exclude-glob .env \
-            --exclude-glob .env.* \
-            --exclude-glob '**/*.log' \
-            --exclude-glob db_loader_check.php \
-            --exclude-glob Thumbs.db \
-            --exclude-glob .DS_Store \
-            --exclude-glob .ftp-deploy-sync-state.json \
+            -x ^\\.git/ \
+            -x ^\\.github/ \
+            -x ^\\.vscode/ \
+            -x (^|/)database\\.local\\.php$ \
+            -x (^|/)hosting\\.local\\.php$ \
+            -x ^storage/ \
+            -x ^uploads/ids/ \
+            -x ^uploads/staff/ \
+            -x (^|/)\\.env \
+            -x \\.log$ \
+            -x (^|/)db_loader_check\\.php$ \
+            -x (^|/)Thumbs\\.db$ \
+            -x (^|/)\\.DS_Store$ \
+            -x (^|/)\\.ftp-deploy-sync-state\\.json$ \
             .
           bye
-          "
+          """
+          path = "/tmp/alcros-deploy.lftp"
+          with open(path, "w", encoding="utf-8") as f:
+              f.write(script)
+          print(f"Wrote lftp script (host={host}, remote dir={remote})")
+          PY
 
-          rm -f ~/.netrc
+          lftp -f /tmp/alcros-deploy.lftp
+          rm -f /tmp/alcros-deploy.lftp

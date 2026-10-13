@@ -327,9 +327,9 @@ $stepLabels = [
 ];
 
 $stepTitles = [
-    1 => ['title' => 'Request Details', 'subtitle' => 'Please provide your identity and active contact details.'],
-    2 => ['title' => 'Requirement Checklist', 'subtitle' => 'Please provide your Gmail and upload necessary documents.'],
-    3 => ['title' => 'Schedule Appointment', 'subtitle' => 'Choose your preferred date and time for document pickup.'],
+    1 => ['title' => 'REQUEST DETAILS', 'subtitle' => 'Please provide your identity.'],
+    2 => ['title' => 'REQUIREMENTS CHECKLIST', 'subtitle' => 'Please provide required documents.'],
+    3 => ['title' => 'SCHEDULE APPOINTMENT', 'subtitle' => 'Choose your preferred date and time for document pickup.'],
 ];
 
 $isStaffLoggedIn = isset($_SESSION['staff_id']);

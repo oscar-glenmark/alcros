@@ -69,7 +69,7 @@ jobs:
           set net:max-retries 5
           set net:reconnect-interval-base 5
           set net:timeout 120
-          debug 3
+          debug 1
           open ftp://{host}:21
           user {user} {password}
           cd {remote}
@@ -78,17 +78,17 @@ jobs:
             -x ^\\.git/ \
             -x ^\\.github/ \
             -x ^\\.vscode/ \
-            -x (^|/)database\\.local\\.php$ \
-            -x (^|/)hosting\\.local\\.php$ \
+            -x database\\.local\\.php \
+            -x hosting\\.local\\.php \
             -x ^storage/ \
             -x ^uploads/ids/ \
             -x ^uploads/staff/ \
-            -x (^|/)\\.env \
+            -x \\.env \
             -x \\.log$ \
-            -x (^|/)db_loader_check\\.php$ \
-            -x (^|/)Thumbs\\.db$ \
-            -x (^|/)\\.DS_Store$ \
-            -x (^|/)\\.ftp-deploy-sync-state\\.json$ \
+            -x db_loader_check\\.php \
+            -x Thumbs\\.db \
+            -x \\.DS_Store \
+            -x \\.ftp-deploy-sync-state\\.json \
             .
           bye
           """

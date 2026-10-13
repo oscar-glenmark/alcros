@@ -66,6 +66,8 @@ jobs:
           set ssl:verify-certificate no
           set ftp:passive-mode on
           set ftp:use-feat no
+          set mirror:set-permissions false
+          set ftp:use-site-chmod no
           set net:max-retries 5
           set net:reconnect-interval-base 5
           set net:timeout 120
@@ -74,7 +76,7 @@ jobs:
           user {user} {password}
           cd {remote}
           lcd {workspace}
-          mirror --reverse --continue --verbose --parallel=1 \
+          mirror --reverse --continue --verbose --parallel=1 -p \
             -x ^\\.git/ \
             -x ^\\.github/ \
             -x ^\\.vscode/ \

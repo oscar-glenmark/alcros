@@ -53,10 +53,7 @@ function alcrosIsHostedEnvironment(): bool
 function alcrosHostedDatabaseSetupHint(): string
 {
     $host = strtolower((string) ($_SERVER['HTTP_HOST'] ?? ''));
-    if (str_contains($host, 'infinityfree') || str_contains($host, '42web.io') || str_contains($host, 'rf.gd') || str_contains($host, 'epizy.com')) {
-        return 'InfinityFree: hPanel → <strong>MySQL Databases</strong> → create a database, then copy <strong>config/database.local.php.example</strong> to <strong>config/database.local.php</strong> with hostname (e.g. <code class="bg-white px-1 rounded">sql###.infinityfree.com</code>), database name, username, and password.';
-    }
-    if (str_contains($host, 'smarterasp.net') || str_contains($host, 'aspnethost.com')) {
+    if (str_contains($host, 'smarterasp.net') || str_contains($host, 'aspnethost.com') || str_contains($host, 'itempurl.com') || str_contains($host, 'publicvm.com')) {
         return 'SmarterASP.NET: control panel → <strong>MySQL</strong> → copy credentials into <strong>config/database.local.php</strong>.';
     }
 

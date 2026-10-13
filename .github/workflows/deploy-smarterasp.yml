@@ -27,10 +27,9 @@ jobs:
           server: ${{ secrets.SMARTERASP_FTP_SERVER }}
           username: ${{ secrets.SMARTERASP_FTP_USERNAME }}
           password: ${{ secrets.SMARTERASP_FTP_PASSWORD }}
-          # ftps-legacy avoids ECONNRESET on some Windows/IIS hosts (incl. SmarterASP)
-          protocol: ftps-legacy
+          # Explicit FTPS on 21 (FileZilla: "FTP over explicit TLS"). Do not use ftps-legacy on SmarterASP.
+          protocol: ftps
           port: 21
-          security: loose
           timeout: 600000
           log-level: verbose
           local-dir: ./

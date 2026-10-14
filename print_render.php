@@ -94,6 +94,13 @@ if ($calibrationPreview) {
     $printOptions['skip_fill_overrides'] = true;
 }
 
+if ($documentKind === 'certification' && !empty($request)) {
+    $issuedTo = certificationIssuedToOverridesForPrint($request, $record);
+    if (!empty($issuedTo['purpose'])) {
+        $printOptions['purpose'] = $issuedTo['purpose'];
+    }
+}
+
 $printData = printCertificate($pdo, $certificateType, $pageSide, $record, $printOptions);
 if (!$printData) {
     http_response_code(404);

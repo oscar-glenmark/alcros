@@ -551,6 +551,9 @@ function enrichStaffPortalNotification(array $item): array
         if ($type === 'pending_request') {
             $item['title'] = 'Pending document request';
             $item['detail'] = trim(($item['detail'] ?? '') . ' · Awaiting staff action');
+        } elseif ($type === 'ready_pickup') {
+            $item['title'] = 'Document ready for pickup';
+            $item['detail'] = trim(($item['detail'] ?? '') . ' · Awaiting citizen handoff');
         } elseif ($type === 'queue') {
             $item['title'] = 'Citizens waiting in line';
             $item['detail'] = 'No staff action yet today until someone is called';
@@ -689,6 +692,50 @@ function documentTypeLabelsMap(): array
     ];
 }
 
+/** Citizen operations — Staff inbox only (not email/SMS/cron system alerts). */
+function staffPortalOperationalNotificationTypes(): array
+{
+    return ['pending_request', 'ready_pickup', 'queue', 'appointment'];
+}
+
+function staffPortalNotificationIsSystemAlert(array $item): bool
+{
+    $type = (string) ($item['type'] ?? '');
+
+    return $type === 'system' || trim((string) ($item['error_key'] ?? '')) !== '';
+}
+
+/** Administrators see system/maintenance alerts; Staff see operational citizen alerts only. */
+function staffPortalNotificationAllowedForRole(array $item, bool $forAdministrator): bool
+{
+    $isSystemAlert = staffPortalNotificationIsSystemAlert($item);
+
+    if ($forAdministrator) {
+        return $isSystemAlert;
+    }
+
+    if ($isSystemAlert) {
+        return false;
+    }
+
+    $type = (string) ($item['type'] ?? '');
+
+    return in_array($type, staffPortalOperationalNotificationTypes(), true);
+}
+
+/** @param list<array<string, mixed>> $items */
+function filterStaffPortalNotifications(array $items, ?bool $forAdministrator = null): array
+{
+    if ($forAdministrator === null) {
+        $forAdministrator = function_exists('isAdmin') && isAdmin();
+    }
+
+    return array_values(array_filter(
+        $items,
+        static fn (array $item): bool => staffPortalNotificationAllowedForRole($item, $forAdministrator)
+    ));
+}
+
 function fetchNotifications(PDO $pdo, int $limit = 20): array
 {
     ensureSoftDeleteColumns($pdo);
@@ -711,6 +758,7 @@ function fetchNotifications(PDO $pdo, int $limit = 20): array
     }
 
     if ($viewerIsAdmin) {
+        $items = filterStaffPortalNotifications($items, true);
         usort($items, static function (array $a, array $b): int {
             return strtotime($b['created_at']) <=> strtotime($a['created_at']);
         });
@@ -737,6 +785,26 @@ function fetchNotifications(PDO $pdo, int $limit = 20): array
             'detail'     => $row['tracking_code'],
             'created_at' => $row['submitted_at'],
             'href'       => staffPortalNotificationHref('pending_request', [
+                'tracking_code' => (string) $row['tracking_code'],
+            ]),
+        ];
+    }
+
+    $readyForPickup = enrichCitizenNameRows($pdo->query(
+        "SELECT tracking_code, first_name, middle_name, last_name, document_type, updated_at
+         FROM document_requests
+         WHERE {$activeSql} AND status = 'ready'
+         ORDER BY updated_at DESC LIMIT 5"
+    )->fetchAll());
+    foreach ($readyForPickup as $row) {
+        $items[] = [
+            'id'         => 'req-ready-' . $row['tracking_code'],
+            'type'       => 'ready_pickup',
+            'title'      => 'Ready for pickup',
+            'message'    => $row['citizen_name'] . ' · ' . ($docLabels[$row['document_type']] ?? $row['document_type']),
+            'detail'     => $row['tracking_code'],
+            'created_at' => $row['updated_at'] ?? date('Y-m-d H:i:s'),
+            'href'       => staffPortalNotificationHref('ready_pickup', [
                 'tracking_code' => (string) $row['tracking_code'],
             ]),
         ];
@@ -797,6 +865,8 @@ function fetchNotifications(PDO $pdo, int $limit = 20): array
             ]),
         ];
     }
+
+    $items = filterStaffPortalNotifications($items, false);
 
     usort($items, static function (array $a, array $b): int {
         return strtotime($b['created_at']) <=> strtotime($a['created_at']);

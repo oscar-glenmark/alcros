@@ -336,17 +336,18 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                 </form>
                 <?php endif; ?>
                 <div class="overflow-x-auto">
-                <table class="manage-requests-table w-full text-left text-sm min-w-[800px]">
+                <table class="manage-requests-table w-full text-left text-sm min-w-[1040px]">
                     <thead>
                         <tr>
                             <?php if ($showBulkActions): ?><th class="manage-bulk-col"><span class="sr-only">Select</span></th><?php endif; ?>
-                            <th>Request ID</th>
-                            <th>Citizen</th>
-                            <th>Certificate</th>
-                            <th>Visit</th>
-                            <th>Submitted</th>
-                            <?php if ($isRecentlyDeletedView): ?><th>Deleted</th><?php endif; ?>
-                            <th>Status</th>
+                            <th class="manage-col-request-id">Request ID</th>
+                            <th class="manage-col-requester">Requester</th>
+                            <th class="manage-col-record-name">Name on record</th>
+                            <th class="manage-col-certificate">Certificate</th>
+                            <th class="manage-col-visit">Visit</th>
+                            <th class="manage-col-submitted">Submitted</th>
+                            <?php if ($isRecentlyDeletedView): ?><th class="manage-col-submitted">Deleted</th><?php endif; ?>
+                            <th class="manage-col-status">Status</th>
                             <th class="manage-cell-actions">Actions</th>
                         </tr>
                     </thead>
@@ -366,20 +367,24 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                                 <?php endif; ?>
                             </td>
                             <?php endif; ?>
-                            <td>
+                            <td class="manage-col-request-id">
                                 <span class="manage-id"><?= htmlspecialchars($req['tracking_code']) ?></span>
                             </td>
-                            <td>
-                                <p class="manage-citizen-name"><?= htmlspecialchars(personNameFromRow($req)) ?></p>
+                            <td class="manage-col-requester">
+                                <?php $requesterDisplay = personRequesterNameFromRow($req); ?>
+                                <p class="manage-citizen-name"><?= htmlspecialchars($requesterDisplay !== '' ? $requesterDisplay : '—') ?></p>
                                 <p class="manage-citizen-meta"><?= htmlspecialchars($req['phone'] ?: 'No phone on file') ?></p>
                             </td>
-                            <td><span class="manage-doc-type"><?= htmlspecialchars(documentTypeLabel($req['document_type'])) ?></span></td>
-                            <td><span class="manage-date"><?= htmlspecialchars(formatAppointmentDisplay($req['appointment_date'] ?? null, $req['appointment_time'] ?? null) ?: '—') ?></span></td>
-                            <td><span class="manage-date"><?= htmlspecialchars(formatReportDateTime($req['submitted_at'])) ?></span></td>
+                            <td class="manage-col-record-name">
+                                <p class="manage-citizen-name"><?= htmlspecialchars(documentRequestNameOnRecord($req)) ?></p>
+                            </td>
+                            <td class="manage-col-certificate"><span class="manage-doc-type"><?= htmlspecialchars(documentTypeLabel($req['document_type'])) ?></span></td>
+                            <td class="manage-col-visit"><span class="manage-date"><?= htmlspecialchars(formatAppointmentDisplay($req['appointment_date'] ?? null, $req['appointment_time'] ?? null) ?: '—') ?></span></td>
+                            <td class="manage-col-submitted"><span class="manage-date"><?= htmlspecialchars(formatReportDateTime($req['submitted_at'])) ?></span></td>
                             <?php if ($isRecentlyDeletedView): ?>
-                            <td><span class="manage-date"><?= !empty($req['deleted_at']) ? htmlspecialchars(formatReportDateTime($req['deleted_at'])) : '—' ?></span></td>
+                            <td class="manage-col-submitted"><span class="manage-date"><?= !empty($req['deleted_at']) ? htmlspecialchars(formatReportDateTime($req['deleted_at'])) : '—' ?></span></td>
                             <?php endif; ?>
-                            <td class="manage-cell-status"><?= requestStatusBadge($req['status']) ?></td>
+                            <td class="manage-col-status manage-cell-status"><?= requestStatusBadge($req['status']) ?></td>
                             <td class="manage-cell-actions">
                                 <div class="manage-row-actions" onclick="event.stopPropagation()">
                                     <?php if (!$isRecentlyDeletedView): ?>
@@ -474,18 +479,20 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                             <section class="manage-detail-block">
                                 <h3>Citizen</h3>
                                 <dl class="manage-detail-rows">
+                                    <div class="manage-detail-row manage-detail-row--full"><dt>Name on record</dt><dd id="view-citizen-name"></dd></div>
                                     <div class="manage-detail-row"><dt>DOB</dt><dd id="view-dob"></dd></div>
                                     <div class="manage-detail-row hidden" id="view-dom-wrap"><dt>DOM</dt><dd id="view-dom"></dd></div>
                                     <div class="manage-detail-row"><dt>Sex</dt><dd id="view-sex"></dd></div>
-                                    <div class="manage-detail-row"><dt>Phone</dt><dd id="view-phone"></dd></div>
-                                    <div class="manage-detail-row manage-detail-row--full"><dt>Email</dt><dd id="view-email"></dd></div>
-                                    <div class="manage-detail-row"><dt>Email OK</dt><dd id="view-email-verified"></dd></div>
                                 </dl>
                             </section>
 
                             <section class="manage-detail-block">
                                 <h3>Request</h3>
                                 <dl class="manage-detail-rows">
+                                    <div class="manage-detail-row manage-detail-row--full"><dt>Requester</dt><dd id="view-requester"></dd></div>
+                                    <div class="manage-detail-row"><dt>Phone</dt><dd id="view-phone"></dd></div>
+                                    <div class="manage-detail-row manage-detail-row--full"><dt>Email</dt><dd id="view-email"></dd></div>
+                                    <div class="manage-detail-row"><dt>Email OK</dt><dd id="view-email-verified"></dd></div>
                                     <div class="manage-detail-row"><dt>Document</dt><dd id="view-document-type"></dd></div>
                                     <div class="manage-detail-row manage-detail-row--full"><dt>Purpose</dt><dd id="view-purpose"></dd></div>
                                     <div class="manage-detail-row manage-detail-row--full"><dt>Visit</dt><dd id="view-appointment"></dd></div>
@@ -537,18 +544,20 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                 <section class="manage-detail-block">
                     <h3>Citizen</h3>
                     <dl class="manage-detail-rows">
+                        <div class="manage-detail-row manage-detail-row--full"><dt>Name on record</dt><dd id="modal-view-citizen-name"></dd></div>
                         <div class="manage-detail-row"><dt>DOB</dt><dd id="modal-view-dob"></dd></div>
                         <div class="manage-detail-row hidden" id="modal-view-dom-wrap"><dt>DOM</dt><dd id="modal-view-dom"></dd></div>
                         <div class="manage-detail-row"><dt>Sex</dt><dd id="modal-view-sex"></dd></div>
-                        <div class="manage-detail-row"><dt>Phone</dt><dd id="modal-view-phone"></dd></div>
-                        <div class="manage-detail-row manage-detail-row--full"><dt>Email</dt><dd id="modal-view-email"></dd></div>
-                        <div class="manage-detail-row"><dt>Email OK</dt><dd id="modal-view-email-verified"></dd></div>
                     </dl>
                 </section>
 
                 <section class="manage-detail-block">
                     <h3>Request</h3>
                     <dl class="manage-detail-rows">
+                        <div class="manage-detail-row manage-detail-row--full"><dt>Requester</dt><dd id="modal-view-requester"></dd></div>
+                        <div class="manage-detail-row"><dt>Phone</dt><dd id="modal-view-phone"></dd></div>
+                        <div class="manage-detail-row manage-detail-row--full"><dt>Email</dt><dd id="modal-view-email"></dd></div>
+                        <div class="manage-detail-row"><dt>Email OK</dt><dd id="modal-view-email-verified"></dd></div>
                         <div class="manage-detail-row"><dt>Document</dt><dd id="modal-view-document-type"></dd></div>
                         <div class="manage-detail-row manage-detail-row--full"><dt>Purpose</dt><dd id="modal-view-purpose"></dd></div>
                         <div class="manage-detail-row manage-detail-row--full"><dt>Visit</dt><dd id="modal-view-appointment"></dd></div>

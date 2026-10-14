@@ -184,8 +184,7 @@ function buildPublicRequestTrackPayload(PDO $pdo, string $code): array
 {
     $code = strtoupper(trim($code));
     $stmt = $pdo->prepare(
-        'SELECT tracking_code, first_name, middle_name, last_name, document_type, status, submitted_at, updated_at,
-                appointment_date, appointment_time, email, deleted_at, rejection_reason
+        'SELECT *
          FROM document_requests
          WHERE tracking_code = ? AND deleted_at IS NULL
          LIMIT 1'

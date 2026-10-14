@@ -404,8 +404,8 @@ $recordsJumpDesc = sprintf(
                             <?php
                             $detailLinks = [
                                 ['key' => 'analytics', 'desc' => 'Dashboard-style charts — records, print volume, intake, and queue', 'iconBg' => 'bg-indigo-50', 'iconText' => 'text-indigo-600', 'navBorder' => '#c7d2fe', 'wide' => false],
-                                ['key' => 'requests', 'desc' => 'Track submissions, status, and document types', 'iconBg' => 'bg-blue-50', 'iconText' => 'text-blue-600', 'navBorder' => '#bfdbfe', 'wide' => false],
-                                ['key' => 'appointments', 'desc' => 'Scheduled visits and appointment status', 'iconBg' => 'bg-purple-50', 'iconText' => 'text-purple-600', 'navBorder' => '#ddd6fe', 'wide' => false],
+                                ['key' => 'requests', 'desc' => 'Read-only charts on Analytics — staff process submissions in Manage Requests', 'iconBg' => 'bg-blue-50', 'iconText' => 'text-blue-600', 'navBorder' => '#bfdbfe', 'wide' => false, 'static' => true],
+                                ['key' => 'appointments', 'desc' => 'Read-only charts on Analytics — staff manage visits in Appointments', 'iconBg' => 'bg-purple-50', 'iconText' => 'text-purple-600', 'navBorder' => '#ddd6fe', 'wide' => false, 'static' => true],
                                 ['key' => 'queue', 'desc' => 'Queue tickets served, waiting, and by purpose', 'iconBg' => 'bg-teal-50', 'iconText' => 'text-teal-600', 'navBorder' => '#99f6e4', 'wide' => false],
                                 ['key' => 'prints', 'desc' => sprintf(
                                     '%s certification · %s certificate print jobs in %s',
@@ -418,10 +418,11 @@ $recordsJumpDesc = sprintf(
                             foreach ($detailLinks as $link):
                                 $tab = $reportTabs[$link['key']];
                                 $wideClass = !empty($link['wide']) ? ' report-nav-card--wide' : '';
-                            ?>
-                            <a href="<?= htmlspecialchars(reportPageUrl($range, $fromDate, $toDate, $link['key'], $link['key'] === 'records' ? $reportYear : null)) ?>"
-                               class="report-nav-card<?= $wideClass ?>"
-                               style="--report-nav-border: <?= htmlspecialchars($link['navBorder']) ?>">
+                                $staticNav = !empty($link['static']);
+                                $cardClass = 'report-nav-card' . $wideClass . ($staticNav ? ' report-nav-card--static' : '');
+                                $cardStyle = '--report-nav-border: ' . htmlspecialchars($link['navBorder']);
+                                $cardInner = function () use ($link, $tab): void {
+                                    ?>
                                 <div class="report-nav-card__icon <?= $link['iconBg'] ?>">
                                     <i data-lucide="<?= $tab['icon'] ?>" class="w-5 h-5 <?= $link['iconText'] ?>"></i>
                                 </div>
@@ -434,9 +435,24 @@ $recordsJumpDesc = sprintf(
                                     </div>
                                     <p class="report-nav-card__desc"><?= htmlspecialchars($link['desc']) ?></p>
                                 </div>
+                                    <?php
+                                };
+                                if ($staticNav):
+                            ?>
+                            <div class="<?= $cardClass ?>" style="<?= $cardStyle ?>" aria-disabled="true">
+                                <?php $cardInner(); ?>
+                            </div>
+                            <?php else: ?>
+                            <a href="<?= htmlspecialchars(reportPageUrl($range, $fromDate, $toDate, $link['key'], $link['key'] === 'records' ? $reportYear : null)) ?>"
+                               class="<?= $cardClass ?>"
+                               style="<?= $cardStyle ?>">
+                                <?php $cardInner(); ?>
                                 <i data-lucide="chevron-right" class="report-nav-card__chevron"></i>
                             </a>
-                            <?php endforeach; ?>
+                            <?php
+                                endif;
+                            endforeach;
+                            ?>
                         </div>
                     </section>
                 </div>

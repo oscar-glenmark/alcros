@@ -26,7 +26,7 @@ $pageSubtitle = $notifIsAdmin
     <?= adminLayoutHeadStyles() ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>
-<body class="flex min-h-screen" data-realtime="notifications">
+<body class="flex min-h-screen" data-realtime="notifications" data-staff-portal-role="<?= $notifIsAdmin ? 'administrator' : 'staff' ?>">
     <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
     <main class="admin-main flex flex-col">
         <?php require __DIR__ . '/includes/admin_header.php'; ?>

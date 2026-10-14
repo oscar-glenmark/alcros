@@ -37,8 +37,20 @@ if ($type && in_array($type, $validTypes, true)) {
 $step = max(1, min(4, (int) ($_GET['step'] ?? $_POST['step'] ?? 1)));
 $recordVerified = isRequestDraftIdentificationVerified($draft);
 
+if ($step > 1 && $step < 4
+    && (trim((string) ($draft['requester_first_name'] ?? '')) === ''
+        || trim((string) ($draft['requester_last_name'] ?? '')) === '')) {
+    header('Location: request.php?step=1');
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
-    requirePublicPostCsrf();
+    $postedStep = max(1, min(4, (int) ($_POST['step'] ?? $step)));
+    $csrfToken = $_POST['csrf_token'] ?? '';
+    if (!validateCsrf(is_string($csrfToken) ? $csrfToken : '')) {
+        $step = $postedStep;
+        $error = 'Your session expired or the form is out of date. Please refresh this page and try again.';
+    } else {
     $action = $_POST['action'] ?? 'next';
 
     if ($action === 'back') {
@@ -50,8 +62,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
     if ($step === 1) {
         $documentType   = $_POST['document_type'] ?? '';
         $sex            = verifiedCivilRecordSexFromSession();
+        $requesterParts = personNamePartsFromInput($_POST, 'requester_');
 
-        if (!in_array($documentType, $validTypes, true)) {
+        if (($requesterNameError = validatePersonNameParts($requesterParts)) !== null) {
+            $error = 'Please enter your first and last name as the person requesting this certificate.';
+        } elseif (!in_array($documentType, $validTypes, true)) {
             $error = 'Please select a service type.';
         } elseif ($documentType === 'marriage') {
             $husbandParts   = personNamePartsFromInput($_POST, 'husband_');
@@ -82,6 +97,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                 $draft['date_of_marriage']    = $dateOfMarriage;
                 $draft['sex']                 = $sex;
                 $draft['document_type']       = $documentType;
+                $draft['requester_first_name']  = $requesterParts['first_name'];
+                $draft['requester_middle_name'] = $requesterParts['middle_name'];
+                $draft['requester_last_name']   = $requesterParts['last_name'];
                 unset($draft['citizen_name']);
                 header('Location: request.php?step=2');
                 exit;
@@ -108,6 +126,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                 $draft['document_type']     = $documentType;
                 unset($draft['husband_first_name'], $draft['husband_middle_name'], $draft['husband_last_name']);
                 unset($draft['wife_first_name'], $draft['wife_middle_name'], $draft['wife_last_name']);
+                $draft['requester_first_name']  = $requesterParts['first_name'];
+                $draft['requester_middle_name'] = $requesterParts['middle_name'];
+                $draft['requester_last_name']   = $requesterParts['last_name'];
                 unset($draft['citizen_name']);
                 header('Location: request.php?step=2');
                 exit;
@@ -135,6 +156,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                 $draft['document_type']     = $documentType;
                 unset($draft['husband_first_name'], $draft['husband_middle_name'], $draft['husband_last_name']);
                 unset($draft['wife_first_name'], $draft['wife_middle_name'], $draft['wife_last_name']);
+                $draft['requester_first_name']  = $requesterParts['first_name'];
+                $draft['requester_middle_name'] = $requesterParts['middle_name'];
+                $draft['requester_last_name']   = $requesterParts['last_name'];
                 unset($draft['citizen_name']);
                 header('Location: request.php?step=2');
                 exit;
@@ -239,16 +263,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                         }
                         $stmt = $pdo->prepare(
                             'INSERT INTO document_requests
-                             (tracking_code, first_name, middle_name, last_name, date_of_birth, date_of_marriage, date_of_death, sex, email, email_verified, phone,
+                             (tracking_code, first_name, middle_name, last_name,
+                              requester_first_name, requester_middle_name, requester_last_name,
+                              date_of_birth, date_of_marriage, date_of_death, sex, email, email_verified, phone,
                               document_type, purpose, id_front_path, id_back_path, privacy_agreed, notify_email, notify_sms,
                               appointment_date, appointment_time, status, print_fill_data)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
                         );
                         $stmt->execute([
                             $trackingCode,
                             $draft['first_name'],
                             $draft['middle_name'] ?? null,
                             $draft['last_name'],
+                            $draft['requester_first_name'],
+                            $draft['requester_middle_name'] ?? null,
+                            $draft['requester_last_name'],
                             !empty($draft['date_of_birth']) ? $draft['date_of_birth'] : null,
                             !empty($draft['date_of_marriage']) ? $draft['date_of_marriage'] : null,
                             !empty($draft['date_of_death']) ? $draft['date_of_death'] : null,
@@ -290,6 +319,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                         $_SESSION['request_success'] = [
                             'tracking_code'    => $trackingCode,
                             'citizen_name'     => personNameFromRow($draft),
+                            'requester_name'   => personRequesterNameFromRow($draft),
                             'first_name'       => $draft['first_name'],
                             'middle_name'      => $draft['middle_name'] ?? '',
                             'last_name'        => $draft['last_name'],
@@ -316,6 +346,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                 }
             }
         }
+    }
     }
 }
 
@@ -433,7 +464,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 </div>
                 <h1 class="text-2xl font-black text-slate-900 mb-2">Request Submitted Successfully</h1>
                 <p class="text-gray-500 text-sm">
-                    Thank you, <strong><?= htmlspecialchars($successData['citizen_name']) ?></strong>.
+                    Thank you, <strong><?= htmlspecialchars($successData['requester_name'] ?? $successData['citizen_name']) ?></strong>.
                     Your <?= htmlspecialchars($successData['document_label']) ?> request is now in our system.
                 </p>
             </div>
@@ -528,6 +559,23 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 <?= publicCsrfField() ?>
                 <input type="hidden" name="step" value="1">
                 <input type="hidden" name="record_verified" id="recordVerified" value="<?= $recordVerified ? '1' : '0' ?>">
+                <div>
+                    <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
+                        <i data-lucide="user-check" class="w-3.5 h-3.5 text-blue-500"></i> Your Name (Requester) *
+                    </label>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3" id="requesterNameGrid">
+                        <input type="text" id="requesterFirstNameInput" name="requester_first_name" required placeholder="First name"
+                               value="<?= htmlspecialchars($draft['requester_first_name'] ?? '') ?>"
+                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                        <input type="text" id="requesterMiddleNameInput" name="requester_middle_name" placeholder="Middle name (optional)"
+                               value="<?= htmlspecialchars($draft['requester_middle_name'] ?? '') ?>"
+                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                        <input type="text" id="requesterLastNameInput" name="requester_last_name" required placeholder="Last name"
+                               value="<?= htmlspecialchars($draft['requester_last_name'] ?? '') ?>"
+                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                    </div>
+                    <p class="text-[10px] text-gray-500 mt-1">Full name of the person submitting this request. This may differ from the name on the certificate.</p>
+                </div>
                 <div>
                     <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
                         <i data-lucide="file-text" class="w-3.5 h-3.5 text-blue-500"></i> Current Service Type *

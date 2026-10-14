@@ -74,6 +74,12 @@ function handleLogPrint(PDO $pdo): void
     }
 
     $printOptions = buildPrintOptionsFromRequest();
+    if ($documentKind === 'certification' && !empty($context['request'])) {
+        $issuedTo = certificationIssuedToOverridesForPrint($context['request'], $context['record']);
+        if (!empty($issuedTo['purpose'])) {
+            $printOptions['purpose'] = $issuedTo['purpose'];
+        }
+    }
     $printData = printCertificate(
         $pdo,
         $context['certificate_type'],
@@ -320,6 +326,10 @@ function handleSaveCalibration(PDO $pdo): void
 
 function handleSavePaperPreferences(): void
 {
+    if (!canCalibratePrintTemplates()) {
+        apiError('Only administrators can change print paper preferences.', 403);
+    }
+
     $preset = trim((string) ($_POST['preset'] ?? 'legal'));
     $widthMm = (float) ($_POST['width_mm'] ?? 0);
     $heightMm = (float) ($_POST['height_mm'] ?? 0);

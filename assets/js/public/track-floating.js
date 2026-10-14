@@ -123,7 +123,11 @@
               '<p><span class="font-bold text-slate-500">Booked:</span> ' + escapeHtml(formatDateDisplay(entity.created_at)) + '</p>'
             : (function () {
                 var visitLabel = visitStatusLabel(data, entity);
-                return '<p><span class="font-bold text-slate-500">Name:</span> ' + escapeHtml(entity.citizen_name) + '</p>' +
+                var requesterLine = entity.requester_name
+                    ? '<p><span class="font-bold text-slate-500">Requester:</span> ' + escapeHtml(entity.requester_name) + '</p>'
+                    : '';
+                return '<p><span class="font-bold text-slate-500">Name on certificate:</span> ' + escapeHtml(entity.citizen_name) + '</p>' +
+                    requesterLine +
                     '<p><span class="font-bold text-slate-500">Document:</span> ' + escapeHtml(data.document || entity.document_type) + '</p>' +
                     '<p><span class="font-bold text-slate-500">Submitted:</span> ' + escapeHtml(formatDateDisplay(entity.submitted_at)) + '</p>' +
                     (entity.appointment_date ? '<p><span class="font-bold text-slate-500">Pickup visit:</span> ' + escapeHtml(formatDateTimeDisplay(entity.appointment_date + ' ' + (entity.appointment_time || ''))) + '</p>' : '') +

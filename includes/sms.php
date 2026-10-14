@@ -378,12 +378,17 @@ const SMS_BODY_MAX_LENGTH = 150;
 
 function smsCitizenGreeting(array $row): string
 {
+    $requesterFirst = trim((string) ($row['requester_first_name'] ?? ''));
+    if ($requesterFirst !== '') {
+        return 'Hi ' . $requesterFirst . ',';
+    }
+
     $first = trim((string) ($row['first_name'] ?? ''));
     if ($first !== '') {
         return 'Hi ' . $first . ',';
     }
 
-    $name = trim(personNameFromRow($row));
+    $name = trim(function_exists('citizenNotifyPersonName') ? citizenNotifyPersonName($row) : personNameFromRow($row));
     if ($name === '') {
         return 'Hello,';
     }
@@ -526,7 +531,9 @@ function notifyRequestStatusSms(
     ensureCitizenNotifyColumns($pdo);
     ensureRejectionReasonColumns($pdo);
     $stmt = $pdo->prepare(
-        'SELECT tracking_code, first_name, middle_name, last_name, phone, document_type, status,
+        'SELECT tracking_code, first_name, middle_name, last_name,
+                requester_first_name, requester_middle_name, requester_last_name,
+                phone, document_type, status,
                 appointment_date, appointment_time, notify_sms, rejection_reason
          FROM document_requests WHERE id = ? LIMIT 1'
     );
@@ -629,9 +636,11 @@ function notifyRequestVisitSmsReminder(array $row, int $hoursBefore = 1): bool
     $code = (string) $row['tracking_code'];
     $hoursLabel = smsReminderHoursLabel($hoursBefore);
     $visit = smsVisitShort($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
+    $status = strtolower(trim((string) ($row['status'] ?? '')));
+    $visitLead = in_array($status, ['ready', 'verified'], true) ? 'Pickup in ' : 'Visit in ';
     $message = smsComposeCitizenMessage([
         smsCitizenGreeting($row),
-        'Pickup in ' . $hoursLabel . '.',
+        $visitLead . $hoursLabel . '.',
         'Code ' . $code . '.',
         $visit !== '' ? $visit . '.' : '',
         'Bring valid ID.',
@@ -871,13 +880,15 @@ function sendDueSmsReminderRow(
 function sendDueDocumentRequestSmsReminders(PDO $pdo): int
 {
     $stmt = $pdo->query(
-        "SELECT id, tracking_code, first_name, middle_name, last_name, phone, document_type, status,
+        "SELECT id, tracking_code, first_name, middle_name, last_name,
+                requester_first_name, requester_middle_name, requester_last_name,
+                phone, document_type, status,
                 appointment_date, appointment_time, notify_sms,
                 sms_reminder_1h_sent_at
          FROM document_requests
          WHERE notify_sms = 1
            AND phone IS NOT NULL AND phone != ''
-           AND status = 'ready'
+           AND status IN ('pending', 'verified', 'ready')
            AND appointment_date IS NOT NULL
            AND appointment_time IS NOT NULL
            AND TIMESTAMP(appointment_date, appointment_time) > NOW()

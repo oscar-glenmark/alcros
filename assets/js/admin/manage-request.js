@@ -416,6 +416,30 @@
         panel.style.bottom = '';
     }
 
+    function mountPrintDropdownOnBody(panel, menu) {
+        if (!panel || !menu) return;
+        if (!panel._printMenuPlaceholder) {
+            panel._printMenuPlaceholder = document.createComment('print-dropdown');
+            menu.appendChild(panel._printMenuPlaceholder);
+        }
+        panel._printMenuHost = menu;
+        if (panel.parentNode !== document.body) {
+            document.body.appendChild(panel);
+        }
+    }
+
+    function unmountPrintDropdown(panel) {
+        if (!panel || !panel._printMenuHost) return;
+        var menu = panel._printMenuHost;
+        var placeholder = panel._printMenuPlaceholder;
+        if (placeholder && placeholder.parentNode === menu) {
+            menu.insertBefore(panel, placeholder);
+        } else {
+            menu.appendChild(panel);
+        }
+        delete panel._printMenuHost;
+    }
+
     function positionPrintDropdown(trigger, panel) {
         if (!trigger || !panel) return;
 
@@ -450,10 +474,11 @@
         }
 
         var trigger = menu.querySelector('.manage-print-trigger');
-        var panel = menu.querySelector('.manage-print-dropdown');
+        var panel = menu._printDropdownPanel || menu.querySelector('.manage-print-dropdown');
         if (!trigger || !panel) {
             return;
         }
+        menu._printDropdownPanel = panel;
 
         menu.dataset.printMenuBound = '1';
         trigger.addEventListener('click', function (e) {
@@ -461,6 +486,7 @@
             var open = !panel.classList.contains('hidden');
             closePrintMenus();
             if (!open) {
+                mountPrintDropdownOnBody(panel, menu);
                 panel.classList.remove('hidden');
                 panel.classList.add('manage-print-dropdown--floating');
                 trigger.setAttribute('aria-expanded', 'true');
@@ -483,6 +509,7 @@
         document.querySelectorAll('.manage-print-dropdown').forEach(function (el) {
             el.classList.add('hidden');
             resetPrintDropdownPosition(el);
+            unmountPrintDropdown(el);
         });
         document.querySelectorAll('.manage-print-trigger').forEach(function (btn) {
             btn.setAttribute('aria-expanded', 'false');
@@ -491,6 +518,19 @@
 
     function bindPrintMenus() {
         document.querySelectorAll('.manage-print-menu').forEach(bindPrintMenu);
+    }
+
+    if (!window._alcrosManageRequestPrintScrollBound) {
+        window._alcrosManageRequestPrintScrollBound = true;
+        window.addEventListener('scroll', function () {
+            document.querySelectorAll('.manage-print-menu.is-open').forEach(function (menu) {
+                var trigger = menu.querySelector('.manage-print-trigger');
+                var panel = menu._printDropdownPanel;
+                if (trigger && panel && !panel.classList.contains('hidden')) {
+                    positionPrintDropdown(trigger, panel);
+                }
+            });
+        }, true);
     }
 
     function renderDetailActions(actionsWrap, data) {
@@ -547,14 +587,19 @@
     function populateDetailView(view, data) {
         var prefix = view.prefix;
 
-        setText(view.title, data.citizen_name || 'Request');
+        var headerName = (data.requester_name && data.requester_name !== '—')
+            ? data.requester_name
+            : (data.citizen_name || 'Request');
+        setText(view.title, headerName);
         setText(view.code, data.tracking_code || '');
+        setText(prefix + 'view-citizen-name', data.citizen_name || '—');
         setText(prefix + 'view-dob', data.date_of_birth);
         toggleDomRow(prefix, data);
         setText(prefix + 'view-sex', data.sex);
         setText(prefix + 'view-phone', data.phone);
         setText(prefix + 'view-email', data.email);
         setText(prefix + 'view-email-verified', data.email_verified);
+        setText(prefix + 'view-requester', data.requester_name || '—');
         setText(prefix + 'view-document-type', data.document_type);
         setText(prefix + 'view-purpose', data.purpose);
         setText(prefix + 'view-appointment', data.appointment);

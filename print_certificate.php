@@ -51,8 +51,11 @@ if (!$context['ok']) {
         $pageSubtitle = $isCertification
             ? certificationTitle($certificateType) . ' · Existing LCRO Record'
             : printCertificateTitle($certificateType) . ' · Municipal Form No. ' . printCertificateFormNumber($certificateType);
+        $certFillOverrides = $isCertification
+            ? certificationIssuedToOverridesForPrint($request, $record)
+            : [];
         $fillEditorFields = $isCertification
-            ? printCertificationFillEditorFields($certificateType, $record, [], $pdo)
+            ? printCertificationFillEditorFields($certificateType, $record, $certFillOverrides, $pdo)
             : printFillEditorFields($certificateType, $record, [], $pdo);
         $frontTemplate = getPrintTemplate($pdo, $certificateType, 'front', $documentKind);
         if ($isCertification) {
@@ -120,7 +123,11 @@ $printModeSetting = printMode();
                         <strong><?= htmlspecialchars($request['tracking_code']) ?></strong>
                     </div>
                     <div class="print-cert-summary__item">
-                        <span class="print-cert-label">Applicant</span>
+                        <span class="print-cert-label">Requester</span>
+                        <strong><?= htmlspecialchars(personRequesterNameFromRow($request) ?: personNameFromRow($request)) ?></strong>
+                    </div>
+                    <div class="print-cert-summary__item">
+                        <span class="print-cert-label">Name on certificate</span>
                         <strong><?= htmlspecialchars(personNameFromRow($request)) ?></strong>
                     </div>
                     <?php endif; ?>

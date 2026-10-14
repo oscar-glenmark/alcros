@@ -957,6 +957,8 @@ function ensureCitizenNotifyColumns(PDO $pdo): void
         }
     }
 
+    ensureDocumentRequestRequesterColumns($pdo);
+
     try {
         $pdo->query('SELECT notify_email FROM appointments LIMIT 1');
     } catch (Throwable $e) {
@@ -2883,6 +2885,83 @@ function personNameFromRow(array $row): string
     return trim((string) ($row['citizen_name'] ?? $row['person_name'] ?? ''));
 }
 
+/**
+ * Official name from the matched LCRO civil registry record (not the identification form input).
+ */
+function documentRequestNameOnRecord(array $row, ?PDO $pdo = null): string
+{
+    if ($pdo === null) {
+        try {
+            $pdo = getDB();
+        } catch (Throwable $e) {
+            return '—';
+        }
+    }
+
+    if (!function_exists('resolveCivilRecordForRequest')) {
+        require_once __DIR__ . '/printing.php';
+    }
+
+    $record = resolveCivilRecordForRequest($pdo, $row);
+    if ($record === null || empty($record['id']) || (($record['_print_source'] ?? '') === 'request')) {
+        return '—';
+    }
+
+    $display = civilRecordDisplayName($record);
+
+    return ($display !== '' && $display !== '—') ? $display : '—';
+}
+
+/** Person who submitted the certificate request (distinct from name on the certificate). */
+function personRequesterNameFromRow(array $row): string
+{
+    if (!array_key_exists('requester_first_name', $row)
+        && !array_key_exists('requester_middle_name', $row)
+        && !array_key_exists('requester_last_name', $row)) {
+        return '';
+    }
+
+    return formatPersonName(
+        (string) ($row['requester_first_name'] ?? ''),
+        $row['requester_middle_name'] ?? null,
+        (string) ($row['requester_last_name'] ?? '')
+    );
+}
+
+/** Salutation name for citizen email/SMS (requester on document requests when set). */
+function citizenNotifyPersonName(array $row): string
+{
+    $requester = personRequesterNameFromRow($row);
+    if ($requester !== '') {
+        return $requester;
+    }
+
+    return personNameFromRow($row);
+}
+
+function ensureDocumentRequestRequesterColumns(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+
+    try {
+        $pdo->query('SELECT requester_first_name FROM document_requests LIMIT 1');
+    } catch (Throwable $e) {
+        try {
+            $pdo->exec(
+                'ALTER TABLE document_requests
+                 ADD COLUMN requester_first_name VARCHAR(80) DEFAULT NULL AFTER last_name,
+                 ADD COLUMN requester_middle_name VARCHAR(80) DEFAULT NULL AFTER requester_first_name,
+                 ADD COLUMN requester_last_name VARCHAR(80) DEFAULT NULL AFTER requester_middle_name'
+            );
+        } catch (Throwable $ignored) {
+        }
+    }
+}
+
 function civilRecordDisplayName(array $row): string
 {
     if (($row['record_type'] ?? '') === 'marriage') {
@@ -4564,6 +4643,14 @@ function documentRequestSearchClause(string $search): array
         [$nameClauses, $nameParams] = adminSearchNameLikeClauses($nameSearch, 'first_name', 'middle_name', 'last_name');
         $clauses = array_merge($clauses, $nameClauses);
         $params = array_merge($params, $nameParams);
+        [$requesterClauses, $requesterParams] = adminSearchNameLikeClauses(
+            $nameSearch,
+            'requester_first_name',
+            'requester_middle_name',
+            'requester_last_name'
+        );
+        $clauses = array_merge($clauses, $requesterClauses);
+        $params = array_merge($params, $requesterParams);
     }
 
     foreach (['tracking_code', 'email', 'phone', 'purpose', 'notes', 'document_type'] as $field) {
@@ -4889,7 +4976,8 @@ function documentRequestViewData(array $row): array
     return [
         'id'             => (int) ($row['id'] ?? 0),
         'tracking_code'  => (string) ($row['tracking_code'] ?? ''),
-        'citizen_name'   => personNameFromRow($row),
+        'citizen_name'   => documentRequestNameOnRecord($row),
+        'requester_name' => ($rn = personRequesterNameFromRow($row)) !== '' ? $rn : '—',
         'first_name'     => (string) ($row['first_name'] ?? ''),
         'middle_name'    => (string) ($row['middle_name'] ?? ''),
         'last_name'      => (string) ($row['last_name'] ?? ''),
@@ -5619,7 +5707,7 @@ function notifyRequestSubmitted(array $data): bool
         'ALCROS — Request received (' . $data['tracking_code'] . ')',
         citizenMailWithCertificateFees([
             'heading'      => 'Request received',
-            'name'         => personNameFromRow($data),
+            'name'         => citizenNotifyPersonName($data),
             'intro'        => 'Thank you for submitting your document request through ALCROS.',
             'code_label'   => 'Tracking code',
             'code'         => $data['tracking_code'],
@@ -6058,7 +6146,9 @@ function notifyRequestStatusChange(
     ensureCitizenNotifyColumns($pdo);
     ensureRejectionReasonColumns($pdo);
     $stmt = $pdo->prepare(
-        'SELECT tracking_code, first_name, middle_name, last_name, email, document_type, status, appointment_date, appointment_time, notify_email, rejection_reason
+        'SELECT tracking_code, first_name, middle_name, last_name,
+                requester_first_name, requester_middle_name, requester_last_name,
+                email, document_type, status, appointment_date, appointment_time, notify_email, rejection_reason
          FROM document_requests WHERE id = ? LIMIT 1'
     );
     $stmt->execute([$requestId]);
@@ -6117,7 +6207,7 @@ function notifyRequestStatusChange(
 
     $sent = sendCitizenNotice($row['email'], $subject, citizenMailWithCertificateFees([
         'heading'      => $heading,
-        'name'         => personNameFromRow($row),
+        'name'         => citizenNotifyPersonName($row),
         'intro'        => $intro,
         'code_label'   => 'Tracking code',
         'code'         => $row['tracking_code'],
@@ -6338,7 +6428,7 @@ function notifyRequestVisitReminder(array $row, int $hoursBefore): bool
         'ALCROS — Visit in ' . $hoursLabel . ' (' . $row['tracking_code'] . ')',
         citizenMailWithCertificateFees([
             'heading'      => 'Visit reminder',
-            'name'         => personNameFromRow($row),
+            'name'         => citizenNotifyPersonName($row),
             'intro'        => 'This is a reminder that your preferred visit for document pickup is in about ' . $hoursLabel . '.',
             'code_label'   => 'Tracking code',
             'code'         => $row['tracking_code'],
@@ -6351,7 +6441,8 @@ function notifyRequestVisitReminder(array $row, int $hoursBefore): bool
             'button_label' => 'Track your request',
             'button_url'   => trackRequestUrl((string) $row['tracking_code']),
             'accent'       => '#d97706',
-        ])
+        ]),
+        'appointment_reminder_' . $hoursBefore . 'h'
     );
 }
 
@@ -6429,7 +6520,7 @@ function notifyRequestVisitSoon(array $row): bool
         'ALCROS — Visit today in ' . $soonLabel . ' (' . $row['tracking_code'] . ')',
         citizenMailWithCertificateFees([
             'heading'      => 'Your visit is coming up soon',
-            'name'         => personNameFromRow($row),
+            'name'         => citizenNotifyPersonName($row),
             'intro'        => 'Your preferred LCRO visit is in about ' . $soonLabel . '. Please head to the office if you are not already on your way.',
             'code_label'   => 'Tracking code',
             'code'         => $row['tracking_code'],
@@ -6496,7 +6587,9 @@ function maybeSendVisitSoonEmail(PDO $pdo, string $table, int $id): bool
 
     if ($table === 'document_requests') {
         $stmt = $pdo->prepare(
-            'SELECT id, tracking_code, first_name, middle_name, last_name, email, phone, document_type, status,
+            'SELECT id, tracking_code, first_name, middle_name, last_name,
+                    requester_first_name, requester_middle_name, requester_last_name,
+                    email, phone, document_type, status,
                     appointment_date, appointment_time, notify_email, notify_sms, reminder_1h_sent_at
              FROM document_requests WHERE id = ? LIMIT 1'
         );
@@ -6617,7 +6710,9 @@ function sendDueEmailReminderRow(PDO $pdo, array $row, string $table, callable $
 function sendDueDocumentRequestEmailReminders(PDO $pdo): int
 {
     $stmt = $pdo->query(
-        "SELECT id, tracking_code, first_name, middle_name, last_name, email, document_type, status,
+        "SELECT id, tracking_code, first_name, middle_name, last_name,
+                requester_first_name, requester_middle_name, requester_last_name,
+                email, document_type, status,
                 appointment_date, appointment_time, notify_email,
                 reminder_5h_sent_at, reminder_3h_sent_at, reminder_1h_sent_at
          FROM document_requests

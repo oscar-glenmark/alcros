@@ -394,16 +394,12 @@ if (isset($_GET['action']) && $_GET['action'] === 'view_record') {
         echo json_encode(['ok' => false, 'error' => 'Record not found.'], JSON_INVALID_UTF8_SUBSTITUTE);
         exit;
     }
-    $certificateType = (string) ($record['record_type'] ?? '');
-    $printValues = in_array($certificateType, $validTypes, true)
-        ? printBuildFieldValues($record, $certificateType, ['keep_empty' => false])
-        : [];
+    $record = civilRecordExpandForView($record);
     $lock = fetchCivilRecordEditLock($pdo, $recordId);
     echo json_encode([
-        'ok'           => true,
-        'record'       => $record,
-        'print_values' => $printValues,
-        'edit_lock'    => $lock ? formatCivilRecordEditLock($lock, staffId()) : null,
+        'ok'        => true,
+        'record'    => $record,
+        'edit_lock' => $lock ? formatCivilRecordEditLock($lock, staffId()) : null,
     ], JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -918,11 +914,6 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
             'birth' => civilRecordViewSections('birth'),
             'death' => civilRecordViewSections('death'),
             'marriage' => civilRecordViewSections('marriage'),
-        ],
-        'printFillFieldLabels' => [
-            'birth' => printFillFieldLabelsForType($pdo, 'birth'),
-            'death' => printFillFieldLabelsForType($pdo, 'death'),
-            'marriage' => printFillFieldLabelsForType($pdo, 'marriage'),
         ],
         'openEntryModal' => $canManageCivilRecords && (bool) ($showModal || $editRecord),
         'defaultEntryType' => $editRecord['record_type'] ?? ($type !== 'all' ? $type : 'birth'),

@@ -558,14 +558,14 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                 </div>
                 <?php else: ?>
                 <div class="overflow-x-auto">
-                <table class="manage-requests-table w-full text-left text-sm min-w-[720px]">
+                <table class="manage-requests-table w-full text-left text-sm min-w-[880px]">
                     <thead>
                         <tr>
-                            <th>Citizen</th>
-                            <th>Service</th>
-                            <th>Last visit</th>
-                            <th>Follow-up by</th>
-                            <th>Reminders</th>
+                            <th class="manage-col-citizen">Citizen</th>
+                            <th class="manage-col-service">Service</th>
+                            <th class="manage-col-last-visit">Last visit</th>
+                            <th class="manage-col-follow-up">Follow-up by</th>
+                            <th class="manage-col-reminders">Reminders</th>
                             <th class="manage-cell-actions">Actions</th>
                         </tr>
                     </thead>
@@ -687,17 +687,17 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                 </form>
                 <?php endif; ?>
                 <div class="overflow-x-auto">
-                <table class="manage-requests-table w-full text-left text-sm min-w-[800px]">
+                <table class="manage-requests-table w-full text-left text-sm min-w-[960px]">
                     <thead>
                         <tr>
                             <?php if ($showBulkActions): ?><th class="manage-bulk-col"><span class="sr-only">Select</span></th><?php endif; ?>
-                            <th>Code</th>
-                            <th>Citizen</th>
-                            <th>Service</th>
-                            <?php if ($isSearchMode): ?><th>Date</th><?php endif; ?>
-                            <th>Visit</th>
-                            <?php if ($isRecentlyDeletedView): ?><th>Deleted</th><?php endif; ?>
-                            <th>Status</th>
+                            <th class="manage-col-code">Code</th>
+                            <th class="manage-col-citizen">Citizen</th>
+                            <th class="manage-col-service">Service</th>
+                            <?php if ($isSearchMode): ?><th class="manage-col-date">Date</th><?php endif; ?>
+                            <th class="manage-col-visit">Visit</th>
+                            <?php if ($isRecentlyDeletedView): ?><th class="manage-col-submitted">Deleted</th><?php endif; ?>
+                            <th class="manage-col-status">Status</th>
                             <th class="manage-cell-actions">Actions</th>
                         </tr>
                     </thead>
@@ -717,12 +717,12 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                                 <?php endif; ?>
                             </td>
                             <?php endif; ?>
-                            <td><span class="manage-id"><?= htmlspecialchars($ap['appointment_code']) ?></span></td>
-                            <td>
+                            <td class="manage-col-code"><span class="manage-id"><?= htmlspecialchars($ap['appointment_code']) ?></span></td>
+                            <td class="manage-col-citizen">
                                 <p class="manage-citizen-name"><?= htmlspecialchars(personNameFromRow($ap)) ?></p>
                                 <p class="manage-citizen-meta"><?= htmlspecialchars($ap['phone'] ?: 'No phone on file') ?></p>
                             </td>
-                            <td><span class="manage-doc-type"><?= htmlspecialchars(appointmentServiceLabel($ap['service_type'])) ?></span></td>
+                            <td class="manage-col-service"><span class="manage-doc-type"><?= htmlspecialchars(appointmentServiceLabel($ap['service_type'])) ?></span></td>
                             <?php if ($isSearchMode): ?>
                             <td><span class="manage-date"><?= htmlspecialchars(formatDateEmailDisplay($ap['appointment_date'])) ?></span></td>
                             <?php endif; ?>

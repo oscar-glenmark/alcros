@@ -351,10 +351,74 @@ a.manage-stat-card.is-active {
     text-transform: uppercase;
 }
 
+.manage-requests-table thead th {
+    white-space: nowrap;
+    line-height: 1.25;
+    vertical-align: bottom;
+}
+
 .manage-requests-table th,
 .manage-requests-table td {
     padding: 0.75rem 1rem;
     vertical-align: middle;
+}
+
+.manage-col-request-id {
+    min-width: 6.75rem;
+}
+
+.manage-col-requester {
+    min-width: 8.75rem;
+}
+
+.manage-col-record-name {
+    min-width: 10rem;
+}
+
+.manage-col-certificate {
+    min-width: 5.75rem;
+}
+
+.manage-col-visit {
+    min-width: 6.25rem;
+}
+
+.manage-col-submitted {
+    min-width: 7.25rem;
+}
+
+.manage-col-status {
+    min-width: 9rem;
+}
+
+.manage-requests-table thead th.manage-cell-actions,
+.manage-requests-table td.manage-cell-actions {
+    min-width: 11.5rem;
+}
+
+.manage-col-code {
+    min-width: 6.75rem;
+}
+
+.manage-col-citizen {
+    min-width: 8.75rem;
+}
+
+.manage-col-service {
+    min-width: 6.5rem;
+}
+
+.manage-col-last-visit,
+.manage-col-follow-up {
+    min-width: 6.75rem;
+}
+
+.manage-col-reminders {
+    min-width: 6.5rem;
+}
+
+.manage-col-date {
+    min-width: 5.75rem;
 }
 
 .manage-requests-table tbody tr {
@@ -509,7 +573,12 @@ a.manage-stat-card.is-active {
     position: fixed;
     top: auto;
     right: auto;
-    z-index: 200;
+    z-index: 1200;
+}
+
+.manage-requests-row:has(.manage-print-menu.is-open) {
+    position: relative;
+    z-index: 40;
 }
 
 .manage-print-dropdown a {

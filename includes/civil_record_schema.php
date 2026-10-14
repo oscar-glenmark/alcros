@@ -360,200 +360,120 @@ function assertCivilRecordCsvImportComplete(array $input, string $type): void
     }
 }
 
+/** Merge computed + stored print-form values onto a civil record for the view modal. */
+function civilRecordExpandForView(array $record): array
+{
+    $type = (string) ($record['record_type'] ?? '');
+    if (!in_array($type, ['birth', 'death', 'marriage'], true)) {
+        return $record;
+    }
+
+    if (!function_exists('printBuildFieldValues')) {
+        require_once __DIR__ . '/printing.php';
+    }
+
+    $fill = printBuildFieldValues($record, $type, ['keep_empty' => true]);
+
+    return array_merge($record, $fill);
+}
+
+/** @return array{full?: bool} */
+function civilRecordViewFieldPresentationOptions(string $type, string $fieldName): array
+{
+    $opts = [];
+    if ($fieldName === 'autopsy_performed') {
+        $opts['format'] = 'bool';
+    }
+    if (preg_match(
+        '/_(address|signature|remarks|witnesses|reason|cause|place|specify|annotations|occupation|residence|title|relationship|statement|physician|officer|cemetery|burial|affidavit|message|details|name)$/i',
+        $fieldName
+    ) || in_array($fieldName, [
+        'witnesses',
+        'remarks_annotations',
+        'solemnizing_officer',
+        'attending_physician',
+        'immediate_cause',
+        'contributory_cause',
+    ], true)) {
+        $opts['full'] = true;
+    }
+
+    return $opts;
+}
+
 /** @return list<array{title: string, fields: list<array{key: string, label: string, format?: string, full?: bool}>}> */
 function civilRecordViewSections(string $type): array
 {
-    $field = static fn (string $key, ?string $label = null, array $opts = []): array => array_merge(
-        ['key' => $key, 'label' => $label ?? civilRecordViewFieldLabel($key)],
-        $opts
+    if (!in_array($type, ['birth', 'death', 'marriage'], true)) {
+        return [];
+    }
+
+    if (!function_exists('printFieldCatalog')) {
+        require_once __DIR__ . '/print_field_definitions.php';
+    }
+    if (!function_exists('printFillEntryFormSectionKey')) {
+        require_once __DIR__ . '/print_fill_controls.php';
+    }
+
+    $fieldDef = static fn (string $key): array => array_merge(
+        [
+            'key'   => $key,
+            'label' => civilRecordPrintFillFieldLabel($type, $key),
+        ],
+        civilRecordViewFieldPresentationOptions($type, $key)
     );
 
-    if ($type === 'birth') {
-        return [
-            [
-                'title' => 'Child Information',
-                'fields' => [
-                    $field('_person_name', 'Full Name', ['full' => true]),
-                    $field('sex'),
-                    $field('birth_date', 'Date of Birth', ['format' => 'date']),
-                    $field('birth_time'),
-                    $field('birth_type'),
-                    $field('birth_order'),
-                    $field('birth_weight'),
-                    $field('place', 'Place of Birth', ['full' => true]),
-                ],
-            ],
-            [
-                'title' => 'Mother',
-                'fields' => [
-                    $field('mother_name', 'Full Name', ['full' => true]),
-                    $field('mother_age'),
-                    $field('mother_nationality'),
-                    $field('mother_religion'),
-                    $field('mother_occupation'),
-                    $field('mother_residence', null, ['full' => true]),
-                    $field('mother_children_born_alive'),
-                    $field('mother_children_still_living'),
-                    $field('mother_children_born_alive_now_dead'),
-                ],
-            ],
-            [
-                'title' => 'Father',
-                'fields' => [
-                    $field('father_name', 'Full Name', ['full' => true]),
-                    $field('father_age'),
-                    $field('father_nationality'),
-                    $field('father_religion'),
-                    $field('father_occupation'),
-                    $field('father_residence', null, ['full' => true]),
-                ],
-            ],
-            [
-                'title' => 'Marriage of Parents',
-                'fields' => [
-                    $field('parents_marriage_date', null, ['format' => 'date']),
-                    $field('parents_marriage_place', null, ['full' => true]),
-                ],
-            ],
-            [
-                'title' => 'Registration',
-                'fields' => [
-                    $field('registration_date', null, ['format' => 'date']),
-                    $field('notes', null, ['full' => true]),
-                    $field('created_at', null, ['format' => 'date']),
-                ],
-            ],
-        ];
-    }
+    $sections = [];
+    $assigned = [];
 
-    if ($type === 'death') {
-        return [
-            [
-                'title' => 'Deceased',
-                'fields' => [
-                    $field('_person_name', 'Full Name', ['full' => true]),
-                    $field('sex'),
-                    $field('birth_date', 'Date of Birth', ['format' => 'date']),
-                    $field('registration_date', null, ['format' => 'date']),
-                    $field('_age_at_death'),
-                    $field('nationality'),
-                    $field('civil_status'),
-                    $field('religion'),
-                    $field('occupation'),
-                    $field('stillbirth', null, ['format' => 'bool']),
-                ],
-            ],
-            [
-                'title' => 'Residence & Family',
-                'fields' => [
-                    $field('residence_deceased', null, ['full' => true]),
-                    $field('residence_length_place'),
-                    $field('residence_length_ph'),
-                    $field('father_name', null, ['full' => true]),
-                    $field('mother_name', null, ['full' => true]),
-                    $field('surviving_spouse_name', null, ['full' => true]),
-                    $field('surviving_spouse_address', null, ['full' => true]),
-                ],
-            ],
-            [
-                'title' => 'Death Event',
-                'fields' => [
-                    $field('event_date', 'Date of Death', ['format' => 'date']),
-                    $field('_death_time'),
-                    $field('place', 'Place of Death', ['full' => true]),
-                    $field('place_of_burial', null, ['full' => true]),
-                ],
-            ],
-            [
-                'title' => 'Medical Information',
-                'fields' => [
-                    $field('immediate_cause', null, ['full' => true]),
-                    $field('contributory_cause', null, ['full' => true]),
-                    $field('attending_physician', null, ['full' => true]),
-                    $field('autopsy_performed'),
-                    $field('code_number'),
-                ],
-            ],
-            [
-                'title' => 'Infant Details (0–7 Days)',
-                'fields' => [
-                    $field('child_age_mother'),
-                    $field('child_delivery_method'),
-                    $field('child_pregnancy_length'),
-                    $field('child_birth_type'),
-                    $field('child_birth_order_infant'),
-                    $field('infant_cause_a', null, ['full' => true]),
-                    $field('infant_cause_b', null, ['full' => true]),
-                    $field('infant_cause_c', null, ['full' => true]),
-                    $field('infant_cause_d', null, ['full' => true]),
-                    $field('infant_cause_e', null, ['full' => true]),
-                    $field('postmortem_cause', null, ['full' => true]),
-                ],
-            ],
-            [
-                'title' => 'Registration',
-                'fields' => [
-                    $field('notes', null, ['full' => true]),
-                    $field('created_at', null, ['format' => 'date']),
-                ],
-            ],
-        ];
-    }
+    foreach (['front', 'back'] as $side) {
+        $catalog = printFieldCatalog()[$type][$side] ?? [];
+        if ($catalog === []) {
+            continue;
+        }
 
-    if ($type === 'marriage') {
-        $spouseFields = static function (string $prefix, string $roleLabel) use ($field): array {
-            return [
-                'title' => $roleLabel,
-                'fields' => [
-                    $field($prefix . '_name', 'Full Name', ['full' => true]),
-                    $field($prefix . '_birth_date', 'Date of Birth', ['format' => 'date']),
-                    $field($prefix . '_age'),
-                    $field($prefix . '_birth_place', 'Place of Birth', ['full' => true]),
-                    $field($prefix . '_citizenship'),
-                    $field($prefix . '_religion'),
-                    $field($prefix . '_civil_status'),
-                    $field($prefix . '_residence', null, ['full' => true]),
-                    $field($prefix . '_father_name', "Father's Name", ['full' => true]),
-                    $field($prefix . '_mother_maiden_name', "Mother's Maiden Name", ['full' => true]),
-                    $field($prefix . '_father_citizenship'),
-                    $field($prefix . '_mother_citizenship'),
-                    $field($prefix . '_consent_person_name', 'Consent Person Name', ['full' => true]),
-                    $field($prefix . '_consent_relationship'),
-                    $field($prefix . '_consent_residence', null, ['full' => true]),
-                ],
+        $bySection = [];
+        foreach (array_keys($catalog) as $fieldName) {
+            $sectionKey = printFillEntryFormSectionKey($type, $fieldName, $side);
+            $bySection[$sectionKey][] = $fieldName;
+        }
+
+        $sectionOrder = printFillEntryFormSectionOrder($type, $side);
+        $orderedSectionKeys = array_values(array_unique(array_merge($sectionOrder, array_keys($bySection))));
+
+        foreach ($orderedSectionKeys as $sectionKey) {
+            $fieldNames = $bySection[$sectionKey] ?? [];
+            if ($fieldNames === []) {
+                continue;
+            }
+
+            $fields = [];
+            foreach ($fieldNames as $fieldName) {
+                if (isset($assigned[$fieldName])) {
+                    continue;
+                }
+                $assigned[$fieldName] = true;
+                $fields[] = $fieldDef($fieldName);
+            }
+
+            if ($fields === []) {
+                continue;
+            }
+
+            $presentation = printFillEntryFormSectionPresentation($sectionKey);
+            $title = (string) ($presentation['label'] ?? ucwords(str_replace('_', ' ', $sectionKey)));
+            if ($side === 'back') {
+                $title .= ' (Back)';
+            }
+
+            $sections[] = [
+                'title'  => $title,
+                'fields' => $fields,
             ];
-        };
-
-        return [
-            [
-                'title' => 'Record',
-                'fields' => [
-                    $field('_person_name', 'Couple', ['full' => true]),
-                ],
-            ],
-            $spouseFields('husband', 'Husband'),
-            $spouseFields('wife', 'Wife'),
-            [
-                'title' => 'Marriage Ceremony',
-                'fields' => [
-                    $field('event_date', 'Date of Marriage', ['format' => 'date']),
-                    $field('marriage_time'),
-                    $field('place', 'Place of Marriage', ['full' => true]),
-                    $field('solemnized_by', null, ['full' => true]),
-                    $field('witnesses', null, ['full' => true]),
-                ],
-            ],
-            [
-                'title' => 'Registration',
-                'fields' => [
-                    $field('notes', null, ['full' => true]),
-                    $field('created_at', null, ['format' => 'date']),
-                ],
-            ],
-        ];
+        }
     }
 
-    return [];
+    return $sections;
 }
 
 /** @return array<string, string> */

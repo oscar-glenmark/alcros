@@ -38,17 +38,18 @@ $activities = $activities ?? [];
     <h2 id="dash-admin-analytics-heading" class="sr-only">Office analytics</h2>
     <?php endif; ?>
 
-    <?php if ($a['pendingCount'] > 0 || $a['readyCount'] > 0 || $a['queueWaiting'] > 0): ?>
-    <div class="dash-admin-attention">
+    <?php if ($showDashboardAnalyticsHeader && ($a['pendingCount'] > 0 || $a['readyCount'] > 0 || $a['queueWaiting'] > 0)): ?>
+    <div class="dash-admin-attention" role="status">
         <span class="dash-admin-attention__label">Needs attention</span>
+        <span class="dash-admin-attention__hint">Staff handle requests, queue, and appointments — view counts in Reports.</span>
         <?php if ($a['pendingCount'] > 0): ?>
-        <a href="<?= htmlspecialchars(buildStaffOperationalUrl('manage_request.php', ['status' => 'pending'])) ?>" class="dash-admin-attention__pill"><?= (int) $a['pendingCount'] ?> pending</a>
+        <span class="dash-admin-attention__pill dash-admin-attention__pill--static"><?= (int) $a['pendingCount'] ?> pending</span>
         <?php endif; ?>
         <?php if ($a['readyCount'] > 0): ?>
-        <a href="<?= htmlspecialchars(buildStaffOperationalUrl('manage_request.php', ['status' => 'ready'])) ?>" class="dash-admin-attention__pill"><?= (int) $a['readyCount'] ?> ready</a>
+        <span class="dash-admin-attention__pill dash-admin-attention__pill--static"><?= (int) $a['readyCount'] ?> ready</span>
         <?php endif; ?>
         <?php if ($a['queueWaiting'] > 0): ?>
-        <a href="<?= htmlspecialchars(buildStaffOperationalUrl('live-queue.php')) ?>" class="dash-admin-attention__pill"><?= (int) $a['queueWaiting'] ?> in queue</a>
+        <span class="dash-admin-attention__pill dash-admin-attention__pill--static"><?= (int) $a['queueWaiting'] ?> in queue</span>
         <?php endif; ?>
     </div>
     <?php endif; ?>
@@ -163,7 +164,6 @@ $activities = $activities ?? [];
 
     <?php
         $requestsChart = $a['requestsReportChart'] ?? [];
-        $requestsDetailsUrl = buildAuthUrl('report.php', ['section' => 'requests', 'range' => 'month']);
     ?>
     <div class="dash-admin-queue-wait">
         <div class="dash-admin-queue-wait__head">
@@ -172,7 +172,6 @@ $activities = $activities ?? [];
                 <h3 class="dash-admin-queue-wait__title">Document requests</h3>
                 <p class="dash-admin-queue-wait__sub"><?= number_format((int) ($requestsChart['total'] ?? $a['totalRequests'] ?? 0)) ?> total · last 6 months of submissions</p>
             </div>
-            <a href="<?= htmlspecialchars($requestsDetailsUrl) ?>" class="dash-admin-featured__details">View details</a>
         </div>
         <div class="dash-admin-split">
             <div class="analytics-chart-card dash-admin-split__panel">
@@ -202,7 +201,6 @@ $activities = $activities ?? [];
 
     <?php
         $apptChart = $a['appointmentsReportChart'] ?? [];
-        $appointmentsDetailsUrl = buildAuthUrl('report.php', ['section' => 'appointments', 'range' => 'month']);
     ?>
     <div class="dash-admin-queue-wait">
         <div class="dash-admin-queue-wait__head">
@@ -211,7 +209,6 @@ $activities = $activities ?? [];
                 <h3 class="dash-admin-queue-wait__title">Appointments</h3>
                 <p class="dash-admin-queue-wait__sub"><?= number_format((int) ($apptChart['total'] ?? $a['apptTotal'] ?? 0)) ?> total · visits by appointment date</p>
             </div>
-            <a href="<?= htmlspecialchars($appointmentsDetailsUrl) ?>" class="dash-admin-featured__details">View details</a>
         </div>
         <div class="dash-admin-split">
             <div class="analytics-chart-card dash-admin-split__panel">

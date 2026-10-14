@@ -872,6 +872,26 @@ function seedCertificationPrintTemplates(PDO $pdo): void
     setSetting('certification_layout_version', (string) CERTIFICATION_LAYOUT_VERSION);
 }
 
+/** @return array<string, string> Issued-to overrides for certification (requester + saved print_fill). */
+function certificationIssuedToOverridesForPrint(?array $request, array $record): array
+{
+    $overrides = [];
+    if ($request) {
+        $requester = personRequesterNameFromRow($request);
+        if ($requester !== '') {
+            $overrides['purpose'] = $requester;
+        }
+    }
+
+    $stored = printParseFillData($record['print_fill_data'] ?? null);
+    $storedPurpose = trim((string) ($stored['purpose'] ?? ''));
+    if ($storedPurpose !== '') {
+        $overrides['purpose'] = $storedPurpose;
+    }
+
+    return $overrides;
+}
+
 function printCertificationFillEditorFields(string $certificateType, array $record, array $overrides = [], ?PDO $pdo = null): array
 {
     $values = certificationBuildFieldValues($record, $certificateType, ['keep_empty' => true]);

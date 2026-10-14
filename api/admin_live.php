@@ -14,27 +14,22 @@ try {
     ensureCitizenNotifyColumns($pdo);
 
     $limit = isset($_GET['limit']) ? max(1, min(100, (int) $_GET['limit'])) : 20;
-    $notifications = fetchNotifications($pdo, $limit);
+    $forAdministrator = isAdmin();
+    $notifications = filterStaffPortalNotifications(fetchNotifications($pdo, $limit), $forAdministrator);
     foreach ($notifications as $notification) {
-        $type = (string) ($notification['type'] ?? '');
-        if ($type === 'system' && !isAdmin()) {
-            continue;
-        }
-        if ($type !== 'system' && isAdmin()) {
-            continue;
-        }
         upsertStaffNotification($notification);
     }
 
-    $counts = isAdmin()
+    $counts = $forAdministrator
         ? ['pending_requests' => 0, 'pending_appointments' => 0]
         : fetchSidebarActionCounts($pdo);
 
     apiJsonResponse([
         'notifications' => $notifications,
+        'portal_role'   => $forAdministrator ? 'administrator' : 'staff',
         'count'         => count($notifications),
         'counts'        => $counts,
-        'revision'      => sha1(json_encode([$counts, array_column($notifications, 'id')])),
+        'revision'      => sha1(json_encode([$counts, array_column($notifications, 'id'), $forAdministrator])),
     ]);
 } catch (Throwable $e) {
     apiError('Unable to load live admin data.', 500);

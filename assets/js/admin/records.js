@@ -1410,37 +1410,20 @@
             return formatDate(r[key]);
         }
         if (format === 'bool') {
-            return r[key] == 1 ? 'Yes' : 'No';
+            var raw = r[key];
+            if (raw == 1 || String(raw).toLowerCase() === 'yes' || String(raw).toLowerCase() === 'true') {
+                return 'Yes';
+            }
+            if (raw == 0 || String(raw).toLowerCase() === 'no' || String(raw).toLowerCase() === 'false') {
+                return 'No';
+            }
+            return displayValue(raw);
         }
 
         return displayValue(r[key]);
     }
 
-    function buildPrintFillSection(r, printValues) {
-        var type = r.record_type || '';
-        var labels = (cfg.printFillFieldLabels && cfg.printFillFieldLabels[type]) || {};
-        var rows = [];
-
-        Object.keys(labels).forEach(function (key) {
-            var value = printValues && printValues[key] !== undefined ? printValues[key] : '';
-            if (String(value || '').trim() === '') {
-                return;
-            }
-            rows.push([labels[key], value]);
-        });
-
-        if (!rows.length) {
-            return '';
-        }
-
-        return detailSection(
-            'Print Certificate Fields',
-            rows,
-            rows.map(function (entry) { return entry[0]; })
-        );
-    }
-
-    function buildViewRecordPresentation(r, printValues) {
+    function buildViewRecordPresentation(r) {
         var sections = [];
         var type = r.record_type || '';
         var registry = displayValue(recordRegistryNumber(r));
@@ -1468,11 +1451,6 @@
                 fullLabels
             ));
         });
-
-        var printSection = buildPrintFillSection(r, printValues || {});
-        if (printSection) {
-            sections.push(printSection);
-        }
 
         if (!viewSections.length) {
             sections.push(detailSection('Record', [
@@ -1503,7 +1481,7 @@
         };
     }
 
-    function renderViewRecordPresentation(r, printValues) {
+    function renderViewRecordPresentation(r) {
         var viewContent = document.getElementById('viewContent');
         if (viewContent && window.AlcrosLoading && typeof window.AlcrosLoading.clearSkeletonHost === 'function') {
             window.AlcrosLoading.clearSkeletonHost(viewContent);
@@ -1520,7 +1498,7 @@
 
         viewRecordIdForHistory = r.id;
 
-        var presentation = buildViewRecordPresentation(r, printValues);
+        var presentation = buildViewRecordPresentation(r);
         viewContent.innerHTML = presentation.html;
         if (viewModalTitle) {
             viewModalTitle.textContent = presentation.title;
@@ -1696,6 +1674,7 @@
         if (!btn) {
             return;
         }
+        readPageConfig();
         var r;
         try {
             r = JSON.parse(btn.getAttribute('data-record') || '{}');
@@ -1722,7 +1701,10 @@
         viewUrl.searchParams.set('action', 'view_record');
         viewUrl.searchParams.set('id', String(r.id));
 
-        fetch(viewUrl.pathname + viewUrl.search, { credentials: 'same-origin' })
+        fetch(viewUrl.pathname + viewUrl.search, {
+            credentials: 'same-origin',
+            headers: { Accept: 'application/json' }
+        })
             .then(function (res) {
                 if (!res.ok) {
                     throw new Error('Record request failed.');
@@ -1736,10 +1718,12 @@
                 if (data.edit_lock) {
                     data.record.edit_lock = data.edit_lock;
                 }
-                renderViewRecordPresentation(data.record, data.print_values || {});
+                renderViewRecordPresentation(data.record);
             })
             .catch(function () {
-                renderViewRecordPresentation(r, {});
+                if (viewContent) {
+                    viewContent.innerHTML = '<p class="records-detail-loading text-red-600">Could not load full record details. Refresh the page and try again.</p>';
+                }
             });
     }
 

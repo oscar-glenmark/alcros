@@ -268,6 +268,8 @@
         var recordVerified = document.getElementById('recordVerified');
         var recordStatus = document.getElementById('recordStatus');
         var form = document.getElementById('identificationForm');
+        var requesterFirstNameInput = document.getElementById('requesterFirstNameInput');
+        var requesterLastNameInput = document.getElementById('requesterLastNameInput');
 
         function activeDocumentType() {
             return documentTypeSelect ? documentTypeSelect.value : 'birth';
@@ -465,6 +467,16 @@
 
                 if (!documentType) {
                     setFieldError(documentTypeSelect, 'Select the document type you need.');
+                    ok = false;
+                }
+
+                var reqFirst = requesterFirstNameInput ? requesterFirstNameInput.value.trim() : '';
+                var reqLast = requesterLastNameInput ? requesterLastNameInput.value.trim() : '';
+                if (!reqFirst || !reqLast) {
+                    var requesterGrid = document.getElementById('requesterNameGrid');
+                    if (requesterGrid) {
+                        setGroupError(requesterGrid.parentElement, 'Enter your first and last name as the requester.');
+                    }
                     ok = false;
                 }
 

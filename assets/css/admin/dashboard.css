@@ -431,6 +431,24 @@
     background: #fef3c7;
 }
 
+.dash-admin-attention__pill--static {
+    cursor: default;
+    pointer-events: none;
+}
+
+.dash-admin-attention__pill--static:hover {
+    background: #fff;
+}
+
+.dash-admin-attention__hint {
+    flex-basis: 100%;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: #b45309;
+    line-height: 1.35;
+    margin: 0.15rem 0 0.25rem;
+}
+
 .dash-admin-featured {
     padding: 1.25rem 1.25rem 1rem;
 }

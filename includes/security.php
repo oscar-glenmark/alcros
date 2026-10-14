@@ -621,7 +621,8 @@ function publicTrackingRequest(array $row): array
 {
     return [
         'tracking_code'    => $row['tracking_code'] ?? '',
-        'citizen_name'     => personNameFromRow($row),
+        'citizen_name'     => documentRequestNameOnRecord($row),
+        'requester_name'   => personRequesterNameFromRow($row),
         'document_type'    => $row['document_type'] ?? '',
         'status'           => $row['status'] ?? '',
         'submitted_at'     => $row['submitted_at'] ?? '',

@@ -11,7 +11,29 @@
 
     function staffRoot() {
         return document.getElementById('notif-wrapper') ||
-            document.querySelector('[data-staff-id]');
+            document.querySelector('[data-staff-id]') ||
+            document.body;
+    }
+
+    function portalRole() {
+        var el = staffRoot();
+        var role = el ? String(el.getAttribute('data-staff-portal-role') || '').toLowerCase() : '';
+        return role === 'administrator' ? 'administrator' : 'staff';
+    }
+
+    function filterForPortalRole(all, roleOverride) {
+        var role = roleOverride || portalRole();
+        var isAdmin = role === 'administrator';
+        var operational = { pending_request: 1, ready_pickup: 1, queue: 1, appointment: 1 };
+
+        return (all || []).filter(function (n) {
+            var type = n && n.type ? String(n.type) : '';
+            var isSystem = type === 'system' || (n.error_key && String(n.error_key).length > 0);
+            if (isAdmin) {
+                return isSystem;
+            }
+            return !isSystem && operational[type] === 1;
+        });
     }
 
     function staffKey(suffix) {
@@ -372,7 +394,8 @@
         bindPanelActions(refresh, function () { return latest; });
 
         function applyPayload(data) {
-            latest = (data && data.notifications) || [];
+            var role = (data && data.portal_role) ? String(data.portal_role).toLowerCase() : portalRole();
+            latest = filterForPortalRole((data && data.notifications) || [], role);
             latestCounts = (data && data.counts) || latestCounts;
             refresh();
         }

@@ -94,30 +94,38 @@
                 '<input type="hidden" name="action" value="call_again">' +
                 '<button type="submit" class="queue-call-again-btn w-full py-2.5 rounded-xl border-2 border-slate-200 text-slate-600 font-bold text-xs uppercase tracking-wide hover:bg-slate-50 flex items-center justify-center gap-2">' +
                 '<i data-lucide="volume-2" class="w-4 h-4"></i> Call again</button>';
-            var nextForm = section.querySelector('form input[name="action"][value="next"]');
-            if (nextForm && nextForm.closest('form')) {
-                nextForm.closest('form').insertAdjacentElement('afterend', callForm);
+            var anchor = section.querySelector('.queue-no-show-form') || section.querySelector('.queue-next-form');
+            if (anchor) {
+                anchor.insertAdjacentElement('afterend', callForm);
                 if (typeof lucide !== 'undefined') lucide.createIcons();
             }
         } else if (!hasServing && callAgainForm) {
             callAgainForm.remove();
         }
 
-        var skipForm = section.querySelector('form input[name="action"][value="skip"]');
-        var skipParent = skipForm ? skipForm.closest('form') : null;
-        if (hasServing && !skipParent) {
-            var actions = document.createElement('form');
-            actions.method = 'POST';
-            actions.className = 'mt-4 pt-4 border-t border-slate-100 queue-skip-form';
-            actions.setAttribute('data-no-confirm', '');
-            actions.innerHTML = authInputHtml() +
+        var noShowForm = section.querySelector('.queue-no-show-form');
+        var noShowSlot = section.querySelector('.queue-no-show-slot');
+        var nextFormEl = section.querySelector('.queue-next-form');
+        if (hasServing && !noShowForm) {
+            var noShow = document.createElement('form');
+            noShow.method = 'POST';
+            noShow.className = 'mb-4 queue-no-show-form';
+            noShow.setAttribute('data-no-confirm', '');
+            noShow.innerHTML = authInputHtml() +
                 '<input type="hidden" name="purpose" value="' + purpose + '">' +
-                '<input type="hidden" name="action" value="skip">' +
-                '<button type="submit" class="text-[11px] text-slate-400 hover:text-red-500 font-medium">No-show — skip current</button>';
-            var body = section.querySelector('.p-5');
-            if (body) body.appendChild(actions);
-        } else if (!hasServing && skipParent) {
-            skipParent.remove();
+                '<input type="hidden" name="action" value="no_show">' +
+                '<button type="submit" class="queue-no-show-btn w-full py-2.5 rounded-xl border-2 border-rose-200 bg-rose-50 text-rose-700 font-bold text-xs uppercase tracking-wide hover:bg-rose-100 hover:border-rose-300 flex items-center justify-center gap-2" data-loading-text="Marking no-show…">' +
+                '<i data-lucide="user-x" class="w-4 h-4"></i> No show</button>';
+            if (nextFormEl) {
+                nextFormEl.insertAdjacentElement('afterend', noShow);
+            } else if (noShowSlot) {
+                noShowSlot.replaceWith(noShow);
+            }
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        } else if (!hasServing && noShowForm) {
+            var placeholder = document.createElement('div');
+            placeholder.className = 'queue-no-show-slot hidden mb-4';
+            noShowForm.replaceWith(placeholder);
         }
     }
 

@@ -674,6 +674,7 @@ $recordsJumpDesc = sprintf(
                                     <th class="px-5 py-3">Ticket</th>
                                     <th class="px-5 py-3">Purpose</th>
                                     <th class="px-5 py-3">Status</th>
+                                    <th class="px-5 py-3 text-center">No show</th>
                                     <th class="px-5 py-3 hidden md:table-cell">Issued</th>
                                     <th class="px-5 py-3 hidden lg:table-cell">First called</th>
                                     <th class="px-5 py-3 text-right">Wait</th>
@@ -681,13 +682,17 @@ $recordsJumpDesc = sprintf(
                             </thead>
                             <tbody class="divide-y divide-gray-50">
                                 <?php if (empty($report['queue_tickets'])): ?>
-                                <tr><td colspan="6" class="px-5 py-12 text-center text-gray-400 text-sm">No queue tickets for this period.</td></tr>
+                                <tr><td colspan="7" class="px-5 py-12 text-center text-gray-400 text-sm">No queue tickets for this period.</td></tr>
                                 <?php else: foreach ($report['queue_tickets'] as $row): ?>
-                                <?php $firstCalled = $row['first_called_at'] ?? $row['called_at'] ?? null; ?>
+                                <?php
+                                $firstCalled = $row['first_called_at'] ?? $row['called_at'] ?? null;
+                                $isNoShow = queueTicketIsNoShow($row);
+                                ?>
                                 <tr class="hover:bg-gray-50/60">
                                     <td class="px-5 py-3 font-mono text-xs font-bold text-slate-800"><?= htmlspecialchars($row['ticket_number']) ?></td>
                                     <td class="px-5 py-3 text-slate-600"><?= htmlspecialchars($purposeLabels[$row['purpose']] ?? $row['purpose']) ?></td>
-                                    <td class="px-5 py-3 capitalize text-slate-600"><?= htmlspecialchars($row['status']) ?></td>
+                                    <td class="px-5 py-3 text-slate-600"><?= htmlspecialchars(queueTicketStatusLabel((string) ($row['status'] ?? ''))) ?></td>
+                                    <td class="px-5 py-3 text-center text-xs font-bold <?= $isNoShow ? 'text-rose-600' : 'text-gray-300' ?>"><?= $isNoShow ? 'Yes' : '—' ?></td>
                                     <td class="px-5 py-3 text-gray-400 text-xs hidden md:table-cell whitespace-nowrap"><?= htmlspecialchars(formatReportDateTime($row['created_at'] ?? null)) ?></td>
                                     <td class="px-5 py-3 text-gray-400 text-xs hidden lg:table-cell whitespace-nowrap"><?= $firstCalled ? htmlspecialchars(formatReportDateTime($firstCalled)) : '—' ?></td>
                                     <td class="px-5 py-3 text-right font-semibold text-slate-800 text-xs whitespace-nowrap"><?= htmlspecialchars($row['wait_label'] ?? formatQueueWaitDuration($row['wait_seconds'] ?? null)) ?></td>

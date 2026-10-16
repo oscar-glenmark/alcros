@@ -43,6 +43,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 queueFlashSet('error', 'No ticket is currently being served at this table.');
             }
+        } elseif ($action === 'no_show' && isset($tables[$purpose])) {
+            $tableNum = queueTableForPurpose($purpose);
+            $result = queueNoShowAndAdvance($pdo, $purpose, $tableNum, staffId());
+            if ($result['no_show_ticket'] === null) {
+                queueFlashSet('error', 'No ticket is currently being served at this table.');
+            } elseif ($result['called_ticket'] !== null) {
+                queueFlashSet(
+                    'success',
+                    'No-show: ' . $result['no_show_ticket'] . '. Now calling ' . $result['called_ticket'] . " at Table $tableNum."
+                );
+            } else {
+                queueFlashSet(
+                    'success',
+                    'No-show: ' . $result['no_show_ticket'] . '. No one else is waiting in this line.'
+                );
+            }
         } else {
             queueFlashSet('error', 'Could not update the queue. Please try again.');
         }
@@ -126,7 +142,7 @@ $pageSubtitle = 'One button per table — tap when you are ready for the next ci
                             <?php endif; ?>
                         </div>
 
-                        <form method="POST" class="mb-4" data-no-confirm>
+                        <form method="POST" class="mb-3 queue-next-form" data-no-confirm>
                             <?= authFormField() ?>
                             <input type="hidden" name="purpose" value="<?= htmlspecialchars($purpose) ?>">
                             <input type="hidden" name="action" value="next">
@@ -137,6 +153,21 @@ $pageSubtitle = 'One button per table — tap when you are ready for the next ci
                                 <?= htmlspecialchars($btnLabel) ?>
                             </button>
                         </form>
+
+                        <?php if ($hasServing): ?>
+                        <form method="POST" class="mb-4 queue-no-show-form" data-no-confirm>
+                            <?= authFormField() ?>
+                            <input type="hidden" name="purpose" value="<?= htmlspecialchars($purpose) ?>">
+                            <input type="hidden" name="action" value="no_show">
+                            <button type="submit"
+                                class="queue-no-show-btn w-full py-2.5 rounded-xl border-2 border-rose-200 bg-rose-50 text-rose-700 font-bold text-xs uppercase tracking-wide hover:bg-rose-100 hover:border-rose-300 flex items-center justify-center gap-2"
+                                data-loading-text="Marking no-show…">
+                                <i data-lucide="user-x" class="w-4 h-4"></i> No show
+                            </button>
+                        </form>
+                        <?php else: ?>
+                        <div class="queue-no-show-slot hidden mb-4"></div>
+                        <?php endif; ?>
 
                         <?php if ($hasServing): ?>
                         <form method="POST" class="mb-4" data-no-confirm>
@@ -170,17 +201,6 @@ $pageSubtitle = 'One button per table — tap when you are ready for the next ci
                             <p class="queue-waiting-list text-[11px] text-slate-400 hidden" data-purpose="<?= htmlspecialchars($purpose) ?>"></p>
                             <?php endif; ?>
                         </div>
-
-                        <?php if ($hasServing): ?>
-                        <form method="POST" class="mt-4 pt-4 border-t border-slate-100" data-no-confirm>
-                            <?= authFormField() ?>
-                            <input type="hidden" name="purpose" value="<?= htmlspecialchars($purpose) ?>">
-                            <input type="hidden" name="action" value="skip">
-                            <button type="submit" class="text-[11px] text-slate-400 hover:text-red-500 font-medium">No-show — skip current</button>
-                        </form>
-                        <?php else: ?>
-                        <div class="queue-skip-slot hidden"></div>
-                        <?php endif; ?>
                     </div>
                 </section>
                 <?php endforeach; ?>

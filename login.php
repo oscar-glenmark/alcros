@@ -405,7 +405,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <?= $rememberMeChecked ? 'checked' : '' ?>
                                 >
 
-                                <span class="auth-portal-remember__label">Keep me logged in</span>
+                                <span class="auth-portal-remember__label">Remember me</span>
 
                             </label>
 

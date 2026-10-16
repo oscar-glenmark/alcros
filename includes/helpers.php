@@ -217,6 +217,96 @@ function queueSkipServing(PDO $pdo, string $purpose, string $staffId): ?string
     }
 }
 
+/** Mark current serving ticket as no-show (skipped), then call the next waiting ticket. */
+function queueNoShowAndAdvance(PDO $pdo, string $purpose, int $tableNum, string $staffId): array
+{
+    if (!isset(queuePurposeConfig()[$purpose])) {
+        throw new InvalidArgumentException('Invalid queue purpose.');
+    }
+
+    ensureQueueTicketTimingColumns($pdo);
+
+    $day = queueTodaySql('created_at');
+    $pdo->beginTransaction();
+    try {
+        $servingStmt = $pdo->prepare(
+            "SELECT id, ticket_number FROM queue_tickets
+             WHERE purpose = ? AND status = 'serving' AND $day
+             LIMIT 1 FOR UPDATE"
+        );
+        $servingStmt->execute([$purpose]);
+        $servingRow = $servingStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$servingRow) {
+            $pdo->commit();
+
+            return [
+                'no_show_ticket' => null,
+                'called_ticket'  => null,
+            ];
+        }
+
+        $pdo->prepare("UPDATE queue_tickets SET status = 'skipped' WHERE id = ?")
+            ->execute([(int) $servingRow['id']]);
+        $noShowTicket = (string) $servingRow['ticket_number'];
+        logActivity($staffId, 'Queue', "No-show $noShowTicket at Table $tableNum");
+
+        $nextStmt = $pdo->prepare(
+            "SELECT id, ticket_number FROM queue_tickets
+             WHERE purpose = ? AND status = 'waiting' AND $day
+             ORDER BY created_at ASC LIMIT 1 FOR UPDATE"
+        );
+        $nextStmt->execute([$purpose]);
+        $nextRow = $nextStmt->fetch(PDO::FETCH_ASSOC);
+
+        $calledTicket = null;
+        if ($nextRow) {
+            $pdo->prepare(
+                "UPDATE queue_tickets
+                 SET status = 'serving',
+                     called_at = NOW(),
+                     first_called_at = COALESCE(first_called_at, NOW()),
+                     window_number = ?
+                 WHERE id = ?"
+            )->execute([$tableNum, (int) $nextRow['id']]);
+            $calledTicket = (string) $nextRow['ticket_number'];
+            logActivity($staffId, 'Queue', "Table $tableNum: called {$nextRow['ticket_number']}");
+        }
+
+        $pdo->commit();
+
+        if ($calledTicket !== null) {
+            require_once __DIR__ . '/queue_announcements.php';
+            queueEnqueueAnnouncement($pdo, $purpose, $calledTicket, $tableNum);
+        }
+
+        return [
+            'no_show_ticket' => $noShowTicket,
+            'called_ticket'  => $calledTicket,
+        ];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
+function queueTicketIsNoShow(array $row): bool
+{
+    return strtolower(trim((string) ($row['status'] ?? ''))) === 'skipped';
+}
+
+function queueTicketStatusLabel(string $status): string
+{
+    return match (strtolower(trim($status))) {
+        'skipped' => 'No show',
+        'waiting' => 'Waiting',
+        'serving' => 'Serving',
+        'completed' => 'Completed',
+        default     => ucfirst($status),
+    };
+}
+
 function queuePurposeConfig(): array
 {
     return [

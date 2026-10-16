@@ -71,6 +71,195 @@ function staffSessionLogout(): void
     session_destroy();
 }
 
+const STAFF_REMEMBER_COOKIE = 'alcros_remember';
+const STAFF_REMEMBER_DAYS = 30;
+
+function staffRememberCookieParams(): array
+{
+    if (!function_exists('alcrosRequestIsHttps')) {
+        require_once __DIR__ . '/hosting.php';
+    }
+
+    return [
+        'expires'  => time() + (STAFF_REMEMBER_DAYS * 86400),
+        'path'     => '/',
+        'domain'   => '',
+        'secure'   => alcrosRequestIsHttps(),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ];
+}
+
+function ensureStaffRememberTokensTable(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS staff_remember_tokens (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            staff_id VARCHAR(50) NOT NULL,
+            token_hash CHAR(64) NOT NULL,
+            expires_at DATETIME NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_staff_remember_hash (token_hash),
+            INDEX idx_staff_remember_staff (staff_id),
+            INDEX idx_staff_remember_expires (expires_at)
+        ) ENGINE=InnoDB'
+    );
+}
+
+function staffRememberMeClearCookie(): void
+{
+    if (headers_sent()) {
+        return;
+    }
+
+    setcookie(STAFF_REMEMBER_COOKIE, '', [
+        'expires'  => time() - 3600,
+        'path'     => '/',
+        'secure'   => staffRememberCookieParams()['secure'],
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    unset($_COOKIE[STAFF_REMEMBER_COOKIE]);
+}
+
+function staffRememberMeRawFromCookie(): string
+{
+    $raw = $_COOKIE[STAFF_REMEMBER_COOKIE] ?? '';
+
+    return is_string($raw) && preg_match('/^[A-Za-z0-9_-]{43}$/', $raw) ? $raw : '';
+}
+
+function staffRememberMeIssue(PDO $pdo, array $staff): void
+{
+    ensureStaffRememberTokensTable($pdo);
+    staffRememberMePurgeExpired($pdo);
+
+    $staffId = (string) ($staff['staff_id'] ?? '');
+    if ($staffId === '') {
+        return;
+    }
+
+    $pdo->prepare('DELETE FROM staff_remember_tokens WHERE staff_id = ?')->execute([$staffId]);
+
+    $raw = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+    $hash = hash('sha256', $raw);
+    $expiresAt = date('Y-m-d H:i:s', time() + (STAFF_REMEMBER_DAYS * 86400));
+
+    $pdo->prepare(
+        'INSERT INTO staff_remember_tokens (staff_id, token_hash, expires_at) VALUES (?, ?, ?)'
+    )->execute([$staffId, $hash, $expiresAt]);
+
+    $params = staffRememberCookieParams();
+    setcookie(STAFF_REMEMBER_COOKIE, $raw, $params);
+    $_COOKIE[STAFF_REMEMBER_COOKIE] = $raw;
+}
+
+function staffRememberMePurgeExpired(PDO $pdo): void
+{
+    try {
+        $pdo->exec('DELETE FROM staff_remember_tokens WHERE expires_at < NOW()');
+    } catch (Throwable $e) {
+        // Non-fatal.
+    }
+}
+
+function staffRememberMeRevokeRaw(PDO $pdo, string $raw): void
+{
+    if ($raw === '') {
+        return;
+    }
+
+    ensureStaffRememberTokensTable($pdo);
+    $hash = hash('sha256', $raw);
+    $pdo->prepare('DELETE FROM staff_remember_tokens WHERE token_hash = ?')->execute([$hash]);
+    staffRememberMeClearCookie();
+}
+
+function staffRememberMeRevokeCurrent(PDO $pdo): void
+{
+    staffRememberMeRevokeRaw($pdo, staffRememberMeRawFromCookie());
+}
+
+function staffRememberMeRevokeAllForStaff(PDO $pdo, string $staffId): void
+{
+    $staffId = trim($staffId);
+    if ($staffId === '') {
+        return;
+    }
+
+    ensureStaffRememberTokensTable($pdo);
+
+    $raw = staffRememberMeRawFromCookie();
+    if ($raw !== '') {
+        $hash = hash('sha256', $raw);
+        $stmt = $pdo->prepare(
+            'SELECT staff_id FROM staff_remember_tokens WHERE token_hash = ? AND staff_id = ? LIMIT 1'
+        );
+        $stmt->execute([$hash, $staffId]);
+        if ($stmt->fetchColumn()) {
+            staffRememberMeClearCookie();
+        }
+    }
+
+    $pdo->prepare('DELETE FROM staff_remember_tokens WHERE staff_id = ?')->execute([$staffId]);
+}
+
+function staffRememberMeTryRestore(): bool
+{
+    if (getStaffFromSession() !== null) {
+        return false;
+    }
+
+    $raw = staffRememberMeRawFromCookie();
+    if ($raw === '') {
+        return false;
+    }
+
+    try {
+        if (!function_exists('getDB')) {
+            require_once __DIR__ . '/../config/database.php';
+        }
+        $pdo = getDB();
+        ensureStaffRememberTokensTable($pdo);
+
+        $hash = hash('sha256', $raw);
+        $stmt = $pdo->prepare(
+            'SELECT t.staff_id, s.first_name, s.middle_name, s.last_name, s.role
+             FROM staff_remember_tokens t
+             INNER JOIN staff s ON s.staff_id = t.staff_id
+             WHERE t.token_hash = ? AND t.expires_at > NOW()
+             LIMIT 1'
+        );
+        $stmt->execute([$hash]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            staffRememberMeRevokeRaw($pdo, $raw);
+
+            return false;
+        }
+
+        staffSessionLogin([
+            'staff_id'    => (string) $row['staff_id'],
+            'first_name'  => (string) ($row['first_name'] ?? ''),
+            'middle_name' => $row['middle_name'] ?? null,
+            'last_name'   => (string) ($row['last_name'] ?? ''),
+            'role'        => (string) ($row['role'] ?? 'Staff'),
+        ], true);
+        $_SESSION['staff_hydrated_at'] = time();
+        $_SESSION['staff_remember_me'] = 1;
+
+        return true;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
 function getStaffFromSession(): ?array
 {
     if (empty($_SESSION['staff_id'])) {
@@ -204,6 +393,10 @@ function getAuthenticatedStaff(bool $lightweight = false): ?array
     }
 
     $sessionStaff = getStaffFromSession();
+    if (!$sessionStaff) {
+        staffRememberMeTryRestore();
+        $sessionStaff = getStaffFromSession();
+    }
     if (!$sessionStaff) {
         $staff = null;
 

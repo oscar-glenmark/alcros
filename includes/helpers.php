@@ -4093,6 +4093,9 @@ function resetStaffPasswordWithOtp(PDO $pdo, string $staffId, string $otp, strin
     $pdo->prepare('UPDATE staff SET password_hash = ? WHERE staff_id = ?')
         ->execute([password_hash($newPassword, PASSWORD_DEFAULT), $staffId]);
     $pdo->prepare('DELETE FROM staff_password_otps WHERE staff_id = ?')->execute([$staffId]);
+    if (function_exists('staffRememberMeRevokeAllForStaff')) {
+        staffRememberMeRevokeAllForStaff($pdo, $staffId);
+    }
     logActivity($staffId, 'Password Reset', 'Password reset via Gmail OTP');
 
     return ['ok' => true, 'message' => 'Password updated successfully. You can now sign in.'];

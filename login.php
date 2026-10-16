@@ -52,11 +52,21 @@ if (isset($_GET['signed_in']) && (string) $_GET['signed_in'] === '1') {
 
 }
 
-
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' && $loggedInStaff && $loginSuccessModal === null) {
+    $redirectPage = $redirectTarget;
+    $redirectQuery = [];
+    if (str_contains($redirectTarget, '?')) {
+        [$redirectPage, $redirectQs] = explode('?', $redirectTarget, 2);
+        parse_str($redirectQs, $redirectQuery);
+    }
+    redirectWithAuth($redirectPage, $redirectQuery);
+}
 
 $error = '';
 
 $submittedStaffId = '';
+
+$rememberMeChecked = false;
 
 $resetSuccess = isset($_GET['reset']) && $_GET['reset'] === '1';
 
@@ -75,6 +85,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $submittedStaffId = strtoupper(trim($_POST['staff_id'] ?? ''));
 
     $password = $_POST['password'] ?? '';
+
+    $rememberMeChecked = !empty($_POST['remember_me']);
 
     $csrf = $_POST['csrf_token'] ?? '';
 
@@ -119,6 +131,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($staff && password_verify($password, (string) $staff['password_hash'])) {
 
                 staffSessionLogin($staff, true);
+
+                if ($rememberMeChecked) {
+                    staffRememberMeIssue($pdo, $staff);
+                } else {
+                    staffRememberMeRevokeCurrent($pdo);
+                }
 
                 $token = createStaffAuthToken($staff);
 
@@ -255,24 +273,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
 
-                <?php if ($loggedInStaff && !$loginSuccessModal): ?>
-
-                <div class="mb-6 px-4 py-3 rounded-xl bg-blue-50 border border-blue-100 text-blue-800 text-[11px] font-semibold text-left">
-
-                    <p class="mb-2">You are already signed in as <strong><?= htmlspecialchars($loggedInStaff['name']) ?></strong>.</p>
-
-                    <a href="<?= htmlspecialchars(buildAuthUrl('dashboard.php')) ?>" class="inline-flex items-center gap-1.5 text-blue-700 font-bold hover:underline">
-
-                        <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i> Open Staff Portal
-
-                    </a>
-
-                </div>
-
-                <?php endif; ?>
-
-
-
                 <?php if ($resetSuccess): ?>
 
                 <div class="mb-6 px-4 py-3 rounded-xl bg-green-50 border border-green-100 text-green-700 text-[11px] font-semibold text-left flex items-center gap-2">
@@ -393,9 +393,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                         </div>
 
-                        <div class="text-right mt-1.5">
+                        <div class="auth-portal-login-row mt-1.5">
 
-                            <a href="forgot_password.php" class="text-[10px] font-bold text-blue-600 hover:underline">Forgot password?</a>
+                            <label class="auth-portal-remember">
+
+                                <input
+                                    type="checkbox"
+                                    name="remember_me"
+                                    value="1"
+                                    class="auth-portal-remember__input"
+                                    <?= $rememberMeChecked ? 'checked' : '' ?>
+                                >
+
+                                <span class="auth-portal-remember__label">Keep me logged in</span>
+
+                            </label>
+
+                            <a href="forgot_password.php" class="auth-portal-forgot-link">Forgot password?</a>
 
                         </div>
 

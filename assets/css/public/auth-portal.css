@@ -354,3 +354,47 @@ body.auth-portal {
         padding: 1rem 1.25rem;
     }
 }
+
+.auth-portal-login-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.auth-portal-remember {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0;
+    cursor: pointer;
+    user-select: none;
+    min-width: 0;
+}
+
+.auth-portal-remember__input {
+    width: 0.875rem;
+    height: 0.875rem;
+    flex-shrink: 0;
+    accent-color: var(--alcros-gold);
+    cursor: pointer;
+}
+
+.auth-portal-remember__label {
+    font-size: 0.625rem;
+    font-weight: 700;
+    color: #475569;
+    line-height: 1.2;
+}
+
+.auth-portal-forgot-link {
+    font-size: 0.625rem;
+    font-weight: 700;
+    color: #2563eb;
+    text-decoration: none;
+    flex-shrink: 0;
+}
+
+.auth-portal-forgot-link:hover {
+    text-decoration: underline;
+}

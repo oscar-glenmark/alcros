@@ -18,6 +18,17 @@ CREATE TABLE IF NOT EXISTS staff (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS staff_remember_tokens (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    staff_id VARCHAR(50) NOT NULL,
+    token_hash CHAR(64) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_staff_remember_hash (token_hash),
+    INDEX idx_staff_remember_staff (staff_id),
+    INDEX idx_staff_remember_expires (expires_at)
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS document_requests (
     id INT AUTO_INCREMENT PRIMARY KEY,
     tracking_code VARCHAR(20) NOT NULL UNIQUE,

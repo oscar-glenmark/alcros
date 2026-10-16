@@ -123,6 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new InvalidArgumentException('New passwords do not match.');
             }
             $pdo->prepare('UPDATE staff SET password_hash = ? WHERE staff_id = ?')->execute([password_hash($newPass, PASSWORD_DEFAULT), $currentStaffId]);
+            staffRememberMeRevokeAllForStaff($pdo, $currentStaffId);
             logActivity($currentStaffId, 'Password Changed', 'Updated account password');
             settingsFlashSet('success', 'Password changed successfully.');
             $handled = true;
@@ -253,6 +254,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new InvalidArgumentException($passwordError);
             }
             $pdo->prepare('UPDATE staff SET password_hash = ? WHERE staff_id = ?')->execute([password_hash($newPass, PASSWORD_DEFAULT), $targetId]);
+            staffRememberMeRevokeAllForStaff($pdo, $targetId);
             logActivity($currentStaffId, 'Password Reset', "Reset password for $targetId");
             settingsFlashSet('success', "Password reset for $targetId.");
             $handled = true;

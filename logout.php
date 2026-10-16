@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
@@ -10,6 +11,11 @@ if ($staff) {
     } catch (Throwable $e) {
         // ignore
     }
+}
+try {
+    staffRememberMeRevokeCurrent(getDB());
+} catch (Throwable $e) {
+    staffRememberMeClearCookie();
 }
 staffSessionLogout();
 ?>

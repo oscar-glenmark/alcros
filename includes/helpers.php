@@ -1728,7 +1728,7 @@ function resolveAppointmentOverviewCardHighlight(
             return $filterStatus;
         }
 
-        $statusKeys = ['scheduled', 'confirmed', 'completed', 'no_show'];
+        $statusKeys = ['scheduled', 'confirmed', 'completed', 'no_show', 'cancelled'];
         $seen = [];
         foreach ($appointmentRows as $row) {
             $status = (string) ($row['status'] ?? '');
@@ -4869,7 +4869,7 @@ function appointmentRevision(array $row, ?array $followUpPending = null): string
 function appointmentsListFilters(array $input, ?PDO $pdo = null): array
 {
     $status = (string) ($input['status'] ?? 'all');
-    if (!in_array($status, ['all', 'scheduled', 'confirmed', 'completed', 'no_show', 'all_appointments', 'recently_deleted', 'follow_ups'], true)) {
+    if (!in_array($status, ['all', 'scheduled', 'confirmed', 'completed', 'no_show', 'cancelled', 'all_appointments', 'recently_deleted', 'follow_ups'], true)) {
         $status = 'all';
     }
 
@@ -4925,6 +4925,7 @@ function fetchAppointmentDayStats(PDO $pdo, string $viewDate): array
         'confirmed'        => (int) ($statusCounts['confirmed'] ?? 0),
         'completed'        => countCompletedAppointmentsWithoutPendingFollowUp($pdo, $viewDate),
         'no_show'          => (int) ($statusCounts['no_show'] ?? 0),
+        'cancelled'        => (int) ($statusCounts['cancelled'] ?? 0),
         'recently_deleted' => (int) $recentlyDeletedStmt->fetchColumn(),
         'follow_ups'       => countPendingAppointmentFollowUps($pdo),
     ];

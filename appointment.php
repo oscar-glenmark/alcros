@@ -15,7 +15,7 @@ ensureCitizenNotifyColumns($pdo);
 
 function appointmentStatusFilters(): array
 {
-    return ['all', 'scheduled', 'confirmed', 'completed', 'no_show', 'all_appointments', 'recently_deleted', 'follow_ups'];
+    return ['all', 'scheduled', 'confirmed', 'completed', 'no_show', 'cancelled', 'all_appointments', 'recently_deleted', 'follow_ups'];
 }
 
 function appointmentsRedirectFilters(): array
@@ -314,6 +314,7 @@ $appointmentStats = [
     'confirmed'        => (int) ($statusCounts['confirmed'] ?? 0),
     'completed'        => countCompletedAppointmentsWithoutPendingFollowUp($pdo, $viewDate),
     'no_show'          => (int) ($statusCounts['no_show'] ?? 0),
+    'cancelled'        => (int) ($statusCounts['cancelled'] ?? 0),
     'recently_deleted' => $recentlyDeletedCount,
     'follow_ups'       => $pendingFollowUpCount,
 ];
@@ -324,6 +325,7 @@ $statCards = [
     ['label' => 'Confirmed', 'hint' => 'Ready to serve', 'value' => $appointmentStats['confirmed'], 'icon' => 'badge-check', 'tone' => 'violet', 'filter' => 'confirmed'],
     ['label' => 'Completed', 'hint' => 'Served today', 'value' => $appointmentStats['completed'], 'icon' => 'check-circle-2', 'tone' => 'emerald', 'filter' => 'completed'],
     ['label' => 'No-Show', 'hint' => 'Did not arrive', 'value' => $appointmentStats['no_show'], 'icon' => 'user-x', 'tone' => 'rose', 'filter' => 'no_show'],
+    ['label' => 'Rejected', 'hint' => 'Declined by staff', 'value' => $appointmentStats['cancelled'], 'icon' => 'ban', 'tone' => 'rose', 'filter' => 'cancelled'],
     ['label' => 'Follow-ups', 'hint' => 'Pending return visits', 'value' => $appointmentStats['follow_ups'], 'icon' => 'calendar-clock', 'tone' => 'sky', 'filter' => 'follow_ups'],
 ];
 
@@ -333,6 +335,7 @@ $filterLabels = [
     'confirmed'        => 'Confirmed',
     'completed'        => 'Completed',
     'no_show'          => 'No-Show',
+    'cancelled'        => 'Rejected',
     'all_appointments' => 'All Appointments',
     'recently_deleted' => 'Recently Deleted',
     'follow_ups'       => 'Upcoming follow-ups',
@@ -461,7 +464,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                     <h2 class="manage-section__title"><?= $isFollowUpsView ? 'Overview · Upcoming follow-ups' : 'Overview · ' . htmlspecialchars(formatDateEmailDisplay($viewDate)) ?></h2>
                     <p class="manage-section__hint">Click a card to filter the list below</p>
                 </div>
-                <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+                <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 gap-3">
                 <?php foreach ($statCards as $card):
                     $cardFilter = $card['filter'];
                     if ($cardFilter === 'follow_ups') {

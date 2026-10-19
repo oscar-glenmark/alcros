@@ -1211,6 +1211,7 @@
         confirmed: 'confirmed',
         completed: 'completed',
         no_show: 'no_show',
+        cancelled: 'cancelled',
         follow_ups: 'follow_ups'
     };
 

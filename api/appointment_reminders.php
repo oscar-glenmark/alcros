@@ -14,7 +14,11 @@ requireCronSecret();
 try {
     $pdo = getDB();
     $sent = sendDueAppointmentReminders($pdo);
-    apiJsonResponse(['sent' => $sent]);
+    $payload = ['sent' => $sent];
+    if (isset($_GET['diagnostics']) && (string) $_GET['diagnostics'] === '1') {
+        $payload['diagnostics'] = alcrosAppointmentReminderDiagnostics($pdo);
+    }
+    apiJsonResponse($payload);
 } catch (Throwable $e) {
     apiError('Unable to send appointment reminders.', 500);
 }

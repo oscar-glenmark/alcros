@@ -132,7 +132,12 @@ function createDBConnection(): PDO
             $options[PDO::MYSQL_ATTR_CONNECT_TIMEOUT] = 5;
         }
 
-        return new PDO($dsn, DB_USER, DB_PASS, $options);
+        $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
+        if (function_exists('alcrosMysqlSessionTimezone')) {
+            alcrosMysqlSessionTimezone($pdo);
+        }
+
+        return $pdo;
     } catch (PDOException $e) {
         $msg = $e->getMessage();
         if (str_contains($msg, 'Unknown database')) {

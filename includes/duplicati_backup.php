@@ -1,6 +1,6 @@
 <?php
 /**
- * Local backup bundle for Duplicati (or any folder-sync tool).
+ * Registry backup export bundle (SQL + related files). Used by hosted zip backups.
  * Scope: civil records, staff accounts, print templates/calibrations, print settings, related files.
  */
 
@@ -11,7 +11,7 @@ function alcrosProjectRoot(): string
 
 function alcrosDuplicatiBackupDir(): string
 {
-    return alcrosProjectRoot() . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'backups' . DIRECTORY_SEPARATOR . 'duplicati';
+    return alcrosProjectRoot() . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'backups' . DIRECTORY_SEPARATOR . 'bundle';
 }
 
 /** @return list<string> */
@@ -226,7 +226,7 @@ function alcrosDuplicatiWriteSqlDump(PDO $pdo, string $outputFile): string
     }
 
     $parts = [
-        '-- ALCROS Duplicati backup (PDO fallback)',
+        '-- ALCROS registry backup (PDO fallback)',
         '-- Generated ' . date('Y-m-d H:i:s'),
         'SET FOREIGN_KEY_CHECKS=0;',
         'SET NAMES ' . DB_CHARSET . ';',

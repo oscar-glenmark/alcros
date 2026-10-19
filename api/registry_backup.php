@@ -2,7 +2,7 @@
 /**
  * Scheduled registry backup (SmarterASP.NET Schedule Task — HTTP GET).
  *
- * Scope matches the Duplicati bundle: civil records, staff, print calibration, related files.
+ * Scope: civil records, staff, print calibration, related files (registry export bundle).
  * Output: storage/backups/registry/alcros-registry-YYYY-mm-dd-His.zip (not web-accessible).
  *
  * Example URL (token from System Settings → Admin Tools → Backup):

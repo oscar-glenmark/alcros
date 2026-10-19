@@ -3,7 +3,9 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/security.php';
 bootstrapSecurity();
 
-if (!ini_get('date.timezone')) {
+if (function_exists('alcrosApplyOfficeTimezone')) {
+    alcrosApplyOfficeTimezone();
+} elseif (!ini_get('date.timezone')) {
     date_default_timezone_set('Asia/Manila');
 }
 
@@ -6914,6 +6916,57 @@ function sendDueAppointmentReminders(PDO $pdo): int
     }
 
     return $sent;
+}
+
+/**
+ * Why reminder cron may report sent=0 (no citizen PII).
+ *
+ * @return array<string, mixed>
+ */
+function alcrosAppointmentReminderDiagnostics(PDO $pdo): array
+{
+    ensureCitizenNotifyColumns($pdo);
+
+    $mysqlNow = (string) ($pdo->query('SELECT NOW()')->fetchColumn() ?: '');
+    $visitFutureSql = 'appointment_date IS NOT NULL AND appointment_time IS NOT NULL AND TIMESTAMP(appointment_date, appointment_time) > NOW()';
+    $visitIn5hSql = $visitFutureSql . ' AND TIMESTAMP(appointment_date, appointment_time) <= DATE_ADD(NOW(), INTERVAL 5 HOUR)';
+    $visitIn1hSql = $visitFutureSql . ' AND TIMESTAMP(appointment_date, appointment_time) <= DATE_ADD(NOW(), INTERVAL 1 HOUR)';
+    $emailPendingSql = '(reminder_5h_sent_at IS NULL OR reminder_3h_sent_at IS NULL OR reminder_1h_sent_at IS NULL)';
+
+    $count = static function (PDO $pdo, string $sql): int {
+        $value = $pdo->query($sql)->fetchColumn();
+
+        return (int) $value;
+    };
+
+    $docStatuses = "status IN ('pending', 'verified', 'ready')";
+    $apptStatuses = "status IN ('scheduled', 'confirmed')";
+    $standalone = appointmentStandaloneSql('a');
+
+    return [
+        'office_timezone' => function_exists('alcrosOfficeTimezone') ? alcrosOfficeTimezone() : date_default_timezone_get(),
+        'php_now'         => date('c'),
+        'mysql_now'       => $mysqlNow,
+        'document_requests' => [
+            'future_visits'              => $count($pdo, "SELECT COUNT(*) FROM document_requests WHERE {$docStatuses} AND {$visitFutureSql}"),
+            'in_email_window_5h'         => $count($pdo, "SELECT COUNT(*) FROM document_requests WHERE {$docStatuses} AND {$visitIn5hSql}"),
+            'eligible_email_reminders'   => $count($pdo, "SELECT COUNT(*) FROM document_requests WHERE notify_email = 1 AND email IS NOT NULL AND email != '' AND {$docStatuses} AND {$visitIn5hSql} AND {$emailPendingSql}"),
+            'in_window_but_notify_off'   => $count($pdo, "SELECT COUNT(*) FROM document_requests WHERE (notify_email = 0 OR email IS NULL OR email = '') AND {$docStatuses} AND {$visitIn5hSql}"),
+            'in_1h_sms_window'           => $count($pdo, "SELECT COUNT(*) FROM document_requests WHERE notify_sms = 1 AND phone IS NOT NULL AND phone != '' AND {$docStatuses} AND {$visitIn1hSql} AND sms_reminder_1h_sent_at IS NULL"),
+        ],
+        'standalone_appointments' => [
+            'future_visits'              => $count($pdo, "SELECT COUNT(*) FROM appointments a WHERE {$standalone} AND {$apptStatuses} AND {$visitFutureSql}"),
+            'in_email_window_5h'         => $count($pdo, "SELECT COUNT(*) FROM appointments a WHERE {$standalone} AND {$apptStatuses} AND {$visitIn5hSql}"),
+            'eligible_email_reminders'   => $count($pdo, "SELECT COUNT(*) FROM appointments a WHERE notify_email = 1 AND email IS NOT NULL AND email != '' AND {$standalone} AND {$apptStatuses} AND {$visitIn5hSql} AND {$emailPendingSql}"),
+            'in_window_but_notify_off'   => $count($pdo, "SELECT COUNT(*) FROM appointments a WHERE (notify_email = 0 OR email IS NULL OR email = '') AND {$standalone} AND {$apptStatuses} AND {$visitIn5hSql}"),
+            'eligible_sms_1h_confirmed' => $count($pdo, "SELECT COUNT(*) FROM appointments a WHERE notify_sms = 1 AND phone IS NOT NULL AND phone != '' AND {$standalone} AND a.status = 'confirmed' AND {$visitIn1hSql} AND a.sms_reminder_1h_sent_at IS NULL"),
+        ],
+        'hints' => [
+            'Email reminders run only for visits in the next 5 hours with notify_email = 1 (citizen must opt in on the notification preferences modal).',
+            'SMS reminders run only about 1 hour before; standalone appointments must be status confirmed.',
+            'sent=0 with ok=true means the cron ran but no eligible citizen matched this run (or SMTP/SMS send failed after match).',
+        ],
+    ];
 }
 
 function runReminderSchedulerIfDue(?PDO $pdo = null, int $intervalSeconds = 300): int

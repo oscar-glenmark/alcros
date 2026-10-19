@@ -196,3 +196,30 @@ function alcrosAppointmentRemindersCronUrl(): string
 
     return $base . '/api/appointment_reminders.php?cron_secret=' . urlencode(cronSecretKey());
 }
+
+/** IANA timezone for visit/appointment schedules and reminder windows (default: Philippines). */
+function alcrosOfficeTimezone(): string
+{
+    if (defined('ALCROS_OFFICE_TIMEZONE') && trim((string) ALCROS_OFFICE_TIMEZONE) !== '') {
+        return trim((string) ALCROS_OFFICE_TIMEZONE);
+    }
+
+    return 'Asia/Manila';
+}
+
+function alcrosApplyOfficeTimezone(): void
+{
+    date_default_timezone_set(alcrosOfficeTimezone());
+}
+
+/** Align MySQL NOW() with office local time for reminder SQL filters. */
+function alcrosMysqlSessionTimezone(PDO $pdo): void
+{
+    try {
+        $tz = new DateTimeZone(alcrosOfficeTimezone());
+        $offset = (new DateTimeImmutable('now', $tz))->format('P');
+        $pdo->exec('SET time_zone = ' . $pdo->quote($offset));
+    } catch (Throwable) {
+        // Host may restrict time_zone; PHP-side checks still use office timezone.
+    }
+}

@@ -371,20 +371,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     : 'No records found for the selected data types.'
             );
             $handled = true;
-        } elseif ($action === 'run_duplicati_backup' && $isAdmin) {
-            $result = runAlcrosDuplicatiBackup($pdo);
-            if (!$result['ok']) {
-                throw new InvalidArgumentException($result['message']);
-            }
-            $manifest = $result['manifest'] ?? [];
-            $sqlSize = alcrosFormatBytes((int) ($manifest['sql_bytes'] ?? 0));
-            logActivity(
-                $currentStaffId,
-                'Backup Created',
-                'Duplicati backup bundle updated (' . $sqlSize . ', ' . (int) ($manifest['files_copied'] ?? 0) . ' files)'
-            );
-            settingsFlashSet('success', 'Local backup bundle created. Duplicati can now upload the folder to the cloud.');
-            $handled = true;
         } elseif ($action === 'save_registry_backup_settings' && $isAdmin) {
             $enabled = isset($_POST['registry_backup_enabled']) ? '1' : '0';
             $retention = max(3, min(90, (int) ($_POST['registry_backup_retention_count'] ?? 14)));
@@ -488,15 +474,12 @@ $backupDirSize = ($isAdmin && is_dir($backupDir)) ? alcrosDuplicatiBackupDirSize
 $backupLastRun = $isAdmin ? getSetting('backup_last_run_at', '') : '';
 $backupLastStatus = $isAdmin ? getSetting('backup_last_status', '') : '';
 $backupLastMessage = $isAdmin ? getSetting('backup_last_message', '') : '';
-$backupScriptBat = $isAdmin ? realpath(__DIR__ . '/scripts/duplicati-pre-backup.bat') : false;
-$backupRunBat = $isAdmin ? realpath(__DIR__ . '/scripts/backup-run.bat') : false;
 $backupRecordCount = $isAdmin
     ? (int) ($backupManifest['counts']['civil_records'] ?? ($systemStats['civil_records']['count'] ?? 0))
     : 0;
 $backupStaffCount = $isAdmin
     ? (int) ($backupManifest['counts']['staff'] ?? count($staffMembers))
     : 0;
-$backupIsLocalOffice = $isAdmin && alcrosIsLocalOfficeInstall();
 $appointmentRemindersCronUrl = $isAdmin ? alcrosAppointmentRemindersCronUrl() : '';
 $registryBackupCronUrl = $isAdmin ? alcrosRegistryBackupCronUrl() : '';
 $registryBackupEnabled = $isAdmin && alcrosRegistryBackupEnabled();
@@ -507,7 +490,7 @@ $registryBackupLastStatus = $isAdmin ? getSetting('registry_backup_last_status',
 $registryBackupLastMessage = $isAdmin ? getSetting('registry_backup_last_message', '') : '';
 $registryBackupLastFilename = $isAdmin ? getSetting('registry_backup_last_filename', '') : '';
 $registryBackupArchives = $isAdmin ? alcrosRegistryBackupListArchives() : [];
-$showHostedScheduleTasks = $isAdmin && function_exists('alcrosIsHostedEnvironment') && alcrosIsHostedEnvironment();
+$showHostedScheduleTasks = $isAdmin;
 
 function settingsPageUrl(string $tab, ?string $adminSub = null): string
 {
@@ -1181,7 +1164,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                 <?php endif; ?>
                             </div>
 
-                            <!-- Local backup (Duplicati / XAMPP) -->
+                            <!-- Registry backup -->
                             <div class="p-5 sm:p-6 <?= $adminToolsSection !== 'backup' ? 'hidden' : '' ?>">
                                 <div class="rounded-xl border border-emerald-100 bg-emerald-50/60 p-5 mb-6">
                                     <h3 class="text-sm font-bold text-emerald-950 flex items-center gap-2">
@@ -1331,183 +1314,6 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     </ul>
                                         <?php endif; ?>
                                 </div>
-
-                                <?php if ($backupIsLocalOffice): ?>
-                                <div class="rounded-xl border border-amber-100 bg-amber-50/60 p-4 mb-6 text-xs text-amber-950">
-                                    <p class="font-bold flex items-center gap-2"><i data-lucide="monitor" class="w-4 h-4"></i> Optional — local XAMPP only (Duplicati)</p>
-                                    <p class="mt-1 text-amber-900/85 leading-relaxed">The section below is only for backing up ALCROS on this Windows PC (XAMPP). On SmarterASP.NET production, use the <strong>Automatic registry backup</strong> section above (scheduled URL + FTP download).</p>
-                                </div>
-
-                                <div class="rounded-xl border border-slate-200 bg-white p-5 mb-8">
-                                    <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                                        <div>
-                                            <h3 class="text-sm font-bold text-slate-900">Create local backup folder only</h3>
-                                            <p class="text-xs text-slate-500 mt-1">Does not upload to cloud. Use with Duplicati on this PC.</p>
-                                        </div>
-                                        <form method="POST" class="shrink-0">
-                                            <?= authFormField() ?>
-                                            <input type="hidden" name="settings_action" value="run_duplicati_backup">
-                                            <input type="hidden" name="active_tab" value="admin-tools">
-                                            <input type="hidden" name="admin_sub" value="backup">
-                                            <button type="submit" class="inline-flex items-center gap-2 bg-slate-700 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold w-full sm:w-auto justify-center">
-                                                <i data-lucide="refresh-cw" class="w-4 h-4"></i> Create backup bundle now
-                                            </button>
-                                        </form>
-                                    </div>
-                                    <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 font-mono text-xs text-slate-700 break-all">
-                                        <?= htmlspecialchars(str_replace('\\', '/', $backupDir)) ?>
-                                    </div>
-                                </div>
-
-                                <h3 class="text-base font-black text-slate-900 mb-1">Duplicati setup (local PC only)</h3>
-                                <p class="text-xs text-slate-500 mb-5">Follow these in order. Setup takes about 15–20 minutes.</p>
-
-                                <div class="space-y-4 mb-8">
-                                    <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                                        <div class="flex gap-4 p-5">
-                                            <div class="w-8 h-8 rounded-full bg-emerald-600 text-white text-sm font-black flex items-center justify-center shrink-0">1</div>
-                                            <div class="min-w-0 flex-1 text-sm text-slate-700">
-                                                <p class="font-bold text-slate-900 mb-1">Download and install Duplicati</p>
-                                                <p class="text-xs text-slate-500 mb-2">Free backup app for Windows.</p>
-                                                <ol class="text-xs space-y-1.5 list-decimal pl-4 text-slate-600">
-                                                    <li>Go to <a href="https://www.duplicati.com/download" target="_blank" rel="noopener noreferrer" class="text-blue-600 font-semibold hover:underline">duplicati.com/download</a></li>
-                                                    <li>Download the Windows installer and run it</li>
-                                                    <li>Open Duplicati — it may open in your browser (that is normal)</li>
-                                                </ol>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                                        <div class="flex gap-4 p-5">
-                                            <div class="w-8 h-8 rounded-full bg-emerald-600 text-white text-sm font-black flex items-center justify-center shrink-0">2</div>
-                                            <div class="min-w-0 flex-1 text-sm text-slate-700">
-                                                <p class="font-bold text-slate-900 mb-1">Create a new backup job</p>
-                                                <ol class="text-xs space-y-1.5 list-decimal pl-4 text-slate-600">
-                                                    <li>Click <strong>Add backup</strong></li>
-                                                    <li><strong>General</strong> — name it e.g. <em>ALCROS Cloud Backup</em></li>
-                                                    <li><strong>Destination</strong> — pick <strong>Google Drive</strong> or <strong>Google Cloud Storage</strong></li>
-                                                    <li>Sign in with your Google account when asked</li>
-                                                    <li>Choose a remote folder name, e.g. <code class="bg-slate-100 px-1 rounded">ALCROS Backups</code></li>
-                                                </ol>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                                        <div class="flex gap-4 p-5">
-                                            <div class="w-8 h-8 rounded-full bg-emerald-600 text-white text-sm font-black flex items-center justify-center shrink-0">3</div>
-                                            <div class="min-w-0 flex-1 text-sm text-slate-700">
-                                                <p class="font-bold text-slate-900 mb-1">Choose what to back up (source folder)</p>
-                                                <p class="text-xs text-slate-500 mb-2">Tell Duplicati to upload the ALCROS backup folder — not the whole XAMPP folder.</p>
-                                                <ol class="text-xs space-y-1.5 list-decimal pl-4 text-slate-600 mb-3">
-                                                    <li>On the <strong>Source data</strong> step, click <strong>Configure source</strong></li>
-                                                    <li>Choose <strong>Computer</strong> (local files)</li>
-                                                    <li>Browse to this folder and select it:</li>
-                                                </ol>
-                                                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-[11px] text-slate-700 break-all">
-                                                    <?= htmlspecialchars(str_replace('\\', '/', $backupDir)) ?>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                                        <div class="flex gap-4 p-5">
-                                            <div class="w-8 h-8 rounded-full bg-emerald-600 text-white text-sm font-black flex items-center justify-center shrink-0">4</div>
-                                            <div class="min-w-0 flex-1 text-sm text-slate-700">
-                                                <p class="font-bold text-slate-900 mb-1">Set the schedule</p>
-                                                <ol class="text-xs space-y-1.5 list-decimal pl-4 text-slate-600">
-                                                    <li>On the <strong>Schedule</strong> step, choose how often to upload</li>
-                                                    <li><strong>Recommended:</strong> every <strong>15 minutes</strong> or <strong>1 hour</strong> during office hours</li>
-                                                    <li>The office PC must be <strong>on</strong> and connected to the internet when a backup runs</li>
-                                                </ol>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                                        <div class="flex gap-4 p-5">
-                                            <div class="w-8 h-8 rounded-full bg-emerald-600 text-white text-sm font-black flex items-center justify-center shrink-0">5</div>
-                                            <div class="min-w-0 flex-1 text-sm text-slate-700">
-                                                <p class="font-bold text-slate-900 mb-1">Run ALCROS export before each upload (important)</p>
-                                                <p class="text-xs text-slate-500 mb-2">This refreshes civil records and staff data in the backup folder before Duplicati sends files to the cloud.</p>
-                                                <ol class="text-xs space-y-1.5 list-decimal pl-4 text-slate-600 mb-3">
-                                                    <li>Go to <strong>Options</strong> (or job settings) → find <strong>Run script before</strong></li>
-                                                    <li>Paste this path exactly:</li>
-                                                </ol>
-                                                <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 font-mono text-[11px] text-slate-800 break-all">
-                                                    <?php if ($backupScriptBat): ?>
-                                                    <?= htmlspecialchars(str_replace('\\', '/', $backupScriptBat)) ?>
-                                                    <?php else: ?>
-                                                    <?= htmlspecialchars(str_replace('\\', '/', __DIR__ . '/scripts/duplicati-pre-backup.bat')) ?>
-                                                    <?php endif; ?>
-                                                </div>
-                                                <p class="text-[11px] text-slate-400 mt-2">Duplicati will run this script automatically — you do not need to click “Create backup bundle now” every time after this is set.</p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                                        <div class="flex gap-4 p-5">
-                                            <div class="w-8 h-8 rounded-full bg-emerald-600 text-white text-sm font-black flex items-center justify-center shrink-0">6</div>
-                                            <div class="min-w-0 flex-1 text-sm text-slate-700">
-                                                <p class="font-bold text-slate-900 mb-1">Turn on encryption</p>
-                                                <ol class="text-xs space-y-1.5 list-decimal pl-4 text-slate-600">
-                                                    <li>In job options, enable <strong>Encryption</strong></li>
-                                                    <li>Create a strong passphrase (20+ characters) and <strong>write it down</strong> in a safe place</li>
-                                                    <li>Without this passphrase, cloud backups cannot be restored</li>
-                                                </ol>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                                        <div class="flex gap-4 p-5">
-                                            <div class="w-8 h-8 rounded-full bg-emerald-600 text-white text-sm font-black flex items-center justify-center shrink-0">7</div>
-                                            <div class="min-w-0 flex-1 text-sm text-slate-700">
-                                                <p class="font-bold text-slate-900 mb-1">Set how long to keep old backups</p>
-                                                <ol class="text-xs space-y-1.5 list-decimal pl-4 text-slate-600">
-                                                    <li>Under <strong>Retention</strong>, choose e.g. <strong>30 days</strong> or <strong>30 versions</strong></li>
-                                                    <li>Save the backup job</li>
-                                                </ol>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                                        <div class="flex gap-4 p-5">
-                                            <div class="w-8 h-8 rounded-full bg-emerald-600 text-white text-sm font-black flex items-center justify-center shrink-0">8</div>
-                                            <div class="min-w-0 flex-1 text-sm text-slate-700">
-                                                <p class="font-bold text-slate-900 mb-1">Test that it works</p>
-                                                <ol class="text-xs space-y-1.5 list-decimal pl-4 text-slate-600">
-                                                    <li>In Duplicati, click <strong>Run now</strong> on your ALCROS job</li>
-                                                    <li>Wait until status shows <strong>Success</strong></li>
-                                                    <li>Open Google Drive (or your cloud bucket) — you should see the backup folder and files</li>
-                                                    <li>Check email alerts in Duplicati settings if you want failure notifications</li>
-                                                </ol>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="rounded-xl border border-slate-200 bg-slate-50 p-5 mb-4">
-                                    <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Optional — test without Duplicati</h4>
-                                    <p class="text-xs text-slate-600 mb-2">Double-click this file in File Explorer (or run in Command Prompt) to create the backup folder manually:</p>
-                                    <?php if ($backupRunBat): ?>
-                                    <div class="rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-[11px] text-slate-700 break-all">
-                                        <?= htmlspecialchars(str_replace('\\', '/', $backupRunBat)) ?>
-                                    </div>
-                                    <?php else: ?>
-                                    <div class="rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-[11px] text-slate-700 break-all">
-                                        <?= htmlspecialchars(str_replace('\\', '/', __DIR__ . '/scripts/backup-run.bat')) ?>
-                                    </div>
-                                    <?php endif; ?>
-                                    <?php if (is_array($backupManifest)): ?>
-                                    <p class="text-[11px] text-slate-400 mt-3">Latest bundle: <?= htmlspecialchars((string) ($backupManifest['generated_at'] ?? '')) ?> · <?= htmlspecialchars(alcrosFormatBytes((int) ($backupManifest['sql_bytes'] ?? 0))) ?> SQL · <?= (int) ($backupManifest['files_copied'] ?? 0) ?> files copied</p>
-                                    <?php endif; ?>
-                                </div>
-                                <?php endif; ?>
                             </div>
 
                             <!-- Maintenance -->

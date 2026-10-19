@@ -1,7 +1,7 @@
 <?php
 /**
  * Hosted registry backup (SmarterASP.NET Schedule Tasks and other PHP hosts).
- * Scope: same as Duplicati bundle — civil records, staff, print calibration, print settings, related files.
+ * Scope: civil records, staff, print calibration, print settings, related files (registry export bundle).
  */
 
 require_once __DIR__ . '/duplicati_backup.php';

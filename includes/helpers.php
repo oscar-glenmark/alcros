@@ -5446,6 +5446,10 @@ function citizenEmailText(string $value): string
 function citizenEmailPlain(array $mail): string
 {
     $lines = [];
+    if (!empty($mail['heading_prominent'])) {
+        $lines[] = strtoupper(trim((string) ($mail['heading'] ?? 'Reminder')));
+        $lines[] = '';
+    }
     $name = trim((string) ($mail['name'] ?? ''));
     $lines[] = $name !== '' ? 'Dear ' . $name . ',' : 'Hello,';
     $lines[] = '';
@@ -5572,6 +5576,18 @@ function citizenEmailHtml(array $mail): string
     $footerBits = array_filter([$hours !== '' ? 'Office hours: ' . $hours : '', $phone !== '' ? 'Contact: ' . $phone : '']);
     $footer = implode(' · ', $footerBits);
 
+    $headingProminent = !empty($mail['heading_prominent']);
+    if ($headingProminent) {
+        $titleBlock = '<h1 style="margin:0 0 12px;font-size:28px;line-height:1.25;font-weight:800;color:#0f172a;">'
+            . citizenEmailText($heading) . '</h1>'
+            . '<p style="margin:0 0 16px;font-size:16px;line-height:1.4;color:#334155;font-weight:600;">'
+            . citizenEmailText($hello) . '</p>';
+    } else {
+        $titleBlock = '<p style="margin:0 0 6px;font-size:11px;font-weight:bold;letter-spacing:.08em;text-transform:uppercase;color:' . citizenEmailText($accent) . ';">'
+            . citizenEmailText($heading) . '</p>'
+            . '<h1 style="margin:0 0 14px;font-size:22px;line-height:1.3;color:#0f172a;">' . citizenEmailText($hello) . '</h1>';
+    }
+
     return '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"></head>'
         . '<body style="margin:0;padding:0;background-color:#f1f5f9;font-family:Arial,Helvetica,sans-serif;">'
         . '<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">' . citizenEmailText($preheader) . '</div>'
@@ -5583,9 +5599,7 @@ function citizenEmailHtml(array $mail): string
         . '<p style="margin:6px 0 0;color:#ffffff;font-size:13px;opacity:.9;">' . citizenEmailText($office) . '</p>'
         . '</td></tr>'
         . '<tr><td style="padding:28px;">'
-        . '<p style="margin:0 0 6px;font-size:11px;font-weight:bold;letter-spacing:.08em;text-transform:uppercase;color:' . citizenEmailText($accent) . ';">'
-        . citizenEmailText($heading) . '</p>'
-        . '<h1 style="margin:0 0 14px;font-size:22px;line-height:1.3;color:#0f172a;">' . citizenEmailText($hello) . '</h1>'
+        . $titleBlock
         . $introHtml
         . $feesHtml
         . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">'
@@ -6484,9 +6498,10 @@ function notifyAppointmentReminder(array $row, int $hoursBefore): bool
     $hoursLabel = reminderHoursLabel($hoursBefore);
 
     $mail = [
-        'heading'      => 'Appointment reminder',
-        'name'         => personNameFromRow($row),
-        'intro'        => 'This is a reminder that your appointment is in about ' . $hoursLabel . '.',
+        'heading'            => 'Appointment reminder',
+        'heading_prominent'  => true,
+        'name'               => personNameFromRow($row),
+        'intro'              => 'This is a reminder that your appointment is in about ' . $hoursLabel . '.',
         'code_label'   => 'Appointment code',
         'code'         => $row['appointment_code'],
         'details'      => [
@@ -6522,9 +6537,10 @@ function notifyRequestVisitReminder(array $row, int $hoursBefore): bool
         (string) $row['email'],
         'ALCROS — Visit in ' . $hoursLabel . ' (' . $row['tracking_code'] . ')',
         citizenMailWithCertificateFees([
-            'heading'      => 'Visit reminder',
-            'name'         => citizenNotifyPersonName($row),
-            'intro'        => 'This is a reminder that your preferred visit for document pickup is in about ' . $hoursLabel . '.',
+            'heading'            => 'Visit reminder',
+            'heading_prominent'  => true,
+            'name'               => citizenNotifyPersonName($row),
+            'intro'              => 'This is a reminder that your preferred visit for document pickup is in about ' . $hoursLabel . '.',
             'code_label'   => 'Tracking code',
             'code'         => $row['tracking_code'],
             'details'      => [

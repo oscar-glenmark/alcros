@@ -70,6 +70,8 @@
         return href || 'dashboard.php';
     }
 
+    var TOAST_VISIBLE_MS = 10000;
+
     function showToast(item) {
         if (!('Notification' in window) || Notification.permission !== 'granted') {
             return;
@@ -83,7 +85,20 @@
             icon: 'images/favicon.png',
             tag: String(item.id || 'alcros-alert')
         });
+        var dismissTimer = setTimeout(function () {
+            try {
+                note.close();
+            } catch (e) { /* ignore */ }
+        }, TOAST_VISIBLE_MS);
+        function clearDismissTimer() {
+            if (dismissTimer) {
+                clearTimeout(dismissTimer);
+                dismissTimer = null;
+            }
+        }
+        note.onclose = clearDismissTimer;
         note.onclick = function () {
+            clearDismissTimer();
             try {
                 window.focus();
                 window.location.href = buildHref(item.href);

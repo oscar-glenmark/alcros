@@ -575,14 +575,23 @@ function enrichStaffPortalNotification(array $item): array
     return $item;
 }
 
-function fetchScheduleVisits(PDO $pdo, string $date, int $limit = 8, bool $upcomingOnly = false): array
-{
+function fetchScheduleVisits(
+    PDO $pdo,
+    string $date,
+    int $limit = 8,
+    bool $upcomingOnly = false,
+    bool $confirmedIncomingOnly = false
+): array {
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
         $date = date('Y-m-d');
     }
 
     $rows = [];
-    $appointmentFilter = $upcomingOnly ? scheduleVisitAppointmentSql('a') : scheduleCalendarAppointmentSql('a');
+    if ($confirmedIncomingOnly) {
+        $appointmentFilter = scheduleIncomingAppointmentSql('a');
+    } else {
+        $appointmentFilter = $upcomingOnly ? scheduleVisitAppointmentSql('a') : scheduleCalendarAppointmentSql('a');
+    }
 
     $stmt = $pdo->prepare(
         "SELECT a.appointment_code, a.appointment_date, a.first_name, a.middle_name, a.last_name,
@@ -598,6 +607,14 @@ function fetchScheduleVisits(PDO $pdo, string $date, int $limit = 8, bool $upcom
     $stmt->execute([$date]);
     foreach (enrichCitizenNameRows($stmt->fetchAll()) as $row) {
         $rows[] = attachScheduleVisitMeta(enrichScheduleVisitRow($row), $date);
+    }
+
+    if ($confirmedIncomingOnly) {
+        usort($rows, static function (array $a, array $b): int {
+            return strcmp((string) ($a['appointment_time'] ?? ''), (string) ($b['appointment_time'] ?? ''));
+        });
+
+        return array_slice($rows, 0, max(0, $limit));
     }
 
     $stmt = $pdo->prepare(
@@ -674,7 +691,7 @@ function fetchAppointments(PDO $pdo, string $date): array
 
 function fetchIncomingAppointments(PDO $pdo, int $limit = 8): array
 {
-    return fetchScheduleVisits($pdo, incomingAppointmentsDate(), $limit, true);
+    return fetchScheduleVisits($pdo, incomingAppointmentsDate(), $limit, false, true);
 }
 
 function incomingAppointmentsDate(): string
@@ -830,18 +847,15 @@ function fetchNotifications(PDO $pdo, int $limit = 20): array
         ];
     }
 
+    $standaloneApptSql = appointmentStandaloneSql('a');
     $appts = enrichCitizenNameRows($pdo->query(
-        "SELECT appointment_code, first_name, middle_name, last_name, service_type,
-                appointment_time, appointment_date, status, created_at
-         FROM appointments
-         WHERE status IN ('scheduled', 'confirmed')
-           AND COALESCE(source, 'standalone') = 'standalone'
-           AND (tracking_code IS NULL OR tracking_code = '')
-           AND (
-                created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-                OR appointment_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 14 DAY)
-           )
-         ORDER BY created_at DESC
+        "SELECT a.appointment_code, a.first_name, a.middle_name, a.last_name, a.service_type,
+                a.appointment_time, a.appointment_date, a.status, a.created_at
+         FROM appointments a
+         WHERE a.status = 'scheduled'
+           AND {$standaloneApptSql}
+           AND a.deleted_at IS NULL
+         ORDER BY a.created_at DESC
          LIMIT 10"
     )->fetchAll());
     foreach ($appts as $row) {

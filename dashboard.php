@@ -308,19 +308,19 @@ if (!$isAdminUser) {
                             <h2 class="font-bold text-sm text-slate-900">Incoming Appointments</h2>
                             <p class="text-[10px] text-gray-400 mt-0.5"><span id="incoming-appts-count"><?= count($incomingAppointments) ?></span> appointment(s) · Tomorrow · <span id="incoming-appts-date"><?= formatDateDisplay($incomingDate) ?></span></p>
                         </div>
-                        <a id="incoming-appts-open-link" href="<?= htmlspecialchars(buildStaffOperationalUrl('appointment.php', ['date' => $incomingDate, 'status' => 'all_appointments'])) ?>" class="text-blue-600 text-[10px] font-bold uppercase hover:underline">Open</a>
+                        <a id="incoming-appts-open-link" href="<?= htmlspecialchars(buildStaffOperationalUrl('appointment.php', ['date' => $incomingDate, 'status' => 'confirmed'])) ?>" class="text-blue-600 text-[10px] font-bold uppercase hover:underline">Open</a>
                     </div>
 
                     <?php if (empty($incomingAppointments)): ?>
                     <div id="incoming-appts-empty" class="p-8 text-center">
                         <i data-lucide="calendar-clock" class="w-8 h-8 text-gray-200 mx-auto mb-2"></i>
-                        <p class="text-xs text-gray-400">No appointments scheduled for tomorrow.</p>
+                        <p class="text-xs text-gray-400">No confirmed appointments for tomorrow.</p>
                     </div>
                     <div id="incoming-appts-list" class="divide-y divide-gray-50 max-h-[280px] xl:max-h-none overflow-y-auto hidden"></div>
                     <?php else: ?>
                     <div id="incoming-appts-empty" class="p-8 text-center hidden">
                         <i data-lucide="calendar-clock" class="w-8 h-8 text-gray-200 mx-auto mb-2"></i>
-                        <p class="text-xs text-gray-400">No appointments scheduled for tomorrow.</p>
+                        <p class="text-xs text-gray-400">No confirmed appointments for tomorrow.</p>
                     </div>
                     <div id="incoming-appts-list" class="divide-y divide-gray-50 max-h-[280px] xl:max-h-none overflow-y-auto">
                         <?php foreach ($incomingAppointments as $ap): ?>

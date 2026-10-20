@@ -62,17 +62,20 @@
         if (isPdf) {
             return '<div class="admin-id-preview-card">' +
                 '<span class="admin-id-preview-label">' + escapeAttr(sideLabel(label)) + '</span>' +
+                '<div class="admin-id-preview-media">' +
                 '<div class="admin-id-preview-pdf">' +
                 '<i data-lucide="file-text" class="w-7 h-7 mb-1 opacity-60"></i>' +
-                '<span>PDF document</span></div>' +
+                '<span>PDF document</span></div></div>' +
                 openLink(label, embedPath, true) +
                 '</div>';
         }
 
         return '<div class="admin-id-preview-card">' +
             '<span class="admin-id-preview-label">' + escapeAttr(sideLabel(label)) + '</span>' +
+            '<div class="admin-id-preview-media">' +
             '<img src="' + safeEmbedPath + '" alt="' + escapeAttr(label) + '" class="admin-id-preview-image" draggable="false"' + loadAttr +
             ' onerror="this.classList.add(\'admin-id-preview-image--error\');this.alt=\'Preview unavailable\';">' +
+            '</div>' +
             openLink(label, embedPath, false) +
             '</div>';
     }

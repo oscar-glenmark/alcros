@@ -1825,6 +1825,12 @@ function scheduleCalendarAppointmentSql(string $alias = 'a'): string
     return "{$alias}.status NOT IN ('cancelled', 'no_show')";
 }
 
+/** Dashboard “Incoming appointments” (tomorrow) — confirmed visits only, not awaiting confirmation. */
+function scheduleIncomingAppointmentSql(string $alias = 'a'): string
+{
+    return "{$alias}.status = 'confirmed'";
+}
+
 /** @return 'awaiting'|'confirmed'|'completed'|null */
 function scheduleVisitCalendarToneForAppointment(array $row): ?string
 {

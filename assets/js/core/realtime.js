@@ -354,7 +354,7 @@
                 if (incomingOpen && data.incoming_date) {
                     var openUrl = new URL(incomingOpen.href, window.location.href);
                     openUrl.searchParams.set('date', data.incoming_date);
-                    openUrl.searchParams.set('status', 'all_appointments');
+                    openUrl.searchParams.set('status', 'confirmed');
                     incomingOpen.href = openUrl.pathname + '?' + openUrl.searchParams.toString();
                 }
 

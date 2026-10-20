@@ -6,7 +6,8 @@
 
 .admin-id-preview-card {
     position: relative;
-    display: block;
+    display: flex;
+    flex-direction: column;
     min-height: 7.5rem;
     border: 2px solid rgba(110, 231, 183, 0.85);
     border-radius: 0.75rem;
@@ -33,7 +34,7 @@
     position: absolute;
     top: 0.5rem;
     left: 0.5rem;
-    z-index: 1;
+    z-index: 2;
     padding: 0.15rem 0.45rem;
     border-radius: 9999px;
     background: rgba(255, 255, 255, 0.92);
@@ -44,9 +45,17 @@
     color: #047857;
 }
 
+.admin-id-preview-media {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 7.5rem;
+    display: block;
+}
+
 .admin-id-preview-image {
     width: 100%;
     height: 7.5rem;
+    min-height: 7.5rem;
     object-fit: cover;
     object-position: center;
     opacity: 1;
@@ -71,7 +80,9 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    width: 100%;
     min-height: 7.5rem;
+    height: 7.5rem;
     padding: 1rem;
     color: #047857;
     font-size: 0.6875rem;
@@ -80,36 +91,35 @@
 }
 
 .admin-id-preview-open {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    position: relative;
     z-index: 5;
+    flex-shrink: 0;
     display: block;
     width: 100%;
     margin: 0;
     padding: 0.55rem 0.5rem;
     border: none;
     border-top: 2px solid #059669;
-    border-radius: 0 0 0.625rem 0.625rem;
+    border-radius: 0;
     background: linear-gradient(180deg, #10b981 0%, #059669 100%);
     box-shadow: 0 -2px 10px rgba(5, 150, 105, 0.35);
     font-size: 0.6875rem;
     font-weight: 800;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: #fff;
+    color: #fff !important;
     text-align: center;
-    text-decoration: none;
+    text-decoration: none !important;
     text-shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
     cursor: pointer;
     pointer-events: auto;
     touch-action: manipulation;
+    box-sizing: border-box;
     transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
 }
 
 .admin-id-preview-open:hover {
-    color: #fff;
+    color: #fff !important;
     background: linear-gradient(180deg, #34d399 0%, #10b981 100%);
     box-shadow: 0 -3px 14px rgba(16, 185, 129, 0.45);
 }

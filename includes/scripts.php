@@ -43,6 +43,9 @@ function adminPageStyles(string $page): string
     }
 
     $html = stylesheetTag('admin/' . $page . '.css');
+    if ($page === 'manage-requests' || $page === 'appointment') {
+        $html .= "\n    " . stylesheetTag('admin/id-preview.css');
+    }
     // appointment.css used to @import manage-requests.css without ?v= cache bust on the import.
     if ($page === 'appointment') {
         $html .= "\n    " . stylesheetTag('admin/manage-requests.css');

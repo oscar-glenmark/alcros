@@ -1,6 +1,3 @@
-@import url('id-preview.css');
-@import url('staff-id-dialog.css');
-
 .manage-lock-badge {
     margin-top: 0.35rem;
     font-size: 0.625rem;
@@ -993,6 +990,10 @@ a.manage-stat-card.is-active {
     cursor: pointer;
 }
 
+.manage-detail-ids .admin-id-preview-media {
+    min-height: 6.5rem;
+}
+
 .manage-detail-ids .admin-id-preview-image,
 .manage-detail-ids .admin-id-preview-pdf {
     min-height: 6.5rem;
@@ -1011,9 +1012,16 @@ a.manage-stat-card.is-active {
     padding: 0.35rem 0.5rem;
 }
 
-.manage-detail-ids .admin-id-preview-open {
-    font-size: 0.75rem;
-    padding: 0.625rem 0.5rem;
+.manage-detail-ids .admin-id-preview-card .admin-id-preview-open {
+    font-size: 0.6875rem;
+    padding: 0.55rem 0.5rem;
+    border-top: 2px solid #059669;
+    background: linear-gradient(180deg, #10b981 0%, #059669 100%);
+    color: #fff !important;
+    text-decoration: none !important;
+    text-transform: uppercase;
+    font-weight: 800;
+    letter-spacing: 0.06em;
 }
 
 .manage-detail-ids > a,

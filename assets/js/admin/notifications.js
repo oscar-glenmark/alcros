@@ -122,8 +122,22 @@
         return getBellAckedIds().indexOf(n.id) === -1;
     }
 
-    function bellBadgeCount(all) {
-        return visibleList(all).filter(isBellUnread).length;
+    function bellBadgeCount(all, counts) {
+        var visible = visibleList(all);
+        var unread = visible.filter(isBellUnread);
+        if (portalRole() === 'administrator') {
+            return unread.length;
+        }
+        var actions = actionCounts(counts);
+        var pendingWork = actions.requests + actions.appointments;
+        var operationalUnread = unread.filter(function (n) {
+            return n.type === 'pending_request' || n.type === 'appointment';
+        }).length;
+        var otherUnread = unread.filter(function (n) {
+            return n.type !== 'pending_request' && n.type !== 'appointment';
+        }).length;
+        var workUnread = Math.min(pendingWork, operationalUnread) + otherUnread;
+        return workUnread;
     }
 
     function escapeHtml(str) {
@@ -162,8 +176,8 @@
         };
     }
 
-    function updateBellBadges(all) {
-        var count = bellBadgeCount(all);
+    function updateBellBadges(all, counts) {
+        var count = bellBadgeCount(all, counts);
         updateBadgeEl(document.getElementById('notif-badge'), count);
         updateBadgeEl(document.getElementById('sidebar-notif-badge'), count);
     }
@@ -192,7 +206,7 @@
     }
 
     function updateAllBadges(all, counts) {
-        updateBellBadges(all);
+        updateBellBadges(all, counts);
         updateSidebarBadges(all, counts);
     }
 
@@ -395,7 +409,19 @@
 
         function applyPayload(data) {
             var role = (data && data.portal_role) ? String(data.portal_role).toLowerCase() : portalRole();
-            latest = filterForPortalRole((data && data.notifications) || [], role);
+            var next = filterForPortalRole((data && data.notifications) || [], role);
+            var nextIds = {};
+            next.forEach(function (n) {
+                if (n && n.id) {
+                    nextIds[n.id] = true;
+                }
+            });
+            latest.forEach(function (n) {
+                if (n && n.id && !nextIds[n.id]) {
+                    ackBellId(n.id);
+                }
+            });
+            latest = next;
             latestCounts = (data && data.counts) || latestCounts;
             refresh();
         }

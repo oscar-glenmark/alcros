@@ -455,7 +455,7 @@ $lastLogin = $lastLoginStmt->fetchColumn();
 $activeTab = $_GET['tab'] ?? 'my-account';
 $validTabs = $isAdmin
     ? ['my-account', 'security', 'account-management', 'system-configuration', 'admin-tools']
-    : ['my-account', 'security'];
+    : ['my-account', 'security', 'notifications'];
 if (!in_array($activeTab, $validTabs, true)) {
     $activeTab = 'my-account';
 }
@@ -538,6 +538,9 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                         'my-account' => ['label' => 'My Account', 'icon' => 'user', 'desc' => ''],
                         'security'   => ['label' => 'Security', 'icon' => 'shield', 'desc' => ''],
                     ];
+                    if (!$isAdmin) {
+                        $tabs['notifications'] = ['label' => 'Notifications', 'icon' => 'bell-ring', 'desc' => 'Desktop pop-up alerts'];
+                    }
                     if ($isAdmin) {
                         $tabs['account-management']   = ['label' => 'Staff Accounts', 'icon' => 'users', 'desc' => 'Portal users & roles'];
                         $tabs['system-configuration'] = ['label' => 'Configuration', 'icon' => 'settings', 'desc' => 'Office, fees & requirements'];
@@ -651,6 +654,13 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                             </div>
                         </form>
                     </div>
+
+                    <?php if (!$isAdmin): ?>
+                    <!-- NOTIFICATIONS (Staff only) -->
+                    <div id="tab-notifications" class="tab-content bg-white border border-slate-100 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-sm <?= $activeTab !== 'notifications' ? 'hidden' : '' ?>">
+                        <?php require __DIR__ . '/includes/settings_desktop_notifications.php'; ?>
+                    </div>
+                    <?php endif; ?>
 
                     <!-- SECURITY -->
                     <div id="tab-security" class="tab-content bg-white border border-slate-100 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-sm <?= $activeTab !== 'security' ? 'hidden' : '' ?>">

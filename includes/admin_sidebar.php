@@ -113,6 +113,7 @@ function sidebarSectionLabel(string $label): string
     </div>
 </div>
 
+<div class="hidden" aria-hidden="true" id="alcros-staff-csrf"><?= csrfField() ?></div>
 <?php
 $staffSyncToken = staffAuthToken();
 if ($staffSyncToken !== null && $staffSyncToken !== '') {

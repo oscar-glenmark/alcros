@@ -87,7 +87,6 @@ jobs:
             -x ^uploads/staff/ \
             -x \\.env \
             -x \\.log$ \
-            -x db_loader_check\\.php \
             -x Thumbs\\.db \
             -x \\.DS_Store \
             -x \\.ftp-deploy-sync-state\\.json \

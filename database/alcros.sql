@@ -326,19 +326,6 @@ CREATE TABLE IF NOT EXISTS system_settings (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
--- Persisted admin alerts (sidebar / bell notifications).
-CREATE TABLE IF NOT EXISTS staff_notifications (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    notif_key VARCHAR(80) NOT NULL UNIQUE,
-    type ENUM('pending_request','ready_pickup','queue','appointment','system') NOT NULL DEFAULT 'system',
-    title VARCHAR(150) NOT NULL,
-    message VARCHAR(255) NOT NULL,
-    detail VARCHAR(100) DEFAULT NULL,
-    href VARCHAR(255) DEFAULT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_type_created (type, created_at)
-) ENGINE=InnoDB;
-
 -- Citizen Gmail delivery audit trail.
 CREATE TABLE IF NOT EXISTS email_logs (
     id INT AUTO_INCREMENT PRIMARY KEY,

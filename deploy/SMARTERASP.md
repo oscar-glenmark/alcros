@@ -40,6 +40,8 @@ In **Hosting Control Panel → PHP**, set (match `.user.ini` in the project root
 
 Confirm extensions: **PDO MySQL**, **curl**, **openssl**, **zip** (ZipArchive).
 
+**Desktop staff notifications:** **Settings → Notifications** (Staff accounts only) — enable browser pop-ups (Chrome/Edge, no extra PHP libraries). Keep the browser open while on duty.
+
 Set the site to **PHP 8.x**.
 
 ## 4. Database configuration

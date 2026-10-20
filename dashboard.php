@@ -237,11 +237,115 @@ if (!$isAdminUser) {
 
             <?php else: ?>
 
-            <!-- Main content grid -->
-            <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            <!-- Row 1: Today's schedule 40% · Incoming 60%. Row 2: Recent requests 40% · Activity 60%. -->
+            <div class="grid grid-cols-1 xl:grid-cols-10 gap-6">
 
-                <!-- Recent requests -->
-                <div class="xl:col-span-2 bg-white rounded-2xl border border-gray-100 dash-card overflow-hidden">
+                <!-- Today's schedule -->
+                <div class="xl:col-span-4 bg-white rounded-2xl border border-gray-100 dash-card overflow-hidden dash-panel-pair">
+                    <div class="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+                        <div>
+                            <h2 class="font-bold text-sm text-slate-900">Today's Schedule</h2>
+                            <p class="text-[10px] text-gray-400 mt-0.5"><span id="dash-schedule-count"><?= count($scheduleCalendar['appointments']) ?></span> scheduled visit(s) · <span id="dash-schedule-date-label"><?= formatDateDisplay($scheduleDate) ?></span></p>
+                        </div>
+                        <a id="dash-schedule-open-link" href="<?= htmlspecialchars(buildStaffOperationalUrl('appointment.php', ['date' => $scheduleDate])) ?>" class="text-blue-600 text-[10px] font-bold uppercase hover:underline">Open</a>
+                    </div>
+
+                    <div class="px-4 pt-4 pb-3 border-b border-gray-50 xl:border-b-0 xl:pb-4">
+                        <div class="dash-schedule-calendar max-w-md xl:max-w-sm" id="dashScheduleCalendar">
+                            <div class="dash-cal-head">
+                                <button type="button" id="dashCalPrev" class="dash-cal-nav" aria-label="Previous month">
+                                    <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                                </button>
+                                <p id="dashCalMonthLabel" class="dash-cal-month"></p>
+                                <button type="button" id="dashCalNext" class="dash-cal-nav" aria-label="Next month">
+                                    <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                            <div class="dash-cal-weekdays">
+                                <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                            </div>
+                            <div id="dashCalGrid" class="dash-cal-grid" role="grid" aria-label="Appointment calendar"></div>
+                        </div>
+                    </div>
+
+                    <?php if (empty($scheduleCalendar['appointments'])): ?>
+                    <div id="dash-schedule-empty" class="p-10 text-center border-t border-gray-50 xl:border-t-0">
+                        <i data-lucide="calendar-off" class="w-8 h-8 text-gray-200 mx-auto mb-2"></i>
+                        <p class="text-xs text-gray-400">No visits scheduled for this date.</p>
+                    </div>
+                    <div id="today-appts-list" class="divide-y divide-gray-50 max-h-[240px] overflow-y-auto hidden"></div>
+                    <?php else: ?>
+                    <div id="dash-schedule-empty" class="p-10 text-center hidden border-t border-gray-50 xl:border-t-0">
+                        <i data-lucide="calendar-off" class="w-8 h-8 text-gray-200 mx-auto mb-2"></i>
+                        <p class="text-xs text-gray-400">No visits scheduled for this date.</p>
+                    </div>
+                    <div id="today-appts-list" class="divide-y divide-gray-50 max-h-[240px] overflow-y-auto border-t border-gray-50">
+                        <?php foreach ($scheduleCalendar['appointments'] as $ap): ?>
+                        <?php
+                        $isCertificate = ($ap['schedule_kind'] ?? '') === 'certificate';
+                        [$visitPath, $visitQuery] = resolveStaffOperationalNav(...scheduleVisitLinkParams($ap, $scheduleDate));
+                        ?>
+                        <a href="<?= htmlspecialchars(buildAuthUrl($visitPath, $visitQuery)) ?>" class="dash-schedule-row px-5 py-3 flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-lg <?= $isCertificate ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-600' ?> flex flex-col items-center justify-center shrink-0 leading-none">
+                                <span class="text-[9px] font-bold"><?= date('g:i', strtotime($ap['appointment_time'])) ?></span>
+                                <span class="text-[8px] uppercase"><?= date('A', strtotime($ap['appointment_time'])) ?></span>
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <p class="text-sm font-semibold text-slate-800 truncate"><?= htmlspecialchars($ap['citizen_name']) ?></p>
+                                <p class="text-[10px] text-gray-400 truncate"><?= htmlspecialchars($ap['service_type']) ?></p>
+                            </div>
+                            <span class="text-[9px] font-bold uppercase text-gray-400 shrink-0"><?= htmlspecialchars($ap['status']) ?></span>
+                        </a>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Incoming appointments (60%) — same row as schedule -->
+                <div class="xl:col-span-6 bg-white rounded-2xl border border-gray-100 dash-card overflow-hidden dash-panel-pair">
+                    <div class="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+                        <div>
+                            <h2 class="font-bold text-sm text-slate-900">Incoming Appointments</h2>
+                            <p class="text-[10px] text-gray-400 mt-0.5"><span id="incoming-appts-count"><?= count($incomingAppointments) ?></span> appointment(s) · Tomorrow · <span id="incoming-appts-date"><?= formatDateDisplay($incomingDate) ?></span></p>
+                        </div>
+                        <a id="incoming-appts-open-link" href="<?= htmlspecialchars(buildStaffOperationalUrl('appointment.php', ['date' => $incomingDate, 'status' => 'all_appointments'])) ?>" class="text-blue-600 text-[10px] font-bold uppercase hover:underline">Open</a>
+                    </div>
+
+                    <?php if (empty($incomingAppointments)): ?>
+                    <div id="incoming-appts-empty" class="p-8 text-center">
+                        <i data-lucide="calendar-clock" class="w-8 h-8 text-gray-200 mx-auto mb-2"></i>
+                        <p class="text-xs text-gray-400">No appointments scheduled for tomorrow.</p>
+                    </div>
+                    <div id="incoming-appts-list" class="divide-y divide-gray-50 max-h-[280px] xl:max-h-none overflow-y-auto hidden"></div>
+                    <?php else: ?>
+                    <div id="incoming-appts-empty" class="p-8 text-center hidden">
+                        <i data-lucide="calendar-clock" class="w-8 h-8 text-gray-200 mx-auto mb-2"></i>
+                        <p class="text-xs text-gray-400">No appointments scheduled for tomorrow.</p>
+                    </div>
+                    <div id="incoming-appts-list" class="divide-y divide-gray-50 max-h-[280px] xl:max-h-none overflow-y-auto">
+                        <?php foreach ($incomingAppointments as $ap): ?>
+                        <?php
+                        $isCertificate = ($ap['schedule_kind'] ?? '') === 'certificate';
+                        [$visitPath, $visitQuery] = resolveStaffOperationalNav(...scheduleVisitLinkParams($ap, $incomingDate));
+                        ?>
+                        <a href="<?= htmlspecialchars(buildAuthUrl($visitPath, $visitQuery)) ?>" class="dash-schedule-row px-5 py-3 flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-lg <?= $isCertificate ? 'bg-amber-50 text-amber-700' : 'bg-violet-50 text-violet-600' ?> flex flex-col items-center justify-center shrink-0 leading-none">
+                                <span class="text-[9px] font-bold"><?= date('g:i', strtotime($ap['appointment_time'])) ?></span>
+                                <span class="text-[8px] uppercase"><?= date('A', strtotime($ap['appointment_time'])) ?></span>
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <p class="text-sm font-semibold text-slate-800 truncate"><?= htmlspecialchars($ap['citizen_name']) ?></p>
+                                <p class="text-[10px] text-gray-400 truncate"><?= htmlspecialchars($ap['service_type']) ?></p>
+                            </div>
+                            <span class="text-[9px] font-bold uppercase text-gray-400 shrink-0"><?= htmlspecialchars($ap['status']) ?></span>
+                        </a>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Recent requests (40%) — same row as activity -->
+                <div class="xl:col-span-4 bg-white rounded-2xl border border-gray-100 dash-card overflow-hidden dash-panel-pair">
                     <div class="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
                         <div>
                             <h2 class="font-bold text-sm text-slate-900">Recent Requests</h2>
@@ -276,153 +380,41 @@ if (!$isAdminUser) {
                     <?php endif; ?>
                 </div>
 
-                <!-- Today's schedule + incoming -->
-                <div class="space-y-6">
-                <div class="bg-white rounded-2xl border border-gray-100 dash-card overflow-hidden">
+                <!-- My recent activity (60%) — same row as recent requests -->
+                <div class="xl:col-span-6 bg-white rounded-2xl border border-gray-100 dash-card overflow-hidden dash-panel-pair">
                     <div class="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
                         <div>
-                            <h2 class="font-bold text-sm text-slate-900">Today's Schedule</h2>
-                            <p class="text-[10px] text-gray-400 mt-0.5"><span id="dash-schedule-count"><?= count($scheduleCalendar['appointments']) ?></span> scheduled visit(s) · <span id="dash-schedule-date-label"><?= formatDateDisplay($scheduleDate) ?></span></p>
-                        </div>
-                        <a id="dash-schedule-open-link" href="<?= htmlspecialchars(buildStaffOperationalUrl('appointment.php', ['date' => $scheduleDate])) ?>" class="text-blue-600 text-[10px] font-bold uppercase hover:underline">Open</a>
-                    </div>
-
-                    <div class="px-4 pt-4 pb-3 border-b border-gray-50">
-                        <div class="dash-schedule-calendar" id="dashScheduleCalendar">
-                            <div class="dash-cal-head">
-                                <button type="button" id="dashCalPrev" class="dash-cal-nav" aria-label="Previous month">
-                                    <i data-lucide="chevron-left" class="w-4 h-4"></i>
-                                </button>
-                                <p id="dashCalMonthLabel" class="dash-cal-month"></p>
-                                <button type="button" id="dashCalNext" class="dash-cal-nav" aria-label="Next month">
-                                    <i data-lucide="chevron-right" class="w-4 h-4"></i>
-                                </button>
-                            </div>
-                            <div class="dash-cal-weekdays">
-                                <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
-                            </div>
-                            <div id="dashCalGrid" class="dash-cal-grid" role="grid" aria-label="Appointment calendar"></div>
+                            <h2 class="font-bold text-sm text-slate-900">My Recent Activity</h2>
+                            <p class="text-[10px] text-gray-400 mt-0.5">Your recent actions in the portal</p>
                         </div>
                     </div>
-
-                    <?php if (empty($scheduleCalendar['appointments'])): ?>
-                    <div id="dash-schedule-empty" class="p-10 text-center">
-                        <i data-lucide="calendar-off" class="w-8 h-8 text-gray-200 mx-auto mb-2"></i>
-                        <p class="text-xs text-gray-400">No visits scheduled for this date.</p>
-                    </div>
-                    <div id="today-appts-list" class="divide-y divide-gray-50 max-h-[240px] overflow-y-auto hidden"></div>
+                    <?php if (empty($activities)): ?>
+                    <div class="p-10 text-center text-gray-400 text-xs">No activity recorded yet.</div>
                     <?php else: ?>
-                    <div id="dash-schedule-empty" class="p-10 text-center hidden">
-                        <i data-lucide="calendar-off" class="w-8 h-8 text-gray-200 mx-auto mb-2"></i>
-                        <p class="text-xs text-gray-400">No visits scheduled for this date.</p>
-                    </div>
-                    <div id="today-appts-list" class="divide-y divide-gray-50 max-h-[240px] overflow-y-auto">
-                        <?php foreach ($scheduleCalendar['appointments'] as $ap): ?>
-                        <?php
-                        $isCertificate = ($ap['schedule_kind'] ?? '') === 'certificate';
-                        [$visitPath, $visitQuery] = resolveStaffOperationalNav(...scheduleVisitLinkParams($ap, $scheduleDate));
-                        ?>
-                        <a href="<?= htmlspecialchars(buildAuthUrl($visitPath, $visitQuery)) ?>" class="dash-schedule-row px-5 py-3 flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-lg <?= $isCertificate ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-600' ?> flex flex-col items-center justify-center shrink-0 leading-none">
-                                <span class="text-[9px] font-bold"><?= date('g:i', strtotime($ap['appointment_time'])) ?></span>
-                                <span class="text-[8px] uppercase"><?= date('A', strtotime($ap['appointment_time'])) ?></span>
+                    <div id="activity-feed-list" class="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 max-h-[420px] xl:max-h-none overflow-y-auto">
+                        <?php foreach ($activities as $act): ?>
+                        <div class="flex items-start gap-3 p-3 rounded-xl bg-gray-50/80 border border-gray-100">
+                            <span class="shrink-0 mt-0.5" aria-hidden="true">
+                                <?= $act['staff_avatar_html'] ?? renderStaffAvatar(
+                                    $act['staff_photo_path'] ?? null,
+                                    (string) ($act['staff_display_name'] ?? (staffId() ?: 'Staff')),
+                                    'w-9 h-9 text-xs'
+                                ) ?>
+                            </span>
+                            <div class="min-w-0">
+                                <p class="text-xs font-bold text-slate-800"><?= htmlspecialchars($act['action']) ?></p>
+                                <?php if (!empty($act['details'])): ?>
+                                <p class="text-[10px] text-gray-500 mt-0.5 line-clamp-2"><?= htmlspecialchars($act['details']) ?></p>
+                                <?php endif; ?>
+                                <p class="text-[10px] text-gray-400 mt-1"><?= formatTimeAgo($act['created_at']) ?></p>
                             </div>
-                            <div class="min-w-0 flex-1">
-                                <p class="text-sm font-semibold text-slate-800 truncate"><?= htmlspecialchars($ap['citizen_name']) ?></p>
-                                <p class="text-[10px] text-gray-400 truncate"><?= htmlspecialchars($ap['service_type']) ?></p>
-                            </div>
-                            <span class="text-[9px] font-bold uppercase text-gray-400 shrink-0"><?= htmlspecialchars($ap['status']) ?></span>
-                        </a>
+                        </div>
                         <?php endforeach; ?>
                     </div>
                     <?php endif; ?>
                 </div>
-
-                <div class="bg-white rounded-2xl border border-gray-100 dash-card overflow-hidden">
-                    <div class="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
-                        <div>
-                            <h2 class="font-bold text-sm text-slate-900">Incoming Appointments</h2>
-                            <p class="text-[10px] text-gray-400 mt-0.5"><span id="incoming-appts-count"><?= count($incomingAppointments) ?></span> appointment(s) · Tomorrow · <span id="incoming-appts-date"><?= formatDateDisplay($incomingDate) ?></span></p>
-                        </div>
-                        <a id="incoming-appts-open-link" href="<?= htmlspecialchars(buildStaffOperationalUrl('appointment.php', ['date' => $incomingDate, 'status' => 'all_appointments'])) ?>" class="text-blue-600 text-[10px] font-bold uppercase hover:underline">Open</a>
-                    </div>
-
-                    <?php if (empty($incomingAppointments)): ?>
-                    <div id="incoming-appts-empty" class="p-8 text-center">
-                        <i data-lucide="calendar-clock" class="w-8 h-8 text-gray-200 mx-auto mb-2"></i>
-                        <p class="text-xs text-gray-400">No appointments scheduled for tomorrow.</p>
-                    </div>
-                    <div id="incoming-appts-list" class="divide-y divide-gray-50 max-h-[220px] overflow-y-auto hidden"></div>
-                    <?php else: ?>
-                    <div id="incoming-appts-empty" class="p-8 text-center hidden">
-                        <i data-lucide="calendar-clock" class="w-8 h-8 text-gray-200 mx-auto mb-2"></i>
-                        <p class="text-xs text-gray-400">No appointments scheduled for tomorrow.</p>
-                    </div>
-                    <div id="incoming-appts-list" class="divide-y divide-gray-50 max-h-[220px] overflow-y-auto">
-                        <?php foreach ($incomingAppointments as $ap): ?>
-                        <?php
-                        $isCertificate = ($ap['schedule_kind'] ?? '') === 'certificate';
-                        [$visitPath, $visitQuery] = resolveStaffOperationalNav(...scheduleVisitLinkParams($ap, $incomingDate));
-                        ?>
-                        <a href="<?= htmlspecialchars(buildAuthUrl($visitPath, $visitQuery)) ?>" class="dash-schedule-row px-5 py-3 flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-lg <?= $isCertificate ? 'bg-amber-50 text-amber-700' : 'bg-violet-50 text-violet-600' ?> flex flex-col items-center justify-center shrink-0 leading-none">
-                                <span class="text-[9px] font-bold"><?= date('g:i', strtotime($ap['appointment_time'])) ?></span>
-                                <span class="text-[8px] uppercase"><?= date('A', strtotime($ap['appointment_time'])) ?></span>
-                            </div>
-                            <div class="min-w-0 flex-1">
-                                <p class="text-sm font-semibold text-slate-800 truncate"><?= htmlspecialchars($ap['citizen_name']) ?></p>
-                                <p class="text-[10px] text-gray-400 truncate"><?= htmlspecialchars($ap['service_type']) ?></p>
-                            </div>
-                            <span class="text-[9px] font-bold uppercase text-gray-400 shrink-0"><?= htmlspecialchars($ap['status']) ?></span>
-                        </a>
-                        <?php endforeach; ?>
-                    </div>
-                    <?php endif; ?>
-                </div>
-                </div>
             </div>
 
-            <?php endif; ?>
-
-            <?php if (!$isAdminUser): ?>
-            <!-- Activity (staff) -->
-            <div class="bg-white rounded-2xl border border-gray-100 dash-card overflow-hidden">
-                <div class="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
-                    <div>
-                        <h2 class="font-bold text-sm text-slate-900"><?= $isAdminUser ? 'System Activity' : 'My Recent Activity' ?></h2>
-                        <p class="text-[10px] text-gray-400 mt-0.5"><?= $isAdminUser ? 'Latest actions across the registry office' : 'Your recent actions in the portal' ?></p>
-                    </div>
-                    <?php if ($isAdminUser): ?>
-                    <a href="<?= htmlspecialchars(buildAuthUrl('activity-log.php')) ?>" class="text-blue-600 text-[10px] font-bold uppercase hover:underline">Full log</a>
-                    <?php endif; ?>
-                </div>
-                <?php if (empty($activities)): ?>
-                <div class="p-10 text-center text-gray-400 text-xs">No activity recorded yet.</div>
-                <?php else: ?>
-                <div id="activity-feed-list" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 p-4">
-                    <?php foreach ($activities as $act): ?>
-                    <div class="flex items-start gap-3 p-3 rounded-xl bg-gray-50/80 border border-gray-100">
-                        <span class="shrink-0 mt-0.5" aria-hidden="true">
-                            <?= $act['staff_avatar_html'] ?? renderStaffAvatar(
-                                $act['staff_photo_path'] ?? null,
-                                (string) ($act['staff_display_name'] ?? (staffId() ?: 'Staff')),
-                                'w-9 h-9 text-xs'
-                            ) ?>
-                        </span>
-                        <div class="min-w-0">
-                            <p class="text-xs font-bold text-slate-800"><?= htmlspecialchars($act['action']) ?></p>
-                            <?php if (!empty($act['details'])): ?>
-                            <p class="text-[10px] text-gray-500 mt-0.5 line-clamp-2"><?= htmlspecialchars($act['details']) ?></p>
-                            <?php endif; ?>
-                            <p class="text-[10px] text-gray-400 mt-1">
-                                <?= $isAdminUser ? htmlspecialchars($act['staff_id'] ?? 'System') . ' · ' : '' ?><?= formatTimeAgo($act['created_at']) ?>
-                            </p>
-                        </div>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-                <?php endif; ?>
-            </div>
             <?php endif; ?>
 
         </div>

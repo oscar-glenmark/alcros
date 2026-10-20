@@ -16,9 +16,6 @@ try {
     $limit = isset($_GET['limit']) ? max(1, min(100, (int) $_GET['limit'])) : 20;
     $forAdministrator = isAdmin();
     $notifications = filterStaffPortalNotifications(fetchNotifications($pdo, $limit), $forAdministrator);
-    foreach ($notifications as $notification) {
-        upsertStaffNotification($notification);
-    }
 
     $counts = $forAdministrator
         ? ['pending_requests' => 0, 'pending_appointments' => 0]

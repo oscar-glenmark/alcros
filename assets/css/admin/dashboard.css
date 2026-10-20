@@ -123,6 +123,24 @@
 .dash-stat-card--violet .dash-stat-card__trend-value--up { color: #7c3aed; }
 .dash-stat-card--violet .dash-stat-card__trend-value--down { color: #dc2626; }
 
+/* Staff dashboard pairs: 40% · 60% (xl grid-cols-10) */
+@media (min-width: 1280px) {
+    .dash-panel-pair {
+        min-height: 20rem;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .dash-panel-pair #recent-requests-list,
+    .dash-panel-pair #incoming-appts-list,
+    .dash-panel-pair #today-appts-list,
+    .dash-panel-pair #activity-feed-list {
+        flex: 1 1 auto;
+        max-height: none;
+        overflow-y: auto;
+    }
+}
+
 .dash-schedule-calendar {
     user-select: none;
 }

@@ -229,6 +229,7 @@ function adminCoreScripts(): string
         'core/poll-config.js',
         'admin/admin-live.js',
         'admin/notifications.js',
+        'core/desktop-notify.js',
         'core/realtime.js',
     ];
 

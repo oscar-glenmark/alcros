@@ -61,12 +61,15 @@ function createQueueTicket(PDO $pdo, string $purpose = 'walk_in'): array
         $pdo->prepare(
             'INSERT INTO queue_tickets (ticket_number, purpose, status, window_number) VALUES (?, ?, ?, ?)'
         )->execute([$ticketNumber, $purpose, 'waiting', $tableNum]);
+        $ticketId = (int) $pdo->lastInsertId();
+        $purposeLabel = queuePurposeConfig()[$purpose]['label'];
         $pdo->commit();
 
         return [
+            'id'     => $ticketId,
             'number' => $ticketNumber,
             'table'  => $tableNum,
-            'label'  => queuePurposeConfig()[$purpose]['label'],
+            'label'  => $purposeLabel,
         ];
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
@@ -627,20 +630,6 @@ function ensureExtendedSchema(PDO $pdo): void
     $ensured = true;
 
     $pdo->exec(
-        "CREATE TABLE IF NOT EXISTS staff_notifications (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            notif_key VARCHAR(80) NOT NULL UNIQUE,
-            type ENUM('pending_request','ready_pickup','queue','appointment','system') NOT NULL DEFAULT 'system',
-            title VARCHAR(150) NOT NULL,
-            message VARCHAR(255) NOT NULL,
-            detail VARCHAR(100) DEFAULT NULL,
-            href VARCHAR(255) DEFAULT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_type_created (type, created_at)
-        ) ENGINE=InnoDB"
-    );
-
-    $pdo->exec(
         "CREATE TABLE IF NOT EXISTS email_logs (
             id INT AUTO_INCREMENT PRIMARY KEY,
             recipient VARCHAR(150) NOT NULL,
@@ -759,35 +748,6 @@ function logRequestStatusChange(
         $stmt->execute([$requestId, $trackingCode, $oldStatus, $newStatus, $changedBy, $notes]);
     } catch (PDOException $e) {
         // Non-fatal if logging fails
-    }
-}
-
-function upsertStaffNotification(array $item): void
-{
-    try {
-        ensureExtendedSchema(getDB());
-        $stmt = getDB()->prepare(
-            'INSERT INTO staff_notifications (notif_key, type, title, message, detail, href, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE
-                type = VALUES(type),
-                title = VALUES(title),
-                message = VALUES(message),
-                detail = VALUES(detail),
-                href = VALUES(href),
-                created_at = VALUES(created_at)'
-        );
-        $stmt->execute([
-            $item['id'] ?? $item['notif_key'] ?? '',
-            $item['type'] ?? 'system',
-            $item['title'] ?? '',
-            $item['message'] ?? '',
-            $item['detail'] ?? null,
-            $item['href'] ?? null,
-            $item['created_at'] ?? date('Y-m-d H:i:s'),
-        ]);
-    } catch (PDOException $e) {
-        // Non-fatal if sync fails
     }
 }
 

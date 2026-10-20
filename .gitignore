@@ -20,10 +20,11 @@ uploads/staff/*
 *.tmp
 *.temp
 
-# Composer is not used; Excel export is handled by includes/xlsx_writer.php
+# Composer (optional local tooling)
 composer.phar
+composer-run.phar
 composer-setup.php
-vendor/
+/vendor/
 
 # Runtime rate-limit cache
 storage/rate_limits/*.json

@@ -5,6 +5,7 @@ require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/appointment_follow_up.php';
 require_once __DIR__ . '/includes/scripts.php';
 require_once __DIR__ . '/includes/staff_id_lightbox.php';
+require_once __DIR__ . '/includes/staff_resource_locks.php';
 requireStaffLogin();
 requirePageAccess('appointment.php');
 releaseSessionLock();
@@ -161,6 +162,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($isUpdate) {
+        if ($id > 0 && appointmentLockEligible($pdo, $id)) {
+            try {
+                assertStaffResourceLockForWrite($pdo, STAFF_LOCK_TYPE_APPOINTMENT, $id, staffId(), staffName());
+            } catch (InvalidArgumentException $e) {
+                $responseMessage = $e->getMessage();
+                if ($isAjax) {
+                    appointmentJsonResponse(false, $responseMessage);
+                }
+                appointmentFlashSet('error', $responseMessage);
+                redirectWithAuth('appointment.php', array_filter(
+                    [
+                        'date'   => $viewDate,
+                        'status' => $filters['status'] !== 'all' ? $filters['status'] : null,
+                        'q'      => trim($filters['q']) !== '' ? trim($filters['q']) : null,
+                    ]
+                ));
+            }
+        }
+
         $status = (string) ($_POST['status'] ?? '');
         $rejectionReason = null;
         if ($status === 'cancelled') {
@@ -183,6 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         if ($id > 0 && updateAppointmentStatus($pdo, $id, $status, $rejectionReason)) {
+            clearStaffResourceLock($pdo, STAFF_LOCK_TYPE_APPOINTMENT, $id);
             $responseOk = true;
             $responseMessage = match ($status) {
                 'confirmed' => 'Appointment confirmed — citizen will be notified.',
@@ -346,6 +367,7 @@ $showBulkActions = !$isFollowUpsView && in_array($filterStatus, ['all_appointmen
 $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
 
 $appointments = [];
+$appointmentLockMap = [];
 $resultCount = 0;
 
 if ($isFollowUpsView) {
@@ -406,6 +428,11 @@ if ($isSearchMode) {
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $appointments = $stmt->fetchAll();
+$appointmentLockMap = fetchStaffResourceLocksMap(
+    $pdo,
+    STAFF_LOCK_TYPE_APPOINTMENT,
+    array_map(static fn (array $row): int => (int) ($row['id'] ?? 0), $appointments)
+);
 $resultCount = count($appointments);
 
 } // end !follow_ups list
@@ -450,7 +477,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
     <?= staffIdLightboxHeadStyles() ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>
-<body class="flex min-h-screen">
+<body class="flex min-h-screen" data-staff-lock-type="<?= htmlspecialchars(STAFF_LOCK_TYPE_APPOINTMENT) ?>">
 
     <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
 
@@ -708,6 +735,8 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                         <?php foreach ($appointments as $ap): ?>
                         <?php
                         $viewData = appointmentViewData($ap, $pdo);
+                        $apLock = $appointmentLockMap[(int) $ap['id']] ?? null;
+                        $viewData['lock'] = $apLock ? formatStaffResourceLock($apLock, staffId()) : null;
                         $canBulkSelect = $isRecentlyDeletedView || appointmentIsDeletable($ap);
                         ?>
                         <tr class="manage-requests-row"
@@ -733,7 +762,14 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                             <?php if ($isRecentlyDeletedView): ?>
                             <td><span class="manage-date"><?= !empty($ap['deleted_at']) ? htmlspecialchars(formatReportDateTime($ap['deleted_at'])) : '—' ?></span></td>
                             <?php endif; ?>
-                            <td class="manage-cell-status"><?= appointmentStatusBadge($ap['status']) ?></td>
+                            <td class="manage-cell-status">
+                                <?= appointmentStatusBadge($ap['status']) ?>
+                                <?php if (!empty($viewData['lock']) && !empty($viewData['lock']['active'])): ?>
+                                <p class="manage-lock-badge" data-lock-badge-for="<?= (int) $ap['id'] ?>"><?= htmlspecialchars($viewData['lock']['label']) ?></p>
+                                <?php else: ?>
+                                <p class="manage-lock-badge hidden" data-lock-badge-for="<?= (int) $ap['id'] ?>"></p>
+                                <?php endif; ?>
+                            </td>
                             <td class="manage-cell-actions">
                                 <div class="manage-row-actions" onclick="event.stopPropagation()">
                                     <?php if (!$isRecentlyDeletedView): ?>
@@ -825,6 +861,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                                     <div class="manage-detail-row"><dt>Service</dt><dd id="appt-view-service"></dd></div>
                                     <div class="manage-detail-row manage-detail-row--full"><dt>Schedule</dt><dd id="appt-view-schedule"></dd></div>
                                     <div class="manage-detail-row"><dt>Status</dt><dd id="appt-view-status"></dd></div>
+                                    <p id="appt-view-lock-banner" class="manage-lock-badge manage-lock-detail-banner hidden" aria-live="polite"></p>
                                     <div class="manage-detail-row"><dt>Type</dt><dd id="appt-view-source"></dd></div>
                                     <div class="manage-detail-row manage-detail-row--full" id="appt-view-tracking-wrap"><dt>Tracking</dt><dd id="appt-view-tracking"></dd></div>
                                 </dl>
@@ -887,6 +924,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                     <p id="modalAppointmentViewCode" class="manage-detail-code"></p>
                     <p id="modal-appt-view-created" class="manage-detail-meta"></p>
                 </div>
+                <p id="modal-appt-header-lock" class="manage-modal-header-lock hidden" aria-live="polite"></p>
                 <button type="button" class="manage-request-modal__close" data-close-appointment-modal aria-label="Close review popup">
                     <i data-lucide="x" class="w-4 h-4"></i>
                 </button>
@@ -939,6 +977,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                             <div class="manage-detail-row"><dt>Service</dt><dd id="modal-appt-view-service"></dd></div>
                             <div class="manage-detail-row manage-detail-row--full"><dt>Schedule</dt><dd id="modal-appt-view-schedule"></dd></div>
                             <div class="manage-detail-row"><dt>Status</dt><dd id="modal-appt-view-status"></dd></div>
+                            <p id="modal-appt-view-lock-banner" class="manage-lock-badge manage-lock-detail-banner hidden" aria-live="polite"></p>
                             <div class="manage-detail-row"><dt>Type</dt><dd id="modal-appt-view-source"></dd></div>
                             <div class="manage-detail-row manage-detail-row--full" id="modal-appt-view-tracking-wrap"><dt>Tracking</dt><dd id="modal-appt-view-tracking"></dd></div>
                         </dl>
@@ -973,6 +1012,8 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
         'useSidePanel'   => $showSidePanel,
         'bulkActions'    => $showBulkActions,
         'pollUrl'               => buildAuthUrl('api/appointments.php'),
+        'locksApiUrl'           => buildAuthUrl('api/staff_locks.php'),
+        'lockType'              => STAFF_LOCK_TYPE_APPOINTMENT,
         'pollEnabled'           => !$isFollowUpsView,
         'overviewCardHighlight' => $overviewCardHighlight,
         'minFollowUpDate'        => minFollowUpPickDate(),
@@ -988,6 +1029,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
     <?= scriptTag('core/page-config.js') ?>
     <?= scriptTag('core/admin-search.js') ?>
     <?= scriptTag('admin/manage-bulk.js') ?>
+    <?= scriptTag('core/staff-resource-locks.js') ?>
     <?= scriptTag('admin/appointment.js') ?>
     <?= lucideInitScript() ?>
 </body>

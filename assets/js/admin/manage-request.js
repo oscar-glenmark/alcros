@@ -252,6 +252,9 @@
 
         var formData = new FormData(form);
         formData.set('ajax', '1');
+        if (window.AlcrosStaffLocks && typeof window.AlcrosStaffLocks.syncStaffPostAuth === 'function') {
+            window.AlcrosStaffLocks.syncStaffPostAuth(formData);
+        }
 
         fetch(form.action || pageConfig.formAction || 'manage_request.php', {
             method: 'POST',
@@ -533,14 +536,36 @@
         }, true);
     }
 
+    function requestLockable(data) {
+        var key = data && data.status_key ? String(data.status_key) : '';
+        return key !== 'completed' && key !== 'rejected';
+    }
+
+    function requestLockReadOnly(data) {
+        if (!data) return false;
+        if (data._lockReadOnly) return true;
+        return window.AlcrosStaffLocks && window.AlcrosStaffLocks.isBlocked(data.lock);
+    }
+
     function renderDetailActions(actionsWrap, data) {
         if (!actionsWrap) return;
 
         actionsWrap._requestData = data;
         actionsWrap.innerHTML = '';
-        var hasActions = Array.isArray(data.actions) && data.actions.length > 0;
-        var canDelete = !!data.can_delete;
-        var canPrint = !!data.can_print;
+        var readOnly = requestLockReadOnly(data);
+        var hasActions = !readOnly && Array.isArray(data.actions) && data.actions.length > 0;
+        var canDelete = !readOnly && !!data.can_delete;
+        var canPrint = !readOnly && !!data.can_print;
+
+        if (readOnly) {
+            var lockHint = document.createElement('p');
+            lockHint.className = 'manage-detail-actions__hint manage-lock-readonly-hint';
+            lockHint.textContent = (data.lock && data.lock.label)
+                || 'This request is being handled by another staff member. View only.';
+            actionsWrap.appendChild(lockHint);
+            actionsWrap.classList.remove('hidden');
+            return;
+        }
 
         if (!hasActions && !canDelete && !canPrint) {
             actionsWrap.classList.add('hidden');
@@ -613,6 +638,9 @@
         setText(prefix + 'view-updated', data.updated_at);
 
         renderIdFiles(document.getElementById(prefix + 'view-id-files'), data);
+        if (window.AlcrosStaffLocks && typeof window.AlcrosStaffLocks.syncDetailLockBanner === 'function') {
+            window.AlcrosStaffLocks.syncDetailLockBanner(prefix, data, 'view');
+        }
         renderDetailActions(view.actions, data);
 
         var notesWrap = document.getElementById(prefix + 'view-notes-wrap');
@@ -642,12 +670,46 @@
         options = options || {};
         var openInModal = options.modal === true || !useSidePanel || !panel || !content || !emptyState;
 
-        if (openInModal) {
-            openModal(data, row);
+        function showView(viewData) {
+            if (openInModal) {
+                openModal(viewData, row);
+            } else {
+                openDetail(viewData, row);
+            }
+        }
+
+        if (!requestLockable(data)) {
+            data._lockReadOnly = false;
+            showView(data);
             return;
         }
 
-        openDetail(data, row);
+        var lockType = window.AlcrosStaffLocks && window.AlcrosStaffLocks.lockType();
+        if (!window.AlcrosStaffLocks || !lockType) {
+            data._lockReadOnly = false;
+            showView(data);
+            return;
+        }
+        window.AlcrosStaffLocks.beginOpenClaim(
+            lockType,
+            data.id,
+            row,
+            'data-request-row',
+            'data-request'
+        ).then(function (res) {
+            if (!res.ok) {
+                if (window.AlcrosActionResult) {
+                    var msg = res.error || (res.lock && res.lock.label)
+                        || window.AlcrosStaffLocks.openBlockedMessage({ lock: res.lock });
+                    window.AlcrosActionResult.show('error', msg);
+                }
+                return;
+            }
+            var viewData = Object.assign({}, data);
+            viewData.lock = res.lock || null;
+            viewData._lockReadOnly = false;
+            showView(viewData);
+        });
     }
 
     function openDetail(data, row) {
@@ -663,23 +725,32 @@
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
-    function closeDetail() {
+    function hideDetailPanel() {
         if (!panel || !emptyState || !content) return;
         emptyState.classList.remove('hidden');
         content.classList.add('hidden');
         bodyWrap.classList.remove('has-detail');
         panel.classList.remove('is-open');
-        markSelectedRow(null);
         if (panelActionsWrap) {
             panelActionsWrap.innerHTML = '';
             panelActionsWrap.classList.add('hidden');
         }
     }
 
+    function closeDetail() {
+        if (!panel || !emptyState || !content) return;
+        var detailWasOpen = panel.classList.contains('is-open') || !content.classList.contains('hidden');
+        hideDetailPanel();
+        markSelectedRow(null);
+        if (detailWasOpen && window.AlcrosStaffLocks) {
+            window.AlcrosStaffLocks.releaseActive();
+        }
+    }
+
     function openModal(data, row) {
         if (!modal) return;
 
-        closeDetail();
+        hideDetailPanel();
         populateDetailView(modalView, data);
         modal.classList.remove('hidden');
         modal.setAttribute('aria-hidden', 'false');
@@ -692,6 +763,9 @@
     function closeModal() {
         if (!modal) return;
 
+        if (window.AlcrosStaffLocks) {
+            window.AlcrosStaffLocks.releaseActive();
+        }
         modal.classList.add('hidden');
         modal.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('manage-request-modal-open');
@@ -758,6 +832,12 @@
 
         var row = btn.closest('.manage-requests-row');
         var viewData = parseRequestData(btn) || parseRequestData(row);
+        if (viewData && window.AlcrosStaffLocks && window.AlcrosStaffLocks.isOpenBlocked(viewData)) {
+            if (window.AlcrosActionResult) {
+                window.AlcrosActionResult.show('error', window.AlcrosStaffLocks.openBlockedMessage(viewData));
+            }
+            return;
+        }
         if (viewData) {
             openRequestView(viewData, row, options);
             return;
@@ -807,6 +887,9 @@
             btn.addEventListener('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
+                if (btn.disabled || btn.classList.contains('is-lock-blocked')) {
+                    return;
+                }
                 dismissBlockingUi();
                 handleViewRequestClick(btn, { modal: true });
             });
@@ -835,7 +918,20 @@
 
         var row = e.target.closest('.manage-requests-row');
         if (row) {
+            if (row.classList.contains('is-lock-row-blocked')) {
+                var blockedData = parseRequestData(row);
+                if (window.AlcrosActionResult && window.AlcrosStaffLocks) {
+                    window.AlcrosActionResult.show('error', window.AlcrosStaffLocks.openBlockedMessage(blockedData));
+                }
+                return;
+            }
             var rowData = parseRequestData(row);
+            if (rowData && window.AlcrosStaffLocks && window.AlcrosStaffLocks.isOpenBlocked(rowData)) {
+                if (window.AlcrosActionResult) {
+                    window.AlcrosActionResult.show('error', window.AlcrosStaffLocks.openBlockedMessage(rowData));
+                }
+                return;
+            }
             if (rowData) openRequestView(rowData, row, { modal: false });
             return;
         }
@@ -905,23 +1001,42 @@
         var selectedId = selected ? parseInt(selected.getAttribute('data-request-row'), 10) : 0;
         if (!selectedId || selectedId !== focus.id) return;
 
-        var current = parseRequestData(selected);
-        if (current && current.revision === focus.revision) return;
-
-        if (useSidePanel && bodyWrap && bodyWrap.classList.contains('has-detail')) {
-            populateDetailView(panelView, focus);
+        var current = parseRequestData(selected) || {};
+        var merged = Object.assign({}, current, focus);
+        if (merged.lock && window.AlcrosStaffLocks && window.AlcrosStaffLocks.isBlocked(merged.lock)) {
+            merged._lockReadOnly = true;
         }
-        if (modal && !modal.classList.contains('hidden')) {
-            populateDetailView(modalView, focus);
+        if (window.AlcrosStaffLocks) {
+            window.AlcrosStaffLocks.updateRowBadge(focus.id, merged.lock || null);
         }
 
-        selected.setAttribute('data-request', JSON.stringify(focus));
+        var revisionChanged = String(current.revision || '') !== String(focus.revision || '');
+        var detailOpen = (useSidePanel && bodyWrap && bodyWrap.classList.contains('has-detail'))
+            || (modal && !modal.classList.contains('hidden'));
+
+        if (detailOpen) {
+            if (useSidePanel && bodyWrap.classList.contains('has-detail')) {
+                populateDetailView(panelView, merged);
+            }
+            if (modal && !modal.classList.contains('hidden')) {
+                populateDetailView(modalView, merged);
+            }
+        }
+
+        if (!detailOpen && !revisionChanged && !merged.lock) {
+            return;
+        }
+
+        selected.setAttribute('data-request', JSON.stringify(merged));
         var viewBtn = selected.querySelector('.view-request-btn');
-        if (viewBtn) viewBtn.setAttribute('data-request', JSON.stringify(focus));
+        if (viewBtn) viewBtn.setAttribute('data-request', JSON.stringify(merged));
     }
 
     function applyListUpdate(data) {
         var requests = data.requests || [];
+        if (window.AlcrosStaffLocks) {
+            window.AlcrosStaffLocks.applyListLocks(requests, 'id', 'data-request-row', 'data-request');
+        }
         var signature = listSignature(requests);
         if (signature !== lastListSignature) {
             lastListSignature = signature;
@@ -949,6 +1064,13 @@
                 var statusCell = row.querySelector('.manage-cell-status');
                 if (statusCell && item.status_badge_html) {
                     statusCell.innerHTML = item.status_badge_html;
+                    var lockNote = document.createElement('p');
+                    lockNote.className = 'manage-lock-badge hidden';
+                    lockNote.setAttribute('data-lock-badge-for', String(rowId));
+                    statusCell.appendChild(lockNote);
+                    if (window.AlcrosStaffLocks) {
+                        window.AlcrosStaffLocks.updateRowBadge(rowId, item.lock || null);
+                    }
                 }
 
                 var existing = parseRequestData(row);
@@ -1008,7 +1130,7 @@
                 }
                 return params;
             },
-            (window.AlcrosPollConfig && AlcrosPollConfig.adminListMs) || 15000,
+            5000,
             applyListUpdate,
             function () {
                 if (window.AlcrosPoll && typeof AlcrosPoll.markLiveIndicator === 'function') {
@@ -1016,6 +1138,50 @@
                 }
             }
         );
+    }
+
+    function initRowLocksFromDom() {
+        if (!window.AlcrosStaffLocks) {
+            return;
+        }
+        document.querySelectorAll('.manage-requests-row[data-request-row]').forEach(function (row) {
+            var data = parseRequestData(row);
+            if (!data || !data.id) {
+                return;
+            }
+            window.AlcrosStaffLocks.applyListLocks([{ id: data.id, lock: data.lock || null }], 'id', 'data-request-row', 'data-request');
+        });
+    }
+    initRowLocksFromDom();
+
+    document.addEventListener('alcros:staff-locks-updated', function (ev) {
+        var detail = ev.detail || {};
+        if (detail.type && detail.type !== 'document_request') {
+            return;
+        }
+        var selected = document.querySelector('.manage-requests-row.is-selected');
+        if (!selected) {
+            return;
+        }
+        var id = parseInt(selected.getAttribute('data-request-row'), 10);
+        if (!id || !detail.locks) {
+            return;
+        }
+        var lock = detail.locks[String(id)] !== undefined ? detail.locks[String(id)] : detail.locks[id];
+        if (lock === undefined) {
+            return;
+        }
+        var current = parseRequestData(selected) || {};
+        if (parseInt(current.id, 10) !== id) {
+            return;
+        }
+        var merged = Object.assign({}, current, { lock: lock || null });
+        merged._lockReadOnly = !!(window.AlcrosStaffLocks && window.AlcrosStaffLocks.isBlocked(merged.lock));
+        refreshOpenDetail(merged);
+    });
+
+    if (window.AlcrosStaffLocks && typeof window.AlcrosStaffLocks.bootstrapStaffLockPage === 'function') {
+        window.AlcrosStaffLocks.bootstrapStaffLockPage();
     }
 
     window.AlcrosManageRequest = {

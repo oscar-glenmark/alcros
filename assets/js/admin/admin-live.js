@@ -18,10 +18,23 @@
     }
 
     function startPolling() {
-        AlcrosPoll.pollJson('api/admin_live.php', pollParams, INTERVAL_MS, function (data) {
-            dispatchLive(data);
-            AlcrosPoll.markLiveIndicator();
-        });
+        AlcrosPoll.pollJson(
+            'api/admin_live.php',
+            pollParams,
+            INTERVAL_MS,
+            function (data) {
+                dispatchLive(data);
+                AlcrosPoll.markLiveIndicator();
+            },
+            null,
+            {
+                pollInBackground: true,
+                getInterval: function () {
+                    // Keep checking while minimized or on another tab (desktop toasts).
+                    return document.hidden ? 5000 : INTERVAL_MS;
+                }
+            }
+        );
     }
 
     window.AlcrosAdminLive = {

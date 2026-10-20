@@ -5,6 +5,7 @@ require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 require_once __DIR__ . '/includes/staff_id_lightbox.php';
 require_once __DIR__ . '/includes/printing.php';
+require_once __DIR__ . '/includes/staff_resource_locks.php';
 requireStaffLogin();
 requirePageAccess('manage_request.php');
 releaseSessionLock();
@@ -64,6 +65,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $isUpdate = isset($_POST['update_status']) || (!$isDelete && !$isBulkDelete && !$isBulkDeleteAll && !$isBulkRestore && !$isBulkPurge && isset($_POST['status']));
 
     if ($isUpdate) {
+        if ($id > 0 && documentRequestLockEligible($pdo, $id)) {
+            try {
+                assertStaffResourceLockForWrite($pdo, STAFF_LOCK_TYPE_REQUEST, $id, staffId(), staffName());
+            } catch (InvalidArgumentException $e) {
+                $responseMessage = $e->getMessage();
+                if ($isAjax) {
+                    manageRequestJsonResponse(false, $responseMessage);
+                }
+                manageRequestsFlashSet('error', $responseMessage);
+                redirectWithAuth('manage_request.php', array_filter($filters, static fn ($value) => $value !== '' && $value !== 'all'));
+            }
+        }
+
         $status = (string) ($_POST['status'] ?? '');
         $rejectionReason = null;
         if ($status === 'rejected') {
@@ -80,6 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         if (updateDocumentRequestStatus($pdo, $id, $status, false, $rejectionReason)) {
+            clearStaffResourceLock($pdo, STAFF_LOCK_TYPE_REQUEST, $id);
             $responseOk = true;
             if ($status === 'verified') {
                 $responseMessage = 'Request accepted — moved to Ready for Pickup. Print the certificate when ready.';
@@ -175,6 +190,11 @@ $filters = manageRequestsListFilters([
 $filterStatus = $filters['status'];
 $search = $filters['q'];
 $requests = fetchManageRequestsList($pdo, $filters);
+$requestLockMap = fetchStaffResourceLocksMap(
+    $pdo,
+    STAFF_LOCK_TYPE_REQUEST,
+    array_map(static fn (array $row): int => (int) ($row['id'] ?? 0), $requests)
+);
 $requestStats = fetchManageRequestStats($pdo);
 
 $pageTitle = 'Manage Requests';
@@ -216,7 +236,7 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
     <?= staffIdLightboxHeadStyles() ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>
-<body class="flex min-h-screen">
+<body class="flex min-h-screen" data-staff-lock-type="<?= htmlspecialchars(STAFF_LOCK_TYPE_REQUEST) ?>">
 
     <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
 
@@ -355,6 +375,8 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                         <?php foreach ($requests as $req): ?>
                         <?php
                         $viewData = documentRequestViewData($req);
+                        $reqLock = $requestLockMap[(int) $req['id']] ?? null;
+                        $viewData['lock'] = $reqLock ? formatStaffResourceLock($reqLock, staffId()) : null;
                         $canBulkSelect = $isRecentlyDeletedView || documentRequestIsDeletable($req);
                         ?>
                         <tr class="manage-requests-row"
@@ -384,7 +406,14 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                             <?php if ($isRecentlyDeletedView): ?>
                             <td class="manage-col-submitted"><span class="manage-date"><?= !empty($req['deleted_at']) ? htmlspecialchars(formatReportDateTime($req['deleted_at'])) : '—' ?></span></td>
                             <?php endif; ?>
-                            <td class="manage-col-status manage-cell-status"><?= requestStatusBadge($req['status']) ?></td>
+                            <td class="manage-col-status manage-cell-status">
+                                <?= requestStatusBadge($req['status']) ?>
+                                <?php if (!empty($viewData['lock']) && !empty($viewData['lock']['active'])): ?>
+                                <p class="manage-lock-badge" data-lock-badge-for="<?= (int) $req['id'] ?>"><?= htmlspecialchars($viewData['lock']['label']) ?></p>
+                                <?php else: ?>
+                                <p class="manage-lock-badge hidden" data-lock-badge-for="<?= (int) $req['id'] ?>"></p>
+                                <?php endif; ?>
+                            </td>
                             <td class="manage-cell-actions">
                                 <div class="manage-row-actions" onclick="event.stopPropagation()">
                                     <?php if (!$isRecentlyDeletedView): ?>
@@ -497,6 +526,7 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                                     <div class="manage-detail-row manage-detail-row--full"><dt>Purpose</dt><dd id="view-purpose"></dd></div>
                                     <div class="manage-detail-row manage-detail-row--full"><dt>Visit</dt><dd id="view-appointment"></dd></div>
                                     <div class="manage-detail-row"><dt>Status</dt><dd id="view-status"></dd></div>
+                                    <p id="view-lock-banner" class="manage-lock-badge manage-lock-detail-banner hidden" aria-live="polite"></p>
                                     <div class="manage-detail-row"><dt>Privacy</dt><dd id="view-privacy"></dd></div>
                                     <div class="manage-detail-row manage-detail-row--full"><dt>Updated</dt><dd id="view-updated"></dd></div>
                                 </dl>
@@ -535,6 +565,7 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                     <p id="modalRequestViewCode" class="manage-detail-code"></p>
                     <p id="modal-view-submitted" class="manage-detail-meta"></p>
                 </div>
+                <p id="modal-request-header-lock" class="manage-modal-header-lock hidden" aria-live="polite"></p>
                 <button type="button" class="manage-request-modal__close" data-close-request-modal aria-label="Close review popup">
                     <i data-lucide="x" class="w-4 h-4"></i>
                 </button>
@@ -562,6 +593,7 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                         <div class="manage-detail-row manage-detail-row--full"><dt>Purpose</dt><dd id="modal-view-purpose"></dd></div>
                         <div class="manage-detail-row manage-detail-row--full"><dt>Visit</dt><dd id="modal-view-appointment"></dd></div>
                         <div class="manage-detail-row"><dt>Status</dt><dd id="modal-view-status"></dd></div>
+                        <p id="modal-view-lock-banner" class="manage-lock-badge manage-lock-detail-banner hidden" aria-live="polite"></p>
                         <div class="manage-detail-row"><dt>Privacy</dt><dd id="modal-view-privacy"></dd></div>
                         <div class="manage-detail-row manage-detail-row--full"><dt>Updated</dt><dd id="modal-view-updated"></dd></div>
                     </dl>
@@ -594,6 +626,8 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
         'useSidePanel'   => $showSidePanel,
         'bulkActions'    => $showBulkActions,
         'pollUrl'        => buildAuthUrl('api/manage_requests.php'),
+        'locksApiUrl'    => buildAuthUrl('api/staff_locks.php'),
+        'lockType'       => STAFF_LOCK_TYPE_REQUEST,
     ]) ?>
     <div id="requestActionAuthFields" class="hidden" aria-hidden="true"><?= authFormField() ?></div>
     <?= staffIdLightboxMarkup() ?>
@@ -603,6 +637,7 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
     <?= scriptTag('core/page-config.js') ?>
     <?= scriptTag('core/admin-search.js') ?>
     <?= scriptTag('admin/manage-bulk.js') ?>
+    <?= scriptTag('core/staff-resource-locks.js') ?>
     <?= scriptTag('admin/manage-request.js') ?>
     <?= lucideInitScript() ?>
 </body>

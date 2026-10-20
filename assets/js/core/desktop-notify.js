@@ -168,7 +168,7 @@
                 if (Notification.permission === 'granted') {
                     setEnabled(true);
                     requestSeedOnNextPoll();
-                    setStatusEl(statusEl, 'Enabled. Keep Chrome or Edge open while on duty.', 'ok');
+                    setStatusEl(statusEl, 'Enabled. Keep Chrome or Edge running (minimized is OK).', 'ok');
                     return;
                 }
                 if (Notification.permission === 'denied') {
@@ -180,7 +180,7 @@
                     if (perm === 'granted') {
                         setEnabled(true);
                         requestSeedOnNextPoll();
-                        setStatusEl(statusEl, 'Enabled. You will get pop-ups for new alerts while ALCROS is open.', 'ok');
+                        setStatusEl(statusEl, 'Enabled. Pop-ups work in another tab or when the browser is minimized.', 'ok');
                     } else {
                         toggle.checked = false;
                         setEnabled(false);

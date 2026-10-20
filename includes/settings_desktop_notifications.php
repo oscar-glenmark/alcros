@@ -8,11 +8,11 @@
         <i data-lucide="bell-ring" class="w-5 h-5 text-violet-600"></i> Desktop notifications
     </h2>
     <p class="text-xs text-slate-500 mb-4 leading-relaxed">
-        Show Windows/macOS toasts when a new citizen request, appointment, or queue ticket appears — same alerts as the bell, about every 15 seconds. Works while <strong>this browser stays open</strong> (ALCROS can be in another tab).
+        Show Windows/macOS toasts when a new citizen request, appointment, or queue ticket appears — same alerts as the bell, about every 15 seconds (about every 5 seconds while the window is minimized or in the background). Works while <strong>Chrome or Edge is still running</strong> (ALCROS can be in another tab). If you fully quit the browser, pop-ups stop until you open ALCROS again.
     </p>
     <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600 leading-relaxed mb-6">
         <p class="font-semibold text-slate-800 mb-1">Simple mode (built-in)</p>
-        <p>Uses your browser’s notification permission only — no registration step. If you fully quit the browser, pop-ups stop until you open ALCROS again.</p>
+        <p>Uses your browser’s notification permission only — no registration step. Allow notifications for this site in Windows Settings → System → Notifications if toasts never appear when minimized.</p>
     </div>
     <div class="rounded-xl border border-slate-100 bg-slate-50 p-4 sm:p-5 space-y-4">
         <label class="flex items-start gap-3 cursor-pointer">

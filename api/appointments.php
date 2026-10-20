@@ -3,6 +3,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/api_helpers.php';
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/staff_resource_locks.php';
 
 requireStaffLogin();
 requirePageAccess('appointment.php');
@@ -16,12 +17,20 @@ try {
     $filters = appointmentsListFilters($_GET, $pdo);
     $focusId = (int) ($_GET['focus_id'] ?? 0);
     $rows = fetchAppointmentsManageList($pdo, $filters);
+    $lockMap = fetchStaffResourceLocksMap(
+        $pdo,
+        STAFF_LOCK_TYPE_APPOINTMENT,
+        array_map(static fn (array $row): int => (int) ($row['id'] ?? 0), $rows)
+    );
+    $staffId = staffId();
     $appointments = [];
 
     foreach ($rows as $row) {
         $view = appointmentViewData($row, $pdo);
+        $aid = (int) $row['id'];
+        $lockRow = $lockMap[$aid] ?? null;
         $appointments[] = [
-            'id'                => (int) $row['id'],
+            'id'                => $aid,
             'revision'          => $view['revision'],
             'appointment_code'  => $view['appointment_code'],
             'citizen_name'      => $view['citizen_name'],
@@ -30,6 +39,7 @@ try {
             'status_badge_html' => $view['status_badge_html'],
             'appointment_time'  => (string) ($row['appointment_time'] ?? ''),
             'appointment_date'  => (string) ($row['appointment_date'] ?? ''),
+            'lock'              => $lockRow ? formatStaffResourceLock($lockRow, $staffId) : null,
         ];
     }
 
@@ -62,7 +72,24 @@ try {
         $stmt->execute([$focusId]);
         $focusRow = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($focusRow) {
-            $response['focus'] = appointmentViewData($focusRow, $pdo);
+            $focusId = (int) $focusRow['id'];
+            $focusLock = touchStaffResourceLockForFocus(
+                $pdo,
+                STAFF_LOCK_TYPE_APPOINTMENT,
+                $focusId,
+                staffId(),
+                staffName()
+            );
+            if ($focusLock === null) {
+                $lockRow = fetchStaffResourceLock($pdo, STAFF_LOCK_TYPE_APPOINTMENT, $focusId);
+                $focusLock = $lockRow ? formatStaffResourceLock($lockRow, staffId()) : null;
+            }
+            $focus = appointmentViewData($focusRow, $pdo);
+            $focus['lock'] = $focusLock;
+            if ($focusLock && !($focusLock['held_by_you'] ?? false)) {
+                $focus['_lockReadOnly'] = true;
+            }
+            $response['focus'] = $focus;
         }
     }
 

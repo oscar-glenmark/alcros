@@ -200,6 +200,17 @@ CREATE TABLE IF NOT EXISTS civil_record_edit_locks (
     INDEX idx_expires (expires_at)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS staff_resource_locks (
+    resource_type VARCHAR(24) NOT NULL,
+    resource_id INT NOT NULL,
+    staff_id VARCHAR(32) NOT NULL,
+    staff_name VARCHAR(120) NOT NULL DEFAULT '',
+    locked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL,
+    PRIMARY KEY (resource_type, resource_id),
+    INDEX idx_expires (expires_at)
+) ENGINE=InnoDB;
+
 -- Birth certificate fields (Form 102).
 CREATE TABLE IF NOT EXISTS birth_record_details (
     civil_record_id INT NOT NULL PRIMARY KEY,

@@ -14,6 +14,9 @@ $adminAnalyticsContext = $adminAnalyticsContext ?? 'dashboard';
 $showDashboardAnalyticsHeader = $adminAnalyticsContext === 'dashboard';
 $showSystemActivityFeed = $adminAnalyticsContext === 'dashboard';
 $recordsUrl = buildAuthUrl('records.php');
+$recordsDetailsUrl = isset($adminRecordsDetailsUrl) && is_string($adminRecordsDetailsUrl)
+    ? $adminRecordsDetailsUrl
+    : buildAuthUrl('report.php', ['section' => 'records']);
 $printsDetailsUrl = buildAuthUrl('report.php', ['section' => 'prints', 'range' => 'month']);
 $intakeQueueDetailsUrl = buildAuthUrl('report.php', ['section' => 'queue', 'range' => 'today']);
 $growth = $a['recordsGrowth'] ?? ['pct' => 0, 'up' => true];
@@ -79,7 +82,7 @@ $activities = $activities ?? [];
                     <p class="dash-admin-micro-trend__note">Added <?= date('F Y') ?></p>
                 </div>
             </div>
-            <a href="<?= htmlspecialchars($recordsUrl) ?>" class="dash-admin-featured__details">View details</a>
+            <a href="<?= htmlspecialchars($recordsDetailsUrl) ?>" class="dash-admin-featured__details">View details</a>
         </div>
         <?php if (($trend['max'] ?? 0) === 0 && (int) $a['recordsTotal'] === 0): ?>
         <div class="analytics-empty">No civil records yet.</div>

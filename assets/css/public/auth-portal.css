@@ -196,6 +196,23 @@ body.auth-portal {
     text-align: left;
 }
 
+.auth-portal-signing-in {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    min-height: 11rem;
+    padding: 2rem 1rem 2.5rem;
+}
+
+.auth-portal-signing-in__text {
+    margin: 0;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: #64748b;
+    letter-spacing: 0.02em;
+}
+
 .auth-portal-badge-wrap {
     display: flex;
     justify-content: center;
@@ -241,6 +258,10 @@ body.auth-portal {
 
 .auth-portal-btn:active {
     transform: scale(0.98);
+}
+
+#loginForm > .auth-portal-btn {
+    margin-top: 2.5rem;
 }
 
 .auth-portal-form-footer {

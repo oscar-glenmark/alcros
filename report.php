@@ -404,8 +404,8 @@ $recordsJumpDesc = sprintf(
                             <?php
                             $detailLinks = [
                                 ['key' => 'analytics', 'desc' => 'Dashboard-style charts — records, print volume, intake, and queue', 'iconBg' => 'bg-indigo-50', 'iconText' => 'text-indigo-600', 'navBorder' => '#c7d2fe', 'wide' => false],
-                                ['key' => 'requests', 'desc' => 'Read-only charts on Analytics — staff process submissions in Manage Requests', 'iconBg' => 'bg-blue-50', 'iconText' => 'text-blue-600', 'navBorder' => '#bfdbfe', 'wide' => false, 'static' => true],
-                                ['key' => 'appointments', 'desc' => 'Read-only charts on Analytics — staff manage visits in Appointments', 'iconBg' => 'bg-purple-50', 'iconText' => 'text-purple-600', 'navBorder' => '#ddd6fe', 'wide' => false, 'static' => true],
+                                ['key' => 'requests', 'desc' => 'Status and type charts plus document request table for this period', 'iconBg' => 'bg-blue-50', 'iconText' => 'text-blue-600', 'navBorder' => '#bfdbfe', 'wide' => false],
+                                ['key' => 'appointments', 'desc' => 'Visit status charts and scheduled appointments table for this period', 'iconBg' => 'bg-purple-50', 'iconText' => 'text-purple-600', 'navBorder' => '#ddd6fe', 'wide' => false],
                                 ['key' => 'queue', 'desc' => 'Queue tickets served, waiting, and by purpose', 'iconBg' => 'bg-teal-50', 'iconText' => 'text-teal-600', 'navBorder' => '#99f6e4', 'wide' => false],
                                 ['key' => 'prints', 'desc' => sprintf(
                                     '%s certification · %s certificate print jobs in %s',
@@ -464,7 +464,9 @@ $recordsJumpDesc = sprintf(
                 <?php
                 $adminAnalytics = $analytics;
                 $adminAnalyticsContext = 'report';
+                $adminRecordsDetailsUrl = reportPageUrl($range, $fromDate, $toDate, 'records', $reportYear);
                 require __DIR__ . '/includes/admin_dashboard_analytics.php';
+                unset($adminRecordsDetailsUrl);
                 ?>
             </div>
             <?php endif; ?>

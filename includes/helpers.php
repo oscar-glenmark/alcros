@@ -2865,8 +2865,9 @@ function personNamePartsFromInput(array $input, string $prefix = ''): array
 
 function validatePersonNameParts(array $parts): ?string
 {
+    $parts = normalizeCitizenNameParts($parts);
     if ($parts['first_name'] === '' || $parts['last_name'] === '') {
-        return 'Please enter your first name and last name.';
+        return 'First and last name are required. Middle name is optional.';
     }
 
     return null;
@@ -4270,16 +4271,20 @@ function alcrosFaviconImg(int $sizePx = 20, string $extraClass = ''): string
 function renderStaffAvatar(?string $photoPath, string $name, string $classes = 'w-8 h-8', string $rounded = 'rounded-full'): string
 {
     $initial = staffInitial($name);
+    $shellClass = 'staff-avatar-shell inline-flex shrink-0 items-center justify-center overflow-hidden border border-gray-200 '
+        . htmlspecialchars($classes, ENT_QUOTES, 'UTF-8') . ' '
+        . htmlspecialchars($rounded, ENT_QUOTES, 'UTF-8');
+
     if (staffPhotoExists($photoPath)) {
         $src = protectedUploadUrl($photoPath) ?? $photoPath;
-        return '<img src="' . htmlspecialchars($src, ENT_QUOTES, 'UTF-8') . '" alt="" class="'
-            . htmlspecialchars($classes, ENT_QUOTES, 'UTF-8') . ' ' . htmlspecialchars($rounded, ENT_QUOTES, 'UTF-8')
-            . ' border border-gray-200 object-cover shrink-0">';
+
+        return '<span class="' . $shellClass . '">'
+            . '<img src="' . htmlspecialchars($src, ENT_QUOTES, 'UTF-8') . '" alt="" class="staff-avatar-shell__img">'
+            . '</span>';
     }
 
-    return '<div class="' . htmlspecialchars($classes, ENT_QUOTES, 'UTF-8') . ' ' . htmlspecialchars($rounded, ENT_QUOTES, 'UTF-8')
-        . ' bg-gray-100 flex items-center justify-center border border-gray-200 text-xs font-bold text-gray-500 shrink-0">'
-        . htmlspecialchars($initial, ENT_QUOTES, 'UTF-8') . '</div>';
+    return '<span class="' . $shellClass . ' bg-gray-100 font-bold text-gray-500">'
+        . htmlspecialchars($initial, ENT_QUOTES, 'UTF-8') . '</span>';
 }
 
 /** @param list<array<string, mixed>> $activities */

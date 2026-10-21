@@ -250,9 +250,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </header>
 
                 <div class="auth-portal-form-body">
+                    <?php if (!$loginSuccessModal): ?>
                     <div class="auth-portal-badge-wrap">
                         <span class="auth-portal-badge"><?= $loginLocked ? 'Sign-in temporarily locked' : 'Authorized staff only' ?></span>
                     </div>
+                    <?php endif; ?>
 
 
 
@@ -272,7 +274,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <?php if ($loginSuccessModal): ?>
 
-                <p class="text-[11px] text-slate-500 font-medium">Signing you in…</p>
+                <div class="auth-portal-signing-in" role="status" aria-live="polite">
+                    <p class="auth-portal-signing-in__text">Signing you in…</p>
+                </div>
 
                 <?php elseif ($error && !$loginLocked): ?>
 

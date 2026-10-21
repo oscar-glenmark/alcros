@@ -178,7 +178,7 @@ if (!$isAdminUser) {
             <!-- Welcome -->
             <div class="dash-welcome<?= $isAdminUser ? ' dash-welcome--admin' : '' ?>">
                 <div class="dash-welcome__brand">
-                    <?= alcrosFaviconImg($isAdminUser ? 72 : 64, 'dash-brand-logo shrink-0') ?>
+                    <?= renderStaffAvatar(staffPhotoPath(), $staffDisplayName, 'dash-brand-logo shrink-0 text-xl', 'rounded-2xl') ?>
                     <div class="dash-welcome__text">
                         <p class="dash-welcome__role"><?= $isAdminUser ? 'Registry Admin' : 'Registry Staff' ?></p>
                         <h1 class="dash-welcome__greeting">Good day, <?= htmlspecialchars(explode(' ', $staffDisplayName)[0]) ?>!</h1>

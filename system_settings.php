@@ -82,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         if ($action === 'update_profile') {
-            $nameParts = personNamePartsFromInput($_POST, 'profile_');
+            $nameParts = normalizeCitizenNameParts(personNamePartsFromInput($_POST, 'profile_'));
             $email = normalizeStaffEmail(trim($_POST['profile_email'] ?? ''));
             if (($nameError = validatePersonNameParts($nameParts)) !== null) {
                 throw new InvalidArgumentException($nameError);
@@ -170,7 +170,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             settingsFlashSet('success', 'System settings saved successfully.');
             $handled = true;
         } elseif ($action === 'add_staff' && $isAdmin) {
-            $nameParts = personNamePartsFromInput($_POST, 'staff_');
+            $nameParts = normalizeCitizenNameParts(personNamePartsFromInput($_POST, 'staff_'));
             $newStaffId = strtoupper(trim($_POST['staff_id_new'] ?? ''));
             $email = normalizeStaffEmail(trim($_POST['staff_email'] ?? ''));
             $password = $_POST['staff_password'] ?? '';
@@ -210,7 +210,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $handled = true;
         } elseif ($action === 'update_staff' && $isAdmin) {
             $targetId = strtoupper(trim($_POST['target_staff_id'] ?? ''));
-            $nameParts = personNamePartsFromInput($_POST, 'edit_staff_');
+            $nameParts = normalizeCitizenNameParts(personNamePartsFromInput($_POST, 'edit_staff_'));
             $email = normalizeStaffEmail(trim($_POST['edit_staff_email'] ?? ''));
             $role = $_POST['edit_staff_role'] ?? 'Staff';
             $validRoles = ['Staff', 'Administrator'];
@@ -616,8 +616,10 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                         class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
                                 </div>
                                 <div>
-                                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Middle Name</label>
+                                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Middle Name <span class="normal-case font-semibold text-slate-300">(optional)</span></label>
                                     <input type="text" name="profile_middle_name" value="<?= htmlspecialchars($currentStaff['middle_name'] ?? '') ?>"
+                                        placeholder="Leave blank if none"
+                                        autocomplete="additional-name"
                                         class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
                                 </div>
                                 <div>
@@ -721,8 +723,8 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     <input type="text" name="staff_first_name" required placeholder="Juan" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
                                 </div>
                                 <div>
-                                    <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Middle Name</label>
-                                    <input type="text" name="staff_middle_name" placeholder="Dela" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+                                    <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Middle Name <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
+                                    <input type="text" name="staff_middle_name" placeholder="Optional" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
                                 </div>
                                 <div>
                                     <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Last Name</label>
@@ -779,7 +781,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                 <tbody class="divide-y divide-slate-100">
                                     <?php foreach ($staffMembers as $member): ?>
                                     <tr class="hover:bg-slate-50/50">
-                                        <td class="px-4 py-3">
+                                        <td class="px-4 py-3 w-[5.5rem]">
                                             <div class="flex flex-col items-center gap-1">
                                                 <?= renderStaffAvatar($member['profile_photo_path'] ?? null, personNameFromRow($member), 'w-10 h-10 text-sm') ?>
                                                 <form method="POST" enctype="multipart/form-data" class="staff-photo-form">
@@ -1471,8 +1473,8 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                         <input type="text" name="edit_staff_first_name" id="editStaffFirstName" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
                     </div>
                     <div>
-                        <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Middle Name</label>
-                        <input type="text" name="edit_staff_middle_name" id="editStaffMiddleName" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
+                        <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Middle Name <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
+                        <input type="text" name="edit_staff_middle_name" id="editStaffMiddleName" placeholder="Optional" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
                     </div>
                     <div>
                         <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Last Name</label>

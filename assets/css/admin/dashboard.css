@@ -4,9 +4,14 @@
     width: 4rem;
     height: 4rem;
     border-radius: 1rem;
-    object-fit: cover;
     background: #fff;
     box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+
+.dash-welcome--admin .dash-brand-logo {
+    width: 4.5rem;
+    height: 4.5rem;
+    font-size: 1.25rem;
 }
 
 .dash-card {
@@ -754,8 +759,7 @@
     flex-shrink: 0;
 }
 
-.dash-admin-activity__avatar img,
-.dash-admin-activity__avatar > div {
+.dash-admin-activity__avatar .staff-avatar-shell {
     border-radius: 9999px;
 }
 

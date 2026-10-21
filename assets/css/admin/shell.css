@@ -1037,3 +1037,19 @@ body.admin-sidebar-minimized .admin-sidebar button {
         max-width: 48rem;
     }
 }
+
+/* Fixed square frame so table layouts cannot stretch profile photos into ovals */
+.staff-avatar-shell {
+    aspect-ratio: 1 / 1;
+    line-height: 1;
+    vertical-align: middle;
+}
+
+.staff-avatar-shell__img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    object-fit: cover;
+    object-position: center;
+}

@@ -406,7 +406,7 @@ INSERT INTO system_settings (setting_key, setting_value) VALUES
 ('office_name', 'Local Civil Registrar Office (LCRO) of Aloran'),
 ('office_address', 'Municipal Hall, Aloran, Misamis Occidental, Philippines'),
 ('office_phone', '+69067334380'),
-('office_email', 'aloran@gov.ph'),
+('office_email', 'aloranlcr@gmail.com'),
 ('office_hours', '8:00 AM - 5:00 PM (Monday to Friday)'),
 ('office_head', 'ATTY. Euri Buladaco'),
 ('overview_text', 'This guide covers the requirements, steps, and fees for all core civil registration services handled by the <strong>{office}</strong>.'),

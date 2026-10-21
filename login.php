@@ -222,54 +222,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <script>try{sessionStorage.removeItem('alcros_auth');}catch(e){}</script>
 <?php endif; ?>
 
-    <header class="auth-portal-header">
-
-        <div class="auth-portal-header-inner">
-
-            <a href="index.php" class="auth-portal-brand">
-
-                <?= alcrosFaviconImg(48, 'auth-portal-brand-logo') ?>
-
-                <div class="min-w-0">
-                    <div class="auth-portal-brand-title">ALCROS</div>
-                    <div class="auth-portal-brand-subtitle">Aloran Local Civil Registry Online System</div>
+    <div class="auth-portal-shell">
+        <aside class="auth-portal-hero" aria-label="Aloran Local Civil Registry">
+            <?= alcrosFaviconImg(320, 'auth-portal-hero__seal') ?>
+            <div class="auth-portal-hero__inner">
+                <h1 class="auth-portal-hero__title">Aloran Local Civil Registry</h1>
+                <p class="auth-portal-hero__brand">ALCROS</p>
+                <p class="auth-portal-hero__lead">Civil registry management for authorized staff</p>
+                <p class="auth-portal-hero__copy">
+                    Review citizen requests, manage appointments, serve the live queue, and maintain official records securely from one workspace.
+                </p>
+                <div class="auth-portal-hero__pills">
+                    <span class="auth-portal-hero__pill"><i data-lucide="shield-check"></i> Secure access</span>
+                    <span class="auth-portal-hero__pill"><i data-lucide="file-text"></i> Document requests</span>
+                    <span class="auth-portal-hero__pill"><i data-lucide="calendar"></i> Appointments</span>
                 </div>
+            </div>
+        </aside>
 
-            </a>
+        <main class="auth-portal-form-wrap">
+            <div class="auth-portal-form-panel">
+                <header class="auth-portal-form-head">
+                    <?= alcrosFaviconImg(88, 'auth-portal-card-logo') ?>
+                    <p class="auth-portal-form-eyebrow">Welcome back</p>
+                    <h2 class="auth-portal-form-title">Sign in to ALCROS</h2>
+                    <p class="auth-portal-form-subtitle">Use your staff ID and password to continue</p>
+                </header>
 
-            <a href="index.php" class="auth-portal-header-link">Citizen Portal</a>
-
-        </div>
-
-    </header>
-
-
-
-    <main class="auth-portal-main">
-
-        <div class="auth-portal-card">
-
-            <div class="p-6 sm:p-10 pb-8 text-center">
-
-                <div class="flex justify-center mb-6">
-
-                    <?= alcrosFaviconImg(72, 'auth-portal-card-logo') ?>
-
-                </div>
-
-
-
-                <h1 class="text-2xl font-black text-slate-900 mb-1">Staff Portal</h1>
-
-                <p class="text-gray-500 text-[11px] font-medium tracking-tight mb-8">ALCROS Civil Registry Management</p>
-
-
-
-                <div class="mb-8">
-
-                    <span class="auth-portal-badge"><?= $loginLocked ? 'Sign-in temporarily locked' : 'Staff Portal Login' ?></span>
-
-                </div>
+                <div class="auth-portal-form-body">
+                    <div class="auth-portal-badge-wrap">
+                        <span class="auth-portal-badge"><?= $loginLocked ? 'Sign-in temporarily locked' : 'Authorized staff only' ?></span>
+                    </div>
 
 
 
@@ -427,25 +410,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <?php endif; ?>
 
+                </div>
+
+                <footer class="auth-portal-form-footer">
+                    <a href="index.php" class="back-home back-home--center">
+                        <i data-lucide="chevron-left" class="back-home__icon w-3 h-3"></i>
+                        <span>Back to Citizen Portal</span>
+                    </a>
+                    <p class="auth-portal-form-footer-mobile">
+                        <a href="index.php">Return to citizen portal</a>
+                    </p>
+                </footer>
             </div>
-
-
-
-            <div class="auth-portal-card-footer">
-
-                <a href="index.php" class="back-home back-home--center">
-
-                    <i data-lucide="chevron-left" class="back-home__icon w-3 h-3"></i>
-
-                    <span>Back to Citizen Portal</span>
-
-                </a>
-
-            </div>
-
-        </div>
-
-    </main>
+        </main>
+    </div>
 
 
 

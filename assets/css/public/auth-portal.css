@@ -238,8 +238,8 @@ body.auth-portal {
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    background: var(--alcros-navy-mid);
-    color: #fff;
+    background: var(--alcros-gold);
+    color: var(--alcros-navy);
     border: none;
     border-radius: 0.75rem;
     padding: 0.875rem 1rem;
@@ -247,13 +247,14 @@ body.auth-portal {
     font-weight: 800;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    transition: background 0.2s, transform 0.15s;
-    box-shadow: 0 8px 22px rgba(7, 20, 40, 0.18);
+    transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+    box-shadow: 0 8px 22px rgba(244, 180, 0, 0.35);
     cursor: pointer;
 }
 
 .auth-portal-btn:hover {
-    background: var(--alcros-navy);
+    background: var(--alcros-gold-hover);
+    color: var(--alcros-navy);
 }
 
 .auth-portal-btn:active {

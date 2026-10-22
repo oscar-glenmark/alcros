@@ -287,9 +287,108 @@ function rateLimitKey(string $action, ?string $suffix = null): string
     return $part . '_' . md5($ip . $extra);
 }
 
+function alcrosValidateIpAddress(string $ip): ?string
+{
+    $ip = trim($ip);
+    if ($ip === '') {
+        return null;
+    }
+
+    if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+        return null;
+    }
+
+    if (function_exists('inet_pton') && function_exists('inet_ntop')) {
+        $packed = @inet_pton($ip);
+        if ($packed !== false) {
+            $normalized = inet_ntop($packed);
+
+            return $normalized !== false ? $normalized : $ip;
+        }
+    }
+
+    return $ip;
+}
+
+function alcrosFirstValidIpFromForwardedHeader(string $header): ?string
+{
+    foreach (explode(',', $header) as $part) {
+        $candidate = trim($part);
+        if ($candidate === '') {
+            continue;
+        }
+
+        if (preg_match('/^\[(.+)\](?::\d+)?$/', $candidate, $matches)) {
+            $candidate = $matches[1];
+        } elseif (preg_match('/^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/', $candidate, $matches)) {
+            $candidate = $matches[1];
+        }
+
+        $validated = alcrosValidateIpAddress($candidate);
+        if ($validated !== null) {
+            return $validated;
+        }
+    }
+
+    return null;
+}
+
 function clientIpAddress(): string
 {
-    return (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+    if (!function_exists('alcrosTrustProxyClientIp')) {
+        require_once __DIR__ . '/hosting.php';
+    }
+
+    if (alcrosTrustProxyClientIp()) {
+        $trustedHeaders = [
+            (string) ($_SERVER['HTTP_CF_CONNECTING_IP'] ?? ''),
+            (string) ($_SERVER['HTTP_X_REAL_IP'] ?? ''),
+        ];
+
+        foreach ($trustedHeaders as $headerValue) {
+            $headerValue = trim($headerValue);
+            if ($headerValue === '') {
+                continue;
+            }
+
+            $validated = alcrosValidateIpAddress($headerValue);
+            if ($validated !== null) {
+                return $validated;
+            }
+        }
+
+        $forwarded = trim((string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? ''));
+        if ($forwarded !== '') {
+            $fromChain = alcrosFirstValidIpFromForwardedHeader($forwarded);
+            if ($fromChain !== null) {
+                return $fromChain;
+            }
+        }
+    }
+
+    $remote = alcrosValidateIpAddress((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+
+    return $remote ?? '0.0.0.0';
+}
+
+/** Human-readable IP for emails and activity logs (canonical form when possible). */
+function formatClientIpAddress(?string $ip = null): string
+{
+    $ip = trim($ip ?? clientIpAddress());
+    if ($ip === '' || $ip === '0.0.0.0') {
+        return 'Unavailable';
+    }
+
+    $validated = alcrosValidateIpAddress($ip);
+    if ($validated === null) {
+        return $ip;
+    }
+
+    if ($validated === '::1') {
+        return '127.0.0.1 (local)';
+    }
+
+    return $validated;
 }
 
 function rateLimitStorageFile(string $key): string
@@ -302,7 +401,7 @@ function rateLimitStorageFile(string $key): string
     return $dir . '/' . hash('sha256', $key) . '.json';
 }
 
-/** @return array{count: int, reset: int, lockout_alert_sent: int} */
+/** @return array{count: int, reset: int, lockout_alert_sent: int, last_ip: string} */
 function rateLimitReadState(string $key, int $windowSeconds): array
 {
     $now = time();
@@ -310,6 +409,7 @@ function rateLimitReadState(string $key, int $windowSeconds): array
         'count'               => 0,
         'reset'               => $now + $windowSeconds,
         'lockout_alert_sent'  => 0,
+        'last_ip'             => '',
     ];
 
     $file = rateLimitStorageFile($key);
@@ -326,23 +426,42 @@ function rateLimitReadState(string $key, int $windowSeconds): array
         return $defaults;
     }
 
+    $lastIp = trim((string) ($decoded['last_ip'] ?? ''));
+    if ($lastIp !== '') {
+        $lastIp = formatClientIpAddress($lastIp);
+        if ($lastIp === 'Unavailable') {
+            $lastIp = '';
+        }
+    }
+
     return [
         'count'              => (int) ($decoded['count'] ?? 0),
         'reset'              => (int) ($decoded['reset'] ?? ($now + $windowSeconds)),
         'lockout_alert_sent' => !empty($decoded['lockout_alert_sent']) ? 1 : 0,
+        'last_ip'            => $lastIp,
     ];
 }
 
-/** @param array{count?: int, reset?: int, lockout_alert_sent?: int} $data */
+/** @param array{count?: int, reset?: int, lockout_alert_sent?: int, last_ip?: string} $data */
 function rateLimitWriteState(string $key, array $data): void
 {
+    $payload = [
+        'count'              => (int) ($data['count'] ?? 0),
+        'reset'              => (int) ($data['reset'] ?? (time() + 900)),
+        'lockout_alert_sent' => !empty($data['lockout_alert_sent']) ? 1 : 0,
+    ];
+
+    $lastIp = trim((string) ($data['last_ip'] ?? ''));
+    if ($lastIp !== '') {
+        $validatedLastIp = alcrosValidateIpAddress($lastIp);
+        if ($validatedLastIp !== null) {
+            $payload['last_ip'] = $validatedLastIp;
+        }
+    }
+
     file_put_contents(
         rateLimitStorageFile($key),
-        json_encode([
-            'count'              => (int) ($data['count'] ?? 0),
-            'reset'              => (int) ($data['reset'] ?? (time() + 900)),
-            'lockout_alert_sent' => !empty($data['lockout_alert_sent']) ? 1 : 0,
-        ]),
+        json_encode($payload),
         LOCK_EX
     );
 }
@@ -373,6 +492,7 @@ function rateLimitRecordFailedAttempt(string $key, int $maxAttempts, int $window
     }
 
     $data['count'] = $count + 1;
+    $data['last_ip'] = clientIpAddress();
     rateLimitWriteState($key, $data);
     $newCount = (int) $data['count'];
 

@@ -48,21 +48,110 @@ function alcrosExcelSendDownload(AlcrosXlsxWorkbook $spreadsheet, string $filena
     exit;
 }
 
+function alcrosExcelFaviconPath(): ?string
+{
+    $path = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'images' . DIRECTORY_SEPARATOR . 'favicon.png';
+
+    return is_readable($path) ? $path : null;
+}
+
+function alcrosExcelMetaLogoHeightPx(int $firstMetaRow, int $spanEndRow, float $titleRowPt, float $detailRowPt): int
+{
+    if ($spanEndRow < $firstMetaRow) {
+        return 0;
+    }
+
+    $totalPoints = 0.0;
+    for ($metaRow = $firstMetaRow; $metaRow <= $spanEndRow; $metaRow++) {
+        $totalPoints += $metaRow === $firstMetaRow ? $titleRowPt : $detailRowPt;
+    }
+
+    return (int) max(1, round($totalPoints * (96 / 72)));
+}
+
+function alcrosExcelPlaceFaviconLogo(
+    AlcrosXlsxSheet $sheet,
+    int $firstMetaRow,
+    int $spanEndRow,
+    float $titleRowPt,
+    float $detailRowPt
+): void {
+    $path = alcrosExcelFaviconPath();
+    if ($path === null) {
+        return;
+    }
+
+    $info = @getimagesize($path);
+    if ($info === false || ($info[2] ?? 0) !== IMAGETYPE_PNG) {
+        return;
+    }
+
+    $sourceW = (int) ($info[0] ?? 0);
+    $sourceH = (int) ($info[1] ?? 0);
+    if ($sourceW < 1 || $sourceH < 1) {
+        return;
+    }
+
+    $heightPx = alcrosExcelMetaLogoHeightPx($firstMetaRow, $spanEndRow, $titleRowPt, $detailRowPt);
+    if ($heightPx < 1) {
+        return;
+    }
+
+    $widthPx = (int) max(1, round($sourceW * ($heightPx / $sourceH)));
+
+    $logoCol = 1;
+    $gutterCol = 2;
+    $logoColWidth = max(12.0, min(24.0, ($widthPx / 6.5) + 1));
+    $sheet->setColumnWidth($logoCol, $logoColWidth);
+    $sheet->setColumnWidth($gutterCol, max(5.0, min(8.0, ($widthPx / 18) + 4)));
+    $sheet->addImageFromFile($logoCol, $firstMetaRow, $path, $widthPx, $heightPx);
+}
+
 function alcrosExcelWriteMetaBlock(AlcrosXlsxSheet $sheet, array $lines, int &$row): void
 {
+    $metaStartRow = $row;
+    $labelCol = 3;
+    $valueCol = 4;
+    $valueMergeEndCol = 7;
+    $titleRowPt = 22.0;
+    $detailRowPt = 19.0;
+    $periodRow = null;
+    $generatedRow = null;
+
     foreach ($lines as $line) {
         if (is_string($line)) {
-            $sheet->setCell(1, $row, $line);
-            $sheet->mergeCells(1, $row, 6, $row);
-            $sheet->applyStyle(1, $row, 1, $row, ['bold' => true, 'size' => 12]);
+            $sheet->setCell($labelCol, $row, $line);
+            $sheet->mergeCells($labelCol, $row, $valueMergeEndCol, $row);
+            $sheet->applyStyle($labelCol, $row, $labelCol, $row, ['bold' => true, 'size' => 12]);
+            $sheet->setRowHeight($row, $titleRowPt);
             $row++;
             continue;
         }
 
-        $sheet->setCell(1, $row, (string) ($line[0] ?? ''));
-        $sheet->setCell(2, $row, (string) ($line[1] ?? ''));
-        $sheet->applyStyle(1, $row, 1, $row, ['bold' => true]);
+        $label = trim((string) ($line[0] ?? ''));
+        if (strcasecmp($label, 'Period') === 0 || strcasecmp($label, 'Range') === 0) {
+            $periodRow = $row;
+        }
+        if (strcasecmp($label, 'Generated') === 0 || strcasecmp($label, 'Generated on') === 0) {
+            $generatedRow = $row;
+        }
+
+        $sheet->setCell($labelCol, $row, $label);
+        $sheet->setCell($valueCol, $row, (string) ($line[1] ?? ''));
+        $sheet->mergeCells($valueCol, $row, $valueMergeEndCol, $row);
+        $sheet->applyStyle($labelCol, $row, $labelCol, $row, ['bold' => true, 'size' => 10]);
+        $sheet->applyStyle($valueCol, $row, $valueCol, $row, ['size' => 10]);
+        $sheet->setRowHeight($row, $detailRowPt);
         $row++;
+    }
+
+    $metaEndRow = $row - 1;
+    if ($metaEndRow >= $metaStartRow) {
+        $logoSpanEndRow = $periodRow ?? ($generatedRow !== null ? $generatedRow - 1 : $metaEndRow);
+        if ($logoSpanEndRow < $metaStartRow) {
+            $logoSpanEndRow = $metaEndRow;
+        }
+        alcrosExcelPlaceFaviconLogo($sheet, $metaStartRow, $logoSpanEndRow, $titleRowPt, $detailRowPt);
     }
 
     $row++;

@@ -11,6 +11,19 @@ if (!defined('ALCROS_TRUST_PROXY_HTTPS')) {
     define('ALCROS_TRUST_PROXY_HTTPS', false);
 }
 
+/**
+ * When true, client IP may be read from X-Forwarded-For / X-Real-IP (hosting edge only).
+ * Defaults to the same setting as HTTPS proxy trust.
+ */
+function alcrosTrustProxyClientIp(): bool
+{
+    if (defined('ALCROS_TRUST_PROXY_CLIENT_IP')) {
+        return (bool) ALCROS_TRUST_PROXY_CLIENT_IP;
+    }
+
+    return ALCROS_TRUST_PROXY_HTTPS;
+}
+
 /** Hide PHP warnings on shared hosting UI (errors still log server-side). */
 $alcrosHost = strtolower((string) ($_SERVER['HTTP_HOST'] ?? ''));
 if (

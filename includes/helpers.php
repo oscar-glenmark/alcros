@@ -4022,7 +4022,7 @@ function sendStaffPasswordOtp(PDO $pdo, string $staffId): array
     ];
 }
 
-function sendStaffLoginLockoutAlert(PDO $pdo, string $staffId, int $windowSeconds = 900): bool
+function sendStaffLoginLockoutAlert(PDO $pdo, string $staffId, int $windowSeconds = 900, ?string $sourceIp = null): bool
 {
     ensureExtendedSchema($pdo);
     $staff = staffRowById($pdo, $staffId);
@@ -4043,7 +4043,7 @@ function sendStaffLoginLockoutAlert(PDO $pdo, string $staffId, int $windowSecond
     $displayName = personNameFromRow($staff);
     $staffIdDisplay = (string) $staff['staff_id'];
     $when = date('F j, Y \a\t g:i A');
-    $ip = clientIpAddress();
+    $ip = formatClientIpAddress($sourceIp);
     $resetUrl = appBaseUrl() . '/forgot_password.php';
     $windowMinutes = (int) max(1, round($windowSeconds / 60));
 
@@ -4101,7 +4101,10 @@ function notifyStaffLoginLockoutIfNeeded(
         return;
     }
 
-    if (!sendStaffLoginLockoutAlert($pdo, $staffId, $windowSeconds)) {
+    $state = rateLimitReadState($rateLimitKey, $windowSeconds);
+    $sourceIp = ($state['last_ip'] ?? '') !== '' ? (string) $state['last_ip'] : null;
+
+    if (!sendStaffLoginLockoutAlert($pdo, $staffId, $windowSeconds, $sourceIp)) {
         return;
     }
 

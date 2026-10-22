@@ -37,6 +37,9 @@ final class AlcrosXlsxSheet
     private int $maxRow = 0;
     private int $maxCol = 0;
 
+    /** @var list<array{path: string, col: int, row: int, width_px: int, height_px: int}> */
+    private array $images = [];
+
     public function __construct(string $name)
     {
         $this->setTitle($name);
@@ -160,6 +163,51 @@ final class AlcrosXlsxSheet
             . ':' . AlcrosXlsxWorkbook::columnLetter($lastCol) . $lastRow;
     }
 
+    /**
+     * Embed a PNG image anchored at the top-left of a cell (1-based col/row).
+     *
+     * @return bool False when the file is missing or not a readable PNG.
+     */
+    public function addImageFromFile(int $col, int $row, string $absolutePath, int $widthPx, int $heightPx): bool
+    {
+        $col = max(1, $col);
+        $row = max(1, $row);
+        $widthPx = max(1, $widthPx);
+        $heightPx = max(1, $heightPx);
+
+        if (!is_readable($absolutePath)) {
+            return false;
+        }
+
+        $info = @getimagesize($absolutePath);
+        if ($info === false || ($info[2] ?? 0) !== IMAGETYPE_PNG) {
+            return false;
+        }
+
+        $this->images[] = [
+            'path'      => $absolutePath,
+            'col'       => $col,
+            'row'       => $row,
+            'width_px'  => $widthPx,
+            'height_px' => $heightPx,
+        ];
+        $this->maxCol = max($this->maxCol, $col);
+        $this->maxRow = max($this->maxRow, $row);
+
+        return true;
+    }
+
+    /** @return list<array{path: string, col: int, row: int, width_px: int, height_px: int}> */
+    public function getImages(): array
+    {
+        return $this->images;
+    }
+
+    public function hasImages(): bool
+    {
+        return $this->images !== [];
+    }
+
     public function buildXml(AlcrosXlsxStyleTable $styles): string
     {
         $path = tempnam(sys_get_temp_dir(), 'alcros_xlsx_sheet_');
@@ -188,10 +236,14 @@ final class AlcrosXlsxSheet
 
         $lastRef = AlcrosXlsxWorkbook::columnLetter(max(1, $this->maxCol)) . max(1, $this->maxRow);
 
+        $worksheetNs = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+        $relNs = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+        $worksheetOpen = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<worksheet xmlns="' . $worksheetNs . '" xmlns:r="' . $relNs . '">';
+
         fwrite(
             $handle,
-            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            $worksheetOpen
             . '<dimension ref="A1:' . $lastRef . '"/>'
             . $this->buildSheetViewsXml()
             . '<sheetFormatPr defaultRowHeight="15"/>'
@@ -223,6 +275,10 @@ final class AlcrosXlsxSheet
                 fwrite($handle, '<mergeCell ref="' . $ref . '"/>');
             }
             fwrite($handle, '</mergeCells>');
+        }
+
+        if ($this->images !== []) {
+            fwrite($handle, '<drawing r:id="rId1"/>');
         }
 
         fwrite($handle, '</worksheet>');
@@ -642,6 +698,7 @@ final class AlcrosXlsxWorkbook
         $styles = new AlcrosXlsxStyleTable();
         $sheetPaths = [];
         $tempFiles = [];
+        $drawingBundle = $this->buildDrawingBundle();
 
         try {
             foreach ($this->sheets as $index => $sheet) {
@@ -666,7 +723,7 @@ final class AlcrosXlsxWorkbook
                 throw new RuntimeException('Could not create the Excel archive.');
             }
 
-            $zip->addFromString('[Content_Types].xml', $this->contentTypesXml());
+            $zip->addFromString('[Content_Types].xml', $this->contentTypesXml($drawingBundle));
             $zip->addFromString('_rels/.rels', $this->rootRelsXml());
             $zip->addFromString('docProps/core.xml', $this->corePropsXml());
             $zip->addFromString('docProps/app.xml', $this->appPropsXml());
@@ -676,6 +733,22 @@ final class AlcrosXlsxWorkbook
 
             foreach ($sheetPaths as $index => $sheetPath) {
                 $zip->addFile($sheetPath, 'xl/worksheets/sheet' . ($index + 1) . '.xml');
+                if (isset($drawingBundle['sheet_rels'][$index])) {
+                    $zip->addFromString(
+                        'xl/worksheets/_rels/sheet' . ($index + 1) . '.xml.rels',
+                        $drawingBundle['sheet_rels'][$index]
+                    );
+                }
+            }
+
+            foreach ($drawingBundle['drawings'] as $drawingPath => $drawingXml) {
+                $zip->addFromString($drawingPath, $drawingXml);
+            }
+            foreach ($drawingBundle['drawing_rels'] as $drawingRelPath => $drawingRelXml) {
+                $zip->addFromString($drawingRelPath, $drawingRelXml);
+            }
+            foreach ($drawingBundle['media'] as $mediaPath => $mediaBinary) {
+                $zip->addFromString($mediaPath, $mediaBinary);
             }
 
             $zip->close();
@@ -692,8 +765,9 @@ final class AlcrosXlsxWorkbook
     private function writeToFileWithPacker(string $path): void
     {
         $styles = new AlcrosXlsxStyleTable();
+        $drawingBundle = $this->buildDrawingBundle();
         $parts = [
-            '[Content_Types].xml'        => $this->contentTypesXml(),
+            '[Content_Types].xml'        => $this->contentTypesXml($drawingBundle),
             '_rels/.rels'                => $this->rootRelsXml(),
             'docProps/core.xml'          => $this->corePropsXml(),
             'docProps/app.xml'           => $this->appPropsXml(),
@@ -704,6 +778,20 @@ final class AlcrosXlsxWorkbook
 
         foreach ($this->sheets as $index => $sheet) {
             $parts['xl/worksheets/sheet' . ($index + 1) . '.xml'] = $sheet->buildXml($styles);
+            if (isset($drawingBundle['sheet_rels'][$index])) {
+                $parts['xl/worksheets/_rels/sheet' . ($index + 1) . '.xml.rels']
+                    = $drawingBundle['sheet_rels'][$index];
+            }
+        }
+
+        foreach ($drawingBundle['drawings'] as $drawingPath => $drawingXml) {
+            $parts[$drawingPath] = $drawingXml;
+        }
+        foreach ($drawingBundle['drawing_rels'] as $drawingRelPath => $drawingRelXml) {
+            $parts[$drawingRelPath] = $drawingRelXml;
+        }
+        foreach ($drawingBundle['media'] as $mediaPath => $mediaBinary) {
+            $parts[$mediaPath] = $mediaBinary;
         }
 
         file_put_contents($path, $this->zipParts($parts));
@@ -768,13 +856,21 @@ final class AlcrosXlsxWorkbook
         }
     }
 
-    private function contentTypesXml(): string
+    /**
+     * @param array{drawings: array<string, string>, drawing_rels: array<string, string>, media: array<string, string>, sheet_rels: array<int, string>} $drawingBundle
+     */
+    private function contentTypesXml(array $drawingBundle): string
     {
         $xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
             . '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
-            . '<Default Extension="xml" ContentType="application/xml"/>'
-            . '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            . '<Default Extension="xml" ContentType="application/xml"/>';
+
+        if ($drawingBundle['media'] !== []) {
+            $xml .= '<Default Extension="png" ContentType="image/png"/>';
+        }
+
+        $xml .= '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
             . '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>';
 
         foreach (array_keys($this->sheets) as $index) {
@@ -782,10 +878,163 @@ final class AlcrosXlsxWorkbook
                 . ' ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
         }
 
+        foreach (array_keys($drawingBundle['drawings']) as $drawingPath) {
+            $xml .= '<Override PartName="/' . $drawingPath . '"'
+                . ' ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>';
+        }
+
         return $xml
             . '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'
             . '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>'
             . '</Types>';
+    }
+
+    /**
+     * @return array{
+     *   drawings: array<string, string>,
+     *   drawing_rels: array<string, string>,
+     *   media: array<string, string>,
+     *   sheet_rels: array<int, string>
+     * }
+     */
+    private function buildDrawingBundle(): array
+    {
+        $bundle = [
+            'drawings'     => [],
+            'drawing_rels' => [],
+            'media'        => [],
+            'sheet_rels'   => [],
+        ];
+
+        $mediaPathBySource = [];
+        $mediaCounter = 0;
+
+        foreach ($this->sheets as $sheetIndex => $sheet) {
+            if (!$sheet->hasImages()) {
+                continue;
+            }
+
+            $drawingNumber = $sheetIndex + 1;
+            $drawingPart = 'xl/drawings/drawing' . $drawingNumber . '.xml';
+            $drawingRelPart = 'xl/drawings/_rels/drawing' . $drawingNumber . '.xml.rels';
+
+            $imageRels = [];
+            $anchorsXml = '';
+            $picId = 1;
+
+            foreach ($sheet->getImages() as $image) {
+                $source = $image['path'];
+                if (!isset($mediaPathBySource[$source])) {
+                    $binary = file_get_contents($source);
+                    if ($binary === false) {
+                        continue;
+                    }
+                    $mediaCounter++;
+                    $mediaPart = 'xl/media/image' . $mediaCounter . '.png';
+                    $mediaPathBySource[$source] = $mediaPart;
+                    $bundle['media'][$mediaPart] = $binary;
+                }
+
+                $mediaPart = $mediaPathBySource[$source] ?? null;
+                if ($mediaPart === null) {
+                    continue;
+                }
+
+                $relId = 'rId' . count($imageRels) + 1;
+                $imageRels[] = [
+                    'id'     => $relId,
+                    'target' => '../media/' . basename($mediaPart),
+                ];
+
+                $anchorsXml .= $this->buildOneCellAnchorXml(
+                    $image['col'],
+                    $image['row'],
+                    $image['width_px'],
+                    $image['height_px'],
+                    $relId,
+                    $picId
+                );
+                $picId++;
+            }
+
+            if ($anchorsXml === '') {
+                continue;
+            }
+
+            $bundle['drawings'][$drawingPart] = $this->buildDrawingXml($anchorsXml);
+            $bundle['drawing_rels'][$drawingRelPart] = $this->buildDrawingRelsXml($imageRels);
+            $bundle['sheet_rels'][$sheetIndex] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                . '<Relationship Id="rId1"'
+                . ' Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing"'
+                . ' Target="../drawings/drawing' . $drawingNumber . '.xml"/>'
+                . '</Relationships>';
+        }
+
+        return $bundle;
+    }
+
+    private function buildDrawingXml(string $anchorsXml): string
+    {
+        return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"'
+            . ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+            . ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            . $anchorsXml
+            . '</xdr:wsDr>';
+    }
+
+    /** @param list<array{id: string, target: string}> $rels */
+    private function buildDrawingRelsXml(array $rels): string
+    {
+        $xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+
+        foreach ($rels as $rel) {
+            $xml .= '<Relationship Id="' . self::xmlText($rel['id']) . '"'
+                . ' Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"'
+                . ' Target="' . self::xmlText($rel['target']) . '"/>';
+        }
+
+        return $xml . '</Relationships>';
+    }
+
+    private function buildOneCellAnchorXml(
+        int $col,
+        int $row,
+        int $widthPx,
+        int $heightPx,
+        string $embedRelId,
+        int $picId
+    ): string {
+        $colIndex = max(0, $col - 1);
+        $rowIndex = max(0, $row - 1);
+        $cx = $widthPx * 9525;
+        $cy = $heightPx * 9525;
+        $name = 'ALCROS Logo ' . $picId;
+
+        return '<xdr:oneCellAnchor>'
+            . '<xdr:from>'
+            . '<xdr:col>' . $colIndex . '</xdr:col><xdr:colOff>0</xdr:colOff>'
+            . '<xdr:row>' . $rowIndex . '</xdr:row><xdr:rowOff>0</xdr:rowOff>'
+            . '</xdr:from>'
+            . '<xdr:ext cx="' . $cx . '" cy="' . $cy . '"/>'
+            . '<xdr:pic>'
+            . '<xdr:nvPicPr>'
+            . '<xdr:cNvPr id="' . $picId . '" name="' . self::xmlText($name) . '"/>'
+            . '<xdr:cNvPicPr/>'
+            . '</xdr:nvPicPr>'
+            . '<xdr:blipFill>'
+            . '<a:blip r:embed="' . self::xmlText($embedRelId) . '"/>'
+            . '<a:stretch><a:fillRect/></a:stretch>'
+            . '</xdr:blipFill>'
+            . '<xdr:spPr>'
+            . '<a:xfrm><a:off x="0" y="0"/><a:ext cx="' . $cx . '" cy="' . $cy . '"/></a:xfrm>'
+            . '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+            . '</xdr:spPr>'
+            . '</xdr:pic>'
+            . '<xdr:clientData/>'
+            . '</xdr:oneCellAnchor>';
     }
 
     private function rootRelsXml(): string

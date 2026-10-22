@@ -314,7 +314,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     </div>
 
-                    <p class="auth-portal-lockout__hint" id="loginRetryHint">Leave this page open—the timer updates automatically.</p>
+                    <p class="auth-portal-lockout__hint" id="loginRetryHint">Leave this page open the timer updates automatically.</p>
 
                 </div>
 

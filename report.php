@@ -15,6 +15,9 @@ $activePage = 'report.php';
 $pdo = getDB();
 
 $range = $_GET['range'] ?? 'today';
+if (!in_array($range, ['today', 'custom'], true)) {
+    $range = 'today';
+}
 $fromInput = $_GET['from'] ?? '';
 $toInput = $_GET['to'] ?? '';
 [$fromDate, $toDate] = resolveReportDateRange($range, $fromInput, $toInput);
@@ -51,11 +54,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'export') {
     @set_time_limit(0);
     ignore_user_abort(true);
 
-    if (strtolower((string) ($_GET['format'] ?? 'csv')) !== 'csv') {
-        http_response_code(400);
-        exit('Only CSV export is available.');
-    }
-
     $exportSections = parseReportExportSections($_GET['sections'] ?? '');
     if ($exportSections === []) {
         http_response_code(400);
@@ -78,10 +76,11 @@ if (isset($_GET['action']) && $_GET['action'] === 'export') {
 
     logActivity(
         staffId(),
-        'CSV Export',
+        'Excel Export',
         'Exported operational report (' . implode(', ', $sectionLabels) . ')'
     );
-    exportOperationalReportCsv(
+    require_once __DIR__ . '/includes/spreadsheet_exports.php';
+    exportOperationalReportXlsx(
         $pdo,
         $report,
         $recordsReport,
@@ -119,7 +118,7 @@ if (!in_array($section, $validSections, true)) {
 }
 
 $pageTitle = 'Reports';
-$pageSubtitle = 'Summaries for requests, appointments, queue, print volume, and civil records with CSV export.';
+$pageSubtitle = 'Summaries for requests, appointments, queue, print volume, and civil records with Excel export.';
 $pageHeaderMeta = '<p class="admin-header__meta">' . htmlspecialchars($report['office_name']) . ' · Showing <strong>'
     . htmlspecialchars($rangeLabel) . '</strong>'
     . ($section === 'records'
@@ -145,7 +144,7 @@ $periodMetrics = [
 ];
 
 $reportTabs = [
-    'overview'     => ['label' => 'Overview',     'icon' => 'layout-dashboard', 'count' => null],
+    'overview'     => ['label' => 'Overview',     'icon' => 'layout-dashboard', 'count' => null, 'export' => false],
     'requests'     => ['label' => 'Requests',     'icon' => 'file-text',        'count' => count($report['requests'])],
     'appointments' => ['label' => 'Appointments', 'icon' => 'calendar',         'count' => count($report['appointments'])],
     'queue'        => ['label' => 'Queue',        'icon' => 'users',            'count' => count($report['queue_tickets'])],
@@ -155,8 +154,6 @@ $reportTabs = [
 
 $rangeOptions = [
     'today' => 'Today',
-    'week' => 'Last 7 days',
-    'month' => 'This month',
     'custom' => 'Custom',
 ];
 
@@ -198,9 +195,9 @@ $recordsJumpDesc = sprintf(
             ?>
                         <form id="reportExportForm" method="GET" action="<?= htmlspecialchars(buildAuthUrl('report.php')) ?>" class="hidden">
                             <input type="hidden" name="action" value="export">
-                            <input type="hidden" name="format" value="csv">
                             <input type="hidden" name="sections" id="reportExportSectionsField" value="">
                             <input type="hidden" name="records_type" id="reportExportRecordsTypeField" value="all">
+                            <input type="hidden" name="year" id="reportExportYearField" value="<?= (int) $reportYear ?>">
                             <?php if ($range !== 'today'): ?>
                             <input type="hidden" name="range" value="<?= htmlspecialchars($range) ?>">
                             <?php endif; ?>
@@ -211,9 +208,6 @@ $recordsJumpDesc = sprintf(
                             <?php if ($section !== 'overview'): ?>
                             <input type="hidden" name="section" value="<?= htmlspecialchars($section) ?>">
                             <?php endif; ?>
-                            <?php if ($reportYear !== (int) date('Y')): ?>
-                            <input type="hidden" name="year" value="<?= (int) $reportYear ?>">
-                            <?php endif; ?>
                         </form>
             <?php
             $reportExportFormHtml = ob_get_clean();
@@ -223,7 +217,7 @@ $recordsJumpDesc = sprintf(
             ?>
                         <div class="relative" id="reportExportMenu">
                             <button type="button" id="reportExportBtn" class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg text-xs font-bold">
-                                <i data-lucide="download" class="w-3.5 h-3.5"></i> Export CSV
+                                <i data-lucide="download" class="w-3.5 h-3.5"></i> Export
                                 <i data-lucide="chevron-down" class="w-3.5 h-3.5 opacity-80"></i>
                             </button>
                             <div id="reportExportPanel" class="hidden absolute right-0 mt-2 w-72 bg-white border border-gray-100 rounded-xl shadow-lg z-20 p-4 text-xs">
@@ -233,13 +227,20 @@ $recordsJumpDesc = sprintf(
                                     <?php if (($tab['export'] ?? true) === false) continue; ?>
                                     <label class="flex items-center gap-2.5 cursor-pointer text-slate-700 font-medium">
                                         <input type="checkbox" class="report-export-check rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                                               value="<?= htmlspecialchars($tabKey) ?>"
-                                               <?= $tabKey === 'overview' ? 'checked' : '' ?>>
-                                        <span><?= htmlspecialchars($tab['label']) ?><?= $tabKey === 'records' ? ' (' . (int) $reportYear . ')' : '' ?></span>
+                                               value="<?= htmlspecialchars($tabKey) ?>">
+                                        <span><?= htmlspecialchars($tab['label']) ?></span>
                                     </label>
                                     <?php endforeach; ?>
                                 </div>
                                 <div id="reportExportRecordsFilter" class="mb-3 pt-3 border-t border-gray-100 hidden">
+                                    <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Civil records year</p>
+                                    <p class="text-[10px] text-gray-500 mb-2 leading-snug">Registration calendar year — separate from the report date range above.</p>
+                                    <select id="reportExportYearSelect"
+                                            class="w-full border border-slate-200 rounded-lg px-2.5 py-2 text-xs font-semibold text-slate-700 bg-white mb-3">
+                                        <?php foreach ($yearOptions as $yearOption): ?>
+                                        <option value="<?= (int) $yearOption ?>" <?= $reportYear === $yearOption ? 'selected' : '' ?>><?= (int) $yearOption ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
                                     <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Civil records type</p>
                                     <div class="space-y-1.5">
                                         <?php
@@ -258,14 +259,14 @@ $recordsJumpDesc = sprintf(
                                         </label>
                                         <?php endforeach; ?>
                                     </div>
-                                    <p class="text-[10px] text-gray-400 mt-2 leading-snug">Includes quarterly summary plus full record rows for <?= (int) $reportYear ?>.</p>
+                                    <p id="reportExportRecordsYearNote" class="text-[10px] text-gray-400 mt-2 leading-snug">Includes quarterly summary plus full record rows for <strong class="text-slate-600"><?= (int) $reportYear ?></strong>.</p>
                                 </div>
                                 <div class="flex items-center justify-between gap-2 pt-3 border-t border-gray-100 mb-3">
                                     <button type="button" id="reportExportSelectAll" class="text-emerald-600 font-bold hover:underline">Select all</button>
                                     <button type="button" id="reportExportClearAll" class="text-slate-500 font-bold hover:underline">Clear</button>
                                 </div>
                                 <button type="button" id="reportExportSubmit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-bold">
-                                    Download CSV
+                                    Download Excel (.xlsx)
                                 </button>
                             </div>
                         </div>
@@ -278,7 +279,7 @@ $recordsJumpDesc = sprintf(
                                 class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg text-xs font-bold"
                                 data-export-section="<?= htmlspecialchars($section) ?>"
                                 data-loading-text="Exporting…">
-                            <i data-lucide="download" class="w-3.5 h-3.5"></i> Export CSV
+                            <i data-lucide="download" class="w-3.5 h-3.5"></i> Export Excel
                         </button>
             <?php endif;
             $reportExportControlHtml = ob_get_clean();
@@ -296,15 +297,15 @@ $recordsJumpDesc = sprintf(
                         </a>
                         <?php endforeach; ?>
                     </div>
-                    <form id="reportCustomRangeForm" method="GET" action="<?= htmlspecialchars(buildAuthUrl('report.php')) ?>" class="flex flex-wrap items-center gap-2 shrink-0 <?= $range === 'custom' ? '' : 'hidden' ?>">
+                    <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('report.php')) ?>" class="report-custom-range-form flex flex-wrap items-center gap-2 shrink-0 <?= $range === 'custom' ? '' : 'hidden' ?>">
                         <?php if ($token = staffAuthToken()): ?>
                         <input type="hidden" name="alcros_auth" value="<?= htmlspecialchars($token) ?>">
                         <?php endif; ?>
                         <input type="hidden" name="section" value="overview">
                         <input type="hidden" name="range" value="custom">
-                        <input type="date" name="from" id="reportRangeFrom" value="<?= htmlspecialchars($fromDate) ?>" aria-label="From date" class="border border-slate-200 rounded-lg px-2.5 py-2 text-xs bg-white">
+                        <input type="date" name="from" value="<?= htmlspecialchars($fromDate) ?>" aria-label="From date" class="js-report-range-date border border-slate-200 rounded-lg px-2.5 py-2 text-xs bg-white">
                         <span class="text-slate-300 text-xs font-bold">to</span>
-                        <input type="date" name="to" id="reportRangeTo" value="<?= htmlspecialchars($toDate) ?>" aria-label="To date" class="border border-slate-200 rounded-lg px-2.5 py-2 text-xs bg-white">
+                        <input type="date" name="to" value="<?= htmlspecialchars($toDate) ?>" aria-label="To date" class="js-report-range-date border border-slate-200 rounded-lg px-2.5 py-2 text-xs bg-white">
                     </form>
                 </div>
                 <div class="shrink-0 flex flex-wrap items-center justify-end gap-2">
@@ -334,15 +335,15 @@ $recordsJumpDesc = sprintf(
                         </a>
                         <?php endforeach; ?>
                     </div>
-                    <form id="reportCustomRangeForm" method="GET" action="<?= htmlspecialchars(buildAuthUrl('report.php')) ?>" class="flex flex-wrap items-center gap-2 shrink-0 <?= $range === 'custom' ? '' : 'hidden' ?>">
+                    <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('report.php')) ?>" class="report-custom-range-form flex flex-wrap items-center gap-2 shrink-0 <?= $range === 'custom' ? '' : 'hidden' ?>">
                         <?php if ($token = staffAuthToken()): ?>
                         <input type="hidden" name="alcros_auth" value="<?= htmlspecialchars($token) ?>">
                         <?php endif; ?>
                         <input type="hidden" name="section" value="<?= htmlspecialchars($section) ?>">
                         <input type="hidden" name="range" value="custom">
-                        <input type="date" name="from" id="reportRangeFrom" value="<?= htmlspecialchars($fromDate) ?>" aria-label="From date" class="border border-slate-200 rounded-lg px-2.5 py-2 text-xs bg-white">
+                        <input type="date" name="from" value="<?= htmlspecialchars($fromDate) ?>" aria-label="From date" class="js-report-range-date border border-slate-200 rounded-lg px-2.5 py-2 text-xs bg-white">
                         <span class="text-slate-300 text-xs font-bold">to</span>
-                        <input type="date" name="to" id="reportRangeTo" value="<?= htmlspecialchars($toDate) ?>" aria-label="To date" class="border border-slate-200 rounded-lg px-2.5 py-2 text-xs bg-white">
+                        <input type="date" name="to" value="<?= htmlspecialchars($toDate) ?>" aria-label="To date" class="js-report-range-date border border-slate-200 rounded-lg px-2.5 py-2 text-xs bg-white">
                     </form>
                 </div>
                 <div class="shrink-0 flex justify-end">
@@ -384,7 +385,7 @@ $recordsJumpDesc = sprintf(
                     <section class="report-section no-print">
                         <div class="report-section-head">
                             <h2 class="report-section-head__title">Jump to detail</h2>
-                            <p class="report-section-head__hint">Charts, tables, and CSV export by area</p>
+                            <p class="report-section-head__hint">Charts, tables, and Excel export by area</p>
                         </div>
                         <div class="report-nav-grid">
                             <?php

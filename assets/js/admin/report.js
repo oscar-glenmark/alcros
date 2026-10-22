@@ -28,6 +28,23 @@
     var exportSectionsField = document.getElementById('reportExportSectionsField');
     var exportRecordsTypeField = document.getElementById('reportExportRecordsTypeField');
     var exportRecordsFilter = document.getElementById('reportExportRecordsFilter');
+    var exportYearField = document.getElementById('reportExportYearField');
+    var exportYearSelect = document.getElementById('reportExportYearSelect');
+    var exportRecordsYearNote = document.getElementById('reportExportRecordsYearNote');
+
+    function syncExportRecordsYearField() {
+        if (!exportYearSelect || !exportYearField) {
+            return;
+        }
+
+        exportYearField.value = exportYearSelect.value;
+
+        if (exportRecordsYearNote) {
+            exportRecordsYearNote.innerHTML = 'Includes quarterly summary plus full record rows for <strong class="text-slate-600">'
+                + exportYearSelect.value
+                + '</strong>.';
+        }
+    }
 
     function syncRecordsTypeFilterVisibility() {
         if (!exportRecordsFilter) return;
@@ -40,6 +57,9 @@
         });
 
         exportRecordsFilter.classList.toggle('hidden', !recordsSelected);
+        if (recordsSelected) {
+            syncExportRecordsYearField();
+        }
     }
 
     if (exportSelectAll) {
@@ -59,6 +79,10 @@
     exportChecks.forEach(function (input) {
         input.addEventListener('change', syncRecordsTypeFilterVisibility);
     });
+
+    if (exportYearSelect) {
+        exportYearSelect.addEventListener('change', syncExportRecordsYearField);
+    }
 
     function getSelectedExportSections() {
         var selected = [];
@@ -89,6 +113,10 @@
             ? getSelectedRecordsType()
             : 'all';
 
+        if (selected.indexOf('records') !== -1) {
+            syncExportRecordsYearField();
+        }
+
         if (exportPanel) exportPanel.classList.add('hidden');
         exportForm.submit();
     }
@@ -114,6 +142,9 @@
 
         exportSectionsField.value = section;
         exportRecordsTypeField.value = 'all';
+        if (section === 'records') {
+            syncExportRecordsYearField();
+        }
         exportForm.submit();
     }
 
@@ -121,23 +152,25 @@
         exportDirectBtn.addEventListener('click', exportCurrentDetailSection);
     }
 
-    var customRangeForm = document.getElementById('reportCustomRangeForm');
-    var rangeFrom = document.getElementById('reportRangeFrom');
-    var rangeTo = document.getElementById('reportRangeTo');
-
-    function submitCustomRange() {
-        if (!customRangeForm) return;
-        if (typeof customRangeForm.requestSubmit === 'function') {
-            customRangeForm.requestSubmit();
+    function submitCustomRangeForm(form) {
+        if (!form) {
+            return;
+        }
+        if (window.AlcrosLoading && typeof window.AlcrosLoading.page === 'function') {
+            window.AlcrosLoading.page(true, 'Updating report…');
+        }
+        if (typeof form.requestSubmit === 'function') {
+            form.requestSubmit();
         } else {
-            customRangeForm.submit();
+            form.submit();
         }
     }
 
-    if (rangeFrom) {
-        rangeFrom.addEventListener('change', submitCustomRange);
-    }
-    if (rangeTo) {
-        rangeTo.addEventListener('change', submitCustomRange);
-    }
+    document.querySelectorAll('.report-custom-range-form').forEach(function (form) {
+        form.querySelectorAll('.js-report-range-date').forEach(function (input) {
+            input.addEventListener('change', function () {
+                submitCustomRangeForm(form);
+            });
+        });
+    });
 })();

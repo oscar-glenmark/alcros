@@ -110,6 +110,47 @@ function alcrosExcelFitColumns(AlcrosXlsxSheet $sheet, int $headerRow, int $last
     }
 }
 
+function alcrosExcelEstimateRowLineCount(AlcrosXlsxSheet $sheet, int $row, int $colCount): int
+{
+    $maxLines = 1;
+
+    for ($col = 1; $col <= $colCount; $col++) {
+        $text = trim((string) ($sheet->getCellValue($col, $row) ?? ''));
+        if ($text === '') {
+            continue;
+        }
+
+        $explicitLines = count(preg_split('/\R/u', $text) ?: []);
+        $colWidth = $sheet->getColumnWidth($col) ?? 12.0;
+        $charsPerLine = max(8, (int) floor($colWidth / 1.05));
+        $wrappedLines = max(1, (int) ceil(mb_strlen($text, 'UTF-8') / $charsPerLine));
+
+        $maxLines = max($maxLines, $explicitLines, $wrappedLines);
+    }
+
+    return $maxLines;
+}
+
+function alcrosExcelFitRowHeights(
+    AlcrosXlsxSheet $sheet,
+    int $headerRow,
+    int $lastRow,
+    int $colCount,
+    float $lineHeight = 15.0
+): void {
+    if ($lastRow < $headerRow || $colCount < 1) {
+        return;
+    }
+
+    for ($row = $headerRow; $row <= $lastRow; $row++) {
+        $lines = alcrosExcelEstimateRowLineCount($sheet, $row, $colCount);
+        $height = $row === $headerRow
+            ? max(22.0, min(120.0, ($lines * $lineHeight) + 6.0))
+            : max(15.0, min(120.0, ($lines * $lineHeight) + 4.0));
+        $sheet->setRowHeight($row, $height);
+    }
+}
+
 function alcrosExcelApplyTableStyles(
     AlcrosXlsxSheet $sheet,
     int $headerRow,
@@ -131,8 +172,8 @@ function alcrosExcelApplyTableStyles(
         'fill'   => '1E40AF',
         'halign' => 'left',
         'valign' => 'center',
+        'wrap'   => true,
     ]);
-    $sheet->setRowHeight($headerRow, 22);
 
     if ($lastRow > $headerRow) {
         $sheet->applyStyle(1, $headerRow + 1, $colCount, $lastRow, [
@@ -140,7 +181,15 @@ function alcrosExcelApplyTableStyles(
             'valign' => 'top',
             'wrap'   => true,
         ]);
+
+        for ($dataRow = $headerRow + 1; $dataRow <= $lastRow; $dataRow++) {
+            if ((($dataRow - $headerRow) % 2) === 0) {
+                $sheet->applyStyle(1, $dataRow, $colCount, $dataRow, ['fill' => 'F1F5F9']);
+            }
+        }
     }
+
+    alcrosExcelFitRowHeights($sheet, $headerRow, $lastRow, $colCount);
 
     foreach ($columnFormats as $colIndex => $format) {
         if ($lastRow <= $headerRow) {
@@ -157,7 +206,9 @@ function alcrosExcelApplyTableStyles(
     }
 
     $sheet->freezeAbove($headerRow + 1);
-    $sheet->setAutoFilter(1, $headerRow, $colCount, $lastRow);
+    if ($lastRow > $headerRow) {
+        $sheet->setAutoFilter(1, $headerRow, $colCount, $lastRow);
+    }
 }
 
 function alcrosExcelWriteTable(

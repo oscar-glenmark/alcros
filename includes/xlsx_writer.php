@@ -130,6 +130,11 @@ final class AlcrosXlsxSheet
         $this->colWidths[$col] = $width;
     }
 
+    public function getColumnWidth(int $col): ?float
+    {
+        return $this->colWidths[$col] ?? null;
+    }
+
     /** Merge style properties onto every cell in the range. */
     public function applyStyle(int $firstCol, int $firstRow, int $lastCol, int $lastRow, array $props): void
     {

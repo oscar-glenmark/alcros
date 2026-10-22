@@ -119,7 +119,7 @@ function activityLogExportUrl(): string
     global $search, $staffFilter, $range;
 
     $params = array_filter([
-        'export' => 'csv',
+        'export' => 'xlsx',
         'q' => $search !== '' ? $search : null,
         'staff' => $staffFilter !== '' ? $staffFilter : null,
         'range' => $range !== '7d' ? $range : null,
@@ -130,7 +130,7 @@ function activityLogExportUrl(): string
 
 [$whereSql, $params] = activityLogWhereClause();
 
-if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+if (isset($_GET['export']) && (string) $_GET['export'] === 'xlsx') {
     [$exportWhereSql, $exportParams] = activityLogWhereClause('al');
     $exportLimit = 10000;
     $exportStmt = $pdo->prepare(
@@ -144,46 +144,10 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     );
     $exportStmt->execute($exportParams);
     $exportRows = $exportStmt->fetchAll();
+    $rangeLabel = $rangeOptions[$range] ?? $range;
 
-    header('Content-Type: text/csv; charset=UTF-8');
-    header('Content-Disposition: attachment; filename="alcros_activity_log_' . date('Y-m-d') . '.csv"');
-    $out = fopen('php://output', 'w');
-    if ($out === false) {
-        http_response_code(500);
-        exit;
-    }
-    fwrite($out, "\xEF\xBB\xBF");
-    fputcsv($out, ['ALCROS Activity Log']);
-    fputcsv($out, ['Office', getSetting('office_name', 'Local Civil Registrar Office')]);
-    fputcsv($out, ['Range', $rangeOptions[$range] ?? $range]);
-    if ($search !== '') {
-        fputcsv($out, ['Search', $search]);
-    }
-    if ($staffFilter !== '') {
-        fputcsv($out, ['Staff filter', $staffFilter]);
-    }
-    fputcsv($out, ['Exported', date('Y-m-d H:i:s')]);
-    fputcsv($out, ['Row limit', (string) $exportLimit]);
-    fputcsv($out, []);
-    fputcsv($out, ['created_at', 'staff_id', 'staff_name', 'action', 'details']);
-    foreach ($exportRows as $row) {
-        $staffName = personNameFromRow($row);
-        if ($staffName === '' && !empty($row['staff_id'])) {
-            $staffName = (string) $row['staff_id'];
-        }
-        if ($staffName === '') {
-            $staffName = 'System';
-        }
-        fputcsv($out, [
-            $row['created_at'],
-            $row['staff_id'] ?? '',
-            $staffName,
-            $row['action'],
-            $row['details'] ?? '',
-        ]);
-    }
-    fclose($out);
-    exit;
+    require_once __DIR__ . '/includes/spreadsheet_exports.php';
+    exportActivityLogXlsx($exportRows, $rangeLabel, $search, $staffFilter, $exportLimit);
 }
 
 $countStmt = $pdo->prepare("SELECT COUNT(*) FROM activity_logs $whereSql");
@@ -241,7 +205,7 @@ $showingTo = min($offset + $perPage, $totalCount);
                     <div class="flex flex-wrap gap-2">
                         <a href="<?= htmlspecialchars(activityLogExportUrl()) ?>"
                            class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold shrink-0 shadow-sm transition">
-                            <i data-lucide="download" class="w-4 h-4"></i> Export CSV
+                            <i data-lucide="download" class="w-4 h-4"></i> Export Excel
                         </a>
                     </div>
                 </div>

@@ -85,7 +85,6 @@ function recordsExportUrl(string $exportType): string
 
     return buildAuthUrl('records.php', [
         'action'      => 'export',
-        'format'      => 'csv',
         'export_type' => $exportType,
     ]);
 }
@@ -107,18 +106,6 @@ function buildRecordsExportWhere(string $exportType): array
 function recordsExportCsvChunkSize(): int
 {
     return 2500;
-}
-
-function recordsExportPrepareStreamingResponse(): void
-{
-    while (ob_get_level() > 0) {
-        ob_end_clean();
-    }
-
-    @ini_set('zlib.output_compression', '0');
-    header('Cache-Control: no-store, no-cache, must-revalidate');
-    header('Pragma: no-cache');
-    header('X-Accel-Buffering: no');
 }
 
 /** @return array<string, int> */
@@ -200,89 +187,6 @@ function civilRecordExportRowValues(array $row, string $type): array
         },
         civilRecordCsvColumns($type)
     );
-}
-
-function exportCivilRecordsCsv(PDO $pdo, array $filters): void
-{
-    global $validTypes;
-
-    recordsExportPrepareStreamingResponse();
-
-    $exportType = $filters['type'] ?? 'all';
-    [$where, $params] = buildRecordsExportWhere($exportType);
-    $types = ($exportType !== 'all' && in_array($exportType, $validTypes, true))
-        ? [$exportType]
-        : $validTypes;
-    $chunkSize = recordsExportCsvChunkSize();
-    $typeCounts = exportCivilRecordsTypeCounts($pdo, $where, $params, $types);
-    $totalRecords = array_sum($typeCounts);
-
-    $filename = 'alcros_civil_records_'
-        . ($exportType !== 'all' ? $exportType . '_' : 'all_')
-        . date('Y-m-d') . '.csv';
-
-    header('Content-Type: text/csv; charset=UTF-8');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    $out = fopen('php://output', 'w');
-    if ($out === false) {
-        throw new RuntimeException('Could not create export file.');
-    }
-
-    fprintf($out, "\xEF\xBB\xBF");
-
-    if (count($types) > 1) {
-        fputcsv($out, ['ALCROS Civil Records Export']);
-        fputcsv($out, ['Generated on', date('Y-m-d g:i A')]);
-        fputcsv($out, ['Total records', (string) $totalRecords]);
-        fputcsv($out, []);
-    }
-
-    foreach ($types as $type) {
-        $typeCount = $typeCounts[$type] ?? 0;
-
-        if (count($types) > 1) {
-            fputcsv($out, ['--- ' . strtoupper(civilRecordTypeLabel($type)) . ' RECORDS (' . $typeCount . ') ---']);
-        }
-
-        fputcsv($out, civilRecordCsvColumns($type));
-
-        if ($typeCount === 0) {
-            if (count($types) > 1) {
-                fputcsv($out, []);
-            }
-            continue;
-        }
-
-        [$typeWhere, $typeParams] = exportCivilRecordsTypeWhere($where, $params, $type);
-        $afterId = 0;
-
-        while (true) {
-            $chunk = exportCivilRecordsFetchChunk($pdo, $typeWhere, $typeParams, $afterId, $chunkSize);
-            if ($chunk === []) {
-                break;
-            }
-
-            $chunk = hydrateCivilRecordRows($pdo, $chunk);
-            foreach ($chunk as $record) {
-                fputcsv($out, civilRecordExportRowValues($record, $type));
-            }
-
-            $afterId = (int) ($chunk[array_key_last($chunk)]['id'] ?? $afterId);
-            unset($chunk);
-            fflush($out);
-        }
-
-        if (count($types) > 1) {
-            fputcsv($out, []);
-        }
-    }
-
-    if (count($types) > 1) {
-        fputcsv($out, ['End of export']);
-    }
-
-    fflush($out);
-    fclose($out);
 }
 
 function exportCivilRecordsTypeWhere(string $where, array $params, string $type): array
@@ -413,22 +317,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'template') {
     if (!in_array($tplType, $validTypes, true)) {
         $tplType = 'birth';
     }
-    $format = strtolower((string) ($_GET['format'] ?? 'xlsx'));
-    if ($format === 'xlsx') {
-        exportCivilRecordTemplateXlsx($pdo, $tplType);
-    }
-
-    $filename = "alcros_{$tplType}_import_template.csv";
-    header('Content-Type: text/csv; charset=UTF-8');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    header('Cache-Control: no-store, no-cache, must-revalidate');
-    header('Pragma: no-cache');
-    $out = fopen('php://output', 'w');
-    fprintf($out, "\xEF\xBB\xBF");
-    fputcsv($out, printFillCsvTemplateHeadersForType($pdo, $tplType));
-    fputcsv($out, civilRecordCsvSampleRowFromPrintFields($tplType, $pdo));
-    fclose($out);
-    exit;
+    exportCivilRecordTemplateXlsx($pdo, $tplType);
 }
 
 if (isset($_GET['action']) && $_GET['action'] === 'export') {
@@ -436,15 +325,10 @@ if (isset($_GET['action']) && $_GET['action'] === 'export') {
     @set_time_limit(0);
     ignore_user_abort(true);
 
-    $format = strtolower((string) ($_GET['format'] ?? 'csv'));
-    if ($format !== 'csv') {
-        http_response_code(400);
-        exit('Only CSV export is available.');
-    }
-
     $filters = recordsExportFilters();
-    logActivity(staffId(), 'CSV Export', 'Exported civil records (' . ($filters['type'] ?? 'all') . ')');
-    exportCivilRecordsCsv($pdo, $filters);
+    logActivity(staffId(), 'Excel Export', 'Exported civil records (' . ($filters['type'] ?? 'all') . ')');
+    require_once __DIR__ . '/includes/spreadsheet_exports.php';
+    exportCivilRecordsXlsx($pdo, $filters);
     exit;
 }
 
@@ -616,7 +500,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                     <div class="relative" id="recordsExportMenu">
                         <button type="button" id="recordsExportBtn"
                                 class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-[11px] font-bold uppercase flex items-center shadow-sm">
-                            <i data-lucide="download" class="w-4 h-4 mr-2"></i> Export CSV
+                            <i data-lucide="download" class="w-4 h-4 mr-2"></i> Export
                             <i data-lucide="chevron-down" class="w-3.5 h-3.5 ml-1.5 opacity-80"></i>
                         </button>
                         <div id="recordsExportPanel" class="hidden absolute right-0 mt-2 w-64 bg-white border border-gray-100 rounded-xl shadow-lg z-50 py-1 text-xs">
@@ -628,7 +512,6 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                 'marriage' => 'Marriage records',
                             ];
                             ?>
-                            <p class="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider text-gray-400">CSV (.csv)</p>
                             <?php foreach ($exportOptions as $exportKey => $exportLabel): ?>
                             <a href="<?= htmlspecialchars(recordsExportUrl($exportKey)) ?>"
                                class="block px-3 py-2.5 font-semibold text-slate-700 hover:bg-gray-50">

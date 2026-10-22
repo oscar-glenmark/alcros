@@ -17,7 +17,7 @@ $recordsUrl = buildAuthUrl('records.php');
 $recordsDetailsUrl = isset($adminRecordsDetailsUrl) && is_string($adminRecordsDetailsUrl)
     ? $adminRecordsDetailsUrl
     : buildAuthUrl('report.php', ['section' => 'records']);
-$printsDetailsUrl = buildAuthUrl('report.php', ['section' => 'prints', 'range' => 'month']);
+$printsDetailsUrl = buildAuthUrl('report.php', ['section' => 'prints', 'range' => 'today']);
 $intakeQueueDetailsUrl = buildAuthUrl('report.php', ['section' => 'queue', 'range' => 'today']);
 $growth = $a['recordsGrowth'] ?? ['pct' => 0, 'up' => true];
 $trend = $a['recordTypeTrend'] ?? ['max' => 0];
@@ -128,9 +128,9 @@ $activities = $activities ?? [];
 
     <?php if ($adminAnalyticsContext === 'report'):
         $queueWaitChart = $a['queueWaitChart'] ?? [];
-        $queueWaitDetailsUrl = buildAuthUrl('report.php', ['section' => 'queue', 'range' => 'week']);
-        $requestsDetailsUrl = buildAuthUrl('report.php', ['section' => 'requests', 'range' => 'month']);
-        $appointmentsDetailsUrl = buildAuthUrl('report.php', ['section' => 'appointments', 'range' => 'month']);
+        $queueWaitDetailsUrl = buildAuthUrl('report.php', ['section' => 'queue', 'range' => 'today']);
+        $requestsDetailsUrl = buildAuthUrl('report.php', ['section' => 'requests', 'range' => 'today']);
+        $appointmentsDetailsUrl = buildAuthUrl('report.php', ['section' => 'appointments', 'range' => 'today']);
     ?>
     <div class="dash-admin-queue-wait">
         <div class="dash-admin-queue-wait__head">

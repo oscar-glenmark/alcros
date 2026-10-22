@@ -616,7 +616,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                         class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
                                 </div>
                                 <div>
-                                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Middle Name <span class="normal-case font-semibold text-slate-300">(optional)</span></label>
+                                    <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Middle Name</label>
                                     <input type="text" name="profile_middle_name" value="<?= htmlspecialchars($currentStaff['middle_name'] ?? '') ?>"
                                         placeholder="Leave blank if none"
                                         autocomplete="additional-name"
@@ -723,7 +723,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     <input type="text" name="staff_first_name" required placeholder="Juan" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
                                 </div>
                                 <div>
-                                    <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Middle Name <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
+                                    <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">Middle Name</label>
                                     <input type="text" name="staff_middle_name" placeholder="Optional" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
                                 </div>
                                 <div>
@@ -1473,7 +1473,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                         <input type="text" name="edit_staff_first_name" id="editStaffFirstName" required class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
                     </div>
                     <div>
-                        <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Middle Name <span class="normal-case font-semibold text-slate-400">(optional)</span></label>
+                        <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Middle Name</label>
                         <input type="text" name="edit_staff_middle_name" id="editStaffMiddleName" placeholder="Optional" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
                     </div>
                     <div>

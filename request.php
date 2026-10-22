@@ -197,7 +197,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                     $draft['purpose']         = $purpose;
                     $draft['phone']           = $phone;
                     $draft['privacy_agreed']  = 1;
-                    $draft['notify_email']    = $notifyEmail ? 1 : 0;
+                    $draft['notify_email']    = 1;
                     $draft['notify_sms']      = $notifySms ? 1 : 0;
                     if ($frontPath) {
                         $draft['id_front_path'] = $frontPath;
@@ -364,7 +364,6 @@ $stepTitles = [
 ];
 
 $isStaffLoggedIn = isset($_SESSION['staff_id']);
-$staffPortalUrl = $isStaffLoggedIn ? 'dashboard.php' : 'login.php';
 $requestDocumentLabel = !empty($draft['document_type'])
     ? documentTypeLabel($draft['document_type'])
     : 'Certificate';
@@ -407,9 +406,9 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 </nav>
 
                 <div class="flex items-center gap-2 shrink-0">
-                    <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="citizen-btn-login hidden sm:inline-block">
-                        <?= $isStaffLoggedIn ? 'Dashboard' : 'Login' ?>
-                    </a>
+                    <?php if ($isStaffLoggedIn): ?>
+                    <a href="dashboard.php" class="citizen-btn-login hidden sm:inline-block">Dashboard</a>
+                    <?php endif; ?>
                     <button type="button" id="citizenMobileNavToggle" class="lg:hidden p-2 text-white" aria-label="Open menu">
                         <i data-lucide="menu" class="w-6 h-6"></i>
                     </button>
@@ -424,7 +423,9 @@ $requestDocumentLabel = !empty($draft['document_type'])
                     <a href="index.php#about" class="citizen-nav-link">About</a>
                     <a href="index.php#faqs" class="citizen-nav-link">FAQs</a>
                     <a href="index.php#contact" class="citizen-nav-link">Contact Us</a>
-                    <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="citizen-btn-login inline-block text-center mt-2 w-fit"><?= $isStaffLoggedIn ? 'Dashboard' : 'Login' ?></a>
+                    <?php if ($isStaffLoggedIn): ?>
+                    <a href="dashboard.php" class="citizen-btn-login inline-block text-center mt-2 w-fit">Dashboard</a>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -567,7 +568,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
                         <input type="text" id="requesterFirstNameInput" name="requester_first_name" required placeholder="First name"
                                value="<?= htmlspecialchars($draft['requester_first_name'] ?? '') ?>"
                                class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                        <input type="text" id="requesterMiddleNameInput" name="requester_middle_name" placeholder="Middle name (optional)"
+                        <input type="text" id="requesterMiddleNameInput" name="requester_middle_name" placeholder="Middle name(Optional)"
                                value="<?= htmlspecialchars($draft['requester_middle_name'] ?? '') ?>"
                                class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
                         <input type="text" id="requesterLastNameInput" name="requester_last_name" required placeholder="Last name"
@@ -596,7 +597,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
                             <input type="text" id="firstNameInput" name="first_name" data-ident-required="birth" placeholder="First name"
                                    value="<?= htmlspecialchars($draft['first_name'] ?? '') ?>"
                                    class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                            <input type="text" id="middleNameInput" name="middle_name" placeholder="Middle name (optional)"
+                            <input type="text" id="middleNameInput" name="middle_name" placeholder="Middle name(Optional)"
                                    value="<?= htmlspecialchars($draft['middle_name'] ?? '') ?>"
                                    class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
                             <input type="text" id="lastNameInput" name="last_name" data-ident-required="birth" placeholder="Last name"
@@ -699,6 +700,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
             </form>
 
             <?php elseif ($step === 2): ?>
+            <?php $draftGmailVerified = isGmailVerifiedInSession($draft['email'] ?? ''); ?>
             <form method="POST" enctype="multipart/form-data" class="space-y-5" id="requirementsForm">
                 <?= publicCsrfField() ?>
                 <input type="hidden" name="step" value="2">
@@ -714,12 +716,12 @@ $requestDocumentLabel = !empty($draft['document_type'])
                         <input type="email" id="gmailInput" name="email" required placeholder="example@gmail.com"
                                value="<?= htmlspecialchars($draft['email'] ?? '') ?>"
                                class="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                        <button type="button" id="verifyGmailBtn" class="citizen-btn-navy px-4 py-3 rounded-xl text-xs whitespace-nowrap shrink-0">
-                            Verify Gmail
+                        <button type="button" id="verifyGmailBtn" class="citizen-btn-navy px-4 py-3 rounded-xl text-xs whitespace-nowrap shrink-0<?= $draftGmailVerified ? ' opacity-80 cursor-default' : '' ?>"<?= $draftGmailVerified ? ' disabled aria-disabled="true"' : '' ?>>
+                            <?= $draftGmailVerified ? 'Verified' : 'Verify Gmail' ?>
                         </button>
                     </div>
                     <p class="text-[10px] text-gray-500 mt-1">We check that your @gmail.com account is active. If you agree to notifications, status updates are sent to this Gmail.</p>
-                    <p id="gmailStatus" class="text-xs mt-2 hidden"></p>
+                    <p id="gmailStatus" class="text-xs mt-2 <?= $draftGmailVerified ? 'font-semibold text-green-600' : 'hidden' ?>"><?= $draftGmailVerified ? 'Gmail verified — this is an active Google account.' : '' ?></p>
                 </div>
                 <div>
                     <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">

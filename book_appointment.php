@@ -7,7 +7,6 @@ require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 
 $isStaffLoggedIn = isset($_SESSION['staff_id']);
-$staffPortalUrl = $isStaffLoggedIn ? 'dashboard.php' : 'login.php';
 $currentPage = basename($_SERVER['PHP_SELF']);
 
 $service = $_GET['service'] ?? $_POST['service'] ?? '';
@@ -93,6 +92,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         deleteIdUploadFiles($frontPath, $backPath);
                         $error = $bookingError;
                     } else {
+                        // Verified Gmail is required to book; enable email updates for this appointment.
+                        $notifyEmail = true;
                         $appointmentCode = generateAppointmentCode();
                         $stmt = $pdo->prepare(
                             'INSERT INTO appointments (appointment_code, first_name, middle_name, last_name, email, phone, notify_email, notify_sms, service_type, appointment_date, appointment_time, status, source, id_front_path, id_back_path)
@@ -201,9 +202,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </nav>
 
                 <div class="flex items-center gap-2 shrink-0">
-                    <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="citizen-btn-login hidden sm:inline-block">
-                        <?= $isStaffLoggedIn ? 'Dashboard' : 'Login' ?>
-                    </a>
+                    <?php if ($isStaffLoggedIn): ?>
+                    <a href="dashboard.php" class="citizen-btn-login hidden sm:inline-block">Dashboard</a>
+                    <?php endif; ?>
                     <button type="button" id="citizenMobileNavToggle" class="lg:hidden p-2 text-white" aria-label="Open menu">
                         <i data-lucide="menu" class="w-6 h-6"></i>
                     </button>
@@ -218,7 +219,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <a href="index.php#about" class="citizen-nav-link">About</a>
                     <a href="index.php#faqs" class="citizen-nav-link">FAQs</a>
                     <a href="index.php#contact" class="citizen-nav-link">Contact Us</a>
-                    <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="citizen-btn-login inline-block text-center mt-2 w-fit"><?= $isStaffLoggedIn ? 'Dashboard' : 'Login' ?></a>
+                    <?php if ($isStaffLoggedIn): ?>
+                    <a href="dashboard.php" class="citizen-btn-login inline-block text-center mt-2 w-fit">Dashboard</a>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -239,8 +242,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <section class="max-w-2xl mx-auto px-4 pb-12">
         <?php if ($success): ?>
         <?php
+        require_once __DIR__ . '/includes/sms.php';
         $successCitizenName = $citizenName !== '' ? $citizenName : trim($firstName . ' ' . $lastName);
         $successServiceLabel = $serviceType !== '' ? $serviceType : $serviceLabel;
+        $smsUpdatesAvailable = isSmsEnabled() && isSmsConfigured();
         ?>
         <div class="citizen-request-card p-4 sm:p-6 md:p-8 lg:p-10">
             <div class="text-center mb-8">
@@ -283,10 +288,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <span>Gmail notifications were not enabled for this booking, so confirmation and visit reminders will not be emailed. Please save your appointment code and use <strong>Track</strong> to follow your status.</span>
                 </p>
                 <?php endif; ?>
-                <?php if ($notifySms): ?>
+                <?php if ($notifySms && $smsUpdatesAvailable): ?>
                 <p class="citizen-request-notice citizen-request-notice--success">
                     <i data-lucide="message-square" class="w-4 h-4 shrink-0 mt-0.5"></i>
                     <span>SMS updates are enabled. You will receive a text when staff confirms your appointment and a reminder 1 hour before your visit.</span>
+                </p>
+                <?php elseif ($notifySms): ?>
+                <p class="citizen-request-notice citizen-request-notice--warn">
+                    <i data-lucide="message-square" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                    <span>You opted in to SMS updates, but text messaging is not fully set up for this office yet. Please save your appointment code and use <strong>Track</strong> for updates.</span>
                 </p>
                 <?php endif; ?>
             </div>
@@ -323,7 +333,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
                 <div>
                     <label class="block text-[11px] font-bold mb-1">Middle Name</label>
-                    <input type="text" name="middle_name" placeholder="Middle name (optional)" value="<?= htmlspecialchars((string) ($middleName ?? '')) ?>" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
+                    <input type="text" name="middle_name" placeholder="Middle name(Optional)" value="<?= htmlspecialchars((string) ($middleName ?? '')) ?>" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
                 </div>
                 <div>
                     <label class="block text-[11px] font-bold mb-1">Last Name *</label>
@@ -376,8 +386,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="email" id="gmailInput" name="email" required placeholder="example@gmail.com"
                            value="<?= htmlspecialchars($email) ?>"
                            class="flex-1 bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
-                    <button type="button" id="verifyGmailBtn" class="citizen-btn-navy px-4 py-2.5 rounded-xl text-xs whitespace-nowrap shrink-0">
-                        Verify Gmail
+                    <button type="button" id="verifyGmailBtn" class="citizen-btn-navy px-4 py-2.5 rounded-xl text-xs whitespace-nowrap shrink-0<?= $gmailVerified ? ' opacity-80 cursor-default' : '' ?>"<?= $gmailVerified ? ' disabled aria-disabled="true"' : '' ?>>
+                        <?= $gmailVerified ? 'Verified' : 'Verify Gmail' ?>
                     </button>
                 </div>
                 <p class="text-[10px] text-gray-500 mt-1">We check that your @gmail.com account is active. If you agree to notifications, status updates are sent to this Gmail.</p>

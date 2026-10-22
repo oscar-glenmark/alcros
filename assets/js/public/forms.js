@@ -149,9 +149,25 @@
             );
         }
 
+        function updateVerifyButton(verified) {
+            if (!verifyBtn) return;
+            if (verified) {
+                verifyBtn.textContent = 'Verified';
+                verifyBtn.disabled = true;
+                verifyBtn.setAttribute('aria-disabled', 'true');
+                verifyBtn.classList.add('opacity-80', 'cursor-default');
+            } else {
+                verifyBtn.textContent = 'Verify Gmail';
+                verifyBtn.disabled = false;
+                verifyBtn.removeAttribute('aria-disabled');
+                verifyBtn.classList.remove('opacity-80', 'cursor-default');
+            }
+        }
+
         function setVerified(ok, email) {
             if (emailVerified) emailVerified.value = ok ? '1' : '0';
             if (ok && email && gmailInput) gmailInput.value = email;
+            updateVerifyButton(!!ok);
         }
 
         function setGmailInvalid(invalid) {
@@ -176,6 +192,7 @@
                 setVerified(false);
                 verifyBtn.disabled = true;
                 verifyBtn.textContent = 'Checking…';
+                verifyBtn.classList.remove('opacity-80', 'cursor-default');
 
                 var body = new FormData();
                 body.append('email', email);
@@ -187,6 +204,21 @@
                             setVerified(true, data.email);
                             setStatus(data.message || 'Gmail verified.', 'ok');
                             setGmailInvalid(false);
+                            document.querySelectorAll('input[name="notify_email"]').forEach(function (input) {
+                                if (input.type === 'checkbox') {
+                                    input.checked = true;
+                                } else {
+                                    input.value = '1';
+                                }
+                            });
+                            try {
+                                var consentKey = 'alcros_notify_consent';
+                                var stored = JSON.parse(localStorage.getItem(consentKey) || 'null');
+                                if (stored && stored.version === '2') {
+                                    stored.allowed = true;
+                                    localStorage.setItem(consentKey, JSON.stringify(stored));
+                                }
+                            } catch (ignore) {}
                         } else {
                             setVerified(false);
                             setStatus(data.error || 'Verification failed.', 'err');
@@ -199,10 +231,14 @@
                         setGmailInvalid(true);
                     })
                     .finally(function () {
-                        verifyBtn.disabled = false;
-                        verifyBtn.textContent = 'Verify Gmail';
+                        var isVerified = emailVerified && emailVerified.value === '1';
+                        updateVerifyButton(isVerified);
                     });
             });
+        }
+
+        if (emailVerified && emailVerified.value === '1') {
+            updateVerifyButton(true);
         }
 
         if (gmailInput) {

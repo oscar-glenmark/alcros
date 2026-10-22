@@ -6,6 +6,9 @@ require_once __DIR__ . '/includes/analytics_dashboard.php';
 require_once __DIR__ . '/includes/scripts.php';
 requireStaffLogin();
 requirePageAccess('report.php');
+if (($_GET['section'] ?? '') === 'analytics') {
+    redirectWithAuth('analytics.php');
+}
 releaseSessionLock();
 
 $activePage = 'report.php';
@@ -109,26 +112,20 @@ $queueReportCharts = buildQueueWaitChartPayload(
     $toDate
 );
 
-$validSections = ['overview', 'analytics', 'requests', 'appointments', 'queue', 'prints', 'records'];
+$validSections = ['overview', 'requests', 'appointments', 'queue', 'prints', 'records'];
 $section = $_GET['section'] ?? 'overview';
 if (!in_array($section, $validSections, true)) {
     $section = 'overview';
 }
 
-$analytics = $section === 'analytics' ? fetchAnalyticsDashboard($pdo) : null;
-
 $pageTitle = 'Reports';
-$pageSubtitle = $section === 'analytics'
-    ? 'Same live office analytics as the administrator dashboard — civil records, print volume, intake, and queue.'
-    : 'Summaries for requests, appointments, queue, print volume, and civil records with CSV export.';
-$pageHeaderMeta = $section === 'analytics'
-    ? '<p class="admin-header__meta">' . htmlspecialchars($report['office_name']) . ' · Live office analytics</p>'
-    : '<p class="admin-header__meta">' . htmlspecialchars($report['office_name']) . ' · Showing <strong>'
-        . htmlspecialchars($rangeLabel) . '</strong>'
-        . ($section === 'records'
-            ? ' · Civil records use calendar year <strong>' . (int) $reportYear . '</strong>'
-            : '')
-        . '</p>';
+$pageSubtitle = 'Summaries for requests, appointments, queue, print volume, and civil records with CSV export.';
+$pageHeaderMeta = '<p class="admin-header__meta">' . htmlspecialchars($report['office_name']) . ' · Showing <strong>'
+    . htmlspecialchars($rangeLabel) . '</strong>'
+    . ($section === 'records'
+        ? ' · Civil records use calendar year <strong>' . (int) $reportYear . '</strong>'
+        : '')
+    . '</p>';
 
 $yearOptions = reportCivilRecordsYearOptions($pdo);
 
@@ -149,7 +146,6 @@ $periodMetrics = [
 
 $reportTabs = [
     'overview'     => ['label' => 'Overview',     'icon' => 'layout-dashboard', 'count' => null],
-    'analytics'    => ['label' => 'Analytics',    'icon' => 'bar-chart-2',      'count' => null, 'export' => false],
     'requests'     => ['label' => 'Requests',     'icon' => 'file-text',        'count' => count($report['requests'])],
     'appointments' => ['label' => 'Appointments', 'icon' => 'calendar',         'count' => count($report['appointments'])],
     'queue'        => ['label' => 'Queue',        'icon' => 'users',            'count' => count($report['queue_tickets'])],
@@ -164,7 +160,7 @@ $rangeOptions = [
     'custom' => 'Custom',
 ];
 
-$reportDetailSection = !in_array($section, ['overview', 'analytics'], true);
+$reportDetailSection = $section !== 'overview';
 $recordsRegistryUrl = buildAuthUrl('records.php');
 $recordsYearTotals = $recordsReport['year_totals'];
 $recordsJumpDesc = sprintf(
@@ -186,11 +182,8 @@ $recordsJumpDesc = sprintf(
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= interFontTags() ?>
     <?= adminLayoutHeadStyles('report') ?>
-    <?php if ($section === 'analytics'): ?>
-    <?= stylesheetTag('admin/dashboard.css') ?>
-    <?php endif; ?>
     <?= vendorScriptTag('lucide.min.js') ?>
-    <?php if (in_array($section, ['analytics', 'records', 'requests', 'appointments', 'queue', 'prints'], true)): ?>
+    <?php if (in_array($section, ['records', 'requests', 'appointments', 'queue', 'prints'], true)): ?>
     <?= vendorScriptTag('chart.umd.min.js') ?>
     <?php endif; ?>
 </head>
@@ -356,13 +349,6 @@ $recordsJumpDesc = sprintf(
                     <?= $reportExportToolbarHtml ?>
                 </div>
             </div>
-            <?php elseif ($section === 'analytics'): ?>
-            <div class="no-print flex flex-wrap gap-2 justify-end mb-2">
-                <a href="<?= htmlspecialchars(reportPageUrl($range, $fromDate, $toDate, 'overview')) ?>"
-                   class="inline-flex items-center gap-2 bg-white border border-gray-200 hover:border-gray-300 text-slate-700 px-3.5 py-2 rounded-lg text-xs font-bold">
-                    <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i> Report overview
-                </a>
-            </div>
             <?php endif; ?>
 
             <?php if ($section !== 'overview'): ?>
@@ -403,7 +389,6 @@ $recordsJumpDesc = sprintf(
                         <div class="report-nav-grid">
                             <?php
                             $detailLinks = [
-                                ['key' => 'analytics', 'desc' => 'Dashboard-style charts — records, print volume, intake, and queue', 'iconBg' => 'bg-indigo-50', 'iconText' => 'text-indigo-600', 'navBorder' => '#c7d2fe', 'wide' => false],
                                 ['key' => 'requests', 'desc' => 'Status and type charts plus document request table for this period', 'iconBg' => 'bg-blue-50', 'iconText' => 'text-blue-600', 'navBorder' => '#bfdbfe', 'wide' => false],
                                 ['key' => 'appointments', 'desc' => 'Visit status charts and scheduled appointments table for this period', 'iconBg' => 'bg-purple-50', 'iconText' => 'text-purple-600', 'navBorder' => '#ddd6fe', 'wide' => false],
                                 ['key' => 'queue', 'desc' => 'Queue tickets served, waiting, and by purpose', 'iconBg' => 'bg-teal-50', 'iconText' => 'text-teal-600', 'navBorder' => '#99f6e4', 'wide' => false],
@@ -457,19 +442,6 @@ $recordsJumpDesc = sprintf(
                     </section>
                 </div>
             </div>
-
-            <!-- Analytics (same charts as admin dashboard) -->
-            <?php if ($analytics !== null): ?>
-            <div class="report-panel no-print" <?= $section !== 'analytics' ? 'hidden' : '' ?>>
-                <?php
-                $adminAnalytics = $analytics;
-                $adminAnalyticsContext = 'report';
-                $adminRecordsDetailsUrl = reportPageUrl($range, $fromDate, $toDate, 'records', $reportYear);
-                require __DIR__ . '/includes/admin_dashboard_analytics.php';
-                unset($adminRecordsDetailsUrl);
-                ?>
-            </div>
-            <?php endif; ?>
 
             <!-- Document Requests -->
             <div class="report-panel" <?= $section !== 'requests' ? 'hidden' : '' ?>>
@@ -927,11 +899,6 @@ $recordsJumpDesc = sprintf(
         </div>
     </main>
     <?= scriptTag('admin/report.js') ?>
-    <?php if ($section === 'analytics' && $analytics !== null): ?>
-    <?= pageConfigJson($analytics['chartPayload'], 'analytics-config') ?>
-    <?= scriptTag('core/page-config.js') ?>
-    <?= scriptTag('admin/analytics.js') ?>
-    <?php endif; ?>
     <?php if ($section === 'records'): ?>
     <?= pageConfigJson($recordsReport['chart_payload'] ?? [], 'records-report-chart-config') ?>
     <?= scriptTag('core/page-config.js') ?>

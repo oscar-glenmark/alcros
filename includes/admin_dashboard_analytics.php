@@ -32,8 +32,8 @@ $activities = $activities ?? [];
             <p class="dash-admin-analytics__kicker">Office analytics</p>
             <h2 id="dash-admin-analytics-heading" class="dash-admin-analytics__title">Comprehensive view</h2>
         </div>
-        <a href="<?= htmlspecialchars(buildAuthUrl('report.php', ['section' => 'analytics'])) ?>" class="dash-admin-analytics__reports-link">
-            Full reports
+        <a href="<?= htmlspecialchars(buildAuthUrl('analytics.php')) ?>" class="dash-admin-analytics__reports-link">
+            Full analytics
             <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
         </a>
     </div>
@@ -129,6 +129,8 @@ $activities = $activities ?? [];
     <?php if ($adminAnalyticsContext === 'report'):
         $queueWaitChart = $a['queueWaitChart'] ?? [];
         $queueWaitDetailsUrl = buildAuthUrl('report.php', ['section' => 'queue', 'range' => 'week']);
+        $requestsDetailsUrl = buildAuthUrl('report.php', ['section' => 'requests', 'range' => 'month']);
+        $appointmentsDetailsUrl = buildAuthUrl('report.php', ['section' => 'appointments', 'range' => 'month']);
     ?>
     <div class="dash-admin-queue-wait">
         <div class="dash-admin-queue-wait__head">
@@ -175,6 +177,7 @@ $activities = $activities ?? [];
                 <h3 class="dash-admin-queue-wait__title">Document requests</h3>
                 <p class="dash-admin-queue-wait__sub"><?= number_format((int) ($requestsChart['total'] ?? $a['totalRequests'] ?? 0)) ?> total · last 6 months of submissions</p>
             </div>
+            <a href="<?= htmlspecialchars($requestsDetailsUrl) ?>" class="dash-admin-featured__details">View details</a>
         </div>
         <div class="dash-admin-split">
             <div class="analytics-chart-card dash-admin-split__panel">
@@ -212,6 +215,7 @@ $activities = $activities ?? [];
                 <h3 class="dash-admin-queue-wait__title">Appointments</h3>
                 <p class="dash-admin-queue-wait__sub"><?= number_format((int) ($apptChart['total'] ?? $a['apptTotal'] ?? 0)) ?> total · visits by appointment date</p>
             </div>
+            <a href="<?= htmlspecialchars($appointmentsDetailsUrl) ?>" class="dash-admin-featured__details">View details</a>
         </div>
         <div class="dash-admin-split">
             <div class="analytics-chart-card dash-admin-split__panel">

@@ -57,7 +57,7 @@ if ($isAdminUser) {
     $quickActions = [
         ['href' => 'records.php', 'label' => 'Civil Records', 'desc' => 'Manage life event data', 'icon' => 'book-open', 'color' => 'bg-orange-50 text-orange-600'],
         ['href' => 'documents.php', 'label' => 'Documents', 'desc' => 'Certification services', 'icon' => 'files', 'color' => 'bg-violet-50 text-violet-600'],
-        ['href' => 'report.php', 'label' => 'Reports', 'desc' => 'View charts, trends & reports', 'icon' => 'bar-chart-2', 'color' => 'bg-blue-50 text-blue-600', 'query' => ['section' => 'analytics']],
+        ['href' => 'analytics.php', 'label' => 'Analytics', 'desc' => 'Office charts, trends & queue', 'icon' => 'trending-up', 'color' => 'bg-blue-50 text-blue-600'],
         ['href' => 'system_settings.php', 'label' => 'Settings', 'desc' => 'System configuration', 'icon' => 'settings', 'color' => 'bg-slate-100 text-slate-600'],
     ];
 }

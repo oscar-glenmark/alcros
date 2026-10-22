@@ -71,6 +71,7 @@ function sidebarSectionLabel(string $label): string
         <?php endif; ?>
         <?= sidebarLink('records.php', 'Records', 'book-open', $activePage) ?>
         <?php if (isAdmin()): ?>
+        <?= sidebarLink('analytics.php', 'Analytics', 'trending-up', $activePage) ?>
         <?= sidebarLink('report.php', 'Reports', 'bar-chart-2', $activePage) ?>
         <?php endif; ?>
         <?php if (!isAdmin()): ?>

@@ -380,7 +380,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                         </div>
 
-                        <div class="auth-portal-login-row mt-1.5">
+                        <div class="auth-portal-login-row mt-4">
 
                             <label class="auth-portal-remember">
 

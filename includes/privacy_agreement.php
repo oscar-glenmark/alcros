@@ -5,6 +5,10 @@
 require_once __DIR__ . '/scripts.php';
 $privacySite = $site ?? getSiteSettings();
 $privacyPolicyUrl = sanitizeExternalUrl(getSetting('privacy_policy_url', 'privacy.php'));
+if (preg_match('#(^|/)privacy\.php(\?|$)#i', $privacyPolicyUrl)) {
+    $privacyPolicyUrl .= str_contains($privacyPolicyUrl, '?') ? '&' : '?';
+    $privacyPolicyUrl .= 'citizen=1';
+}
 ?>
 <?= stylesheetTag('public/privacy-agreement.css') ?>
 <div id="alcros-privacy-overlay" class="hidden fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-4 sm:p-6 bg-slate-900/70 backdrop-blur-sm opacity-0" role="dialog" aria-modal="true" aria-labelledby="alcros-privacy-title">

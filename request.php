@@ -363,7 +363,6 @@ $stepTitles = [
     3 => ['title' => 'SCHEDULE APPOINTMENT', 'subtitle' => 'Choose your preferred date and time for document pickup.'],
 ];
 
-$isStaffLoggedIn = isset($_SESSION['staff_id']);
 $requestDocumentLabel = !empty($draft['document_type'])
     ? documentTypeLabel($draft['document_type'])
     : 'Certificate';
@@ -406,9 +405,6 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 </nav>
 
                 <div class="flex items-center gap-2 shrink-0">
-                    <?php if ($isStaffLoggedIn): ?>
-                    <a href="dashboard.php" class="citizen-btn-login hidden sm:inline-block">Dashboard</a>
-                    <?php endif; ?>
                     <button type="button" id="citizenMobileNavToggle" class="lg:hidden p-2 text-white" aria-label="Open menu">
                         <i data-lucide="menu" class="w-6 h-6"></i>
                     </button>
@@ -423,9 +419,6 @@ $requestDocumentLabel = !empty($draft['document_type'])
                     <a href="index.php#about" class="citizen-nav-link">About</a>
                     <a href="index.php#faqs" class="citizen-nav-link">FAQs</a>
                     <a href="index.php#contact" class="citizen-nav-link">Contact Us</a>
-                    <?php if ($isStaffLoggedIn): ?>
-                    <a href="dashboard.php" class="citizen-btn-login inline-block text-center mt-2 w-fit">Dashboard</a>
-                    <?php endif; ?>
                 </div>
             </div>
         </div>

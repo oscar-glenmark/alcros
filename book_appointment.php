@@ -6,7 +6,6 @@ require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 
-$isStaffLoggedIn = isset($_SESSION['staff_id']);
 $currentPage = basename($_SERVER['PHP_SELF']);
 
 $service = $_GET['service'] ?? $_POST['service'] ?? '';
@@ -163,6 +162,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -202,9 +202,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </nav>
 
                 <div class="flex items-center gap-2 shrink-0">
-                    <?php if ($isStaffLoggedIn): ?>
-                    <a href="dashboard.php" class="citizen-btn-login hidden sm:inline-block">Dashboard</a>
-                    <?php endif; ?>
                     <button type="button" id="citizenMobileNavToggle" class="lg:hidden p-2 text-white" aria-label="Open menu">
                         <i data-lucide="menu" class="w-6 h-6"></i>
                     </button>
@@ -219,9 +216,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <a href="index.php#about" class="citizen-nav-link">About</a>
                     <a href="index.php#faqs" class="citizen-nav-link">FAQs</a>
                     <a href="index.php#contact" class="citizen-nav-link">Contact Us</a>
-                    <?php if ($isStaffLoggedIn): ?>
-                    <a href="dashboard.php" class="citizen-btn-login inline-block text-center mt-2 w-fit">Dashboard</a>
-                    <?php endif; ?>
                 </div>
             </div>
         </div>

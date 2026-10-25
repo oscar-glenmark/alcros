@@ -9,6 +9,9 @@ require_once __DIR__ . '/duplicati_backup.php';
 const ALCROS_GDRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
 const ALCROS_GDRIVE_REGISTRY_PREFIX = 'alcros-registry-';
 
+/** Multipart upload (single request) — reliable on shared hosts; resumable above this size. */
+const ALCROS_GDRIVE_MULTIPART_MAX_BYTES = 80 * 1024 * 1024;
+
 function alcrosGoogleDriveBackupEnabled(): bool
 {
     return getSetting('registry_backup_gdrive_enabled', '0') === '1';
@@ -316,14 +319,31 @@ function alcrosGoogleDriveUploadRegistryZip(string $zipPath, string $filename): 
     $bytes = (int) filesize($zipPath);
     $mime = 'application/zip';
 
+    if ($bytes <= ALCROS_GDRIVE_MULTIPART_MAX_BYTES) {
+        $multipart = alcrosGoogleDriveUploadMultipart($accessToken, $zipPath, $filename, $folderId, $mime);
+        if ($multipart['ok']) {
+            alcrosGoogleDriveMarkUploadSuccess($filename, $multipart['file_id'] ?? '');
+
+            return $multipart;
+        }
+    }
+
     $metadata = json_encode([
         'name'    => $filename,
         'parents' => [$folderId],
     ], JSON_UNESCAPED_SLASHES);
 
-    $sessionUrl = alcrosGoogleDriveResumableSessionUrl($accessToken, $metadata, $mime, $bytes);
-    if ($sessionUrl === '') {
-        return ['ok' => false, 'message' => 'Google Drive did not return an upload session URL. Check folder ID and service account sharing.'];
+    $session = alcrosGoogleDriveBeginResumableUpload($accessToken, $metadata, $mime, $bytes);
+    if (($session['url'] ?? '') === '') {
+        $detail = trim((string) ($session['error'] ?? ''));
+        $msg = 'Google Drive upload could not start.';
+        if ($detail !== '') {
+            $msg .= ' ' . $detail;
+        } else {
+            $msg .= ' Check folder ID and that the folder is shared with the service account as Editor.';
+        }
+
+        return ['ok' => false, 'message' => $msg];
     }
 
     $fileHandle = fopen($zipPath, 'rb');
@@ -331,13 +351,14 @@ function alcrosGoogleDriveUploadRegistryZip(string $zipPath, string $filename): 
         return ['ok' => false, 'message' => 'Could not read backup zip for upload.'];
     }
 
-    $ch = curl_init($sessionUrl);
+    $ch = curl_init($session['url']);
     curl_setopt_array($ch, [
         CURLOPT_CUSTOMREQUEST  => 'PUT',
         CURLOPT_UPLOAD         => true,
         CURLOPT_INFILE         => $fileHandle,
         CURLOPT_INFILESIZE     => $bytes,
         CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTP_VERSION   => CURL_HTTP_VERSION_1_1,
         CURLOPT_HTTPHEADER     => [
             'Content-Type: ' . $mime,
             'Content-Length: ' . (string) $bytes,
@@ -363,10 +384,7 @@ function alcrosGoogleDriveUploadRegistryZip(string $zipPath, string $filename): 
     $decoded = json_decode($uploadBody, true);
     $fileId = is_array($decoded) ? trim((string) ($decoded['id'] ?? '')) : '';
 
-    setSetting('registry_backup_gdrive_last_run_at', date('Y-m-d H:i:s'));
-    setSetting('registry_backup_gdrive_last_status', 'success');
-    setSetting('registry_backup_gdrive_last_message', 'Uploaded ' . $filename);
-    setSetting('registry_backup_gdrive_last_file_id', $fileId);
+    alcrosGoogleDriveMarkUploadSuccess($filename, $fileId);
 
     return [
         'ok'      => true,
@@ -375,14 +393,102 @@ function alcrosGoogleDriveUploadRegistryZip(string $zipPath, string $filename): 
     ];
 }
 
-function alcrosGoogleDriveResumableSessionUrl(string $accessToken, string $metadataJson, string $mime, int $bytes): string
+function alcrosGoogleDriveMarkUploadSuccess(string $filename, string $fileId): void
 {
+    setSetting('registry_backup_gdrive_last_run_at', date('Y-m-d H:i:s'));
+    setSetting('registry_backup_gdrive_last_status', 'success');
+    setSetting('registry_backup_gdrive_last_message', 'Uploaded ' . $filename);
+    setSetting('registry_backup_gdrive_last_file_id', $fileId);
+}
+
+/**
+ * @return array{ok: bool, message: string, file_id?: string}
+ */
+function alcrosGoogleDriveUploadMultipart(
+    string $accessToken,
+    string $zipPath,
+    string $filename,
+    string $folderId,
+    string $mime
+): array {
+    $fileData = file_get_contents($zipPath);
+    if ($fileData === false) {
+        return ['ok' => false, 'message' => 'Could not read backup zip for upload.'];
+    }
+
+    $metadata = json_encode([
+        'name'    => $filename,
+        'parents' => [$folderId],
+    ], JSON_UNESCAPED_SLASHES);
+
+    $boundary = 'alcros_gdrive_' . bin2hex(random_bytes(8));
+    $delimiter = "\r\n";
+    $body = '--' . $boundary . $delimiter
+        . 'Content-Type: application/json; charset=UTF-8' . $delimiter . $delimiter
+        . $metadata . $delimiter
+        . '--' . $boundary . $delimiter
+        . 'Content-Type: ' . $mime . $delimiter . $delimiter
+        . $fileData . $delimiter
+        . '--' . $boundary . '--';
+
+    $url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name&supportsAllDrives=true';
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => $body,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTP_VERSION   => CURL_HTTP_VERSION_1_1,
+        CURLOPT_HTTPHEADER     => [
+            'Authorization: Bearer ' . $accessToken,
+            'Content-Type: multipart/related; boundary=' . $boundary,
+            'Content-Length: ' . (string) strlen($body),
+        ],
+        CURLOPT_TIMEOUT        => 600,
+    ]);
+    $response = curl_exec($ch);
+    $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if ($response === false) {
+        return ['ok' => false, 'message' => 'Drive upload failed: ' . ($curlError ?: 'unknown error')];
+    }
+
+    if ($status < 200 || $status >= 300) {
+        $err = alcrosGoogleDriveApiErrorMessage($response);
+
+        return ['ok' => false, 'message' => 'Drive upload rejected' . ($err !== '' ? ': ' . $err : ' (HTTP ' . $status . ').')];
+    }
+
+    $decoded = json_decode($response, true);
+    $fileId = is_array($decoded) ? trim((string) ($decoded['id'] ?? '')) : '';
+
+    return [
+        'ok'      => true,
+        'message' => 'Uploaded to Google Drive.',
+        'file_id' => $fileId,
+    ];
+}
+
+/**
+ * @return array{url: string, error: string}
+ */
+function alcrosGoogleDriveBeginResumableUpload(string $accessToken, string $metadataJson, string $mime, int $bytes): array
+{
+    $location = '';
     $ch = curl_init('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name&supportsAllDrives=true');
     curl_setopt_array($ch, [
         CURLOPT_POST           => true,
         CURLOPT_POSTFIELDS     => $metadataJson,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HEADER         => true,
+        CURLOPT_HTTP_VERSION   => CURL_HTTP_VERSION_1_1,
+        CURLOPT_HEADERFUNCTION => static function ($curl, string $headerLine) use (&$location): int {
+            if (stripos($headerLine, 'Location:') === 0) {
+                $location = trim(substr($headerLine, 9));
+            }
+
+            return strlen($headerLine);
+        },
         CURLOPT_HTTPHEADER     => [
             'Authorization: Bearer ' . $accessToken,
             'Content-Type: application/json; charset=UTF-8',
@@ -391,23 +497,25 @@ function alcrosGoogleDriveResumableSessionUrl(string $accessToken, string $metad
         ],
         CURLOPT_TIMEOUT        => 120,
     ]);
-    $response = curl_exec($ch);
+    $responseBody = curl_exec($ch);
     $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
     curl_close($ch);
 
-    if ($response === false || !is_string($response)) {
-        return '';
+    $location = trim($location, " \t\n\r");
+    if ($location !== '' && $status >= 200 && $status < 300) {
+        return ['url' => $location, 'error' => ''];
     }
 
-    if ($status < 200 || $status >= 300) {
-        return '';
+    $err = is_string($responseBody) ? alcrosGoogleDriveApiErrorMessage($responseBody) : '';
+    if ($err === '' && $responseBody === false) {
+        $err = $curlError ?: 'Unknown cURL error';
+    }
+    if ($err === '' && $status > 0) {
+        $err = 'HTTP ' . $status;
     }
 
-    if (preg_match('/^Location:\s*(.+)$/mi', $response, $matches)) {
-        return trim($matches[1]);
-    }
-
-    return '';
+    return ['url' => '', 'error' => $err];
 }
 
 function alcrosGoogleDriveApiErrorMessage(string $body): string

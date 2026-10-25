@@ -264,6 +264,7 @@
 
     bindSavedSecretPasswordField(document.getElementById('smtpPassInput'));
     bindSavedSecretPasswordField(document.getElementById('iprogApiTokenInput'));
+    bindSavedSecretPasswordField(document.getElementById('gdriveOAuthClientSecretInput'));
 
     if (allowRequestsToggle && maintenanceToggle) {
         allowRequestsToggle.addEventListener('change', function () {

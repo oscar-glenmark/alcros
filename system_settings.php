@@ -395,9 +395,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($oauthClientId !== '') {
                 setSetting('registry_backup_gdrive_oauth_client_id', $oauthClientId);
             }
-            $oauthSecret = trim((string) ($_POST['registry_backup_gdrive_oauth_client_secret'] ?? ''));
-            if ($oauthSecret !== '') {
-                setSetting('registry_backup_gdrive_oauth_client_secret', $oauthSecret);
+            $oauthSecret = (string) ($_POST['registry_backup_gdrive_oauth_client_secret'] ?? '');
+            $oauthSecretMask = '••••••••••••••••';
+            if ($oauthSecret !== '' && $oauthSecret !== $oauthSecretMask) {
+                setSetting('registry_backup_gdrive_oauth_client_secret', trim($oauthSecret));
             }
             setSetting('registry_backup_gdrive_token', '');
             setSetting('registry_backup_gdrive_token_exp', '0');
@@ -531,9 +532,10 @@ $registryBackupGdriveLastRun = $isAdmin ? getSetting('registry_backup_gdrive_las
 $registryBackupGdriveLastStatus = $isAdmin ? getSetting('registry_backup_gdrive_last_status', '') : '';
 $registryBackupGdriveLastMessage = $isAdmin ? getSetting('registry_backup_gdrive_last_message', '') : '';
 $registryBackupGdriveOAuthClientId = $isAdmin ? alcrosGoogleDriveOAuthClientId() : '';
+$registryBackupGdriveOAuthSecretSaved = $isAdmin && trim(getSetting('registry_backup_gdrive_oauth_client_secret', '')) !== '';
+$registryBackupGdriveOAuthSecret = $isAdmin ? getSetting('registry_backup_gdrive_oauth_client_secret', '') : '';
 $registryBackupGdriveOAuthConnected = $isAdmin && alcrosGoogleDriveOAuthConnected();
 $registryBackupGdriveOAuthEmail = $isAdmin ? alcrosGoogleDriveOAuthConnectedEmail() : '';
-$registryBackupGdriveOAuthRedirectUri = $isAdmin ? alcrosGoogleDriveOAuthRedirectUri() : '';
 $registryBackupGdriveConnectUrl = $isAdmin ? buildAuthUrl('api/gdrive_oauth.php', ['action' => 'start']) : '';
 $showHostedScheduleTasks = $isAdmin;
 
@@ -1157,11 +1159,6 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     </div>
                                     <?php endforeach; ?>
                                 </div>
-                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-slate-600 rounded-xl p-4 bg-slate-50 border border-slate-100 mb-6">
-                                    <div><span class="text-slate-400 font-bold uppercase text-[10px]">Database</span><p class="font-semibold mt-1"><?= htmlspecialchars(DB_NAME) ?></p></div>
-                                    <div><span class="text-slate-400 font-bold uppercase text-[10px]">Host</span><p class="font-semibold mt-1"><?= htmlspecialchars(DB_HOST) ?></p></div>
-                                    <div><span class="text-slate-400 font-bold uppercase text-[10px]">PHP</span><p class="font-semibold mt-1"><?= htmlspecialchars(PHP_VERSION) ?></p></div>
-                                </div>
                                 <h3 class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-3">Quick links</h3>
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <?php
@@ -1361,27 +1358,17 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                                     <?php endif; ?>
                                                 </div>
 
-                                                <details class="backup-details">
-                                                    <summary>Google Cloud setup (OAuth) <i data-lucide="chevron-down" class="backup-details__chevron"></i></summary>
-                                                    <div class="backup-details__body">
-                                                        <ol>
-                                                            <li>Enable <strong>Google Drive API</strong> → create <strong>OAuth client ID</strong> (Web application).</li>
-                                                            <li>Redirect URI (exact): <code class="block mt-1 break-all font-mono text-[10px] bg-slate-50 p-1 rounded"><?= htmlspecialchars($registryBackupGdriveOAuthRedirectUri) ?></code></li>
-                                                            <li>Consent screen: <strong>Testing</strong> → add your Gmail under <strong>Test users</strong>.</li>
-                                                            <li>Save Client ID/Secret below → <strong>Save settings</strong> → <strong>Connect</strong>.</li>
-                                                        </ol>
-                                                        <div class="backup-field-grid backup-field-grid--2 mt-3">
-                                                            <div class="backup-field">
-                                                                <label for="registry_backup_gdrive_oauth_client_id">Client ID</label>
-                                                                <input type="text" id="registry_backup_gdrive_oauth_client_id" name="registry_backup_gdrive_oauth_client_id" class="font-mono" value="<?= htmlspecialchars($registryBackupGdriveOAuthClientId) ?>" autocomplete="off">
-                                                            </div>
-                                                            <div class="backup-field">
-                                                                <label for="registry_backup_gdrive_oauth_client_secret">Client secret</label>
-                                                                <input type="password" id="registry_backup_gdrive_oauth_client_secret" name="registry_backup_gdrive_oauth_client_secret" class="font-mono" value="" placeholder="<?= getSetting('registry_backup_gdrive_oauth_client_secret', '') !== '' ? 'Saved — leave blank to keep' : '' ?>" autocomplete="new-password">
-                                                            </div>
-                                                        </div>
+                                                <div class="backup-field-grid backup-field-grid--2">
+                                                    <div class="backup-field">
+                                                        <label for="registry_backup_gdrive_oauth_client_id">OAuth Client ID</label>
+                                                        <input type="text" id="registry_backup_gdrive_oauth_client_id" name="registry_backup_gdrive_oauth_client_id" class="font-mono" value="<?= htmlspecialchars($registryBackupGdriveOAuthClientId) ?>" autocomplete="off">
                                                     </div>
-                                                </details>
+                                                    <div class="backup-field">
+                                                        <label for="gdriveOAuthClientSecretInput">OAuth Client secret</label>
+                                                        <input type="password" name="registry_backup_gdrive_oauth_client_secret" id="gdriveOAuthClientSecretInput" class="font-mono w-full" value="<?= $registryBackupGdriveOAuthSecretSaved ? htmlspecialchars($smtpPassMask) : '' ?>" autocomplete="new-password" data-saved-mask="<?= $registryBackupGdriveOAuthSecretSaved ? htmlspecialchars($smtpPassMask) : '' ?>" data-saved-value="<?= $registryBackupGdriveOAuthSecretSaved ? htmlspecialchars($registryBackupGdriveOAuthSecret) : '' ?>" placeholder="<?= $registryBackupGdriveOAuthSecretSaved ? '' : 'From Google Cloud Console' ?>">
+                                                        <p class="backup-field__hint"><?= $registryBackupGdriveOAuthSecretSaved ? 'Leave as dots to keep the saved secret. Click the field, then the eye icon, to view it.' : 'Paste the OAuth client secret from Google Cloud Console.' ?></p>
+                                                    </div>
+                                                </div>
 
                                                 <?php if ($registryBackupGdriveLastMessage !== ''): ?>
                                                 <p class="backup-status-line <?= $registryBackupGdriveLastStatus === 'success' ? 'backup-status-line--ok' : 'backup-status-line--bad' ?>">
@@ -1517,13 +1504,6 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     <?php endif; ?>
                                 </div>
 
-                                <h3 class="text-sm font-bold text-slate-900 mb-1">Exports & utilities</h3>
-                                <p class="text-xs text-slate-500 mb-4">Download data or open setup tools. These do not delete live records.</p>
-                                <div class="flex flex-wrap gap-3 mb-8">
-                                    <a href="install.php" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800 px-4 py-2.5 rounded-xl text-xs font-bold">
-                                        <i data-lucide="database" class="w-4 h-4"></i> Database installer
-                                    </a>
-                                </div>
                                 <div class="rounded-xl border border-red-100 bg-red-50/50 p-5">
                                     <h4 class="text-sm font-bold text-red-900 flex items-center gap-2">
                                         <i data-lucide="alert-triangle" class="w-4 h-4"></i> Danger zone

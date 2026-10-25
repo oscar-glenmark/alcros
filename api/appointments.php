@@ -43,9 +43,14 @@ try {
         ];
     }
 
+    $stats = fetchAppointmentDayStats($pdo, $filters['date']);
+    if (appointmentManageAwaitingAllDates($filters)) {
+        $stats['scheduled'] = countPendingAppointments($pdo);
+    }
+
     $response = [
         'appointments'            => $appointments,
-        'stats'                   => fetchAppointmentDayStats($pdo, $filters['date']),
+        'stats'                   => $stats,
         'filters'                 => $filters,
         'count'                   => count($appointments),
         'date'                    => $filters['date'],

@@ -303,6 +303,8 @@ if (!in_array($filterStatus, appointmentStatusFilters(), true)) {
 }
 
 $isFollowUpsView = $filterStatus === 'follow_ups';
+$awaitingAllDates = appointmentManageAwaitingAllDates(['status' => $filterStatus, 'q' => $search]);
+$showDateNav = !$isFollowUpsView && !$awaitingAllDates;
 ensureAppointmentFollowUpsTable($pdo);
 $upcomingFollowUps = $isFollowUpsView ? fetchUpcomingFollowUps($pdo) : [];
 $pendingFollowUpCount = countPendingAppointmentFollowUps($pdo);
@@ -331,7 +333,7 @@ $recentlyDeletedCount = (int) $recentlyDeletedStmt->fetchColumn();
 
 $appointmentStats = [
     'total'            => array_sum($statusCounts),
-    'scheduled'        => (int) ($statusCounts['scheduled'] ?? 0),
+    'scheduled'        => countPendingAppointments($pdo),
     'confirmed'        => (int) ($statusCounts['confirmed'] ?? 0),
     'completed'        => countCompletedAppointmentsWithoutPendingFollowUp($pdo, $viewDate),
     'no_show'          => (int) ($statusCounts['no_show'] ?? 0),
@@ -342,7 +344,7 @@ $appointmentStats = [
 
 $statCards = [
     ['label' => 'Total Today', 'hint' => 'All visits this date', 'value' => $appointmentStats['total'], 'icon' => 'calendar-days', 'tone' => 'blue', 'filter' => 'all_appointments'],
-    ['label' => 'Awaiting', 'hint' => 'Need confirmation', 'value' => $appointmentStats['scheduled'], 'icon' => 'clock', 'tone' => 'amber', 'filter' => 'scheduled'],
+    ['label' => 'Awaiting', 'hint' => 'All dates · need confirmation', 'value' => $appointmentStats['scheduled'], 'icon' => 'clock', 'tone' => 'amber', 'filter' => 'scheduled'],
     ['label' => 'Confirmed', 'hint' => 'Ready to serve', 'value' => $appointmentStats['confirmed'], 'icon' => 'badge-check', 'tone' => 'violet', 'filter' => 'confirmed'],
     ['label' => 'Completed', 'hint' => 'Served today', 'value' => $appointmentStats['completed'], 'icon' => 'check-circle-2', 'tone' => 'emerald', 'filter' => 'completed'],
     ['label' => 'No-Show', 'hint' => 'Did not arrive', 'value' => $appointmentStats['no_show'], 'icon' => 'user-x', 'tone' => 'rose', 'filter' => 'no_show'],
@@ -351,7 +353,7 @@ $statCards = [
 ];
 
 $filterLabels = [
-    'all'              => 'Awaiting Queue',
+    'all'              => 'Awaiting queue (all dates)',
     'scheduled'        => 'Awaiting Confirmation',
     'confirmed'        => 'Confirmed',
     'completed'        => 'Completed',
@@ -389,6 +391,8 @@ if ($isSearchMode) {
 } elseif ($filterStatus === 'recently_deleted') {
     $sql .= ' AND a.appointment_date = ? AND a.deleted_at IS NOT NULL';
     $params[] = $viewDate;
+} elseif ($awaitingAllDates) {
+    $sql .= ' AND a.deleted_at IS NULL';
 } else {
     $sql .= ' AND a.appointment_date = ? AND a.deleted_at IS NULL';
     $params[] = $viewDate;
@@ -422,6 +426,8 @@ $params = array_merge($params, $searchParams);
 
 if ($isSearchMode) {
     $sql .= ' ORDER BY a.appointment_date DESC, a.appointment_time ASC LIMIT 100';
+} elseif ($awaitingAllDates) {
+    $sql .= ' ORDER BY a.appointment_date ASC, a.appointment_time ASC';
 } else {
     $sql .= $filterStatus === 'recently_deleted' ? ' ORDER BY a.deleted_at DESC' : ' ORDER BY a.appointment_time ASC';
 }
@@ -444,25 +450,11 @@ $overviewCardHighlight = resolveAppointmentOverviewCardHighlight(
     $isFollowUpsView
 );
 
-// Stale sidebar/bookmarks may pin an old ?date= with no visits; jump to the nearest awaiting day.
-if (
-    !$isFollowUpsView
-    && $filterStatus === 'all'
-    && $search === ''
-    && $resultCount === 0
-    && $requestedViewDate !== null
-    && ($appointmentStats['total'] ?? 0) === 0
-    && countPendingAppointments($pdo) > 0
-) {
-    $suggestedDate = appointmentsManageSuggestedDate($pdo, alcrosTodayDate());
-    if ($suggestedDate !== $viewDate) {
-        redirectWithAuth('appointment.php', ['date' => $suggestedDate]);
-    }
-}
-
 $pageTitle = 'Appointments';
 $pageSubtitle = 'Review, confirm, and complete citizen visits and special service bookings.';
-$pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecialchars(formatDateEmailDisplay($viewDate)) . '</strong></p>';
+$pageHeaderMeta = $awaitingAllDates
+    ? '<p class="admin-header__meta">Viewing <strong>all awaiting visits</strong></p>'
+    : '<p class="admin-header__meta">Viewing <strong>' . htmlspecialchars(formatDateEmailDisplay($viewDate)) . '</strong></p>';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -488,7 +480,15 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
 
             <section class="manage-section" aria-label="Appointment overview">
                 <div class="manage-section__head">
-                    <h2 class="manage-section__title"><?= $isFollowUpsView ? 'Overview · Upcoming follow-ups' : 'Overview · ' . htmlspecialchars(formatDateEmailDisplay($viewDate)) ?></h2>
+                    <h2 class="manage-section__title"><?php
+                        if ($isFollowUpsView) {
+                            echo 'Overview · Upcoming follow-ups';
+                        } elseif ($awaitingAllDates) {
+                            echo 'Overview · All awaiting visits';
+                        } else {
+                            echo 'Overview · ' . htmlspecialchars(formatDateEmailDisplay($viewDate));
+                        }
+                    ?></h2>
                     <p class="manage-section__hint">Click a card to filter the list below</p>
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 gap-3">
@@ -497,11 +497,17 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                     if ($cardFilter === 'follow_ups') {
                         $cardHref = buildAuthUrl('appointment.php', ['status' => 'follow_ups']);
                     } else {
-                        $cardHref = buildAuthUrl('appointment.php', array_filter([
-                            'date'   => $viewDate,
+                        $cardQuery = [
                             'status' => $cardFilter,
                             'q'      => $search !== '' ? $search : null,
-                        ]));
+                        ];
+                        if ($cardFilter === 'all') {
+                            unset($cardQuery['status']);
+                        }
+                        if (!appointmentManageAwaitingAllDates(['status' => $cardFilter === 'all' ? 'all' : $cardFilter, 'q' => $search])) {
+                            $cardQuery['date'] = $viewDate;
+                        }
+                        $cardHref = buildAuthUrl('appointment.php', array_filter($cardQuery));
                     }
                     $cardActive = $cardFilter === $overviewCardHighlight;
                 ?>
@@ -528,11 +534,11 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                         <span class="manage-controls__view"><?= htmlspecialchars($currentFilterLabel) ?></span>
                         <span class="manage-controls__count"><?= number_format($resultCount) ?> shown</span>
                         <?php if ($filterStatus !== 'all' || $search !== ''): ?>
-                        <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $viewDate])) ?>" class="manage-controls__reset">Reset</a>
+                        <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php')) ?>" class="manage-controls__reset">Reset</a>
                         <?php endif; ?>
                     </div>
                     <div class="appointments-controls__tools">
-                        <?php if (!$isFollowUpsView): ?>
+                        <?php if ($showDateNav): ?>
                         <div class="appointments-date-nav" aria-label="Change date">
                             <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php', array_filter(['date' => $prevDate, 'status' => $filterStatus !== 'all' ? $filterStatus : null, 'q' => $search ?: null]))) ?>" class="appointments-date-nav__btn" aria-label="Previous day">
                                 <i data-lucide="chevron-left" class="w-4 h-4"></i>
@@ -549,7 +555,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                         <?php endif; ?>
                         <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('appointment.php')) ?>" class="manage-controls__search">
                             <?= authFormField() ?>
-                            <?php if ($search === ''): ?>
+                            <?php if ($search === '' && !$awaitingAllDates): ?>
                             <input type="hidden" name="date" value="<?= htmlspecialchars($viewDate) ?>">
                             <?php endif; ?>
                             <?php if ($filterStatus !== 'all' && $filterStatus !== 'all_appointments'): ?>
@@ -657,11 +663,11 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                     <i data-lucide="calendar-off" class="w-10 h-10"></i>
                 </div>
                 <h2>No appointments in this view</h2>
-                <p><?= $search !== '' ? 'No matches for your search. Try different keywords or reset filters.' : 'There are no appointments for the selected filter on this date.' ?></p>
-                <?php if ($search === '' && in_array($filterStatus, ['all', 'scheduled'], true) && ($appointmentStats['total'] ?? 0) > 0): ?>
+                <p><?= $search !== '' ? 'No matches for your search. Try different keywords or reset filters.' : ($awaitingAllDates ? 'No appointments are awaiting confirmation.' : 'There are no appointments for the selected filter on this date.') ?></p>
+                <?php if ($search === '' && !$awaitingAllDates && in_array($filterStatus, ['all', 'scheduled'], true) && ($appointmentStats['total'] ?? 0) > 0): ?>
                 <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $viewDate, 'status' => 'all_appointments'])) ?>" class="manage-empty-reset">View all <?= number_format($appointmentStats['total']) ?> appointment<?= $appointmentStats['total'] === 1 ? '' : 's' ?> on this date</a>
                 <?php elseif ($filterStatus !== 'all' || $search !== ''): ?>
-                <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $viewDate])) ?>" class="manage-empty-reset">View awaiting queue</a>
+                <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php')) ?>" class="manage-empty-reset">View awaiting queue</a>
                 <?php endif; ?>
             </div>
             <?php else: ?>
@@ -673,6 +679,8 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
                             <?= number_format($resultCount) ?> appointment<?= $resultCount === 1 ? '' : 's' ?>
                             <?php if ($isSearchMode): ?>
                             · search across all dates
+                            <?php elseif ($awaitingAllDates): ?>
+                            · all visit dates · earliest first
                             <?php else: ?>
                             · <?= htmlspecialchars(formatDateEmailDisplay($viewDate)) ?>
                             <?php endif; ?>
@@ -1015,6 +1023,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">Viewing <strong>' . htmlspecial
         'locksApiUrl'           => buildAuthUrl('api/staff_locks.php'),
         'lockType'              => STAFF_LOCK_TYPE_APPOINTMENT,
         'pollEnabled'           => !$isFollowUpsView,
+        'awaitingAllDates'      => $awaitingAllDates,
         'overviewCardHighlight' => $overviewCardHighlight,
         'minFollowUpDate'        => minFollowUpPickDate(),
         'todayDate'              => alcrosTodayDate(),

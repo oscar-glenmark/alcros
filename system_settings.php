@@ -997,7 +997,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     <?php $gmailSmtpReady = isEmailConfigured(); ?>
                                     <div class="sm:col-span-2 rounded-lg px-3 py-2.5 text-[11px] font-semibold leading-relaxed <?= $gmailSmtpReady ? 'bg-emerald-50 text-emerald-900 border border-emerald-100' : 'bg-amber-50 text-amber-950 border border-amber-100' ?>">
                                         <?php if ($gmailSmtpReady): ?>
-                                        Gmail SMTP is configured. Citizen and reminder emails use the Gmail address and App Password below—not IPROG SMS.
+                                        Gmail SMTP is configured. Citizen and reminder emails use the Gmail address and App Password below.
                                         <?php else: ?>
                                         Gmail SMTP is not complete yet. Fill in <strong>Gmail Address (SMTP user)</strong> and <strong>Gmail App Password</strong> below, then Save. Notification Email alone does not enable sending.
                                         <?php endif; ?>

@@ -4838,6 +4838,18 @@ function countPendingAppointments(PDO $pdo): int
     )->fetchColumn();
 }
 
+/** Awaiting views list every scheduled standalone visit (all dates), not a single calendar day. */
+function appointmentManageAwaitingAllDates(array $filters): bool
+{
+    if (trim((string) ($filters['q'] ?? '')) !== '') {
+        return false;
+    }
+
+    $status = (string) ($filters['status'] ?? 'all');
+
+    return $status === 'all' || $status === '' || $status === 'scheduled';
+}
+
 function appointmentRevision(array $row, ?array $followUpPending = null): string
 {
     $followUpPart = '';
@@ -4938,6 +4950,7 @@ function fetchAppointmentsManageList(PDO $pdo, array $filters): array
     $filterStatus = $filters['status'];
     $search = $filters['q'];
     $isSearchMode = $search !== '';
+    $awaitingAllDates = appointmentManageAwaitingAllDates($filters);
     $standaloneSql = appointmentStandaloneSql('a');
 
     $sql = "SELECT a.*, dr.date_of_birth, dr.date_of_marriage, dr.sex, dr.document_type AS request_document_type
@@ -4955,6 +4968,8 @@ function fetchAppointmentsManageList(PDO $pdo, array $filters): array
     } elseif ($filterStatus === 'recently_deleted') {
         $sql .= ' AND a.appointment_date = ? AND a.deleted_at IS NOT NULL';
         $params[] = $viewDate;
+    } elseif ($awaitingAllDates) {
+        $sql .= ' AND a.deleted_at IS NULL';
     } else {
         $sql .= ' AND a.appointment_date = ? AND a.deleted_at IS NULL';
         $params[] = $viewDate;
@@ -4988,6 +5003,8 @@ function fetchAppointmentsManageList(PDO $pdo, array $filters): array
 
     if ($isSearchMode) {
         $sql .= ' ORDER BY a.appointment_date DESC, a.appointment_time ASC LIMIT 100';
+    } elseif ($awaitingAllDates) {
+        $sql .= ' ORDER BY a.appointment_date ASC, a.appointment_time ASC';
     } else {
         $sql .= $filterStatus === 'recently_deleted' ? ' ORDER BY a.deleted_at DESC' : ' ORDER BY a.appointment_time ASC';
     }

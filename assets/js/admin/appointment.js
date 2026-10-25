@@ -1472,10 +1472,12 @@
             pageConfig.pollUrl,
             function () {
                 var params = {
-                    date: pageConfig.redirectDate || undefined,
                     status: pageConfig.redirectStatus || 'all',
                     q: pageConfig.redirectQ || undefined
                 };
+                if (!pageConfig.awaitingAllDates) {
+                    params.date = pageConfig.redirectDate || undefined;
+                }
                 var selected = document.querySelector('.manage-requests-row.is-selected');
                 if (selected) {
                     params.focus_id = selected.getAttribute('data-appointment-row');

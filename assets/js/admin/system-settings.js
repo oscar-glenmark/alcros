@@ -282,4 +282,26 @@
             allowRequestsToggle.checked = false;
         }
     }
+
+    document.querySelectorAll('.backup-scope-info').forEach(function (details) {
+        details.addEventListener('toggle', function () {
+            if (!details.open) {
+                return;
+            }
+            document.querySelectorAll('.backup-scope-info').forEach(function (other) {
+                if (other !== details) {
+                    other.open = false;
+                }
+            });
+        });
+    });
+
+    document.addEventListener('click', function (e) {
+        if (e.target.closest('.backup-scope-info')) {
+            return;
+        }
+        document.querySelectorAll('.backup-scope-info[open]').forEach(function (details) {
+            details.open = false;
+        });
+    });
 })();

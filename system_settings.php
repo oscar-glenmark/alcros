@@ -1216,18 +1216,29 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
 
                             <!-- Registry backup -->
                             <div class="p-5 sm:p-6 <?= $adminToolsSection !== 'backup' ? 'hidden' : '' ?>">
-                                <div class="rounded-xl border border-emerald-100 bg-emerald-50/60 p-5 mb-6">
-                                    <h3 class="text-sm font-bold text-emerald-950 flex items-center gap-2">
-                                        <i data-lucide="shield-check" class="w-4 h-4"></i> What gets backed up
-                                    </h3>
-                                    <ul class="mt-3 space-y-1.5 text-xs text-emerald-900/90 list-disc pl-5">
-                                        <li>Civil records (birth, death, marriage) and detail tables</li>
-                                        <li>Staff accounts (login IDs, roles, password hashes, emails)</li>
-                                        <li>Print templates, field positions, and calibrations</li>
-                                        <li>Print settings (global offsets, mode, province/city labels)</li>
-                                        <li>Staff profile photos and print form reference files</li>
-                                    </ul>
-                                    <p class="text-[11px] text-emerald-800/70 mt-3">Requests, appointments, queue tickets, and activity logs are <strong>not</strong> included.</p>
+                                <div class="flex flex-wrap items-start justify-between gap-3 mb-5">
+                                    <div class="min-w-0">
+                                        <div class="flex items-center gap-2">
+                                            <h3 class="text-base font-black text-slate-900">Registry backup</h3>
+                                            <details class="backup-scope-info">
+                                                <summary class="backup-scope-info__trigger" aria-label="What gets backed up">
+                                                    <i data-lucide="info" class="backup-scope-info__icon" aria-hidden="true"></i>
+                                                </summary>
+                                                <div class="backup-scope-info__panel" role="note">
+                                                    <p class="backup-scope-info__title">What gets backed up</p>
+                                                    <ul class="backup-scope-info__list">
+                                                        <li>Civil records (birth, death, marriage) and detail tables</li>
+                                                        <li>Staff accounts (login IDs, roles, password hashes, emails)</li>
+                                                        <li>Print templates, field positions, and calibrations</li>
+                                                        <li>Print settings (global offsets, mode, province/city labels)</li>
+                                                        <li>Staff profile photos and print form reference files</li>
+                                                    </ul>
+                                                    <p class="backup-scope-info__note">Requests, appointments, queue tickets, and activity logs are <strong>not</strong> included.</p>
+                                                </div>
+                                            </details>
+                                        </div>
+                                        <p class="text-xs text-slate-500 mt-1">Scheduled zip on the server, optional Google Drive copy. Tap <span class="font-semibold text-slate-600">i</span> for scope.</p>
+                                    </div>
                                 </div>
 
                                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
@@ -1261,7 +1272,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2 mb-1">
                                         <i data-lucide="cloud-upload" class="w-4 h-4"></i> Automatic registry backup (hosted / SmarterASP)
                                     </h3>
-                                    <p class="text-xs text-slate-600 mb-4">Creates a password-free zip on the server with the same scope as the green box above. SmarterASP calls a secret URL on a schedule; you download zips via FTP or the list below.</p>
+                                    <p class="text-xs text-slate-600 mb-4">Creates a zip on the server (see <span class="font-semibold">i</span> next to Registry backup for scope). SmarterASP calls a secret URL on a schedule; download zips via FTP or the list below.</p>
 
                                     <form method="POST" enctype="multipart/form-data" class="space-y-4 mb-5">
                                         <?= authFormField() ?>

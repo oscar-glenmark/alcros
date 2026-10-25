@@ -387,9 +387,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 trim((string) ($_POST['registry_backup_gdrive_folder_id'] ?? ''))
             );
             $gdriveRetention = max(0, min(90, (int) ($_POST['registry_backup_gdrive_retention_count'] ?? 0)));
+            $gdriveAuthMode = ($_POST['registry_backup_gdrive_auth_mode'] ?? '') === 'service_account'
+                ? 'service_account'
+                : 'oauth';
             setSetting('registry_backup_gdrive_enabled', $gdriveEnabled);
             setSetting('registry_backup_gdrive_folder_id', $gdriveFolder);
             setSetting('registry_backup_gdrive_retention_count', (string) $gdriveRetention);
+            setSetting('registry_backup_gdrive_auth_mode', $gdriveAuthMode);
+            $oauthClientId = trim((string) ($_POST['registry_backup_gdrive_oauth_client_id'] ?? ''));
+            if ($oauthClientId !== '') {
+                setSetting('registry_backup_gdrive_oauth_client_id', $oauthClientId);
+            }
+            $oauthSecret = trim((string) ($_POST['registry_backup_gdrive_oauth_client_secret'] ?? ''));
+            if ($oauthSecret !== '') {
+                setSetting('registry_backup_gdrive_oauth_client_secret', $oauthSecret);
+            }
             setSetting('registry_backup_gdrive_token', '');
             setSetting('registry_backup_gdrive_token_exp', '0');
 
@@ -417,6 +429,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'test_registry_gdrive' && $isAdmin) {
             $test = alcrosGoogleDriveTestConnection();
             settingsFlashSet($test['ok'] ? 'success' : 'error', $test['message']);
+            $handled = true;
+        } elseif ($action === 'disconnect_registry_gdrive_oauth' && $isAdmin) {
+            alcrosGoogleDriveDisconnectOAuth();
+            settingsFlashSet('success', 'Google Drive sign-in removed from this server.');
             $handled = true;
         } elseif ($action === 'regenerate_registry_backup_token' && $isAdmin) {
             alcrosRegistryBackupRegenerateCronToken();
@@ -528,6 +544,12 @@ $registryBackupGdriveServiceEmail = $isAdmin ? alcrosGoogleDriveServiceAccountEm
 $registryBackupGdriveLastRun = $isAdmin ? getSetting('registry_backup_gdrive_last_run_at', '') : '';
 $registryBackupGdriveLastStatus = $isAdmin ? getSetting('registry_backup_gdrive_last_status', '') : '';
 $registryBackupGdriveLastMessage = $isAdmin ? getSetting('registry_backup_gdrive_last_message', '') : '';
+$registryBackupGdriveAuthMode = $isAdmin ? alcrosGoogleDriveAuthMode() : 'oauth';
+$registryBackupGdriveOAuthClientId = $isAdmin ? alcrosGoogleDriveOAuthClientId() : '';
+$registryBackupGdriveOAuthConnected = $isAdmin && alcrosGoogleDriveOAuthConnected();
+$registryBackupGdriveOAuthEmail = $isAdmin ? alcrosGoogleDriveOAuthConnectedEmail() : '';
+$registryBackupGdriveOAuthRedirectUri = $isAdmin ? alcrosGoogleDriveOAuthRedirectUri() : '';
+$registryBackupGdriveConnectUrl = $isAdmin ? buildAuthUrl('api/gdrive_oauth.php', ['action' => 'start']) : '';
 $showHostedScheduleTasks = $isAdmin;
 
 function settingsPageUrl(string $tab, ?string $adminSub = null): string
@@ -1301,8 +1323,19 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                                 <h4 class="text-xs font-bold text-slate-900 flex items-center gap-2">
                                                     <i data-lucide="hard-drive" class="w-4 h-4"></i> Google Drive cloud copy
                                                 </h4>
-                                                <p class="text-[11px] text-slate-600 mt-1">After each successful zip, ALCROS uploads the same file to a Drive folder (service account). Local retention above still applies.</p>
+                                                <p class="text-[11px] text-slate-600 mt-1">After each successful zip, ALCROS uploads the same file to your Drive folder. Use <strong>Google sign-in</strong> for personal Gmail; service accounts only work with Google Workspace Shared drives.</p>
                                             </div>
+                                            <fieldset class="space-y-2">
+                                                <legend class="text-[11px] font-bold uppercase text-slate-500">Sign-in method</legend>
+                                                <label class="flex items-start gap-2 cursor-pointer text-xs text-slate-700">
+                                                    <input type="radio" name="registry_backup_gdrive_auth_mode" value="oauth" class="mt-0.5" <?= $registryBackupGdriveAuthMode === 'oauth' ? 'checked' : '' ?>>
+                                                    <span><strong>Personal Gmail (recommended)</strong> — sign in with your Google account; uploads use your Drive storage.</span>
+                                                </label>
+                                                <label class="flex items-start gap-2 cursor-pointer text-xs text-slate-700">
+                                                    <input type="radio" name="registry_backup_gdrive_auth_mode" value="service_account" class="mt-0.5" <?= $registryBackupGdriveAuthMode === 'service_account' ? 'checked' : '' ?>>
+                                                    <span><strong>Google Workspace</strong> — service account JSON + folder on a <strong>Shared drive</strong> (not personal My Drive).</span>
+                                                </label>
+                                            </fieldset>
                                             <label class="flex items-start gap-3 cursor-pointer">
                                                 <input type="checkbox" name="registry_backup_gdrive_enabled" value="1" class="mt-1 rounded border-slate-300" <?= $registryBackupGdriveEnabled ? 'checked' : '' ?>>
                                                 <span class="text-xs text-slate-700"><strong>Upload registry zips to Google Drive</strong></span>
@@ -1319,35 +1352,62 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                                     <p class="text-[11px] text-slate-400 mt-1">0 = same as server retention (<?= (int) $registryBackupRetention ?>).</p>
                                                 </div>
                                             </div>
-                                            <div class="rounded-lg border border-slate-200 bg-white p-3 text-[11px] text-slate-600 space-y-2">
-                                                <p class="font-bold text-slate-800">Setup (once)</p>
+                                            <div class="rounded-lg border border-slate-200 bg-white p-3 text-[11px] text-slate-600 space-y-3">
+                                                <p class="font-bold text-slate-800">Personal Gmail — Google sign-in</p>
                                                 <ol class="list-decimal pl-4 space-y-1">
-                                                    <li>Google Cloud Console → create a project → enable <strong>Google Drive API</strong>.</li>
-                                                    <li>IAM → Service accounts → create key (JSON). Upload below (stored in <code class="bg-slate-50 px-1 rounded">storage/secrets/</code>, not in git).</li>
-                                                    <li>In Google Drive, create a folder → Share → add the service account email as <strong>Editor</strong>.</li>
-                                                    <li>Paste the folder ID from the folder URL into the field above.</li>
+                                                    <li>Cloud Console → same project → <strong>APIs & Services → Credentials → Create credentials → OAuth client ID</strong> → type <strong>Web application</strong>.</li>
+                                                    <li>Add authorized redirect URI (exact): <code class="block mt-1 break-all bg-slate-50 px-1 rounded font-mono text-[10px]"><?= htmlspecialchars($registryBackupGdriveOAuthRedirectUri) ?></code></li>
+                                                    <li>Paste Client ID and Client Secret below → <strong>Save</strong> → click <strong>Connect Google Drive</strong>.</li>
+                                                    <li>In Drive, create a folder in <em>your</em> My Drive → copy folder ID above (no sharing needed).</li>
+                                                </ol>
+                                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label class="text-[10px] font-bold uppercase text-slate-500">OAuth Client ID</label>
+                                                        <input type="text" name="registry_backup_gdrive_oauth_client_id" value="<?= htmlspecialchars($registryBackupGdriveOAuthClientId) ?>" autocomplete="off" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono">
+                                                    </div>
+                                                    <div>
+                                                        <label class="text-[10px] font-bold uppercase text-slate-500">OAuth Client Secret</label>
+                                                        <input type="password" name="registry_backup_gdrive_oauth_client_secret" value="" placeholder="<?= getSetting('registry_backup_gdrive_oauth_client_secret', '') !== '' ? '•••••••• (saved — leave blank to keep)' : '' ?>" autocomplete="new-password" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono">
+                                                    </div>
+                                                </div>
+                                                <?php if ($registryBackupGdriveOAuthConnected): ?>
+                                                <p class="text-emerald-800">Connected as <span class="font-mono"><?= htmlspecialchars($registryBackupGdriveOAuthEmail !== '' ? $registryBackupGdriveOAuthEmail : 'Google account') ?></span></p>
+                                                <?php else: ?>
+                                                <p class="text-amber-800">Not connected — save Client ID/Secret, then use Connect Google Drive.</p>
+                                                <?php endif; ?>
+                                                <div class="flex flex-wrap gap-2">
+                                                    <a href="<?= htmlspecialchars($registryBackupGdriveConnectUrl) ?>" class="inline-flex items-center gap-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 px-3 py-2 rounded-lg text-xs font-bold">
+                                                        <i data-lucide="log-in" class="w-4 h-4"></i> Connect Google Drive
+                                                    </a>
+                                                    <?php if ($registryBackupGdriveOAuthConnected): ?>
+                                                    <button type="submit" form="gdriveDisconnectForm" class="inline-flex items-center gap-2 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-xs font-bold bg-red-50 hover:bg-red-100">Disconnect sign-in</button>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </div>
+                                            <details class="rounded-lg border border-slate-200 bg-slate-50/80 p-3 text-[11px] text-slate-600">
+                                                <summary class="font-bold text-slate-800 cursor-pointer">Google Workspace — service account (advanced)</summary>
+                                                <ol class="list-decimal pl-4 space-y-1 mt-2">
+                                                    <li>Enable Drive API → service account → JSON key → upload below.</li>
+                                                    <li>Create a <strong>Shared drive</strong> → add service account as <strong>Content manager</strong> → folder inside it → folder ID above.</li>
                                                 </ol>
                                                 <?php if ($registryBackupGdriveConfigured): ?>
-                                                <p class="text-emerald-800">Service account on server: <span class="font-mono"><?= htmlspecialchars($registryBackupGdriveServiceEmail) ?></span></p>
-                                                <?php else: ?>
-                                                <p class="text-amber-800">No service account JSON stored yet.</p>
+                                                <p class="text-emerald-800 mt-2">Service account: <span class="font-mono"><?= htmlspecialchars($registryBackupGdriveServiceEmail) ?></span></p>
                                                 <?php endif; ?>
-                                            </div>
-                                            <div>
-                                                <label class="text-[11px] font-bold uppercase text-slate-500">Service account JSON file</label>
-                                                <input type="file" name="registry_backup_gdrive_service_account_file" accept=".json,application/json" class="mt-1 block w-full text-xs">
-                                            </div>
-                                            <div>
-                                                <label class="text-[11px] font-bold uppercase text-slate-500">Or paste JSON</label>
-                                                <textarea name="registry_backup_gdrive_service_account_json" rows="3" placeholder="{ &quot;type&quot;: &quot;service_account&quot;, ... }" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono"></textarea>
-                                                <p class="text-[11px] text-slate-400 mt-1">Leave blank to keep the existing key. Saving replaces the file on the server.</p>
-                                            </div>
-                                            <?php if ($registryBackupGdriveConfigured): ?>
-                                            <label class="flex items-start gap-2 cursor-pointer text-xs text-red-700">
-                                                <input type="checkbox" name="registry_backup_gdrive_remove_credentials" value="1" class="mt-0.5 rounded border-red-300">
-                                                Remove stored service account JSON from this server
-                                            </label>
-                                            <?php endif; ?>
+                                                <div class="mt-2">
+                                                    <label class="text-[10px] font-bold uppercase text-slate-500">Service account JSON file</label>
+                                                    <input type="file" name="registry_backup_gdrive_service_account_file" accept=".json,application/json" class="mt-1 block w-full text-xs">
+                                                </div>
+                                                <div class="mt-2">
+                                                    <label class="text-[10px] font-bold uppercase text-slate-500">Or paste JSON</label>
+                                                    <textarea name="registry_backup_gdrive_service_account_json" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono"></textarea>
+                                                </div>
+                                                <?php if ($registryBackupGdriveConfigured): ?>
+                                                <label class="flex items-start gap-2 cursor-pointer text-xs text-red-700 mt-2">
+                                                    <input type="checkbox" name="registry_backup_gdrive_remove_credentials" value="1" class="mt-0.5 rounded border-red-300">
+                                                    Remove stored service account JSON
+                                                </label>
+                                                <?php endif; ?>
+                                            </details>
                                             <?php if ($registryBackupGdriveLastMessage !== ''): ?>
                                             <p class="text-xs <?= $registryBackupGdriveLastStatus === 'success' ? 'text-emerald-800' : 'text-red-800' ?>">
                                                 Last Drive upload: <?= htmlspecialchars($registryBackupGdriveLastRun !== '' ? formatReportDateTime($registryBackupGdriveLastRun) . ' — ' : '') ?><?= htmlspecialchars($registryBackupGdriveLastMessage) ?>
@@ -1358,6 +1418,13 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                         <button type="submit" class="inline-flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold">
                                             <i data-lucide="save" class="w-4 h-4"></i> Save registry backup settings
                                         </button>
+                                    </form>
+
+                                    <form method="POST" id="gdriveDisconnectForm" class="hidden">
+                                        <?= authFormField() ?>
+                                        <input type="hidden" name="settings_action" value="disconnect_registry_gdrive_oauth">
+                                        <input type="hidden" name="active_tab" value="admin-tools">
+                                        <input type="hidden" name="admin_sub" value="backup">
                                     </form>
 
                                     <form method="POST" class="inline-block mb-4">

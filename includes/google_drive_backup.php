@@ -1,6 +1,8 @@
 <?php
 /**
- * Upload registry backup zips to Google Drive (service account + shared folder).
+ * Upload registry backup zips to Google Drive.
+ * Personal @gmail.com: OAuth (uses your Google storage).
+ * Google Workspace: service account + folder on a Shared drive.
  */
 
 require_once __DIR__ . '/duplicati_backup.php';
@@ -43,6 +45,198 @@ function alcrosGoogleDriveNormalizeFolderId(string $input): string
 function alcrosGoogleDriveFolderId(): string
 {
     return alcrosGoogleDriveNormalizeFolderId(getSetting('registry_backup_gdrive_folder_id', ''));
+}
+
+function alcrosGoogleDriveAuthMode(): string
+{
+    $mode = trim(getSetting('registry_backup_gdrive_auth_mode', 'oauth'));
+
+    return $mode === 'service_account' ? 'service_account' : 'oauth';
+}
+
+function alcrosGoogleDriveOAuthClientId(): string
+{
+    return trim(getSetting('registry_backup_gdrive_oauth_client_id', ''));
+}
+
+function alcrosGoogleDriveOAuthClientSecret(): string
+{
+    return trim(getSetting('registry_backup_gdrive_oauth_client_secret', ''));
+}
+
+function alcrosGoogleDriveOAuthClientConfigured(): bool
+{
+    return alcrosGoogleDriveOAuthClientId() !== '' && alcrosGoogleDriveOAuthClientSecret() !== '';
+}
+
+function alcrosGoogleDriveOAuthRefreshToken(): string
+{
+    return trim(getSetting('registry_backup_gdrive_oauth_refresh_token', ''));
+}
+
+function alcrosGoogleDriveOAuthConnectedEmail(): string
+{
+    return trim(getSetting('registry_backup_gdrive_oauth_email', ''));
+}
+
+function alcrosGoogleDriveOAuthConnected(): bool
+{
+    return alcrosGoogleDriveOAuthRefreshToken() !== '';
+}
+
+function alcrosGoogleDriveAuthConfigured(): bool
+{
+    if (alcrosGoogleDriveAuthMode() === 'service_account') {
+        return alcrosGoogleDriveServiceAccountConfigured();
+    }
+
+    return alcrosGoogleDriveOAuthConnected() && alcrosGoogleDriveOAuthClientConfigured();
+}
+
+function alcrosGoogleDriveOAuthRedirectUri(): string
+{
+    $configured = rtrim(trim(getSetting('registry_backup_public_url', '')), '/');
+    if ($configured !== '') {
+        return $configured . '/api/gdrive_oauth.php?action=callback';
+    }
+    if (function_exists('appBaseUrl')) {
+        $base = rtrim(trim(appBaseUrl()), '/');
+        if ($base !== '') {
+            return $base . '/api/gdrive_oauth.php?action=callback';
+        }
+    }
+
+    return '/api/gdrive_oauth.php?action=callback';
+}
+
+function alcrosGoogleDriveClearAccessTokenCache(): void
+{
+    setSetting('registry_backup_gdrive_token', '');
+    setSetting('registry_backup_gdrive_token_exp', '0');
+}
+
+function alcrosGoogleDriveDisconnectOAuth(): void
+{
+    setSetting('registry_backup_gdrive_oauth_refresh_token', '');
+    setSetting('registry_backup_gdrive_oauth_email', '');
+    alcrosGoogleDriveClearAccessTokenCache();
+}
+
+/**
+ * @return array{token: string, expires_at: int, refresh_token?: string}
+ */
+function alcrosGoogleDriveOAuthTokenRequest(array $params): array
+{
+    if (!function_exists('curl_init')) {
+        throw new RuntimeException('PHP cURL extension is required for Google Drive backup.');
+    }
+
+    $ch = curl_init('https://oauth2.googleapis.com/token');
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => http_build_query($params),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/x-www-form-urlencoded'],
+        CURLOPT_TIMEOUT        => 60,
+    ]);
+    $response = curl_exec($ch);
+    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if ($response === false) {
+        throw new RuntimeException('Google token request failed: ' . ($curlError ?: 'unknown error'));
+    }
+
+    $decoded = json_decode($response, true);
+    if ($httpCode >= 400 || !is_array($decoded) || empty($decoded['access_token'])) {
+        $msg = is_array($decoded) ? (string) ($decoded['error_description'] ?? $decoded['error'] ?? '') : '';
+        throw new RuntimeException('Google sign-in failed' . ($msg !== '' ? ': ' . $msg : '') . '.');
+    }
+
+    return [
+        'token'         => (string) $decoded['access_token'],
+        'expires_at'    => time() + max(60, (int) ($decoded['expires_in'] ?? 3600)),
+        'refresh_token' => isset($decoded['refresh_token']) ? (string) $decoded['refresh_token'] : '',
+    ];
+}
+
+function alcrosGoogleDriveExchangeOAuthCode(string $code): void
+{
+    $code = trim($code);
+    if ($code === '') {
+        throw new InvalidArgumentException('Google did not return an authorization code.');
+    }
+    if (!alcrosGoogleDriveOAuthClientConfigured()) {
+        throw new RuntimeException('Save OAuth Client ID and Client Secret before connecting Google Drive.');
+    }
+
+    $token = alcrosGoogleDriveOAuthTokenRequest([
+        'grant_type'    => 'authorization_code',
+        'code'          => $code,
+        'redirect_uri'  => alcrosGoogleDriveOAuthRedirectUri(),
+        'client_id'     => alcrosGoogleDriveOAuthClientId(),
+        'client_secret' => alcrosGoogleDriveOAuthClientSecret(),
+    ]);
+
+    if ($token['refresh_token'] !== '') {
+        setSetting('registry_backup_gdrive_oauth_refresh_token', $token['refresh_token']);
+    } elseif (!alcrosGoogleDriveOAuthConnected()) {
+        throw new RuntimeException('Google did not issue a refresh token. Remove ALCROS from your Google Account permissions and connect again.');
+    }
+
+    alcrosGoogleDriveClearAccessTokenCache();
+    alcrosGoogleDriveOAuthStoreConnectedEmail($token['token']);
+}
+
+function alcrosGoogleDriveOAuthStoreConnectedEmail(string $accessToken): void
+{
+    $ch = curl_init('https://www.googleapis.com/oauth2/v2/userinfo');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER     => ['Authorization: Bearer ' . $accessToken],
+        CURLOPT_TIMEOUT        => 30,
+    ]);
+    $response = curl_exec($ch);
+    curl_close($ch);
+    if (!is_string($response)) {
+        return;
+    }
+    $decoded = json_decode($response, true);
+    if (is_array($decoded) && !empty($decoded['email'])) {
+        setSetting('registry_backup_gdrive_oauth_email', (string) $decoded['email']);
+    }
+}
+
+function alcrosGoogleDriveBeginOAuth(string $state): string
+{
+    if (!alcrosGoogleDriveOAuthClientConfigured()) {
+        throw new RuntimeException('Save OAuth Client ID and Client Secret first.');
+    }
+
+    return 'https://accounts.google.com/o/oauth2/v2/auth?' . http_build_query([
+        'client_id'     => alcrosGoogleDriveOAuthClientId(),
+        'redirect_uri'  => alcrosGoogleDriveOAuthRedirectUri(),
+        'response_type' => 'code',
+        'scope'         => ALCROS_GDRIVE_SCOPE,
+        'access_type'   => 'offline',
+        'prompt'        => 'consent',
+        'state'         => $state,
+    ]);
+}
+
+function alcrosGoogleDriveHumanizeUploadError(string $message): string
+{
+    if (stripos($message, 'storage quota') === false && stripos($message, 'Service Accounts do not have storage quota') === false) {
+        return $message;
+    }
+
+    if (alcrosGoogleDriveAuthMode() === 'service_account') {
+        return 'Google blocked the upload: service accounts cannot store files in a personal “My Drive” folder. '
+            . 'Switch sign-in method to “Personal Gmail (Google sign-in)” below, or use Google Workspace with a folder on a Shared drive.';
+    }
+
+    return $message;
 }
 
 function alcrosGoogleDriveRetentionCount(): int
@@ -194,7 +388,7 @@ function alcrosGoogleDriveCreateJwt(array $serviceAccount): string
 }
 
 /** @return array{token: string, expires_at: int} */
-function alcrosGoogleDriveFetchAccessToken(): array
+function alcrosGoogleDriveFetchServiceAccountAccessToken(): array
 {
     $serviceAccount = alcrosGoogleDriveLoadServiceAccount();
     if ($serviceAccount === null) {
@@ -243,6 +437,40 @@ function alcrosGoogleDriveFetchAccessToken(): array
         'token'      => (string) $decoded['access_token'],
         'expires_at' => time() + $expiresIn,
     ];
+}
+
+/** @return array{token: string, expires_at: int} */
+function alcrosGoogleDriveFetchOAuthAccessToken(): array
+{
+    if (!alcrosGoogleDriveOAuthClientConfigured()) {
+        throw new RuntimeException('Google OAuth Client ID and Client Secret are not saved.');
+    }
+    $refresh = alcrosGoogleDriveOAuthRefreshToken();
+    if ($refresh === '') {
+        throw new RuntimeException('Connect Google Drive (Google sign-in) in System Settings → Backup.');
+    }
+
+    $token = alcrosGoogleDriveOAuthTokenRequest([
+        'grant_type'    => 'refresh_token',
+        'refresh_token' => $refresh,
+        'client_id'     => alcrosGoogleDriveOAuthClientId(),
+        'client_secret' => alcrosGoogleDriveOAuthClientSecret(),
+    ]);
+
+    return [
+        'token'      => $token['token'],
+        'expires_at' => $token['expires_at'],
+    ];
+}
+
+/** @return array{token: string, expires_at: int} */
+function alcrosGoogleDriveFetchAccessToken(): array
+{
+    if (alcrosGoogleDriveAuthMode() === 'service_account') {
+        return alcrosGoogleDriveFetchServiceAccountAccessToken();
+    }
+
+    return alcrosGoogleDriveFetchOAuthAccessToken();
 }
 
 function alcrosGoogleDriveAccessToken(): string
@@ -307,8 +535,8 @@ function alcrosGoogleDriveUploadRegistryZip(string $zipPath, string $filename): 
         return ['ok' => false, 'message' => 'Google Drive folder ID is not set.'];
     }
 
-    if (!alcrosGoogleDriveServiceAccountConfigured()) {
-        return ['ok' => false, 'message' => 'Google Drive service account JSON is not uploaded.'];
+    if (!alcrosGoogleDriveAuthConfigured()) {
+        return ['ok' => false, 'message' => 'Google Drive is not connected. Complete setup under System Settings → Backup.'];
     }
 
     if (!is_file($zipPath) || filesize($zipPath) === 0) {
@@ -326,6 +554,9 @@ function alcrosGoogleDriveUploadRegistryZip(string $zipPath, string $filename): 
 
             return $multipart;
         }
+        $multipart['message'] = alcrosGoogleDriveHumanizeUploadError($multipart['message']);
+
+        return $multipart;
     }
 
     $metadata = json_encode([
@@ -343,7 +574,7 @@ function alcrosGoogleDriveUploadRegistryZip(string $zipPath, string $filename): 
             $msg .= ' Check folder ID and that the folder is shared with the service account as Editor.';
         }
 
-        return ['ok' => false, 'message' => $msg];
+        return ['ok' => false, 'message' => alcrosGoogleDriveHumanizeUploadError($msg)];
     }
 
     $fileHandle = fopen($zipPath, 'rb');
@@ -378,7 +609,9 @@ function alcrosGoogleDriveUploadRegistryZip(string $zipPath, string $filename): 
     if ($uploadStatus < 200 || $uploadStatus >= 300) {
         $err = alcrosGoogleDriveApiErrorMessage($uploadBody);
 
-        return ['ok' => false, 'message' => 'Drive upload rejected' . ($err !== '' ? ': ' . $err : '.')];
+        $msg = 'Drive upload rejected' . ($err !== '' ? ': ' . $err : '.');
+
+        return ['ok' => false, 'message' => alcrosGoogleDriveHumanizeUploadError($msg)];
     }
 
     $decoded = json_decode($uploadBody, true);
@@ -457,7 +690,9 @@ function alcrosGoogleDriveUploadMultipart(
     if ($status < 200 || $status >= 300) {
         $err = alcrosGoogleDriveApiErrorMessage($response);
 
-        return ['ok' => false, 'message' => 'Drive upload rejected' . ($err !== '' ? ': ' . $err : ' (HTTP ' . $status . ').')];
+        $msg = 'Drive upload rejected' . ($err !== '' ? ': ' . $err : ' (HTTP ' . $status . ').');
+
+        return ['ok' => false, 'message' => alcrosGoogleDriveHumanizeUploadError($msg)];
     }
 
     $decoded = json_decode($response, true);
@@ -542,7 +777,7 @@ function alcrosGoogleDriveApiErrorMessage(string $body): string
 function alcrosGoogleDrivePruneOldUploads(): int
 {
     $folderId = alcrosGoogleDriveFolderId();
-    if ($folderId === '' || !alcrosGoogleDriveServiceAccountConfigured()) {
+    if ($folderId === '' || !alcrosGoogleDriveAuthConfigured()) {
         return 0;
     }
 
@@ -594,8 +829,8 @@ function alcrosGoogleDrivePruneOldUploads(): int
  */
 function alcrosGoogleDriveTestConnection(): array
 {
-    if (!alcrosGoogleDriveServiceAccountConfigured()) {
-        return ['ok' => false, 'message' => 'Upload a service account JSON file first.'];
+    if (!alcrosGoogleDriveAuthConfigured()) {
+        return ['ok' => false, 'message' => 'Complete Google Drive setup (sign-in or service account) first.'];
     }
 
     $folderId = alcrosGoogleDriveFolderId();
@@ -614,10 +849,16 @@ function alcrosGoogleDriveTestConnection(): array
     $check = alcrosGoogleDriveApiRequest('GET', $url, $accessToken);
     if (!$check['ok']) {
         $err = alcrosGoogleDriveApiErrorMessage($check['body']);
-        $email = alcrosGoogleDriveServiceAccountEmail();
-        $hint = $email !== ''
-            ? ' In Google Drive, open the folder → Share → add ' . $email . ' as Editor (notify off).'
-            : ' Share the folder with the service account email from your JSON key as Editor.';
+        if (alcrosGoogleDriveAuthMode() === 'oauth') {
+            $hint = ' Use a folder in the same Google account you connected'
+                . (alcrosGoogleDriveOAuthConnectedEmail() !== '' ? ' (' . alcrosGoogleDriveOAuthConnectedEmail() . ')' : '')
+                . ', and check the folder ID.';
+        } else {
+            $email = alcrosGoogleDriveServiceAccountEmail();
+            $hint = $email !== ''
+                ? ' Share the folder (on a Workspace Shared drive) with ' . $email . ' as Editor.'
+                : ' Share the folder with the service account as Editor (Shared drive only).';
+        }
 
         return [
             'ok'      => false,

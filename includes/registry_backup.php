@@ -287,6 +287,10 @@ function runAlcrosRegistryHostedBackup(PDO $pdo, bool $requireEnabled = true): a
                 if ($gdrivePruned > 0) {
                     $message .= ' Removed ' . $gdrivePruned . ' older Drive file(s).';
                 }
+                $pruneWarning = trim((string) ($gdrive['prune_warning'] ?? ''));
+                if ($pruneWarning !== '') {
+                    $message .= ' Could not prune old Drive copies: ' . $pruneWarning;
+                }
             } else {
                 $message .= ' Google Drive upload failed: ' . ($gdrive['message'] ?? 'unknown error');
             }

@@ -1,8 +1,6 @@
 <?php
 /**
- * Upload registry backup zips to Google Drive.
- * Personal @gmail.com: OAuth (uses your Google storage).
- * Google Workspace: service account + folder on a Shared drive.
+ * Upload registry backup zips to Google Drive (OAuth / personal Gmail).
  */
 
 require_once __DIR__ . '/duplicati_backup.php';
@@ -801,11 +799,16 @@ function alcrosGoogleDrivePruneOldUploads(): int
     }
 
     $accessToken = alcrosGoogleDriveAccessToken();
-    $query = rawurlencode(
-        "'" . str_replace("'", "\\'", $folderId) . "' in parents and trashed = false and name contains '" . ALCROS_GDRIVE_REGISTRY_PREFIX . "'"
-    );
-    $url = 'https://www.googleapis.com/drive/v3/files?q=' . $query
-        . '&fields=files(id,name,createdTime)&orderBy=createdTime desc&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true';
+    $driveQuery = "'" . str_replace("'", "\\'", $folderId) . "' in parents and trashed = false and name contains '"
+        . str_replace("'", "\\'", ALCROS_GDRIVE_REGISTRY_PREFIX) . "'";
+    $url = 'https://www.googleapis.com/drive/v3/files?' . http_build_query([
+        'q'                          => $driveQuery,
+        'fields'                     => 'files(id,name,createdTime)',
+        'orderBy'                    => 'createdTime desc',
+        'pageSize'                   => 100,
+        'supportsAllDrives'          => 'true',
+        'includeItemsFromAllDrives'  => 'true',
+    ], '', '&', PHP_QUERY_RFC3986);
 
     $list = alcrosGoogleDriveApiRequest('GET', $url, $accessToken);
     if (!$list['ok']) {
@@ -913,8 +916,12 @@ function alcrosGoogleDriveMaybeUploadRegistryBackup(string $zipPath, string $fil
             return $upload;
         }
 
-        $pruned = alcrosGoogleDrivePruneOldUploads();
-        $upload['pruned'] = $pruned;
+        try {
+            $upload['pruned'] = alcrosGoogleDrivePruneOldUploads();
+        } catch (Throwable $e) {
+            $upload['pruned'] = 0;
+            $upload['prune_warning'] = $e->getMessage();
+        }
 
         return $upload;
     } catch (Throwable $e) {

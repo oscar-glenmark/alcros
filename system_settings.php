@@ -387,13 +387,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 trim((string) ($_POST['registry_backup_gdrive_folder_id'] ?? ''))
             );
             $gdriveRetention = max(0, min(90, (int) ($_POST['registry_backup_gdrive_retention_count'] ?? 0)));
-            $gdriveAuthMode = ($_POST['registry_backup_gdrive_auth_mode'] ?? '') === 'service_account'
-                ? 'service_account'
-                : 'oauth';
             setSetting('registry_backup_gdrive_enabled', $gdriveEnabled);
             setSetting('registry_backup_gdrive_folder_id', $gdriveFolder);
             setSetting('registry_backup_gdrive_retention_count', (string) $gdriveRetention);
-            setSetting('registry_backup_gdrive_auth_mode', $gdriveAuthMode);
+            setSetting('registry_backup_gdrive_auth_mode', 'oauth');
             $oauthClientId = trim((string) ($_POST['registry_backup_gdrive_oauth_client_id'] ?? ''));
             if ($oauthClientId !== '') {
                 setSetting('registry_backup_gdrive_oauth_client_id', $oauthClientId);
@@ -404,22 +401,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             setSetting('registry_backup_gdrive_token', '');
             setSetting('registry_backup_gdrive_token_exp', '0');
-
-            if (!empty($_POST['registry_backup_gdrive_remove_credentials'])) {
-                alcrosGoogleDriveRemoveServiceAccount();
-            } else {
-                $jsonPaste = trim((string) ($_POST['registry_backup_gdrive_service_account_json'] ?? ''));
-                if ($jsonPaste !== '') {
-                    alcrosGoogleDriveSaveServiceAccountJson($jsonPaste);
-                } elseif (!empty($_FILES['registry_backup_gdrive_service_account_file']['tmp_name'])
-                    && is_uploaded_file($_FILES['registry_backup_gdrive_service_account_file']['tmp_name'])) {
-                    $uploaded = file_get_contents($_FILES['registry_backup_gdrive_service_account_file']['tmp_name']);
-                    if ($uploaded === false || trim($uploaded) === '') {
-                        throw new InvalidArgumentException('Could not read the uploaded service account JSON file.');
-                    }
-                    alcrosGoogleDriveSaveServiceAccountJson($uploaded);
-                }
-            }
 
             if ($enabled === '1' && trim(getSetting('registry_backup_cron_token', '')) === '') {
                 alcrosRegistryBackupRegenerateCronToken();
@@ -449,7 +430,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'Registry backup zip ' . ($result['filename'] ?? '') . ' (' . alcrosFormatBytes((int) ($result['bytes'] ?? 0)) . ')'
             );
             $flashMsg = (string) ($result['message'] ?? ('Registry backup created: ' . (string) ($result['filename'] ?? '')));
-            settingsFlashSet('success', $flashMsg);
+            $gdriveResult = $result['gdrive'] ?? null;
+            $flashType = 'success';
+            if (is_array($gdriveResult) && ($gdriveResult['ok'] ?? false) !== true) {
+                $flashType = 'warning';
+            } elseif (is_array($gdriveResult) && trim((string) ($gdriveResult['prune_warning'] ?? '')) !== '') {
+                $flashType = 'warning';
+            }
+            settingsFlashSet($flashType, $flashMsg);
             $handled = true;
         }
     } catch (InvalidArgumentException $e) {
@@ -539,12 +527,9 @@ $registryBackupArchives = $isAdmin ? alcrosRegistryBackupListArchives() : [];
 $registryBackupGdriveEnabled = $isAdmin && alcrosGoogleDriveBackupEnabled();
 $registryBackupGdriveFolderId = $isAdmin ? alcrosGoogleDriveFolderId() : '';
 $registryBackupGdriveRetention = $isAdmin ? (int) getSetting('registry_backup_gdrive_retention_count', '0') : 0;
-$registryBackupGdriveConfigured = $isAdmin && alcrosGoogleDriveServiceAccountConfigured();
-$registryBackupGdriveServiceEmail = $isAdmin ? alcrosGoogleDriveServiceAccountEmail() : '';
 $registryBackupGdriveLastRun = $isAdmin ? getSetting('registry_backup_gdrive_last_run_at', '') : '';
 $registryBackupGdriveLastStatus = $isAdmin ? getSetting('registry_backup_gdrive_last_status', '') : '';
 $registryBackupGdriveLastMessage = $isAdmin ? getSetting('registry_backup_gdrive_last_message', '') : '';
-$registryBackupGdriveAuthMode = $isAdmin ? alcrosGoogleDriveAuthMode() : 'oauth';
 $registryBackupGdriveOAuthClientId = $isAdmin ? alcrosGoogleDriveOAuthClientId() : '';
 $registryBackupGdriveOAuthConnected = $isAdmin && alcrosGoogleDriveOAuthConnected();
 $registryBackupGdriveOAuthEmail = $isAdmin ? alcrosGoogleDriveOAuthConnectedEmail() : '';
@@ -1241,186 +1226,184 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
 
                             <!-- Registry backup -->
                             <div class="p-5 sm:p-6 <?= $adminToolsSection !== 'backup' ? 'hidden' : '' ?>">
-                                <div class="flex flex-wrap items-start justify-between gap-3 mb-5">
-                                    <div class="min-w-0">
-                                        <div class="flex items-center gap-2">
-                                            <h3 class="text-base font-black text-slate-900">Registry backup</h3>
-                                            <details class="backup-scope-info">
-                                                <summary class="backup-scope-info__trigger" aria-label="What gets backed up">
-                                                    <i data-lucide="info" class="backup-scope-info__icon" aria-hidden="true"></i>
-                                                </summary>
-                                                <div class="backup-scope-info__panel" role="note">
-                                                    <p class="backup-scope-info__title">What gets backed up</p>
-                                                    <ul class="backup-scope-info__list">
-                                                        <li>Civil records (birth, death, marriage) and detail tables</li>
-                                                        <li>Staff accounts (login IDs, roles, password hashes, emails)</li>
-                                                        <li>Print templates, field positions, and calibrations</li>
-                                                        <li>Print settings (global offsets, mode, province/city labels)</li>
-                                                        <li>Staff profile photos and print form reference files</li>
-                                                    </ul>
-                                                    <p class="backup-scope-info__note">Requests, appointments, queue tickets, and activity logs are <strong>not</strong> included.</p>
-                                                </div>
-                                            </details>
+                                <div class="backup-page">
+                                    <div class="backup-page__head">
+                                        <div class="min-w-0">
+                                            <div class="backup-page__title-row">
+                                                <h3 class="backup-page__title">Registry backup</h3>
+                                                <details class="backup-scope-info">
+                                                    <summary class="backup-scope-info__trigger" aria-label="What gets backed up">
+                                                        <i data-lucide="info" class="backup-scope-info__icon" aria-hidden="true"></i>
+                                                    </summary>
+                                                    <div class="backup-scope-info__panel" role="note">
+                                                        <p class="backup-scope-info__title">What gets backed up</p>
+                                                        <ul class="backup-scope-info__list">
+                                                            <li>Civil records (birth, death, marriage) and detail tables</li>
+                                                            <li>Staff accounts (login IDs, roles, password hashes, emails)</li>
+                                                            <li>Print templates, field positions, and calibrations</li>
+                                                            <li>Print settings (global offsets, mode, province/city labels)</li>
+                                                            <li>Staff profile photos and print form reference files</li>
+                                                        </ul>
+                                                        <p class="backup-scope-info__note">Requests, appointments, queue tickets, and activity logs are <strong>not</strong> included.</p>
+                                                    </div>
+                                                </details>
+                                            </div>
+                                            <p class="backup-page__subtitle">Zip on the server, optional Google Drive copy, scheduled via cron URL.</p>
                                         </div>
-                                        <p class="text-xs text-slate-500 mt-1">Scheduled zip on the server, optional Google Drive copy. Tap <span class="font-semibold text-slate-600">i</span> for scope.</p>
+                                        <form method="POST" class="backup-toolbar">
+                                            <?= authFormField() ?>
+                                            <input type="hidden" name="settings_action" value="run_registry_backup">
+                                            <input type="hidden" name="active_tab" value="admin-tools">
+                                            <input type="hidden" name="admin_sub" value="backup">
+                                            <button type="submit" class="backup-btn backup-btn--primary">
+                                                <i data-lucide="play" class="w-4 h-4"></i> Run backup now
+                                            </button>
+                                        </form>
                                     </div>
-                                </div>
 
-                                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-                                    <div class="rounded-xl p-4 bg-slate-50 border border-slate-100">
-                                        <p class="text-[10px] font-bold text-slate-400 uppercase">Last export</p>
-                                        <p class="text-sm font-black text-slate-900 mt-1">
-                                            <?= $backupLastRun !== '' ? htmlspecialchars(formatReportDateTime($backupLastRun)) : 'Not run yet' ?>
-                                        </p>
+                                    <div class="backup-glance">
+                                        <div class="backup-glance__block">
+                                            <p class="backup-glance__label">Dataset snapshot</p>
+                                            <div class="backup-glance__metrics">
+                                                <div><span class="text-slate-400">Records</span><strong><?= number_format($backupRecordCount) ?></strong></div>
+                                                <div><span class="text-slate-400">Staff</span><strong><?= number_format($backupStaffCount) ?></strong></div>
+                                                <div><span class="text-slate-400">Bundle</span><strong><?= htmlspecialchars(alcrosFormatBytes($backupDirSize)) ?></strong></div>
+                                                <div><span class="text-slate-400">Last export</span><strong><?= $backupLastRun !== '' ? htmlspecialchars(formatReportDateTime($backupLastRun)) : '—' ?></strong></div>
+                                            </div>
+                                        </div>
+                                        <div class="backup-glance__block">
+                                            <p class="backup-glance__label">Latest zip archive</p>
+                                            <div class="backup-glance__metrics">
+                                                <div><span class="text-slate-400">Last run</span><strong><?= $registryBackupLastRun !== '' ? htmlspecialchars(formatReportDateTime($registryBackupLastRun)) : 'Not yet' ?></strong></div>
+                                                <div><span class="text-slate-400">Status</span><strong><?= $registryBackupLastStatus !== '' ? htmlspecialchars(ucfirst($registryBackupLastStatus)) : '—' ?></strong></div>
+                                                <div><span class="text-slate-400">Schedule</span><strong><span class="backup-badge <?= $registryBackupEnabled ? 'backup-badge--on' : 'backup-badge--off' ?>"><?= $registryBackupEnabled ? 'On' : 'Off' ?></span></strong></div>
+                                                <div class="min-w-0 flex-1"><span class="text-slate-400">File</span><strong class="truncate"><?= $registryBackupLastFilename !== '' ? htmlspecialchars($registryBackupLastFilename) : '—' ?></strong></div>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="rounded-xl p-4 bg-slate-50 border border-slate-100">
-                                        <p class="text-[10px] font-bold text-slate-400 uppercase">Bundle size</p>
-                                        <p class="text-sm font-black text-slate-900 mt-1"><?= htmlspecialchars(alcrosFormatBytes($backupDirSize)) ?></p>
-                                    </div>
-                                    <div class="rounded-xl p-4 bg-slate-50 border border-slate-100">
-                                        <p class="text-[10px] font-bold text-slate-400 uppercase">Civil records</p>
-                                        <p class="text-sm font-black text-slate-900 mt-1"><?= number_format($backupRecordCount) ?></p>
-                                    </div>
-                                    <div class="rounded-xl p-4 bg-slate-50 border border-slate-100">
-                                        <p class="text-[10px] font-bold text-slate-400 uppercase">Staff accounts</p>
-                                        <p class="text-sm font-black text-slate-900 mt-1"><?= number_format($backupStaffCount) ?></p>
-                                    </div>
-                                </div>
 
-                                <?php if ($backupLastMessage !== '' && $backupLastStatus === 'error'): ?>
-                                <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 mb-4">
-                                    Export error: <?= htmlspecialchars($backupLastMessage) ?>
-                                </div>
-                                <?php endif; ?>
+                                    <?php if ($backupLastMessage !== '' && $backupLastStatus === 'error'): ?>
+                                    <div class="backup-alert backup-alert--error">Export error: <?= htmlspecialchars($backupLastMessage) ?></div>
+                                    <?php endif; ?>
+                                    <?php if ($registryBackupLastMessage !== '' && $registryBackupLastStatus === 'error'): ?>
+                                    <div class="backup-alert backup-alert--error"><?= htmlspecialchars($registryBackupLastMessage) ?></div>
+                                    <?php endif; ?>
 
-                                <div class="rounded-xl border border-blue-200 bg-blue-50/40 p-5 mb-6">
-                                    <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2 mb-1">
-                                        <i data-lucide="cloud-upload" class="w-4 h-4"></i> Automatic registry backup (hosted / SmarterASP)
-                                    </h3>
-                                    <p class="text-xs text-slate-600 mb-4">Creates a zip on the server (see <span class="font-semibold">i</span> next to Registry backup for scope). SmarterASP calls a secret URL on a schedule; download zips via FTP or the list below.</p>
-
-                                    <form method="POST" enctype="multipart/form-data" class="space-y-4 mb-5">
+                                    <form method="POST" enctype="multipart/form-data" id="registryBackupForm" class="flex flex-col gap-5">
                                         <?= authFormField() ?>
                                         <input type="hidden" name="settings_action" value="save_registry_backup_settings">
                                         <input type="hidden" name="active_tab" value="admin-tools">
                                         <input type="hidden" name="admin_sub" value="backup">
-                                        <label class="flex items-start gap-3 cursor-pointer">
-                                            <input type="checkbox" name="registry_backup_enabled" value="1" class="mt-1 rounded border-slate-300" <?= $registryBackupEnabled ? 'checked' : '' ?>>
-                                            <span class="text-xs text-slate-700"><strong>Enable scheduled registry backup</strong> — required for the cron URL; you can still run a backup manually when unchecked.</span>
-                                        </label>
-                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            <div>
-                                                <label class="text-[11px] font-bold uppercase text-slate-500">Keep zip files on server</label>
-                                                <input type="number" name="registry_backup_retention_count" min="3" max="90" value="<?= (int) $registryBackupRetention ?>" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                                                <p class="text-[11px] text-slate-400 mt-1">Oldest files are deleted after this many successful runs (3–90).</p>
-                                            </div>
-                                            <div>
-                                                <label class="text-[11px] font-bold uppercase text-slate-500">Public site URL (optional)</label>
-                                                <input type="url" name="registry_backup_public_url" value="<?= htmlspecialchars($registryBackupPublicUrl) ?>" placeholder="https://yourdomain.com" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                                                <p class="text-[11px] text-slate-400 mt-1">Use if the cron URL shown below is wrong; must match HTTPS domain.</p>
-                                            </div>
-                                            </div>
 
-                                        <div class="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 space-y-4">
-                                            <div>
-                                                <h4 class="text-xs font-bold text-slate-900 flex items-center gap-2">
-                                                    <i data-lucide="hard-drive" class="w-4 h-4"></i> Google Drive cloud copy
-                                                </h4>
-                                                <p class="text-[11px] text-slate-600 mt-1">After each successful zip, ALCROS uploads the same file to your Drive folder. Use <strong>Google sign-in</strong> for personal Gmail; service accounts only work with Google Workspace Shared drives.</p>
+                                        <section class="backup-card">
+                                            <div class="backup-card__head">
+                                                <h4 class="backup-card__title"><i data-lucide="server" class="w-4 h-4 text-slate-500"></i> Server &amp; schedule</h4>
                                             </div>
-                                            <fieldset class="space-y-2">
-                                                <legend class="text-[11px] font-bold uppercase text-slate-500">Sign-in method</legend>
-                                                <label class="flex items-start gap-2 cursor-pointer text-xs text-slate-700">
-                                                    <input type="radio" name="registry_backup_gdrive_auth_mode" value="oauth" class="mt-0.5" <?= $registryBackupGdriveAuthMode === 'oauth' ? 'checked' : '' ?>>
-                                                    <span><strong>Personal Gmail (recommended)</strong> — sign in with your Google account; uploads use your Drive storage.</span>
+                                            <div class="backup-card__body">
+                                                <label class="backup-toggle">
+                                                    <input type="checkbox" name="registry_backup_enabled" value="1" class="mt-0.5 rounded border-slate-300" <?= $registryBackupEnabled ? 'checked' : '' ?>>
+                                                    <span><strong>Enable scheduled registry backup</strong><br>Turn this on before using the cron URL. Manual “Run backup now” works either way.</span>
                                                 </label>
-                                                <label class="flex items-start gap-2 cursor-pointer text-xs text-slate-700">
-                                                    <input type="radio" name="registry_backup_gdrive_auth_mode" value="service_account" class="mt-0.5" <?= $registryBackupGdriveAuthMode === 'service_account' ? 'checked' : '' ?>>
-                                                    <span><strong>Google Workspace</strong> — service account JSON + folder on a <strong>Shared drive</strong> (not personal My Drive).</span>
-                                                </label>
-                                            </fieldset>
-                                            <label class="flex items-start gap-3 cursor-pointer">
-                                                <input type="checkbox" name="registry_backup_gdrive_enabled" value="1" class="mt-1 rounded border-slate-300" <?= $registryBackupGdriveEnabled ? 'checked' : '' ?>>
-                                                <span class="text-xs text-slate-700"><strong>Upload registry zips to Google Drive</strong></span>
-                                            </label>
-                                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                <div>
-                                                    <label class="text-[11px] font-bold uppercase text-slate-500">Drive folder ID</label>
-                                                    <input type="text" name="registry_backup_gdrive_folder_id" value="<?= htmlspecialchars($registryBackupGdriveFolderId) ?>" placeholder="1abc… or paste full https://drive.google.com/…/folders/…" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono">
-                                                    <p class="text-[11px] text-slate-400 mt-1">Paste the folder ID only, or the full folder URL — ALCROS saves the ID.</p>
-                                                </div>
-                                                <div>
-                                                    <label class="text-[11px] font-bold uppercase text-slate-500">Keep copies on Drive</label>
-                                                    <input type="number" name="registry_backup_gdrive_retention_count" min="0" max="90" value="<?= (int) $registryBackupGdriveRetention ?>" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                                                    <p class="text-[11px] text-slate-400 mt-1">0 = same as server retention (<?= (int) $registryBackupRetention ?>).</p>
-                                                </div>
-                                            </div>
-                                            <div class="rounded-lg border border-slate-200 bg-white p-3 text-[11px] text-slate-600 space-y-3">
-                                                <p class="font-bold text-slate-800">Personal Gmail — Google sign-in</p>
-                                                <ol class="list-decimal pl-4 space-y-1">
-                                                    <li>Cloud Console → same project → <strong>APIs & Services → Credentials → Create credentials → OAuth client ID</strong> → type <strong>Web application</strong>.</li>
-                                                    <li>Add authorized redirect URI (exact): <code class="block mt-1 break-all bg-slate-50 px-1 rounded font-mono text-[10px]"><?= htmlspecialchars($registryBackupGdriveOAuthRedirectUri) ?></code></li>
-                                                    <li>Paste Client ID and Client Secret below → <strong>Save</strong> → click <strong>Connect Google Drive</strong>.</li>
-                                                    <li>In Drive, create a folder in <em>your</em> My Drive → copy folder ID above (no sharing needed).</li>
-                                                </ol>
-                                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                    <div>
-                                                        <label class="text-[10px] font-bold uppercase text-slate-500">OAuth Client ID</label>
-                                                        <input type="text" name="registry_backup_gdrive_oauth_client_id" value="<?= htmlspecialchars($registryBackupGdriveOAuthClientId) ?>" autocomplete="off" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono">
+                                                <div class="backup-field-grid backup-field-grid--2">
+                                                    <div class="backup-field">
+                                                        <label for="registry_backup_retention_count">Keep zips on server</label>
+                                                        <input type="number" id="registry_backup_retention_count" name="registry_backup_retention_count" min="3" max="90" value="<?= (int) $registryBackupRetention ?>">
+                                                        <p class="backup-field__hint">Oldest files removed after this many runs (3–90).</p>
                                                     </div>
-                                                    <div>
-                                                        <label class="text-[10px] font-bold uppercase text-slate-500">OAuth Client Secret</label>
-                                                        <input type="password" name="registry_backup_gdrive_oauth_client_secret" value="" placeholder="<?= getSetting('registry_backup_gdrive_oauth_client_secret', '') !== '' ? '•••••••• (saved — leave blank to keep)' : '' ?>" autocomplete="new-password" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono">
+                                                    <div class="backup-field">
+                                                        <label for="registry_backup_public_url">Public site URL</label>
+                                                        <input type="url" id="registry_backup_public_url" name="registry_backup_public_url" value="<?= htmlspecialchars($registryBackupPublicUrl) ?>" placeholder="https://alcros.publicvm.com">
+                                                        <p class="backup-field__hint">Optional — fixes cron/OAuth URLs if the host guess is wrong.</p>
                                                     </div>
                                                 </div>
-                                                <?php if ($registryBackupGdriveOAuthConnected): ?>
-                                                <p class="text-emerald-800">Connected as <span class="font-mono"><?= htmlspecialchars($registryBackupGdriveOAuthEmail !== '' ? $registryBackupGdriveOAuthEmail : 'Google account') ?></span></p>
+                                            </div>
+                                        </section>
+
+                                        <section class="backup-card">
+                                            <div class="backup-card__head">
+                                                <h4 class="backup-card__title"><i data-lucide="cloud" class="w-4 h-4 text-slate-500"></i> Google Drive</h4>
+                                                <?php if ($registryBackupGdriveEnabled): ?>
+                                                <span class="backup-badge backup-badge--on">Upload on</span>
                                                 <?php else: ?>
-                                                <p class="text-amber-800">Not connected — save Client ID/Secret, then use Connect Google Drive.</p>
+                                                <span class="backup-badge backup-badge--off">Upload off</span>
                                                 <?php endif; ?>
-                                                <div class="flex flex-wrap gap-2">
-                                                    <a href="<?= htmlspecialchars($registryBackupGdriveConnectUrl) ?>" class="inline-flex items-center gap-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 px-3 py-2 rounded-lg text-xs font-bold">
-                                                        <i data-lucide="log-in" class="w-4 h-4"></i> Connect Google Drive
+                                            </div>
+                                            <div class="backup-card__body">
+                                                <label class="backup-toggle">
+                                                    <input type="checkbox" name="registry_backup_gdrive_enabled" value="1" class="mt-0.5 rounded border-slate-300" <?= $registryBackupGdriveEnabled ? 'checked' : '' ?>>
+                                                    <span><strong>Upload each zip to Google Drive</strong><br>Sign in with your Gmail; zips go to a folder in your My Drive.</span>
+                                                </label>
+
+                                                <div class="backup-field-grid backup-field-grid--2">
+                                                    <div class="backup-field">
+                                                        <label for="registry_backup_gdrive_folder_id">Drive folder ID</label>
+                                                        <input type="text" id="registry_backup_gdrive_folder_id" name="registry_backup_gdrive_folder_id" class="font-mono" value="<?= htmlspecialchars($registryBackupGdriveFolderId) ?>" placeholder="Folder ID or full Drive URL">
+                                                        <p class="backup-field__hint">Folder in the connected Google account.</p>
+                                                    </div>
+                                                    <div class="backup-field">
+                                                        <label for="registry_backup_gdrive_retention_count">Keep copies on Drive</label>
+                                                        <input type="number" id="registry_backup_gdrive_retention_count" name="registry_backup_gdrive_retention_count" min="0" max="90" value="<?= (int) $registryBackupGdriveRetention ?>">
+                                                        <p class="backup-field__hint">0 = match server retention (<?= (int) $registryBackupRetention ?>).</p>
+                                                    </div>
+                                                </div>
+
+                                                <div class="backup-toolbar">
+                                                    <?php if ($registryBackupGdriveOAuthConnected): ?>
+                                                    <p class="backup-status-line backup-status-line--ok">Connected as <?= htmlspecialchars($registryBackupGdriveOAuthEmail !== '' ? $registryBackupGdriveOAuthEmail : 'Google account') ?></p>
+                                                    <?php else: ?>
+                                                    <p class="backup-status-line backup-status-line--bad">Not connected — save Client ID/Secret, then connect.</p>
+                                                    <?php endif; ?>
+                                                    <a href="<?= htmlspecialchars($registryBackupGdriveConnectUrl) ?>" class="backup-btn backup-btn--ghost">
+                                                        <i data-lucide="log-in" class="w-4 h-4"></i> Connect
                                                     </a>
                                                     <?php if ($registryBackupGdriveOAuthConnected): ?>
-                                                    <button type="submit" form="gdriveDisconnectForm" class="inline-flex items-center gap-2 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-xs font-bold bg-red-50 hover:bg-red-100">Disconnect sign-in</button>
+                                                    <button type="submit" form="gdriveDisconnectForm" class="backup-btn backup-btn--ghost">Disconnect</button>
                                                     <?php endif; ?>
                                                 </div>
-                                            </div>
-                                            <details class="rounded-lg border border-slate-200 bg-slate-50/80 p-3 text-[11px] text-slate-600">
-                                                <summary class="font-bold text-slate-800 cursor-pointer">Google Workspace — service account (advanced)</summary>
-                                                <ol class="list-decimal pl-4 space-y-1 mt-2">
-                                                    <li>Enable Drive API → service account → JSON key → upload below.</li>
-                                                    <li>Create a <strong>Shared drive</strong> → add service account as <strong>Content manager</strong> → folder inside it → folder ID above.</li>
-                                                </ol>
-                                                <?php if ($registryBackupGdriveConfigured): ?>
-                                                <p class="text-emerald-800 mt-2">Service account: <span class="font-mono"><?= htmlspecialchars($registryBackupGdriveServiceEmail) ?></span></p>
-                                                <?php endif; ?>
-                                                <div class="mt-2">
-                                                    <label class="text-[10px] font-bold uppercase text-slate-500">Service account JSON file</label>
-                                                    <input type="file" name="registry_backup_gdrive_service_account_file" accept=".json,application/json" class="mt-1 block w-full text-xs">
-                                                </div>
-                                                <div class="mt-2">
-                                                    <label class="text-[10px] font-bold uppercase text-slate-500">Or paste JSON</label>
-                                                    <textarea name="registry_backup_gdrive_service_account_json" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono"></textarea>
-                                                </div>
-                                                <?php if ($registryBackupGdriveConfigured): ?>
-                                                <label class="flex items-start gap-2 cursor-pointer text-xs text-red-700 mt-2">
-                                                    <input type="checkbox" name="registry_backup_gdrive_remove_credentials" value="1" class="mt-0.5 rounded border-red-300">
-                                                    Remove stored service account JSON
-                                                </label>
-                                                <?php endif; ?>
-                                            </details>
-                                            <?php if ($registryBackupGdriveLastMessage !== ''): ?>
-                                            <p class="text-xs <?= $registryBackupGdriveLastStatus === 'success' ? 'text-emerald-800' : 'text-red-800' ?>">
-                                                Last Drive upload: <?= htmlspecialchars($registryBackupGdriveLastRun !== '' ? formatReportDateTime($registryBackupGdriveLastRun) . ' — ' : '') ?><?= htmlspecialchars($registryBackupGdriveLastMessage) ?>
-                                            </p>
-                                            <?php endif; ?>
-                                        </div>
 
-                                        <button type="submit" class="inline-flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold">
-                                            <i data-lucide="save" class="w-4 h-4"></i> Save registry backup settings
-                                        </button>
+                                                <details class="backup-details">
+                                                    <summary>Google Cloud setup (OAuth) <i data-lucide="chevron-down" class="backup-details__chevron"></i></summary>
+                                                    <div class="backup-details__body">
+                                                        <ol>
+                                                            <li>Enable <strong>Google Drive API</strong> → create <strong>OAuth client ID</strong> (Web application).</li>
+                                                            <li>Redirect URI (exact): <code class="block mt-1 break-all font-mono text-[10px] bg-slate-50 p-1 rounded"><?= htmlspecialchars($registryBackupGdriveOAuthRedirectUri) ?></code></li>
+                                                            <li>Consent screen: <strong>Testing</strong> → add your Gmail under <strong>Test users</strong>.</li>
+                                                            <li>Save Client ID/Secret below → <strong>Save settings</strong> → <strong>Connect</strong>.</li>
+                                                        </ol>
+                                                        <div class="backup-field-grid backup-field-grid--2 mt-3">
+                                                            <div class="backup-field">
+                                                                <label for="registry_backup_gdrive_oauth_client_id">Client ID</label>
+                                                                <input type="text" id="registry_backup_gdrive_oauth_client_id" name="registry_backup_gdrive_oauth_client_id" class="font-mono" value="<?= htmlspecialchars($registryBackupGdriveOAuthClientId) ?>" autocomplete="off">
+                                                            </div>
+                                                            <div class="backup-field">
+                                                                <label for="registry_backup_gdrive_oauth_client_secret">Client secret</label>
+                                                                <input type="password" id="registry_backup_gdrive_oauth_client_secret" name="registry_backup_gdrive_oauth_client_secret" class="font-mono" value="" placeholder="<?= getSetting('registry_backup_gdrive_oauth_client_secret', '') !== '' ? 'Saved — leave blank to keep' : '' ?>" autocomplete="new-password">
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </details>
+
+                                                <?php if ($registryBackupGdriveLastMessage !== ''): ?>
+                                                <p class="backup-status-line <?= $registryBackupGdriveLastStatus === 'success' ? 'backup-status-line--ok' : 'backup-status-line--bad' ?>">
+                                                    Last Drive upload<?= $registryBackupGdriveLastRun !== '' ? ' · ' . htmlspecialchars(formatReportDateTime($registryBackupGdriveLastRun)) : '' ?>: <?= htmlspecialchars($registryBackupGdriveLastMessage) ?>
+                                                </p>
+                                                <?php endif; ?>
+                                            </div>
+                                        </section>
+
+                                        <div class="backup-save-bar">
+                                            <div class="backup-toolbar">
+                                                <button type="submit" class="backup-btn backup-btn--save">
+                                                    <i data-lucide="save" class="w-4 h-4"></i> Save settings
+                                                </button>
+                                                <button type="submit" form="registryGdriveTestForm" class="backup-btn backup-btn--accent">
+                                                    <i data-lucide="plug" class="w-4 h-4"></i> Test Drive
+                                                </button>
+                                                <button type="submit" form="registryBackupTokenForm" class="backup-btn backup-btn--ghost">
+                                                    <i data-lucide="key-round" class="w-4 h-4"></i> Regenerate cron token
+                                                </button>
+                                            </div>
+                                        </div>
                                     </form>
 
                                     <form method="POST" id="gdriveDisconnectForm" class="hidden">
@@ -1429,91 +1412,60 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                         <input type="hidden" name="active_tab" value="admin-tools">
                                         <input type="hidden" name="admin_sub" value="backup">
                                     </form>
-
-                                    <form method="POST" class="inline-block mb-4">
+                                    <form method="POST" id="registryGdriveTestForm" class="hidden">
                                         <?= authFormField() ?>
                                         <input type="hidden" name="settings_action" value="test_registry_gdrive">
                                         <input type="hidden" name="active_tab" value="admin-tools">
                                         <input type="hidden" name="admin_sub" value="backup">
-                                        <button type="submit" class="inline-flex items-center gap-2 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 px-4 py-2.5 rounded-xl text-xs font-bold">
-                                            <i data-lucide="plug" class="w-4 h-4"></i> Test Google Drive connection
-                                        </button>
+                                    </form>
+                                    <form method="POST" id="registryBackupTokenForm" class="hidden" onsubmit="return confirm('Regenerate the backup URL token? Update your schedule task with the new URL.');">
+                                        <?= authFormField() ?>
+                                        <input type="hidden" name="settings_action" value="regenerate_registry_backup_token">
+                                        <input type="hidden" name="active_tab" value="admin-tools">
+                                        <input type="hidden" name="admin_sub" value="backup">
                                     </form>
 
-                                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                                        <div class="rounded-lg bg-white border border-blue-100 p-3">
-                                            <p class="text-[10px] font-bold text-slate-400 uppercase">Last run</p>
-                                            <p class="text-sm font-black text-slate-900 mt-1"><?= $registryBackupLastRun !== '' ? htmlspecialchars(formatReportDateTime($registryBackupLastRun)) : 'Not run yet' ?></p>
-                                        </div>
-                                        <div class="rounded-lg bg-white border border-blue-100 p-3">
-                                            <p class="text-[10px] font-bold text-slate-400 uppercase">Status</p>
-                                            <p class="text-sm font-black text-slate-900 mt-1"><?= $registryBackupLastStatus !== '' ? htmlspecialchars(ucfirst($registryBackupLastStatus)) : '—' ?></p>
-                                        </div>
-                                        <div class="rounded-lg bg-white border border-blue-100 p-3 sm:col-span-2">
-                                            <p class="text-[10px] font-bold text-slate-400 uppercase">Latest file</p>
-                                            <p class="text-sm font-black text-slate-900 mt-1 truncate"><?= $registryBackupLastFilename !== '' ? htmlspecialchars($registryBackupLastFilename) : '—' ?></p>
-                                        </div>
-                                    </div>
-                                    <?php if ($registryBackupLastMessage !== '' && $registryBackupLastStatus === 'error'): ?>
-                                    <div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 mb-4"><?= htmlspecialchars($registryBackupLastMessage) ?></div>
-                                    <?php endif; ?>
-
-                                    <div class="flex flex-wrap gap-2 mb-4">
-                                        <form method="POST">
-                                            <?= authFormField() ?>
-                                            <input type="hidden" name="settings_action" value="run_registry_backup">
-                                            <input type="hidden" name="active_tab" value="admin-tools">
-                                            <input type="hidden" name="admin_sub" value="backup">
-                                            <button type="submit" class="inline-flex items-center gap-2 bg-slate-700 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold">
-                                                <i data-lucide="play" class="w-4 h-4"></i> Run registry backup now
-                                            </button>
-                                        </form>
-                                        <form method="POST" onsubmit="return confirm('Regenerate the backup URL token? Update SmarterASP Schedule Task with the new URL.');">
-                                            <?= authFormField() ?>
-                                            <input type="hidden" name="settings_action" value="regenerate_registry_backup_token">
-                                            <input type="hidden" name="active_tab" value="admin-tools">
-                                            <input type="hidden" name="admin_sub" value="backup">
-                                            <button type="submit" class="inline-flex items-center gap-2 border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 px-4 py-2.5 rounded-xl text-xs font-bold">
-                                                <i data-lucide="key-round" class="w-4 h-4"></i> Regenerate URL token
-                                            </button>
-                                        </form>
-                                    </div>
-
-                                    <?php if ($showHostedScheduleTasks): ?>
-                                    <div class="rounded-lg border border-violet-200 bg-violet-50/60 p-4 mb-4">
-                                        <p class="text-sm font-bold text-slate-900 mb-2">SmarterASP.NET — Schedule Tasks</p>
-                                        <p class="text-xs text-slate-600 mb-3">Control Panel → <strong>Advance</strong> → <strong>Schedule Tasks</strong> → <strong>Call URL</strong> (HTTP GET). Step-by-step: <code class="bg-white px-1 rounded border border-slate-200">deploy/SMARTERASP.md</code>.</p>
-                                        <div class="space-y-3">
-                                            <div>
-                                                <p class="text-[11px] font-bold uppercase text-slate-500 mb-1">Appointment reminders — every 15 minutes</p>
-                                                <div class="rounded-lg border border-violet-100 bg-white px-3 py-2 font-mono text-[11px] text-slate-800 break-all"><?= htmlspecialchars($appointmentRemindersCronUrl) ?></div>
+                                    <details class="backup-details">
+                                        <summary>Schedule task URLs (SmarterASP / cron) <i data-lucide="chevron-down" class="backup-details__chevron"></i></summary>
+                                        <div class="backup-details__body space-y-3">
+                                            <?php if ($showHostedScheduleTasks): ?>
+                                            <p>Control Panel → <strong>Advance</strong> → <strong>Schedule Tasks</strong> → <strong>Call URL</strong>. See <code class="bg-slate-50 px-1 rounded">deploy/SMARTERASP.md</code>.</p>
+                                            <?php endif; ?>
+                                            <div class="backup-field">
+                                                <label>Appointment reminders (every 15 min)</label>
+                                                <div class="font-mono text-[11px] break-all bg-slate-50 border border-slate-200 rounded-md p-2"><?= htmlspecialchars($appointmentRemindersCronUrl) ?></div>
                                             </div>
-                                            <div>
-                                                <p class="text-[11px] font-bold uppercase text-slate-500 mb-1">Registry backup — once daily (recommended 2:00 AM server time)</p>
-                                                <div class="rounded-lg border border-violet-100 bg-white px-3 py-2 font-mono text-[11px] text-slate-800 break-all"><?= htmlspecialchars($registryBackupCronUrl) ?></div>
-                                                <p class="text-[11px] text-amber-800 mt-2">Turn on <strong>Enable scheduled registry backup</strong> above before relying on this task. First run: open the URL once in a browser (while logged in is not required) — expect JSON <code class="bg-white px-1 rounded">{"ok":true,...}</code>.</p>
+                                            <div class="backup-field">
+                                                <label>Registry backup (daily, e.g. 2:00 AM)</label>
+                                                <div class="font-mono text-[11px] break-all bg-slate-50 border border-slate-200 rounded-md p-2"><?= htmlspecialchars($registryBackupCronUrl) ?></div>
+                                                <p class="backup-field__hint">Enable scheduled backup above first. Test in browser — expect JSON <code>{"ok":true,...}</code>.</p>
+                                            </div>
                                         </div>
-                                        </div>
-                                    </div>
-                                        <?php else: ?>
-                                    <p class="text-[11px] text-slate-500 mb-4">Cron URL (for any host that supports HTTP GET schedules): <span class="font-mono break-all"><?= htmlspecialchars($registryBackupCronUrl) ?></span></p>
-                                    <?php endif; ?>
+                                    </details>
 
-                                    <?php if ($registryBackupArchives !== []): ?>
-                                    <p class="text-[11px] font-bold uppercase text-slate-500 mb-2">Stored archives (download or copy via FTP)</p>
-                                    <p class="text-[11px] text-slate-500 mb-2">Server folder: <code class="bg-white px-1 rounded border border-slate-200">storage/backups/registry/</code> — blocked from public web access.</p>
-                                    <ul class="space-y-2">
-                                        <?php foreach ($registryBackupArchives as $archive): ?>
-                                        <li class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs">
-                                            <span class="font-mono text-slate-800"><?= htmlspecialchars($archive['filename']) ?></span>
-                                            <span class="text-slate-500"><?= htmlspecialchars(alcrosFormatBytes($archive['size'])) ?> · <?= htmlspecialchars(formatReportDateTime(date('Y-m-d H:i:s', $archive['mtime']))) ?></span>
-                                            <a href="<?= htmlspecialchars(buildAuthUrl('system_settings.php', ['tab' => 'admin-tools', 'admin_sub' => 'backup', 'action' => 'download_registry_backup', 'file' => $archive['filename']])) ?>" class="text-blue-600 font-semibold hover:underline inline-flex items-center gap-1">
-                                                <i data-lucide="download" class="w-3.5 h-3.5"></i> Download
-                                            </a>
-                                        </li>
-                                                    <?php endforeach; ?>
-                                    </ul>
-                                        <?php endif; ?>
+                                    <details class="backup-details">
+                                        <summary>Stored backup zips on server (<?= count($registryBackupArchives) ?>) <i data-lucide="chevron-down" class="backup-details__chevron"></i></summary>
+                                        <div class="backup-details__body">
+                                            <p class="backup-field__hint m-0">Folder <code class="bg-slate-50 px-1 rounded text-[11px]">storage/backups/registry/</code> — download here or via FTP.</p>
+                                            <?php if ($registryBackupArchives === []): ?>
+                                            <p class="text-slate-500 mt-3 mb-0">No zip archives yet. Run a backup to create the first file.</p>
+                                            <?php else: ?>
+                                            <ul class="backup-archives-list">
+                                                <?php foreach ($registryBackupArchives as $archive): ?>
+                                                <li class="backup-archives-list__item">
+                                                    <div class="backup-archives-list__meta">
+                                                        <span class="backup-archives-list__name"><?= htmlspecialchars($archive['filename']) ?></span>
+                                                        <span class="backup-archives-list__sub"><?= htmlspecialchars(alcrosFormatBytes($archive['size'])) ?> · <?= htmlspecialchars(formatReportDateTime(date('Y-m-d H:i:s', $archive['mtime']))) ?></span>
+                                                    </div>
+                                                    <a href="<?= htmlspecialchars(buildAuthUrl('system_settings.php', ['tab' => 'admin-tools', 'admin_sub' => 'backup', 'action' => 'download_registry_backup', 'file' => $archive['filename']])) ?>" class="backup-btn backup-btn--ghost shrink-0">
+                                                        <i data-lucide="download" class="w-3.5 h-3.5"></i> Download
+                                                    </a>
+                                                </li>
+                                                <?php endforeach; ?>
+                                            </ul>
+                                            <?php endif; ?>
+                                        </div>
+                                    </details>
                                 </div>
                             </div>
 

@@ -170,9 +170,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             }
 
-        } catch (PDOException $e) {
+        } catch (Throwable $e) {
 
             $error = dbConnectionHelpMessage();
+            $sqlMsg = $e->getMessage();
+            if (str_contains($sqlMsg, 'Unknown column')
+                || str_contains($sqlMsg, 'Base table or view not found')
+                || str_contains($sqlMsg, "doesn't exist")) {
+                $error = 'Database schema does not match this ALCROS version. In SmarterASP phpMyAdmin, back up your database, then import database/alcros.sql.';
+            }
 
         }
 

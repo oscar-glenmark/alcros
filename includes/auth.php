@@ -98,11 +98,6 @@ function ensureStaffRememberColumns(PDO $pdo): void
     }
     $done = true;
 
-    if (!function_exists('ensureAlcrosSchemaReorganization')) {
-        require_once __DIR__ . '/schema_reorganization.php';
-    }
-    ensureAlcrosSchemaReorganization($pdo);
-
     try {
         $pdo->query('SELECT remember_token_hash FROM staff LIMIT 1');
     } catch (Throwable) {
@@ -186,12 +181,16 @@ function staffRememberMeRevokeRaw(PDO $pdo, string $raw): void
         return;
     }
 
-    ensureStaffRememberColumns($pdo);
-    $hash = hash('sha256', $raw);
-    $pdo->prepare(
-        'UPDATE staff SET remember_token_hash = NULL, remember_token_expires_at = NULL
-         WHERE remember_token_hash = ?'
-    )->execute([$hash]);
+    try {
+        ensureStaffRememberColumns($pdo);
+        $hash = hash('sha256', $raw);
+        $pdo->prepare(
+            'UPDATE staff SET remember_token_hash = NULL, remember_token_expires_at = NULL
+             WHERE remember_token_hash = ?'
+        )->execute([$hash]);
+    } catch (Throwable) {
+        // Non-fatal when remember-me columns are not migrated yet.
+    }
     staffRememberMeClearCookie();
 }
 

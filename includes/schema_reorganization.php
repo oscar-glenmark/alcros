@@ -34,15 +34,23 @@ function ensureAlcrosSchemaReorganization(PDO $pdo): void
         return;
     }
 
-    ensureStaffResourceLocksTable($pdo);
-    alcrosMigrateCivilRecordEditLocksTable($pdo);
-    alcrosDropLegacyStaffNotificationTables($pdo);
-    alcrosMigrateStaffRememberTokensToStaffColumns($pdo);
-    alcrosEnsureDeliveryLogsTable($pdo);
-    alcrosMigrateEmailSmsLogsToDeliveryLogs($pdo);
-    alcrosMigrateStaffPasswordOtpsToStaffColumns($pdo);
-    alcrosMigratePrintCalibrationsToTemplates($pdo);
-    alcrosEnsureReferentialIntegrityConstraints($pdo);
+    foreach ([
+        static fn () => ensureStaffResourceLocksTable($pdo),
+        static fn () => alcrosMigrateCivilRecordEditLocksTable($pdo),
+        static fn () => alcrosDropLegacyStaffNotificationTables($pdo),
+        static fn () => alcrosMigrateStaffRememberTokensToStaffColumns($pdo),
+        static fn () => alcrosEnsureDeliveryLogsTable($pdo),
+        static fn () => alcrosMigrateEmailSmsLogsToDeliveryLogs($pdo),
+        static fn () => alcrosMigrateStaffPasswordOtpsToStaffColumns($pdo),
+        static fn () => alcrosMigratePrintCalibrationsToTemplates($pdo),
+        static fn () => alcrosEnsureReferentialIntegrityConstraints($pdo),
+    ] as $step) {
+        try {
+            $step();
+        } catch (Throwable) {
+            // Shared hosts: partial migrations must not block login or staff pages.
+        }
+    }
 
     $done = true;
 }

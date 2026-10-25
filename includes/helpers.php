@@ -3811,17 +3811,53 @@ function ensureStaffProfileColumns(PDO $pdo): void
         }
     }
 
-    if (is_file(__DIR__ . '/schema_reorganization.php')) {
-        require_once __DIR__ . '/schema_reorganization.php';
-        alcrosMigrateStaffPasswordOtpsToStaffColumns($pdo);
+}
+
+function staffRowUsesLegacyNameColumn(PDO $pdo): bool
+{
+    static $legacy = null;
+    if ($legacy !== null) {
+        return $legacy;
     }
+    try {
+        $pdo->query('SELECT first_name FROM staff LIMIT 1');
+        $legacy = false;
+    } catch (Throwable) {
+        $legacy = true;
+    }
+
+    return $legacy;
 }
 
 function staffRowById(PDO $pdo, string $staffId): ?array
 {
     ensureStaffProfileColumns($pdo);
-    $stmt = $pdo->prepare('SELECT staff_id, first_name, middle_name, last_name, email, recovery_gmail_2sv_confirmed, role, password_hash, profile_photo_path, created_at FROM staff WHERE staff_id = ? LIMIT 1');
-    $stmt->execute([strtoupper(trim($staffId))]);
+    $staffId = strtoupper(trim($staffId));
+
+    if (staffRowUsesLegacyNameColumn($pdo)) {
+        $stmt = $pdo->prepare(
+            'SELECT staff_id, name, role, password_hash, created_at FROM staff WHERE staff_id = ? LIMIT 1'
+        );
+        $stmt->execute([$staffId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            return null;
+        }
+        $parts = parsePersonNameToParts((string) ($row['name'] ?? ''));
+        $row['first_name'] = $parts['first_name'];
+        $row['middle_name'] = $parts['middle_name'];
+        $row['last_name'] = $parts['last_name'];
+        $row['email'] = null;
+        $row['recovery_gmail_2sv_confirmed'] = 0;
+        $row['profile_photo_path'] = null;
+
+        return $row;
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT staff_id, first_name, middle_name, last_name, email, recovery_gmail_2sv_confirmed, role, password_hash, profile_photo_path, created_at FROM staff WHERE staff_id = ? LIMIT 1'
+    );
+    $stmt->execute([$staffId]);
     $row = $stmt->fetch();
 
     return $row ?: null;

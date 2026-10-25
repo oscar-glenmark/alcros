@@ -359,7 +359,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $data = normalizeRecordInput(prepareCivilRecordFormInput($_POST), false, $recordBefore);
             saveCivilRecord($pdo, $data, $id);
             if ($recordBefore) {
-                recordCivilRecordAudit($pdo, $id, 'updated', $recordBefore, $data, $editReason);
+                $recordAfter = fetchFullCivilRecord($pdo, $id) ?? $recordBefore;
+                recordCivilRecordAudit($pdo, $id, 'updated', $recordBefore, $recordAfter, $editReason);
             }
             releaseCivilRecordEditLock($pdo, $id, staffId());
             logActivity(staffId(), 'Record Updated', "Updated record #$id: " . civilRecordDisplayName($data));
@@ -794,9 +795,9 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
         'printCertificateUrl' => buildAuthUrl('print_certificate.php'),
         'printCertificationUrl' => buildAuthUrl('print_certificate.php', ['kind' => 'certification']),
         'recordViewSections' => [
-            'birth' => civilRecordViewSections('birth'),
-            'death' => civilRecordViewSections('death'),
-            'marriage' => civilRecordViewSections('marriage'),
+            'birth' => civilRecordViewSections('birth', $pdo),
+            'death' => civilRecordViewSections('death', $pdo),
+            'marriage' => civilRecordViewSections('marriage', $pdo),
         ],
         'openEntryModal' => $canManageCivilRecords && (bool) ($showModal || $editRecord),
         'defaultEntryType' => $editRecord['record_type'] ?? ($type !== 'all' ? $type : 'birth'),

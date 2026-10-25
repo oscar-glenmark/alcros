@@ -269,7 +269,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php if ($notifyEmail && $emailSent): ?>
                 <p class="citizen-request-notice citizen-request-notice--success">
                     <i data-lucide="mail" class="w-4 h-4 shrink-0 mt-0.5"></i>
-                    <span>A Gmail confirmation was sent to <strong><?= htmlspecialchars($email) ?></strong>. You will also receive email reminders 5 hours, 3 hours, and 1 hour before your appointment.</span>
+                    <span>A Gmail confirmation was sent to <strong><?= htmlspecialchars($email) ?></strong>. After our office confirms your appointment, you will receive email reminders 5 hours, 3 hours, and 1 hour before your visit.</span>
                 </p>
                 <?php elseif ($notifyEmail): ?>
                 <p class="citizen-request-notice citizen-request-notice--warn">

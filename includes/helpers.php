@@ -6418,6 +6418,50 @@ function reminderLeadTimes(): array
     return [5, 3, 1];
 }
 
+/** Document request statuses that may receive pre-visit email/SMS reminders. */
+function visitReminderDocumentRequestStatuses(): array
+{
+    return ['verified', 'ready'];
+}
+
+/** Appointment statuses that may receive pre-visit email/SMS reminders. */
+function visitReminderAppointmentStatuses(): array
+{
+    return ['confirmed'];
+}
+
+function visitReminderStatusInSql(string $column, array $statuses): string
+{
+    $quoted = array_map(
+        static fn (string $status): string => "'" . str_replace("'", "''", $status) . "'",
+        $statuses
+    );
+
+    return $column . ' IN (' . implode(', ', $quoted) . ')';
+}
+
+function documentRequestEligibleForVisitReminder(?array $row): bool
+{
+    if ($row === null || $row === []) {
+        return false;
+    }
+
+    $status = function_exists('normalizeRequestStatus')
+        ? normalizeRequestStatus((string) ($row['status'] ?? ''))
+        : (string) ($row['status'] ?? '');
+
+    return in_array($status, visitReminderDocumentRequestStatuses(), true);
+}
+
+function appointmentEligibleForVisitReminder(?array $row): bool
+{
+    if ($row === null || $row === []) {
+        return false;
+    }
+
+    return in_array((string) ($row['status'] ?? ''), visitReminderAppointmentStatuses(), true);
+}
+
 function reminderSentColumn(int $hours): string
 {
     return match ($hours) {
@@ -6681,7 +6725,10 @@ function maybeSendVisitSoonEmail(PDO $pdo, string $table, int $id): bool
         );
         $stmt->execute([$id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$row || !visitIsWithinSoonWindow($row['appointment_date'] ?? null, $row['appointment_time'] ?? null)) {
+        if (!$row || !documentRequestEligibleForVisitReminder($row)) {
+            return false;
+        }
+        if (!visitIsWithinSoonWindow($row['appointment_date'] ?? null, $row['appointment_time'] ?? null)) {
             return false;
         }
         if (!empty($row['reminder_1h_sent_at'])) {
@@ -6705,7 +6752,10 @@ function maybeSendVisitSoonEmail(PDO $pdo, string $table, int $id): bool
         );
         $stmt->execute([$id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$row || !visitIsWithinSoonWindow($row['appointment_date'] ?? null, $row['appointment_time'] ?? null)) {
+        if (!$row || !appointmentEligibleForVisitReminder($row)) {
+            return false;
+        }
+        if (!visitIsWithinSoonWindow($row['appointment_date'] ?? null, $row['appointment_time'] ?? null)) {
             return false;
         }
         if (!empty($row['reminder_1h_sent_at'])) {
@@ -6795,6 +6845,7 @@ function sendDueEmailReminderRow(PDO $pdo, array $row, string $table, callable $
 
 function sendDueDocumentRequestEmailReminders(PDO $pdo): int
 {
+    $requestStatusSql = visitReminderStatusInSql('status', visitReminderDocumentRequestStatuses());
     $stmt = $pdo->query(
         "SELECT id, tracking_code, first_name, middle_name, last_name,
                 requester_first_name, requester_middle_name, requester_last_name,
@@ -6804,7 +6855,7 @@ function sendDueDocumentRequestEmailReminders(PDO $pdo): int
          FROM document_requests
          WHERE notify_email = 1
            AND email IS NOT NULL AND email != ''
-           AND status IN ('pending', 'verified', 'ready')
+           AND {$requestStatusSql}
            AND appointment_date IS NOT NULL
            AND appointment_time IS NOT NULL
            AND TIMESTAMP(appointment_date, appointment_time) > NOW()
@@ -6836,6 +6887,7 @@ function sendDueDocumentRequestEmailReminders(PDO $pdo): int
 
 function sendDueStandaloneAppointmentEmailReminders(PDO $pdo): int
 {
+    $apptStatusSql = visitReminderStatusInSql('a.status', visitReminderAppointmentStatuses());
     $stmt = $pdo->query(
         "SELECT id, appointment_code, first_name, middle_name, last_name, email, service_type,
                 appointment_date, appointment_time, notify_email, source, tracking_code,
@@ -6844,7 +6896,7 @@ function sendDueStandaloneAppointmentEmailReminders(PDO $pdo): int
          WHERE notify_email = 1
            AND " . appointmentStandaloneSql('a') . "
            AND email IS NOT NULL AND email != ''
-           AND status IN ('scheduled', 'confirmed')
+           AND {$apptStatusSql}
            AND TIMESTAMP(appointment_date, appointment_time) > NOW()
            AND TIMESTAMP(appointment_date, appointment_time) <= DATE_ADD(NOW(), INTERVAL 5 HOUR)
            AND (reminder_5h_sent_at IS NULL OR reminder_3h_sent_at IS NULL OR reminder_1h_sent_at IS NULL)"
@@ -6930,9 +6982,14 @@ function alcrosAppointmentReminderDiagnostics(PDO $pdo): array
         return (int) $value;
     };
 
-    $docStatuses = "status IN ('pending', 'verified', 'ready')";
-    $apptStatuses = "status IN ('scheduled', 'confirmed')";
+    $docStatuses = visitReminderStatusInSql('status', visitReminderDocumentRequestStatuses());
+    $apptStatuses = visitReminderStatusInSql('a.status', visitReminderAppointmentStatuses());
     $standalone = appointmentStandaloneSql('a');
+
+    if (!function_exists('alcrosFollowUpReminderDiagnostics')) {
+        require_once __DIR__ . '/appointment_follow_up.php';
+    }
+    $followUpDiagnostics = alcrosFollowUpReminderDiagnostics($pdo);
 
     return [
         'office_timezone' => function_exists('alcrosOfficeTimezone') ? alcrosOfficeTimezone() : date_default_timezone_get(),
@@ -6950,11 +7007,14 @@ function alcrosAppointmentReminderDiagnostics(PDO $pdo): array
             'in_email_window_5h'         => $count($pdo, "SELECT COUNT(*) FROM appointments a WHERE {$standalone} AND {$apptStatuses} AND {$visitIn5hSql}"),
             'eligible_email_reminders'   => $count($pdo, "SELECT COUNT(*) FROM appointments a WHERE notify_email = 1 AND email IS NOT NULL AND email != '' AND {$standalone} AND {$apptStatuses} AND {$visitIn5hSql} AND {$emailPendingSql}"),
             'in_window_but_notify_off'   => $count($pdo, "SELECT COUNT(*) FROM appointments a WHERE (notify_email = 0 OR email IS NULL OR email = '') AND {$standalone} AND {$apptStatuses} AND {$visitIn5hSql}"),
-            'eligible_sms_1h_confirmed' => $count($pdo, "SELECT COUNT(*) FROM appointments a WHERE notify_sms = 1 AND phone IS NOT NULL AND phone != '' AND {$standalone} AND a.status = 'confirmed' AND {$visitIn1hSql} AND a.sms_reminder_1h_sent_at IS NULL"),
+            'eligible_sms_1h_confirmed' => $count($pdo, "SELECT COUNT(*) FROM appointments a WHERE notify_sms = 1 AND phone IS NOT NULL AND phone != '' AND {$standalone} AND {$apptStatuses} AND {$visitIn1hSql} AND a.sms_reminder_1h_sent_at IS NULL"),
         ],
+        'follow_up_reminders' => $followUpDiagnostics,
         'hints' => [
             'Email reminders run only for visits in the next 5 hours with notify_email = 1 (citizen must opt in on the notification preferences modal).',
+            'Visit reminders run only after staff accept a request (verified/ready) or confirm an appointment (confirmed).',
             'SMS reminders run only about 1 hour before; standalone appointments must be status confirmed.',
+            'Follow-up reminders send the day before the staff follow-up date (from 8:00 AM), with same-day catch-up if that run was missed.',
             'sent=0 with ok=true means the cron ran but no eligible citizen matched this run (or SMTP/SMS send failed after match).',
         ],
     ];

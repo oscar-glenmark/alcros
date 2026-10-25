@@ -879,6 +879,7 @@ function sendDueSmsReminderRow(
 
 function sendDueDocumentRequestSmsReminders(PDO $pdo): int
 {
+    $requestStatusSql = visitReminderStatusInSql('status', visitReminderDocumentRequestStatuses());
     $stmt = $pdo->query(
         "SELECT id, tracking_code, first_name, middle_name, last_name,
                 requester_first_name, requester_middle_name, requester_last_name,
@@ -888,7 +889,7 @@ function sendDueDocumentRequestSmsReminders(PDO $pdo): int
          FROM document_requests
          WHERE notify_sms = 1
            AND phone IS NOT NULL AND phone != ''
-           AND status IN ('pending', 'verified', 'ready')
+           AND {$requestStatusSql}
            AND appointment_date IS NOT NULL
            AND appointment_time IS NOT NULL
            AND TIMESTAMP(appointment_date, appointment_time) > NOW()

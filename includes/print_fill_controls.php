@@ -616,10 +616,14 @@ function printFillEntryFormSectionOrder(string $certificateType, string $pageSid
     };
 }
 
-function printFillEntryFormSectionKey(string $certificateType, string $fieldName, string $pageSide): string
-{
+function printFillEntryFormSectionKey(
+    string $certificateType,
+    string $fieldName,
+    string $pageSide,
+    string $label = ''
+): string {
     if ($pageSide === 'back') {
-        $group = printFillFieldGroup($fieldName);
+        $group = printFillFieldGroup($fieldName, $label, $certificateType, $pageSide);
         if ($group !== '') {
             return $group;
         }
@@ -628,6 +632,11 @@ function printFillEntryFormSectionKey(string $certificateType, string $fieldName
         }
 
         return 'back_misc';
+    }
+
+    $customGroup = printFillFieldGroup($fieldName, $label, $certificateType, $pageSide);
+    if ($customGroup !== '') {
+        return $customGroup;
     }
 
     if (str_starts_with($fieldName, 'lcro_box_')) {
@@ -894,7 +903,12 @@ function groupPrintFillFieldsForEntryForm(string $certificateType, array $fields
     $grouped = [];
     foreach ($fields as $field) {
         $pageSide = (string) ($field['page_side'] ?? 'front');
-        $sectionKey = printFillEntryFormSectionKey($certificateType, (string) ($field['field_name'] ?? ''), $pageSide);
+        $sectionKey = printFillEntryFormSectionKey(
+            $certificateType,
+            (string) ($field['field_name'] ?? ''),
+            $pageSide,
+            (string) ($field['label'] ?? '')
+        );
         $bucket = $pageSide . ':' . $sectionKey;
         if (!isset($grouped[$bucket])) {
             $grouped[$bucket] = [];
@@ -948,7 +962,10 @@ function renderPrintFillWorkspaceClassicList(array $fillEditorFields, string $fi
         if (($fillField['page_side'] ?? '') !== $fillSide) {
             continue;
         }
-        $fillGroup = printFillFieldGroup((string) ($fillField['field_name'] ?? ''));
+        $fillGroup = printFillFieldGroup(
+            (string) ($fillField['field_name'] ?? ''),
+            (string) ($fillField['label'] ?? '')
+        );
         ?>
         <label class="print-cert-fill-field"<?= $fillGroup !== '' ? ' data-fill-group="' . htmlspecialchars($fillGroup) . '"' : '' ?>>
             <span><?= htmlspecialchars((string) ($fillField['label'] ?? '')) ?></span>
@@ -966,6 +983,19 @@ function renderPrintFillWorkspaceClassicList(array $fillEditorFields, string $fi
 function renderPrintFillGroupedSectionPanels(string $certificateType, array $grouped, string $fillSide, string $context = 'entry'): void
 {
     $sectionOrder = printFillEntryFormSectionOrder($certificateType, $fillSide);
+    $prefix = $fillSide . ':';
+    $extraSectionKeys = [];
+    foreach (array_keys($grouped) as $bucketKey) {
+        if (!str_starts_with((string) $bucketKey, $prefix)) {
+            continue;
+        }
+        $sectionKey = substr((string) $bucketKey, strlen($prefix));
+        if ($sectionKey !== '' && !in_array($sectionKey, $sectionOrder, true)) {
+            $extraSectionKeys[] = $sectionKey;
+        }
+    }
+    $sectionOrder = array_values(array_unique(array_merge($sectionOrder, $extraSectionKeys)));
+
     $hasAny = false;
     foreach ($sectionOrder as $sectionKey) {
         if (!empty($grouped[$fillSide . ':' . $sectionKey])) {
@@ -993,7 +1023,13 @@ function renderPrintFillGroupedSectionPanels(string $certificateType, array $gro
             continue;
         }
         $presentation = printFillEntryFormSectionPresentation($sectionKey);
-        $fillGroupAttr = printFillFieldGroup($sectionFields[0]['field_name'] ?? '');
+        $firstField = $sectionFields[0] ?? [];
+        $fillGroupAttr = printFillFieldGroup(
+            (string) ($firstField['field_name'] ?? ''),
+            (string) ($firstField['label'] ?? ''),
+            $certificateType,
+            $fillSide
+        );
         if ($fillGroupAttr === '' && in_array($sectionKey, ['paternity', 'delayed_birth', 'delayed_death', 'delayed_marriage', 'infant_section', 'postmortem'], true)) {
             $fillGroupAttr = $sectionKey;
         }

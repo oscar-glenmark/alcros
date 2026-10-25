@@ -79,6 +79,8 @@
             cfg = AlcrosPage.readConfig('page-config') || {};
         }
         cfg.fields = Array.isArray(cfg.fields) ? cfg.fields : [];
+        cfg.fillSectionOrder = Array.isArray(cfg.fillSectionOrder) ? cfg.fillSectionOrder : [];
+        cfg.fillSectionLabels = cfg.fillSectionLabels || {};
         cfg.sampleValues = cfg.sampleValues || {};
         cfg.fieldHints = cfg.fieldHints || {};
         cfg.templateCalibration = cfg.templateCalibration || { x_offset_mm: 0, y_offset_mm: 0, scale_x: 1, scale_y: 1 };
@@ -507,6 +509,14 @@
                     field.label = res.field.label;
                     field._savedLabel = res.field.label;
                     updateListItemLabel(fieldId, res.field.label);
+                    if (res.field.fill_section) {
+                        field.fill_section = res.field.fill_section;
+                        moveFieldListItem(
+                            fieldId,
+                            res.field.fill_section,
+                            cfg.fillSectionLabels[res.field.fill_section] || res.field.fill_section
+                        );
+                    }
                     if (activeFieldId === fieldId) {
                         var title = document.getElementById('calFieldTitle');
                         if (title) title.textContent = res.field.label;
@@ -1254,6 +1264,10 @@
                 var item = btn.closest('li');
                 if (item) item.hidden = !match;
             });
+            document.querySelectorAll('.print-cal-field-group').forEach(function (group) {
+                var anyVisible = group.querySelector('li:not([hidden])');
+                group.hidden = !!query && !anyVisible;
+            });
         });
     }
 
@@ -1427,8 +1441,94 @@
         if (next) next.addEventListener('click', function () { navigateField(1); });
     }
 
+    function fillSectionLabel(sectionKey) {
+        return cfg.fillSectionLabels[sectionKey] || sectionKey;
+    }
+
+    function fieldListRoot() {
+        return document.getElementById('calFieldList');
+    }
+
+    function insertFieldGroupInOrder(sectionEl, sectionKey) {
+        var root = fieldListRoot();
+        if (!root) return;
+        var order = cfg.fillSectionOrder && cfg.fillSectionOrder.length
+            ? cfg.fillSectionOrder
+            : [sectionKey];
+        var inserted = false;
+        for (var i = 0; i < order.length; i++) {
+            if (order[i] !== sectionKey) {
+                continue;
+            }
+            for (var j = i + 1; j < order.length; j++) {
+                var next = root.querySelector('.print-cal-field-group[data-fill-section="' + order[j] + '"]');
+                if (next) {
+                    root.insertBefore(sectionEl, next);
+                    inserted = true;
+                    break;
+                }
+            }
+            break;
+        }
+        if (!inserted) {
+            root.appendChild(sectionEl);
+        }
+    }
+
+    function ensureFieldGroupSection(sectionKey, sectionLabel) {
+        var root = fieldListRoot();
+        if (!root) return null;
+
+        var existing = root.querySelector('.print-cal-field-group[data-fill-section="' + sectionKey + '"]');
+        if (existing) {
+            return existing.querySelector('.print-cal-field-group-list');
+        }
+
+        var section = document.createElement('section');
+        section.className = 'print-cal-field-group';
+        section.setAttribute('data-fill-section', sectionKey);
+
+        var title = document.createElement('h3');
+        title.className = 'print-cal-field-group-title';
+        title.textContent = sectionLabel || fillSectionLabel(sectionKey);
+
+        var ul = document.createElement('ul');
+        ul.className = 'print-cal-field-group-list';
+
+        section.appendChild(title);
+        section.appendChild(ul);
+        insertFieldGroupInOrder(section, sectionKey);
+
+        if (cfg.fillSectionOrder.indexOf(sectionKey) === -1) {
+            cfg.fillSectionOrder.push(sectionKey);
+        }
+        if (!cfg.fillSectionLabels[sectionKey]) {
+            cfg.fillSectionLabels[sectionKey] = title.textContent;
+        }
+
+        return ul;
+    }
+
+    function moveFieldListItem(fieldId, sectionKey, sectionLabel) {
+        var btn = listBtnEl(fieldId);
+        if (!btn) return;
+        var li = btn.closest('li');
+        if (!li) return;
+        var targetList = ensureFieldGroupSection(sectionKey, sectionLabel);
+        if (!targetList) return;
+        targetList.appendChild(li);
+
+        document.querySelectorAll('.print-cal-field-group').forEach(function (group) {
+            var list = group.querySelector('.print-cal-field-group-list');
+            if (list && !list.querySelector('li')) {
+                group.remove();
+            }
+        });
+    }
+
     function appendFieldListItem(field) {
-        var list = document.getElementById('calFieldList');
+        var sectionKey = field.fill_section || 'back_misc';
+        var list = ensureFieldGroupSection(sectionKey, fillSectionLabel(sectionKey));
         if (!list) return;
 
         var li = document.createElement('li');
@@ -1443,6 +1543,11 @@
         labelSpan.className = 'print-cal-field-label';
         labelSpan.textContent = field.label || field.field_name;
         btn.appendChild(labelSpan);
+
+        var badge = document.createElement('span');
+        badge.className = 'print-cal-field-badge print-cal-field-badge--custom';
+        badge.textContent = 'Textbox';
+        btn.appendChild(badge);
 
         btn.addEventListener('click', function () {
             selectField(field.id, false);

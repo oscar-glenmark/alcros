@@ -402,7 +402,7 @@ function civilRecordViewFieldPresentationOptions(string $type, string $fieldName
 }
 
 /** @return list<array{title: string, fields: list<array{key: string, label: string, format?: string, full?: bool}>}> */
-function civilRecordViewSections(string $type): array
+function civilRecordViewSections(string $type, ?PDO $pdo = null): array
 {
     if (!in_array($type, ['birth', 'death', 'marriage'], true)) {
         return [];
@@ -414,28 +414,75 @@ function civilRecordViewSections(string $type): array
     if (!function_exists('printFillEntryFormSectionKey')) {
         require_once __DIR__ . '/print_fill_controls.php';
     }
+    if ($pdo !== null && !function_exists('printIsCustomField')) {
+        require_once __DIR__ . '/printing.php';
+    }
 
-    $fieldDef = static fn (string $key): array => array_merge(
-        [
-            'key'   => $key,
-            'label' => civilRecordPrintFillFieldLabel($type, $key),
-        ],
-        civilRecordViewFieldPresentationOptions($type, $key)
-    );
+    /** @var array<string, string> custom_textbox_* => calibration display label */
+    $customFieldLabels = [];
+    if ($pdo !== null) {
+        foreach (['front', 'back'] as $side) {
+            $template = getPrintTemplate($pdo, $type, $side);
+            if (!$template) {
+                continue;
+            }
+            foreach (getPrintFields($pdo, (int) $template['id'], true) as $dbField) {
+                $name = (string) ($dbField['field_name'] ?? '');
+                if (!printIsCustomField($name)) {
+                    continue;
+                }
+                $customFieldLabels[$name] = (string) ($dbField['label'] ?: $name);
+            }
+        }
+    }
+
+    $fieldDef = static function (string $key) use ($type, $customFieldLabels): array {
+        $label = $customFieldLabels[$key] ?? civilRecordPrintFillFieldLabel($type, $key);
+        $def = array_merge(
+            [
+                'key'   => $key,
+                'label' => $label,
+            ],
+            civilRecordViewFieldPresentationOptions($type, $key)
+        );
+        if (isset($customFieldLabels[$key])) {
+            $def['full'] = true;
+        }
+
+        return $def;
+    };
 
     $sections = [];
     $assigned = [];
 
     foreach (['front', 'back'] as $side) {
         $catalog = printFieldCatalog()[$type][$side] ?? [];
-        if ($catalog === []) {
-            continue;
-        }
-
         $bySection = [];
         foreach (array_keys($catalog) as $fieldName) {
             $sectionKey = printFillEntryFormSectionKey($type, $fieldName, $side);
             $bySection[$sectionKey][] = $fieldName;
+        }
+
+        if ($pdo !== null) {
+            $template = getPrintTemplate($pdo, $type, $side);
+            if ($template) {
+                foreach (getPrintFields($pdo, (int) $template['id'], true) as $dbField) {
+                    $name = (string) ($dbField['field_name'] ?? '');
+                    if (!printIsCustomField($name) || isset($assigned[$name])) {
+                        continue;
+                    }
+                    if (!printFieldIncludedInFillEditor($pdo, $type, $side, $name)) {
+                        continue;
+                    }
+                    $displayLabel = (string) ($dbField['label'] ?: $name);
+                    $sectionKey = printFillEntryFormSectionKey($type, $name, $side, $displayLabel);
+                    $bySection[$sectionKey][] = $name;
+                }
+            }
+        }
+
+        if ($bySection === []) {
+            continue;
         }
 
         $sectionOrder = printFillEntryFormSectionOrder($type, $side);

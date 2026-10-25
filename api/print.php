@@ -133,6 +133,11 @@ function handleAddField(PDO $pdo): void
         }
     }
 
+    $template = getPrintTemplateById($pdo, $templateId);
+    if (!$template) {
+        apiError('Template not found.');
+    }
+
     $field = createPrintField($pdo, $templateId, $overrides);
     if (!$field) {
         apiError('Could not create textbox.');
@@ -140,7 +145,7 @@ function handleAddField(PDO $pdo): void
 
     logActivity(staffId(), 'Print Field Added', 'Added custom textbox ' . $field['field_name']);
     bumpPrintCalibrationRevision();
-    apiJsonResponse(['field' => printFieldConfigForClient($field)]);
+    apiJsonResponse(['field' => printFieldConfigForClient($field, $template)]);
 }
 
 function handleDeleteField(PDO $pdo): void
@@ -208,7 +213,9 @@ function printFieldUpdateDataFromInput(PDO $pdo, int $fieldId, array $input): ar
         return ['error' => 'Field #' . $fieldId . ' saved but could not be reloaded.'];
     }
 
-    return ['field' => printFieldConfigForClient($updated)];
+    $template = getPrintTemplateById($pdo, (int) ($existing['template_id'] ?? 0));
+
+    return ['field' => printFieldConfigForClient($updated, $template ?: null)];
 }
 
 function handleSaveField(PDO $pdo): void

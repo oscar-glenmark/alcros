@@ -534,6 +534,93 @@ function notifyFollowUpReminderEmail(array $row): bool
     );
 }
 
+function followUpReminderSendAfterTime(): string
+{
+    return sprintf('%02d:00:00', APPOINTMENT_FOLLOW_UP_REMINDER_HOUR);
+}
+
+/** SQL WHERE fragment (excluding FROM/JOIN) for pending follow-ups due for email/SMS. */
+function followUpReminderEligibilityWhereSql(): string
+{
+    $days = APPOINTMENT_FOLLOW_UP_REMINDER_DAYS;
+
+    return "f.status = 'pending'
+           AND CURTIME() >= ?
+           AND (f.notify_email = 1 OR f.notify_sms = 1)
+           AND (
+             f.follow_up_date = DATE_ADD(CURDATE(), INTERVAL {$days} DAY)
+             OR (
+               f.follow_up_date = CURDATE()
+               AND (
+                 (f.notify_email = 1 AND f.reminder_sent_at IS NULL)
+                 OR (f.notify_sms = 1 AND f.sms_reminder_sent_at IS NULL)
+               )
+             )
+           )";
+}
+
+/** @return list<array<string, mixed>> */
+function fetchFollowUpsDueForReminder(PDO $pdo): array
+{
+    ensureAppointmentFollowUpsTable($pdo);
+    $stmt = $pdo->prepare(
+        'SELECT f.*, a.appointment_code, a.first_name, a.middle_name, a.last_name
+         FROM appointment_follow_ups f
+         INNER JOIN appointments a ON a.id = f.appointment_id AND a.deleted_at IS NULL
+         WHERE ' . followUpReminderEligibilityWhereSql()
+    );
+    $stmt->execute([followUpReminderSendAfterTime()]);
+
+    return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+}
+
+function dispatchFollowUpReminderChannels(PDO $pdo, array $row): int
+{
+    $id = (int) ($row['id'] ?? 0);
+    if ($id <= 0) {
+        return 0;
+    }
+
+    $sent = 0;
+
+    if (!empty($row['notify_email']) && empty($row['reminder_sent_at'])) {
+        $claim = $pdo->prepare(
+            "UPDATE appointment_follow_ups SET reminder_sent_at = NOW()
+             WHERE id = ? AND reminder_sent_at IS NULL"
+        );
+        $claim->execute([$id]);
+        if ($claim->rowCount() > 0) {
+            if (notifyFollowUpReminderEmail($row)) {
+                $sent++;
+            } else {
+                $pdo->prepare(
+                    'UPDATE appointment_follow_ups SET reminder_sent_at = NULL WHERE id = ?'
+                )->execute([$id]);
+            }
+        }
+    }
+
+    if (!empty($row['notify_sms']) && empty($row['sms_reminder_sent_at'])) {
+        require_once __DIR__ . '/sms.php';
+        $claimSms = $pdo->prepare(
+            "UPDATE appointment_follow_ups SET sms_reminder_sent_at = NOW()
+             WHERE id = ? AND sms_reminder_sent_at IS NULL"
+        );
+        $claimSms->execute([$id]);
+        if ($claimSms->rowCount() > 0) {
+            if (notifyFollowUpReminderSms($row)) {
+                $sent++;
+            } else {
+                $pdo->prepare(
+                    'UPDATE appointment_follow_ups SET sms_reminder_sent_at = NULL WHERE id = ?'
+                )->execute([$id]);
+            }
+        }
+    }
+
+    return $sent;
+}
+
 function sendDueFollowUpReminders(PDO $pdo): int
 {
     ensureAppointmentFollowUpsTable($pdo);
@@ -541,65 +628,71 @@ function sendDueFollowUpReminders(PDO $pdo): int
         return 0;
     }
 
-    $days = APPOINTMENT_FOLLOW_UP_REMINDER_DAYS;
     $sent = 0;
-
-    $stmt = $pdo->prepare(
-        "SELECT f.*, a.appointment_code, a.first_name, a.middle_name, a.last_name
-         FROM appointment_follow_ups f
-         INNER JOIN appointments a ON a.id = f.appointment_id AND a.deleted_at IS NULL
-         WHERE f.status = 'pending'
-           AND f.follow_up_date = DATE_ADD(CURDATE(), INTERVAL ? DAY)
-           AND CURTIME() >= ?
-           AND (f.notify_email = 1 OR f.notify_sms = 1)"
-    );
-    $sendAfter = sprintf('%02d:00:00', APPOINTMENT_FOLLOW_UP_REMINDER_HOUR);
-    $stmt->execute([$days, $sendAfter]);
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-    foreach ($rows as $row) {
-        $id = (int) ($row['id'] ?? 0);
-        if ($id <= 0) {
-            continue;
-        }
-
-        if (!empty($row['notify_email']) && empty($row['reminder_sent_at'])) {
-            $claim = $pdo->prepare(
-                "UPDATE appointment_follow_ups SET reminder_sent_at = NOW()
-                 WHERE id = ? AND reminder_sent_at IS NULL"
-            );
-            $claim->execute([$id]);
-            if ($claim->rowCount() > 0) {
-                if (notifyFollowUpReminderEmail($row)) {
-                    $sent++;
-                } else {
-                    $pdo->prepare(
-                        'UPDATE appointment_follow_ups SET reminder_sent_at = NULL WHERE id = ?'
-                    )->execute([$id]);
-                }
-            }
-        }
-
-        if (!empty($row['notify_sms']) && empty($row['sms_reminder_sent_at'])) {
-            require_once __DIR__ . '/sms.php';
-            $claimSms = $pdo->prepare(
-                "UPDATE appointment_follow_ups SET sms_reminder_sent_at = NOW()
-                 WHERE id = ? AND sms_reminder_sent_at IS NULL"
-            );
-            $claimSms->execute([$id]);
-            if ($claimSms->rowCount() > 0) {
-                if (notifyFollowUpReminderSms($row)) {
-                    if (empty($row['notify_email']) || !empty($row['reminder_sent_at'])) {
-                        $sent++;
-                    }
-                } else {
-                    $pdo->prepare(
-                        'UPDATE appointment_follow_ups SET sms_reminder_sent_at = NULL WHERE id = ?'
-                    )->execute([$id]);
-                }
-            }
-        }
+    foreach (fetchFollowUpsDueForReminder($pdo) as $row) {
+        $sent += dispatchFollowUpReminderChannels($pdo, $row);
     }
 
     return $sent;
+}
+
+/**
+ * Follow-up reminder diagnostics for appointment_reminders.php?diagnostics=1 (no citizen PII).
+ *
+ * @return array<string, mixed>
+ */
+function alcrosFollowUpReminderDiagnostics(PDO $pdo): array
+{
+    ensureAppointmentFollowUpsTable($pdo);
+
+    $count = static function (PDO $pdo, string $sql, array $params = []): int {
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+
+        return (int) $stmt->fetchColumn();
+    };
+
+    $days = APPOINTMENT_FOLLOW_UP_REMINDER_DAYS;
+    $join = 'FROM appointment_follow_ups f
+         INNER JOIN appointments a ON a.id = f.appointment_id AND a.deleted_at IS NULL';
+    $notifyOn = '(f.notify_email = 1 OR f.notify_sms = 1)';
+    $dayBefore = "f.status = 'pending' AND f.follow_up_date = DATE_ADD(CURDATE(), INTERVAL {$days} DAY) AND {$notifyOn}";
+    $catchUp = "f.status = 'pending' AND f.follow_up_date = CURDATE() AND {$notifyOn}
+        AND ((f.notify_email = 1 AND f.reminder_sent_at IS NULL) OR (f.notify_sms = 1 AND f.sms_reminder_sent_at IS NULL))";
+
+    $eligibleNow = 0;
+    if (followUpRemindersAllowedNow()) {
+        $eligibleNow = $count(
+            $pdo,
+            "SELECT COUNT(*) {$join} WHERE " . followUpReminderEligibilityWhereSql(),
+            [followUpReminderSendAfterTime()]
+        );
+    }
+
+    return [
+        'reminder_days_before_visit' => $days,
+        'send_after_local_time'      => followUpReminderSendAfterTime(),
+        'reminder_window_open'       => followUpRemindersAllowedNow(),
+        'pending_on_or_after_today'  => $count(
+            $pdo,
+            "SELECT COUNT(*) {$join} WHERE f.status = 'pending' AND f.follow_up_date >= CURDATE()"
+        ),
+        'due_day_before_visit'       => $count($pdo, "SELECT COUNT(*) {$join} WHERE {$dayBefore}"),
+        'due_same_day_catch_up'      => $count($pdo, "SELECT COUNT(*) {$join} WHERE {$catchUp}"),
+        'eligible_to_send_now'       => $eligibleNow,
+        'email_still_pending'        => $count(
+            $pdo,
+            "SELECT COUNT(*) {$join}
+             WHERE f.status = 'pending' AND f.follow_up_date >= CURDATE()
+               AND f.notify_email = 1 AND f.email IS NOT NULL AND f.email != ''
+               AND f.reminder_sent_at IS NULL"
+        ),
+        'sms_still_pending'          => $count(
+            $pdo,
+            "SELECT COUNT(*) {$join}
+             WHERE f.status = 'pending' AND f.follow_up_date >= CURDATE()
+               AND f.notify_sms = 1 AND f.phone IS NOT NULL AND f.phone != ''
+               AND f.sms_reminder_sent_at IS NULL"
+        ),
+    ];
 }

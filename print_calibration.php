@@ -4,6 +4,7 @@ require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 require_once __DIR__ . '/includes/printing.php';
+require_once __DIR__ . '/includes/print_fill_controls.php';
 require_once __DIR__ . '/includes/certification_print.php';
 requireAdmin();
 
@@ -83,6 +84,23 @@ foreach ($fields as $field) {
     if (printIsCustomField($name)) {
         $sampleValues[$name] = (string) ($field['label'] ?: 'Sample');
     }
+}
+
+$calFieldGroups = [];
+foreach ($fields as $field) {
+    $sectionKey = printFillEntryFormSectionKey(
+        $certificateType,
+        (string) $field['field_name'],
+        $pageSide,
+        (string) ($field['label'] ?? '')
+    );
+    $calFieldGroups[$sectionKey][] = $field;
+}
+$calSectionOrder = printFillEntryFormSectionOrder($certificateType, $pageSide);
+$calSectionKeys = array_values(array_unique(array_merge($calSectionOrder, array_keys($calFieldGroups))));
+$calFillSectionLabels = [];
+foreach ($calSectionKeys as $sectionKey) {
+    $calFillSectionLabels[$sectionKey] = printFillEntryFormSectionPresentation($sectionKey)['label'];
 }
 $previewPrintParams = [
     'calibration_preview' => '1',
@@ -229,24 +247,37 @@ if (!$formDefaults && !empty($fields[0])) {
                 <h2>Form fields</h2>
                 <input type="search" id="calFieldSearch" class="print-cal-search" placeholder="Search fields…" autocomplete="off">
 
-                <ul class="print-cal-field-list" id="calFieldList">
-                    <?php foreach ($fields as $field): ?>
-                        <li>
-                            <button type="button"
-                                class="print-cal-field-btn<?= (int) $field['id'] === $selectedFieldId ? ' is-active' : '' ?><?= empty($field['enabled']) ? ' is-hidden-field' : '' ?>"
-                                data-field-id="<?= (int) $field['id'] ?>"
-                                data-field-name="<?= htmlspecialchars($field['field_name']) ?>"
-                                data-field-label="<?= htmlspecialchars($field['label'] ?: $field['field_name']) ?>">
-                                <span class="print-cal-field-label"><?= htmlspecialchars($field['label'] ?: $field['field_name']) ?></span>
-                                <?php if (printIsCustomField((string) $field['field_name'])): ?>
-                                    <span class="print-cal-field-badge print-cal-field-badge--custom">Textbox</span>
-                                <?php elseif (empty($field['enabled'])): ?>
-                                    <span class="print-cal-field-badge">Hidden</span>
-                                <?php endif; ?>
-                            </button>
-                        </li>
+                <div class="print-cal-field-list" id="calFieldList">
+                    <?php foreach ($calSectionKeys as $sectionKey):
+                        $sectionFields = $calFieldGroups[$sectionKey] ?? [];
+                        if ($sectionFields === []) {
+                            continue;
+                        }
+                        $sectionLabel = $calFillSectionLabels[$sectionKey] ?? $sectionKey;
+                        ?>
+                    <section class="print-cal-field-group" data-fill-section="<?= htmlspecialchars($sectionKey) ?>">
+                        <h3 class="print-cal-field-group-title"><?= htmlspecialchars($sectionLabel) ?></h3>
+                        <ul class="print-cal-field-group-list">
+                            <?php foreach ($sectionFields as $field): ?>
+                            <li>
+                                <button type="button"
+                                    class="print-cal-field-btn<?= (int) $field['id'] === $selectedFieldId ? ' is-active' : '' ?><?= empty($field['enabled']) ? ' is-hidden-field' : '' ?>"
+                                    data-field-id="<?= (int) $field['id'] ?>"
+                                    data-field-name="<?= htmlspecialchars($field['field_name']) ?>"
+                                    data-field-label="<?= htmlspecialchars($field['label'] ?: $field['field_name']) ?>">
+                                    <span class="print-cal-field-label"><?= htmlspecialchars($field['label'] ?: $field['field_name']) ?></span>
+                                    <?php if (printIsCustomField((string) $field['field_name'])): ?>
+                                        <span class="print-cal-field-badge print-cal-field-badge--custom">Textbox</span>
+                                    <?php elseif (empty($field['enabled'])): ?>
+                                        <span class="print-cal-field-badge">Hidden</span>
+                                    <?php endif; ?>
+                                </button>
+                            </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </section>
                     <?php endforeach; ?>
-                </ul>
+                </div>
                 </div>
 
                 <div class="print-cal-fields-editor-pane">
@@ -554,11 +585,17 @@ if (!$formDefaults && !empty($fields[0])) {
 <?= pageConfigJson([
     'apiPrintUrl' => buildAuthUrl('api/print.php'),
     'csrfToken' => csrfToken(),
-    'fields' => array_map(static function ($f) {
+    'fields' => array_map(static function ($f) use ($certificateType, $pageSide) {
         return [
             'id' => (int) $f['id'],
             'field_name' => $f['field_name'],
             'label' => $f['label'],
+            'fill_section' => printFillEntryFormSectionKey(
+                $certificateType,
+                (string) $f['field_name'],
+                $pageSide,
+                (string) ($f['label'] ?? '')
+            ),
             'x_mm' => (float) $f['x_mm'],
             'y_mm' => (float) $f['y_mm'],
             'width_mm' => (float) $f['width_mm'],
@@ -569,6 +606,8 @@ if (!$formDefaults && !empty($fields[0])) {
             'enabled' => (int) $f['enabled'],
         ];
     }, $fields),
+    'fillSectionOrder' => $calSectionKeys,
+    'fillSectionLabels' => $calFillSectionLabels,
     'selectedFieldId' => $selectedFieldId,
     'templateId' => (int) $template['id'],
     'templateCalibration' => [

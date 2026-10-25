@@ -126,7 +126,17 @@ $fillOverrides = printDecodeFillOverrides($_GET['fill'] ?? null);
 if ($fillOverrides !== []) {
     $printData['values'] = printApplyFillOverrides($printData['values'], $fillOverrides);
 }
-$printData['values'] = printStripExcludedOptionalSections($printData['values'], $printOptions);
+$printFieldLabels = [];
+foreach ($printData['fields'] ?? [] as $printFieldRow) {
+    $printFieldLabels[(string) $printFieldRow['field_name']] = (string) ($printFieldRow['label'] ?? '');
+}
+$printData['values'] = printStripExcludedOptionalSections(
+    $printData['values'],
+    $printOptions,
+    $printFieldLabels,
+    $certificateType,
+    $pageSide
+);
 
 if (!empty($_GET['log']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     requireStaffPostCsrf();

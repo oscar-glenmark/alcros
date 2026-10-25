@@ -1778,8 +1778,78 @@ function printApplyFillOverrides(array $values, array $overrides): array
     return $values;
 }
 
-function printFillFieldGroup(string $fieldName): string
-{
+/**
+ * Map a custom textbox display name to a print fill section (first-word / prefix keywords).
+ */
+function printCustomTextboxSectionFromDisplayName(
+    string $displayName,
+    string $certificateType = '',
+    string $pageSide = 'back'
+): string {
+    $normalized = trim(preg_replace('/\s+/u', ' ', $displayName) ?? '');
+    if ($normalized === '') {
+        return '';
+    }
+
+    $lower = mb_strtolower($normalized, 'UTF-8');
+
+    if (str_starts_with($lower, 'delayed birth')) {
+        return 'delayed_birth';
+    }
+    if (str_starts_with($lower, 'delayed death')) {
+        return 'delayed_death';
+    }
+    if (str_starts_with($lower, 'delayed marriage')) {
+        return 'delayed_marriage';
+    }
+
+    $tokens = preg_split('/\s+/u', $lower, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    $first = $tokens[0] ?? '';
+
+    if ($first === 'delayed') {
+        return match ($certificateType) {
+            'death'    => 'delayed_death',
+            'marriage' => 'delayed_marriage',
+            default    => 'delayed_birth',
+        };
+    }
+
+    $firstWordSection = match ($first) {
+        'paternity' => 'paternity',
+        'infant'    => 'infant_section',
+        'postmortem', 'autopsy' => 'postmortem',
+        'witness', 'witnesses' => 'witness_affidavit',
+        'affidavit' => $certificateType === 'marriage' ? 'witness_affidavit' : 'delayed_marriage',
+        'child'     => 'child',
+        'mother'    => 'mother',
+        'father'    => 'father',
+        'deceased'  => 'deceased',
+        'husband'   => 'husband',
+        'wife'      => 'wife',
+        'informant' => 'informant',
+        'registrar' => 'registrar',
+        'remarks', 'remark' => 'remarks',
+        'office', 'registry' => 'office',
+        default     => '',
+    };
+
+    if ($firstWordSection !== '') {
+        return $firstWordSection;
+    }
+
+    if ($pageSide === 'front') {
+        return '';
+    }
+
+    return '';
+}
+
+function printFillFieldGroup(
+    string $fieldName,
+    string $label = '',
+    string $certificateType = '',
+    string $pageSide = 'back'
+): string {
     if (str_starts_with($fieldName, 'paternity_')) {
         return 'paternity';
     }
@@ -1803,6 +1873,12 @@ function printFillFieldGroup(string $fieldName): string
         return 'postmortem';
     }
 
+    if (printIsCustomField($fieldName)) {
+        $displayName = trim($label) !== '' ? trim($label) : $fieldName;
+
+        return printCustomTextboxSectionFromDisplayName($displayName, $certificateType, $pageSide);
+    }
+
     return '';
 }
 
@@ -1820,9 +1896,14 @@ function printOptionalSectionOptionKey(string $group): ?string
 }
 
 /** Whether an optional back-page section is enabled for print/preview (Back Page Options checkboxes). */
-function printFieldOptionalSectionEnabled(string $fieldName, array $options): bool
-{
-    $group = printFillFieldGroup($fieldName);
+function printFieldOptionalSectionEnabled(
+    string $fieldName,
+    array $options,
+    string $label = '',
+    string $certificateType = '',
+    string $pageSide = 'back'
+): bool {
+    $group = printFillFieldGroup($fieldName, $label, $certificateType, $pageSide);
     if ($group === '') {
         return true;
     }
@@ -1835,10 +1916,17 @@ function printFieldOptionalSectionEnabled(string $fieldName, array $options): bo
 }
 
 /** @param array<string, mixed> $values @param array<string, mixed> $options */
-function printStripExcludedOptionalSections(array $values, array $options): array
-{
+/** @param array<string, string> $fieldLabels field_name => display label */
+function printStripExcludedOptionalSections(
+    array $values,
+    array $options,
+    array $fieldLabels = [],
+    string $certificateType = '',
+    string $pageSide = 'back'
+): array {
     foreach (array_keys($values) as $fieldName) {
-        if (!printFieldOptionalSectionEnabled($fieldName, $options)) {
+        $label = $fieldLabels[$fieldName] ?? '';
+        if (!printFieldOptionalSectionEnabled($fieldName, $options, $label, $certificateType, $pageSide)) {
             unset($values[$fieldName]);
         }
     }
@@ -2225,8 +2313,12 @@ function printCertificate(
     }
 
     $fields = getPrintFields($pdo, (int) $template['id'], empty($options['include_disabled_fields']));
+    $fieldLabels = [];
+    foreach ($fields as $fieldRow) {
+        $fieldLabels[(string) $fieldRow['field_name']] = (string) ($fieldRow['label'] ?? '');
+    }
     $values = printBuildFieldValues($record, $certificateType, $options);
-    $values = printStripExcludedOptionalSections($values, $options);
+    $values = printStripExcludedOptionalSections($values, $options, $fieldLabels, $certificateType, $pageSide);
     $templateCalibration = getPrintCalibration($pdo, (int) $template['id']);
     $globalCalibration = printGlobalCalibration();
 
@@ -2305,12 +2397,21 @@ function renderPrintOverlayHtml(array $printData, array $options = []): string
         $html .= '<div class="print-test-marker" style="position:absolute;right:5mm;bottom:5mm;font:7pt monospace;color:#999;">X/Y CALIBRATION</div>';
     }
 
+    $overlayCertType = (string) ($template['certificate_type'] ?? '');
+    $overlayPageSide = (string) ($template['page_side'] ?? 'front');
+
     foreach ($fields as $field) {
         $name = (string) $field['field_name'];
         if (!empty($options['hide_record_registry_fields']) && printIsRecordRegistryField($name)) {
             continue;
         }
-        if (!$calibrationPreview && !printFieldOptionalSectionEnabled($name, $options)) {
+        if (!$calibrationPreview && !printFieldOptionalSectionEnabled(
+            $name,
+            $options,
+            (string) ($field['label'] ?? ''),
+            $overlayCertType,
+            $overlayPageSide
+        )) {
             continue;
         }
 
@@ -2614,9 +2715,9 @@ function createPrintField(PDO $pdo, int $templateId, array $overrides = []): ?ar
     return $row ?: null;
 }
 
-function printFieldConfigForClient(array $field): array
+function printFieldConfigForClient(array $field, ?array $template = null): array
 {
-    return [
+    $config = [
         'id'          => (int) $field['id'],
         'field_name'  => (string) $field['field_name'],
         'label'       => (string) ($field['label'] ?? ''),
@@ -2629,6 +2730,20 @@ function printFieldConfigForClient(array $field): array
         'alignment'   => (string) ($field['alignment'] ?? 'left'),
         'enabled'     => (int) ($field['enabled'] ?? 1),
     ];
+
+    if ($template !== null) {
+        if (!function_exists('printFillEntryFormSectionKey')) {
+            require_once __DIR__ . '/print_fill_controls.php';
+        }
+        $config['fill_section'] = printFillEntryFormSectionKey(
+            (string) ($template['certificate_type'] ?? ''),
+            (string) $field['field_name'],
+            (string) ($template['page_side'] ?? 'front'),
+            (string) ($field['label'] ?? '')
+        );
+    }
+
+    return $config;
 }
 
 function getPrintFieldById(PDO $pdo, int $fieldId): ?array

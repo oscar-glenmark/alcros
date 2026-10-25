@@ -250,6 +250,31 @@ function civilRecordDiffAuditSnapshots(array $oldSnap, array $newSnap, string $t
         ];
     }
 
+    return civilRecordAuditFilterDerivedDuplicateChanges($changes, $type);
+}
+
+/**
+ * Hide mirror columns that always change together with a primary date (e.g. birth event_date).
+ *
+ * @param list<array{field: string, label: string, old: string, new: string}> $changes
+ *
+ * @return list<array{field: string, label: string, old: string, new: string}>
+ */
+function civilRecordAuditFilterDerivedDuplicateChanges(array $changes, string $type): array
+{
+    if ($changes === []) {
+        return $changes;
+    }
+
+    $changedFields = array_column($changes, 'field');
+
+    if ($type === 'birth' && in_array('birth_date', $changedFields, true)) {
+        $changes = array_values(array_filter(
+            $changes,
+            static fn (array $change): bool => ($change['field'] ?? '') !== 'event_date'
+        ));
+    }
+
     return $changes;
 }
 
@@ -321,7 +346,7 @@ function recordCivilRecordAudit(
         $summary = civilRecordAuditSummary('created', $type, $changes, $after);
     } else {
         $oldSnap = civilRecordBuildAuditSnapshot($before);
-        $newSnap = civilRecordBuildAuditSnapshot(array_merge($before, $after));
+        $newSnap = civilRecordBuildAuditSnapshot($after);
         $changes = civilRecordDiffAuditSnapshots($oldSnap, $newSnap, $type);
         if ($changes === []) {
             return;

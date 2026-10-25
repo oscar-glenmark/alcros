@@ -5,7 +5,8 @@
 
 require_once __DIR__ . '/duplicati_backup.php';
 
-const ALCROS_GDRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+/** Shared backup folders are not created by the app — drive.file cannot see them (404). */
+const ALCROS_GDRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
 const ALCROS_GDRIVE_REGISTRY_PREFIX = 'alcros-registry-';
 
 function alcrosGoogleDriveBackupEnabled(): bool
@@ -13,9 +14,32 @@ function alcrosGoogleDriveBackupEnabled(): bool
     return getSetting('registry_backup_gdrive_enabled', '0') === '1';
 }
 
+/**
+ * Accept a raw folder ID or a full drive.google.com …/folders/ID URL.
+ */
+function alcrosGoogleDriveNormalizeFolderId(string $input): string
+{
+    $input = trim($input);
+    if ($input === '') {
+        return '';
+    }
+
+    if (preg_match('#drive\.google\.com/(?:drive/)?(?:u/\d+/)?folders/([a-zA-Z0-9_-]+)#', $input, $matches)) {
+        return $matches[1];
+    }
+
+    if (preg_match('#/folders/([a-zA-Z0-9_-]+)#', $input, $matches)) {
+        return $matches[1];
+    }
+
+    $id = preg_replace('/\s+/', '', $input) ?? $input;
+
+    return trim($id, ".,;:\t\n\r");
+}
+
 function alcrosGoogleDriveFolderId(): string
 {
-    return trim(getSetting('registry_backup_gdrive_folder_id', ''));
+    return alcrosGoogleDriveNormalizeFolderId(getSetting('registry_backup_gdrive_folder_id', ''));
 }
 
 function alcrosGoogleDriveRetentionCount(): int
@@ -353,7 +377,7 @@ function alcrosGoogleDriveUploadRegistryZip(string $zipPath, string $filename): 
 
 function alcrosGoogleDriveResumableSessionUrl(string $accessToken, string $metadataJson, string $mime, int $bytes): string
 {
-    $ch = curl_init('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name');
+    $ch = curl_init('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name&supportsAllDrives=true');
     curl_setopt_array($ch, [
         CURLOPT_POST           => true,
         CURLOPT_POSTFIELDS     => $metadataJson,
@@ -419,7 +443,7 @@ function alcrosGoogleDrivePruneOldUploads(): int
         "'" . str_replace("'", "\\'", $folderId) . "' in parents and trashed = false and name contains '" . ALCROS_GDRIVE_REGISTRY_PREFIX . "'"
     );
     $url = 'https://www.googleapis.com/drive/v3/files?q=' . $query
-        . '&fields=files(id,name,createdTime)&orderBy=createdTime desc&pageSize=100';
+        . '&fields=files(id,name,createdTime)&orderBy=createdTime desc&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true';
 
     $list = alcrosGoogleDriveApiRequest('GET', $url, $accessToken);
     if (!$list['ok']) {
@@ -477,15 +501,20 @@ function alcrosGoogleDriveTestConnection(): array
         return ['ok' => false, 'message' => $e->getMessage()];
     }
 
-    $url = 'https://www.googleapis.com/drive/v3/files/' . rawurlencode($folderId) . '?fields=id,name,mimeType';
+    $url = 'https://www.googleapis.com/drive/v3/files/' . rawurlencode($folderId)
+        . '?fields=id,name,mimeType&supportsAllDrives=true';
     $check = alcrosGoogleDriveApiRequest('GET', $url, $accessToken);
     if (!$check['ok']) {
         $err = alcrosGoogleDriveApiErrorMessage($check['body']);
+        $email = alcrosGoogleDriveServiceAccountEmail();
+        $hint = $email !== ''
+            ? ' In Google Drive, open the folder → Share → add ' . $email . ' as Editor (notify off).'
+            : ' Share the folder with the service account email from your JSON key as Editor.';
 
         return [
             'ok'      => false,
-            'message' => 'Could not access folder. Share the folder with the service account email as Editor.'
-                . ($err !== '' ? ' (' . $err . ')' : ''),
+            'message' => 'Could not access folder.' . $hint
+                . ($err !== '' ? ' Google says: ' . $err : ''),
         ];
     }
 

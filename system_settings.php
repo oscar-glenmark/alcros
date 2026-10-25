@@ -383,11 +383,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             setSetting('registry_backup_public_url', $publicUrl);
 
             $gdriveEnabled = isset($_POST['registry_backup_gdrive_enabled']) ? '1' : '0';
-            $gdriveFolder = trim((string) ($_POST['registry_backup_gdrive_folder_id'] ?? ''));
+            $gdriveFolder = alcrosGoogleDriveNormalizeFolderId(
+                trim((string) ($_POST['registry_backup_gdrive_folder_id'] ?? ''))
+            );
             $gdriveRetention = max(0, min(90, (int) ($_POST['registry_backup_gdrive_retention_count'] ?? 0)));
             setSetting('registry_backup_gdrive_enabled', $gdriveEnabled);
             setSetting('registry_backup_gdrive_folder_id', $gdriveFolder);
             setSetting('registry_backup_gdrive_retention_count', (string) $gdriveRetention);
+            setSetting('registry_backup_gdrive_token', '');
+            setSetting('registry_backup_gdrive_token_exp', '0');
 
             if (!empty($_POST['registry_backup_gdrive_remove_credentials'])) {
                 alcrosGoogleDriveRemoveServiceAccount();
@@ -1295,7 +1299,8 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                 <div>
                                                     <label class="text-[11px] font-bold uppercase text-slate-500">Drive folder ID</label>
-                                                    <input type="text" name="registry_backup_gdrive_folder_id" value="<?= htmlspecialchars($registryBackupGdriveFolderId) ?>" placeholder="From folder URL …/folders/FOLDER_ID" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono">
+                                                    <input type="text" name="registry_backup_gdrive_folder_id" value="<?= htmlspecialchars($registryBackupGdriveFolderId) ?>" placeholder="1abc… or paste full https://drive.google.com/…/folders/…" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono">
+                                                    <p class="text-[11px] text-slate-400 mt-1">Paste the folder ID only, or the full folder URL — ALCROS saves the ID.</p>
                                                 </div>
                                                 <div>
                                                     <label class="text-[11px] font-bold uppercase text-slate-500">Keep copies on Drive</label>

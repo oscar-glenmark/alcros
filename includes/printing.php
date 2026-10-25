@@ -17,6 +17,11 @@ function ensurePrintTables(PDO $pdo): void
     }
     $done = true;
 
+    if (is_file(__DIR__ . '/schema_reorganization.php')) {
+        require_once __DIR__ . '/schema_reorganization.php';
+        alcrosMigratePrintCalibrationsToTemplates($pdo);
+    }
+
     try {
         $pdo->exec(
             "CREATE TABLE IF NOT EXISTS print_templates (
@@ -57,22 +62,6 @@ function ensurePrintTables(PDO $pdo): void
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             UNIQUE KEY uniq_template_field (template_id, field_name),
             CONSTRAINT fk_print_fields_template
-                FOREIGN KEY (template_id) REFERENCES print_templates(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB"
-        );
-
-        $pdo->exec(
-            "CREATE TABLE IF NOT EXISTS print_calibrations (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            template_id INT NOT NULL,
-            x_offset_mm DECIMAL(8,2) NOT NULL DEFAULT 0.00,
-            y_offset_mm DECIMAL(8,2) NOT NULL DEFAULT 0.00,
-            scale_x DECIMAL(8,4) NOT NULL DEFAULT 1.0000,
-            scale_y DECIMAL(8,4) NOT NULL DEFAULT 1.0000,
-            updated_by VARCHAR(50) DEFAULT NULL,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            UNIQUE KEY uniq_template_calibration (template_id),
-            CONSTRAINT fk_print_calibrations_template
                 FOREIGN KEY (template_id) REFERENCES print_templates(id) ON DELETE CASCADE
         ) ENGINE=InnoDB"
         );
@@ -536,14 +525,6 @@ function seedPrintTemplates(PDO $pdo): void
                 seedPrintFieldsForTemplate($pdo, (int) $existingId, $type, $side);
             }
 
-            $calStmt = $pdo->prepare('SELECT id FROM print_calibrations WHERE template_id = ? LIMIT 1');
-            $calStmt->execute([(int) $existingId]);
-            if (!$calStmt->fetchColumn()) {
-                $pdo->prepare(
-                    'INSERT INTO print_calibrations (template_id, x_offset_mm, y_offset_mm, scale_x, scale_y)
-                     VALUES (?, 0, 0, 1, 1)'
-                )->execute([(int) $existingId]);
-            }
         }
     }
 }
@@ -2169,7 +2150,11 @@ function getPrintFields(PDO $pdo, int $templateId, bool $enabledOnly = true): ar
 
 function getPrintCalibration(PDO $pdo, int $templateId): array
 {
-    $stmt = $pdo->prepare('SELECT * FROM print_calibrations WHERE template_id = ? LIMIT 1');
+    $stmt = $pdo->prepare(
+        'SELECT cal_x_offset_mm AS x_offset_mm, cal_y_offset_mm AS y_offset_mm,
+                cal_scale_x AS scale_x, cal_scale_y AS scale_y, cal_updated_by AS updated_by, cal_updated_at AS updated_at
+         FROM print_templates WHERE id = ? LIMIT 1'
+    );
     $stmt->execute([$templateId]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -2886,24 +2871,23 @@ function updatePrintField(PDO $pdo, int $fieldId, array $data): bool
 function updatePrintCalibration(PDO $pdo, int $templateId, array $data, ?string $updatedBy = null): bool
 {
     $stmt = $pdo->prepare(
-        'INSERT INTO print_calibrations (template_id, x_offset_mm, y_offset_mm, scale_x, scale_y, updated_by)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE
-            x_offset_mm = VALUES(x_offset_mm),
-            y_offset_mm = VALUES(y_offset_mm),
-            scale_x = VALUES(scale_x),
-            scale_y = VALUES(scale_y),
-            updated_by = VALUES(updated_by),
-            updated_at = NOW()'
+        'UPDATE print_templates SET
+            cal_x_offset_mm = ?,
+            cal_y_offset_mm = ?,
+            cal_scale_x = ?,
+            cal_scale_y = ?,
+            cal_updated_by = ?,
+            cal_updated_at = NOW()
+         WHERE id = ?'
     );
 
     return $stmt->execute([
-        $templateId,
         (float) ($data['x_offset_mm'] ?? 0),
         (float) ($data['y_offset_mm'] ?? 0),
         (float) ($data['scale_x'] ?? 1),
         (float) ($data['scale_y'] ?? 1),
         $updatedBy ?? staffId(),
+        $templateId,
     ]);
 }
 

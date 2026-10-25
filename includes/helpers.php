@@ -629,37 +629,10 @@ function ensureExtendedSchema(PDO $pdo): void
     }
     $ensured = true;
 
-    $pdo->exec(
-        "CREATE TABLE IF NOT EXISTS email_logs (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            recipient VARCHAR(150) NOT NULL,
-            subject VARCHAR(255) NOT NULL,
-            email_type VARCHAR(50) NOT NULL DEFAULT 'general',
-            reference_code VARCHAR(30) DEFAULT NULL,
-            success TINYINT(1) NOT NULL DEFAULT 0,
-            error_message VARCHAR(255) DEFAULT NULL,
-            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_recipient (recipient),
-            INDEX idx_reference (reference_code),
-            INDEX idx_sent (sent_at)
-        ) ENGINE=InnoDB"
-    );
-
-    $pdo->exec(
-        "CREATE TABLE IF NOT EXISTS sms_logs (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            recipient VARCHAR(20) NOT NULL,
-            message VARCHAR(500) NOT NULL,
-            sms_type VARCHAR(50) NOT NULL DEFAULT 'general',
-            reference_code VARCHAR(30) DEFAULT NULL,
-            success TINYINT(1) NOT NULL DEFAULT 0,
-            error_message VARCHAR(255) DEFAULT NULL,
-            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_recipient (recipient),
-            INDEX idx_reference (reference_code),
-            INDEX idx_sent (sent_at)
-        ) ENGINE=InnoDB"
-    );
+    if (is_file(__DIR__ . '/schema_reorganization.php')) {
+        require_once __DIR__ . '/schema_reorganization.php';
+        alcrosEnsureDeliveryLogsTable($pdo);
+    }
 
     try {
         $pdo->query('SELECT 1 FROM request_status_history LIMIT 1');
@@ -689,18 +662,10 @@ function ensureExtendedSchema(PDO $pdo): void
         // Non-fatal if migration fails
     }
 
-    $pdo->exec(
-        "CREATE TABLE IF NOT EXISTS staff_password_otps (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            staff_id VARCHAR(50) NOT NULL,
-            otp_hash VARCHAR(255) NOT NULL,
-            expires_at DATETIME NOT NULL,
-            attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_staff_otp (staff_id),
-            INDEX idx_expires (expires_at)
-        ) ENGINE=InnoDB"
-    );
+    if (is_file(__DIR__ . '/schema_reorganization.php')) {
+        require_once __DIR__ . '/schema_reorganization.php';
+        ensureAlcrosSchemaReorganization($pdo);
+    }
 }
 
 function logEmailDelivery(
@@ -714,8 +679,8 @@ function logEmailDelivery(
     try {
         ensureExtendedSchema(getDB());
         $stmt = getDB()->prepare(
-            'INSERT INTO email_logs (recipient, subject, email_type, reference_code, success, error_message)
-             VALUES (?, ?, ?, ?, ?, ?)'
+            'INSERT INTO delivery_logs (channel, recipient, subject, body, delivery_type, reference_code, success, error_message)
+             VALUES (\'email\', ?, ?, \'\', ?, ?, ?, ?)'
         );
         $stmt->execute([
             $recipient,
@@ -3845,6 +3810,11 @@ function ensureStaffProfileColumns(PDO $pdo): void
         } catch (Throwable $ignored) {
         }
     }
+
+    if (is_file(__DIR__ . '/schema_reorganization.php')) {
+        require_once __DIR__ . '/schema_reorganization.php';
+        alcrosMigrateStaffPasswordOtpsToStaffColumns($pdo);
+    }
 }
 
 function staffRowById(PDO $pdo, string $staffId): ?array
@@ -3947,10 +3917,19 @@ function staffPasswordOtpTtlMinutes(): int
     return 15;
 }
 
+function ensureStaffPasswordResetOtpColumns(PDO $pdo): void
+{
+    ensureStaffProfileColumns($pdo);
+    ensureExtendedSchema($pdo);
+}
+
 function purgeExpiredStaffOtps(PDO $pdo): void
 {
-    ensureExtendedSchema($pdo);
-    $pdo->exec('DELETE FROM staff_password_otps WHERE expires_at <= NOW()');
+    ensureStaffPasswordResetOtpColumns($pdo);
+    $pdo->exec(
+        'UPDATE staff SET password_reset_otp_hash = NULL, password_reset_otp_expires_at = NULL, password_reset_otp_attempts = 0
+         WHERE password_reset_otp_expires_at IS NOT NULL AND password_reset_otp_expires_at <= NOW()'
+    );
 }
 
 function sendStaffPasswordOtp(PDO $pdo, string $staffId): array
@@ -3981,12 +3960,10 @@ function sendStaffPasswordOtp(PDO $pdo, string $staffId): array
     $otp = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
     $ttlMinutes = staffPasswordOtpTtlMinutes();
 
-    $pdo->prepare('DELETE FROM staff_password_otps WHERE staff_id = ?')->execute([$staff['staff_id']]);
-    $insert = $pdo->prepare(
-        'INSERT INTO staff_password_otps (staff_id, otp_hash, expires_at, attempts)
-         VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ' . $ttlMinutes . ' MINUTE), 0)'
-    );
-    $insert->execute([$staff['staff_id'], password_hash($otp, PASSWORD_DEFAULT)]);
+    $pdo->prepare(
+        'UPDATE staff SET password_reset_otp_hash = ?, password_reset_otp_expires_at = DATE_ADD(NOW(), INTERVAL '
+        . $ttlMinutes . ' MINUTE), password_reset_otp_attempts = 0 WHERE staff_id = ?'
+    )->execute([password_hash($otp, PASSWORD_DEFAULT), $staff['staff_id']]);
 
     $site = getSiteSettings()['name'];
     $subject = $site . ' — Staff password reset code';
@@ -4004,7 +3981,9 @@ function sendStaffPasswordOtp(PDO $pdo, string $staffId): array
         . '<p style="color:#64748b;font-size:13px;">If you did not request this, ignore this email and contact your administrator.</p>';
 
     if (!sendCitizenEmail($email, $subject, $plain, $html)) {
-        $pdo->prepare('DELETE FROM staff_password_otps WHERE staff_id = ?')->execute([$staff['staff_id']]);
+        $pdo->prepare(
+            'UPDATE staff SET password_reset_otp_hash = NULL, password_reset_otp_expires_at = NULL, password_reset_otp_attempts = 0 WHERE staff_id = ?'
+        )->execute([$staff['staff_id']]);
 
         return [
             'ok' => false,
@@ -4126,10 +4105,10 @@ function resetStaffPasswordWithOtp(PDO $pdo, string $staffId, string $otp, strin
     }
 
     $stmt = $pdo->prepare(
-        'SELECT id, otp_hash, attempts, (expires_at > NOW()) AS is_fresh
-         FROM staff_password_otps
-         WHERE staff_id = ?
-         ORDER BY id DESC
+        'SELECT password_reset_otp_hash AS otp_hash, password_reset_otp_attempts AS attempts,
+                (password_reset_otp_expires_at > NOW()) AS is_fresh
+         FROM staff
+         WHERE staff_id = ? AND password_reset_otp_hash IS NOT NULL
          LIMIT 1'
     );
     $stmt->execute([$staffId]);
@@ -4141,20 +4120,23 @@ function resetStaffPasswordWithOtp(PDO $pdo, string $staffId, string $otp, strin
         return ['ok' => false, 'message' => 'Too many incorrect attempts. Request a new verification code.'];
     }
     if ((int) ($row['is_fresh'] ?? 0) !== 1) {
-        $pdo->prepare('DELETE FROM staff_password_otps WHERE id = ?')->execute([(int) $row['id']]);
+        $pdo->prepare(
+            'UPDATE staff SET password_reset_otp_hash = NULL, password_reset_otp_expires_at = NULL, password_reset_otp_attempts = 0 WHERE staff_id = ?'
+        )->execute([$staffId]);
 
         return ['ok' => false, 'message' => 'Verification code expired. Request a new code.'];
     }
 
     if (!password_verify($otp, (string) $row['otp_hash'])) {
-        $pdo->prepare('UPDATE staff_password_otps SET attempts = attempts + 1 WHERE id = ?')->execute([(int) $row['id']]);
+        $pdo->prepare('UPDATE staff SET password_reset_otp_attempts = password_reset_otp_attempts + 1 WHERE staff_id = ?')
+            ->execute([$staffId]);
 
         return ['ok' => false, 'message' => 'Incorrect verification code.'];
     }
 
-    $pdo->prepare('UPDATE staff SET password_hash = ? WHERE staff_id = ?')
-        ->execute([password_hash($newPassword, PASSWORD_DEFAULT), $staffId]);
-    $pdo->prepare('DELETE FROM staff_password_otps WHERE staff_id = ?')->execute([$staffId]);
+    $pdo->prepare(
+        'UPDATE staff SET password_hash = ?, password_reset_otp_hash = NULL, password_reset_otp_expires_at = NULL, password_reset_otp_attempts = 0 WHERE staff_id = ?'
+    )->execute([password_hash($newPassword, PASSWORD_DEFAULT), $staffId]);
     if (function_exists('staffRememberMeRevokeAllForStaff')) {
         staffRememberMeRevokeAllForStaff($pdo, $staffId);
     }
@@ -7222,7 +7204,10 @@ function clearOperationalData(PDO $pdo, array $types, string $staffId): array
                 $pdo->exec('UPDATE document_requests SET civil_record_id = NULL WHERE civil_record_id IS NOT NULL');
             }
 
-            $pdo->exec('DELETE FROM civil_record_edit_locks');
+            require_once __DIR__ . '/staff_resource_locks.php';
+            ensureStaffResourceLocksTable($pdo);
+            $pdo->prepare('DELETE FROM staff_resource_locks WHERE resource_type = ?')
+                ->execute([STAFF_LOCK_TYPE_CIVIL_RECORD]);
             $results['civil_records'] = (int) $pdo->exec('DELETE FROM civil_records');
         }
 

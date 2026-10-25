@@ -90,7 +90,7 @@ function staffRememberCookieParams(): array
     ];
 }
 
-function ensureStaffRememberTokensTable(PDO $pdo): void
+function ensureStaffRememberColumns(PDO $pdo): void
 {
     static $done = false;
     if ($done) {
@@ -98,18 +98,27 @@ function ensureStaffRememberTokensTable(PDO $pdo): void
     }
     $done = true;
 
-    $pdo->exec(
-        'CREATE TABLE IF NOT EXISTS staff_remember_tokens (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            staff_id VARCHAR(50) NOT NULL,
-            token_hash CHAR(64) NOT NULL,
-            expires_at DATETIME NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uq_staff_remember_hash (token_hash),
-            INDEX idx_staff_remember_staff (staff_id),
-            INDEX idx_staff_remember_expires (expires_at)
-        ) ENGINE=InnoDB'
-    );
+    if (!function_exists('ensureAlcrosSchemaReorganization')) {
+        require_once __DIR__ . '/schema_reorganization.php';
+    }
+    ensureAlcrosSchemaReorganization($pdo);
+
+    try {
+        $pdo->query('SELECT remember_token_hash FROM staff LIMIT 1');
+    } catch (Throwable) {
+        try {
+            $pdo->exec(
+                'ALTER TABLE staff
+                    ADD COLUMN remember_token_hash CHAR(64) NULL DEFAULT NULL AFTER profile_photo_path,
+                    ADD COLUMN remember_token_expires_at DATETIME NULL DEFAULT NULL AFTER remember_token_hash'
+            );
+        } catch (Throwable $ignored) {
+        }
+        try {
+            $pdo->exec('ALTER TABLE staff ADD UNIQUE KEY uq_staff_remember_hash (remember_token_hash)');
+        } catch (Throwable $ignored) {
+        }
+    }
 }
 
 function staffRememberMeClearCookie(): void
@@ -137,7 +146,7 @@ function staffRememberMeRawFromCookie(): string
 
 function staffRememberMeIssue(PDO $pdo, array $staff): void
 {
-    ensureStaffRememberTokensTable($pdo);
+    ensureStaffRememberColumns($pdo);
     staffRememberMePurgeExpired($pdo);
 
     $staffId = (string) ($staff['staff_id'] ?? '');
@@ -145,15 +154,13 @@ function staffRememberMeIssue(PDO $pdo, array $staff): void
         return;
     }
 
-    $pdo->prepare('DELETE FROM staff_remember_tokens WHERE staff_id = ?')->execute([$staffId]);
-
     $raw = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
     $hash = hash('sha256', $raw);
     $expiresAt = date('Y-m-d H:i:s', time() + (STAFF_REMEMBER_DAYS * 86400));
 
     $pdo->prepare(
-        'INSERT INTO staff_remember_tokens (staff_id, token_hash, expires_at) VALUES (?, ?, ?)'
-    )->execute([$staffId, $hash, $expiresAt]);
+        'UPDATE staff SET remember_token_hash = ?, remember_token_expires_at = ? WHERE staff_id = ?'
+    )->execute([$hash, $expiresAt, $staffId]);
 
     $params = staffRememberCookieParams();
     setcookie(STAFF_REMEMBER_COOKIE, $raw, $params);
@@ -163,7 +170,11 @@ function staffRememberMeIssue(PDO $pdo, array $staff): void
 function staffRememberMePurgeExpired(PDO $pdo): void
 {
     try {
-        $pdo->exec('DELETE FROM staff_remember_tokens WHERE expires_at < NOW()');
+        ensureStaffRememberColumns($pdo);
+        $pdo->exec(
+            'UPDATE staff SET remember_token_hash = NULL, remember_token_expires_at = NULL
+             WHERE remember_token_expires_at IS NOT NULL AND remember_token_expires_at < NOW()'
+        );
     } catch (Throwable $e) {
         // Non-fatal.
     }
@@ -175,9 +186,12 @@ function staffRememberMeRevokeRaw(PDO $pdo, string $raw): void
         return;
     }
 
-    ensureStaffRememberTokensTable($pdo);
+    ensureStaffRememberColumns($pdo);
     $hash = hash('sha256', $raw);
-    $pdo->prepare('DELETE FROM staff_remember_tokens WHERE token_hash = ?')->execute([$hash]);
+    $pdo->prepare(
+        'UPDATE staff SET remember_token_hash = NULL, remember_token_expires_at = NULL
+         WHERE remember_token_hash = ?'
+    )->execute([$hash]);
     staffRememberMeClearCookie();
 }
 
@@ -193,13 +207,13 @@ function staffRememberMeRevokeAllForStaff(PDO $pdo, string $staffId): void
         return;
     }
 
-    ensureStaffRememberTokensTable($pdo);
+    ensureStaffRememberColumns($pdo);
 
     $raw = staffRememberMeRawFromCookie();
     if ($raw !== '') {
         $hash = hash('sha256', $raw);
         $stmt = $pdo->prepare(
-            'SELECT staff_id FROM staff_remember_tokens WHERE token_hash = ? AND staff_id = ? LIMIT 1'
+            'SELECT staff_id FROM staff WHERE remember_token_hash = ? AND staff_id = ? LIMIT 1'
         );
         $stmt->execute([$hash, $staffId]);
         if ($stmt->fetchColumn()) {
@@ -207,7 +221,9 @@ function staffRememberMeRevokeAllForStaff(PDO $pdo, string $staffId): void
         }
     }
 
-    $pdo->prepare('DELETE FROM staff_remember_tokens WHERE staff_id = ?')->execute([$staffId]);
+    $pdo->prepare(
+        'UPDATE staff SET remember_token_hash = NULL, remember_token_expires_at = NULL WHERE staff_id = ?'
+    )->execute([$staffId]);
 }
 
 function staffRememberMeTryRestore(): bool
@@ -226,14 +242,14 @@ function staffRememberMeTryRestore(): bool
             require_once __DIR__ . '/../config/database.php';
         }
         $pdo = getDB();
-        ensureStaffRememberTokensTable($pdo);
+        ensureStaffRememberColumns($pdo);
+        staffRememberMePurgeExpired($pdo);
 
         $hash = hash('sha256', $raw);
         $stmt = $pdo->prepare(
-            'SELECT t.staff_id, s.first_name, s.middle_name, s.last_name, s.role
-             FROM staff_remember_tokens t
-             INNER JOIN staff s ON s.staff_id = t.staff_id
-             WHERE t.token_hash = ? AND t.expires_at > NOW()
+            'SELECT staff_id, first_name, middle_name, last_name, role
+             FROM staff
+             WHERE remember_token_hash = ? AND remember_token_expires_at > NOW()
              LIMIT 1'
         );
         $stmt->execute([$hash]);

@@ -136,7 +136,7 @@ function smsProviderSendBlockReason(): ?string
         ensureExtendedSchema(getDB());
         // Only warn when the most recent attempt failed — not when an older failure precedes a later success.
         $stmt = getDB()->query(
-            'SELECT success, error_message FROM sms_logs ORDER BY sent_at DESC, id DESC LIMIT 1'
+            'SELECT success, error_message FROM delivery_logs WHERE channel = \'sms\' ORDER BY sent_at DESC, id DESC LIMIT 1'
         );
         $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : false;
         if (!$row || !empty($row['success'])) {
@@ -237,8 +237,8 @@ function logSmsDelivery(
     try {
         ensureExtendedSchema(getDB());
         $stmt = getDB()->prepare(
-            'INSERT INTO sms_logs (recipient, message, sms_type, reference_code, success, error_message)
-             VALUES (?, ?, ?, ?, ?, ?)'
+            'INSERT INTO delivery_logs (channel, recipient, subject, body, delivery_type, reference_code, success, error_message)
+             VALUES (\'sms\', ?, NULL, ?, ?, ?, ?, ?)'
         );
         $stmt->execute([
             $recipient,

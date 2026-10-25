@@ -52,8 +52,8 @@ function staffLockTypeFromInput(string $raw): string
     if ($type === STAFF_LOCK_TYPE_REQUEST || $type === STAFF_LOCK_TYPE_APPOINTMENT) {
         return $type;
     }
-    if ($type === 'civil_record') {
-        return 'civil_record';
+    if ($type === STAFF_LOCK_TYPE_CIVIL_RECORD || $type === 'civil_record') {
+        return STAFF_LOCK_TYPE_CIVIL_RECORD;
     }
 
     throw new InvalidArgumentException('Invalid lock type.');
@@ -81,13 +81,10 @@ function formattedStaffLocksForIds(PDO $pdo, string $type, array $ids, string $s
 {
     $locks = [];
 
-    if ($type === 'civil_record') {
+    if ($type === STAFF_LOCK_TYPE_CIVIL_RECORD) {
+        $map = fetchStaffResourceLocksMap($pdo, $type, $ids);
         foreach ($ids as $id) {
-            $row = fetchCivilRecordEditLock($pdo, $id);
-            $formatted = $row ? formatCivilRecordEditLock($row, $staffId) : null;
-            if ($formatted && !($formatted['active'] ?? false)) {
-                $formatted = null;
-            }
+            $formatted = isset($map[$id]) ? formatStaffResourceLock($map[$id], $staffId) : null;
             $locks[(string) $id] = $formatted;
         }
 
@@ -122,11 +119,7 @@ function handleStaffLocksRevision(PDO $pdo): void
     $ids = parseStaffLockIds((string) ($_GET['ids'] ?? ''));
     $since = trim((string) ($_GET['since'] ?? ''));
 
-    if ($type === 'civil_record') {
-        $revision = sha1(json_encode(formattedStaffLocksForIds($pdo, $type, $ids, staffId()), JSON_UNESCAPED_UNICODE));
-    } else {
-        $revision = computeStaffResourceLocksRevision($pdo, $type, $ids);
-    }
+    $revision = computeStaffResourceLocksRevision($pdo, $type, $ids);
 
     if ($since !== '' && hash_equals($since, $revision)) {
         apiJsonResponse([
@@ -163,27 +156,20 @@ function handleStaffLockAcquire(PDO $pdo): void
         if (!appointmentLockEligible($pdo, $id)) {
             apiJsonResponse(['ok' => true, 'skipped' => true, 'reason' => 'not_lockable']);
         }
-    } elseif ($type === 'civil_record') {
+    } elseif ($type === STAFF_LOCK_TYPE_CIVIL_RECORD) {
         requirePageAccess('records.php');
         assertStaffCanManageCivilRecords();
-        $result = acquireCivilRecordEditLock($pdo, $id, staffId(), staffName());
-        if (!$result['ok']) {
-            apiJsonResponse([
-                'ok'        => false,
-                'error'     => 'This record is being edited by ' . ($result['locked_by'] ?? 'another staff member') . '.',
-                'locked_by' => $result['locked_by'] ?? null,
-            ], 409);
-        }
-        apiJsonResponse(['ok' => true, 'resource_type' => $type, 'resource_id' => $id, 'expires_at' => $result['expires_at']]);
-
-        return;
     }
 
     $result = acquireStaffResourceLock($pdo, $type, $id, staffId(), staffName());
-    if (!$result['ok']) {
+    if (!($result['ok'] ?? false)) {
+        $who = $result['locked_by'] ?? 'another staff member';
+        $msg = $type === STAFF_LOCK_TYPE_CIVIL_RECORD
+            ? 'This record is being edited by ' . $who . '.'
+            : 'Being handled by ' . $who . '.';
         apiJsonResponse([
             'ok'        => false,
-            'error'     => 'Being handled by ' . ($result['locked_by'] ?? 'another staff member') . '.',
+            'error'     => $msg,
             'locked_by' => $result['locked_by'] ?? null,
         ], 409);
     }
@@ -204,18 +190,9 @@ function handleStaffLockRefresh(PDO $pdo): void
         apiError('Invalid record.', 422);
     }
 
-    if ($type === 'civil_record') {
+    if ($type === STAFF_LOCK_TYPE_CIVIL_RECORD) {
         requirePageAccess('records.php');
-        $result = refreshCivilRecordEditLock($pdo, $id, staffId(), staffName());
-        if (!$result['ok']) {
-            apiJsonResponse(['ok' => false, 'error' => $result['error'] ?? 'Lock lost.'], 409);
-        }
-        apiJsonResponse(['ok' => true, 'resource_id' => $id, 'expires_at' => $result['expires_at']]);
-
-        return;
-    }
-
-    if ($type === STAFF_LOCK_TYPE_REQUEST) {
+    } elseif ($type === STAFF_LOCK_TYPE_REQUEST) {
         requirePageAccess('manage_request.php');
         if (!documentRequestLockEligible($pdo, $id)) {
             clearStaffResourceLock($pdo, $type, $id);
@@ -248,21 +225,19 @@ function handleStaffLockRelease(PDO $pdo): void
         apiError('Invalid record.', 422);
     }
 
-    if ($type === 'civil_record') {
+    if ($type === STAFF_LOCK_TYPE_CIVIL_RECORD) {
         requirePageAccess('records.php');
-        releaseCivilRecordEditLock($pdo, $id, staffId());
-        apiJsonResponse(['ok' => true, 'released' => true]);
-
-        return;
-    }
-
-    if ($type === STAFF_LOCK_TYPE_REQUEST) {
+    } elseif ($type === STAFF_LOCK_TYPE_REQUEST) {
         requirePageAccess('manage_request.php');
     } else {
         requirePageAccess('appointment.php');
     }
 
-    releaseStaffResourceLock($pdo, $type, $id, staffId());
+    if ($type === STAFF_LOCK_TYPE_CIVIL_RECORD) {
+        releaseCivilRecordEditLock($pdo, $id, staffId());
+    } else {
+        releaseStaffResourceLock($pdo, $type, $id, staffId());
+    }
     apiJsonResponse(['ok' => true, 'released' => true]);
 }
 
@@ -272,20 +247,6 @@ function handleStaffLockForceRelease(PDO $pdo): void
     $id = (int) ($_POST['resource_id'] ?? 0);
     if ($id <= 0) {
         apiError('Invalid record.', 422);
-    }
-
-    if ($type === 'civil_record') {
-        $lock = fetchCivilRecordEditLock($pdo, $id);
-        if (!$lock || !civilRecordEditLockIsActive($lock)) {
-            apiJsonResponse(['ok' => false, 'error' => 'No active lock.'], 404);
-        }
-        $holder = (string) ($lock['staff_name'] ?: $lock['staff_id']);
-        $pdo->prepare('DELETE FROM civil_record_edit_locks WHERE civil_record_id = ?')->execute([$id]);
-        logActivity(staffId(), 'Lock Released', staffName() . ' cleared a stale civil record lock on #' . $id
-            . ($holder !== '' ? ' (was held by ' . $holder . ')' : ''));
-        apiJsonResponse(['ok' => true, 'released' => true]);
-
-        return;
     }
 
     if (!forceReleaseStaffResourceLock($pdo, $type, $id, staffId(), staffName())) {

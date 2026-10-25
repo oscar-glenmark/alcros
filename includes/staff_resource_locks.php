@@ -7,6 +7,7 @@
 const STAFF_RESOURCE_LOCK_TTL = 300;
 const STAFF_LOCK_TYPE_REQUEST = 'document_request';
 const STAFF_LOCK_TYPE_APPOINTMENT = 'appointment';
+const STAFF_LOCK_TYPE_CIVIL_RECORD = 'civil_record';
 
 function normalizeStaffLockStaffId(?string $staffId): string
 {
@@ -32,7 +33,7 @@ function ensureStaffResourceLocksTable(PDO $pdo): void
         'CREATE TABLE IF NOT EXISTS staff_resource_locks (
             resource_type VARCHAR(24) NOT NULL,
             resource_id INT NOT NULL,
-            staff_id VARCHAR(32) NOT NULL,
+            staff_id VARCHAR(50) NOT NULL,
             staff_name VARCHAR(120) NOT NULL DEFAULT \'\',
             locked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             expires_at DATETIME NOT NULL,

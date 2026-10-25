@@ -25,7 +25,6 @@ function alcrosDuplicatiBackupTables(): array
         'staff',
         'print_templates',
         'print_fields',
-        'print_calibrations',
     ];
 }
 

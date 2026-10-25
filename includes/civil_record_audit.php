@@ -17,7 +17,7 @@ function ensureCivilRecordUpdatesTable(PDO $pdo): void
             id INT AUTO_INCREMENT PRIMARY KEY,
             civil_record_id INT NOT NULL,
             event_type ENUM('created','updated') NOT NULL,
-            staff_id VARCHAR(32) NOT NULL,
+            staff_id VARCHAR(50) NOT NULL,
             staff_name VARCHAR(120) NOT NULL,
             staff_role VARCHAR(40) NOT NULL DEFAULT 'Staff',
             summary VARCHAR(255) NOT NULL,

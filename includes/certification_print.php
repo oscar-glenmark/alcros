@@ -200,9 +200,9 @@ function ensureCertificationPaperAspect(PDO $pdo): void
         )->execute([$scale, $scale, $templateId]);
 
         $pdo->prepare(
-            'UPDATE print_calibrations
-             SET y_offset_mm = ROUND(y_offset_mm * ?, 2), updated_at = NOW()
-             WHERE template_id = ?'
+            'UPDATE print_templates
+             SET cal_y_offset_mm = ROUND(cal_y_offset_mm * ?, 2), cal_updated_at = NOW()
+             WHERE id = ?'
         )->execute([$scale, $templateId]);
     }
 
@@ -250,10 +250,10 @@ function ensureCertificationPaperA4(PDO $pdo): void
             )->execute([$scaleX, $scaleY, $scaleX, $scaleY, $templateId]);
 
             $pdo->prepare(
-                'UPDATE print_calibrations
-                 SET x_offset_mm = ROUND(x_offset_mm * ?, 2), y_offset_mm = ROUND(y_offset_mm * ?, 2),
-                     updated_at = NOW()
-                 WHERE template_id = ?'
+                'UPDATE print_templates
+                 SET cal_x_offset_mm = ROUND(cal_x_offset_mm * ?, 2), cal_y_offset_mm = ROUND(cal_y_offset_mm * ?, 2),
+                     cal_updated_at = NOW()
+                 WHERE id = ?'
             )->execute([$scaleX, $scaleY, $templateId]);
         }
     }
@@ -859,14 +859,6 @@ function seedCertificationPrintTemplates(PDO $pdo): void
             reseedCertificationPrintFields($pdo, $existingId, $type);
         }
 
-        $calStmt = $pdo->prepare('SELECT id FROM print_calibrations WHERE template_id = ? LIMIT 1');
-        $calStmt->execute([$existingId]);
-        if (!$calStmt->fetchColumn()) {
-            $pdo->prepare(
-                'INSERT INTO print_calibrations (template_id, x_offset_mm, y_offset_mm, scale_x, scale_y)
-                 VALUES (?, 0, 0, 1, 1)'
-            )->execute([$existingId]);
-        }
     }
 
     setSetting('certification_layout_version', (string) CERTIFICATION_LAYOUT_VERSION);

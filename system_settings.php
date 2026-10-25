@@ -1021,8 +1021,8 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     ensureExtendedSchema($pdo);
                                     $smsSummary = smsConfigurationSummary();
                                     $smsRecentLogs = $pdo->query(
-                                        'SELECT sent_at, success, sms_type, error_message, recipient
-                                         FROM sms_logs ORDER BY sent_at DESC LIMIT 5'
+                                        'SELECT sent_at, success, delivery_type AS sms_type, error_message, recipient
+                                         FROM delivery_logs WHERE channel = \'sms\' ORDER BY sent_at DESC LIMIT 5'
                                     )->fetchAll(PDO::FETCH_ASSOC) ?: [];
                                     ?>
                                     <div class="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-xs text-slate-600">

@@ -2,6 +2,7 @@
 /**
  * Authenticated file delivery for sensitive uploads (IDs, staff photos).
  */
+@ini_set('display_errors', '0');
 require_once __DIR__ . '/includes/auth.php';
 
 requireStaffLoginForMedia();
@@ -77,13 +78,7 @@ function filePhpRespondHtmlError(int $status, string $title, string $message): n
 function filePhpRenderViewer(string $relative, string $mime, string $filename): never
 {
     filePhpHelpers();
-    $rawUrl = buildAuthUrl(
-        (function (): string {
-            $base = function_exists('alcrosWebBasePath') ? alcrosWebBasePath() : '';
-            return ($base !== '' ? $base . '/' : '') . 'file.php';
-        })(),
-        ['f' => $relative, 'raw' => '1']
-    );
+    $rawUrl = buildAuthUrl('file.php', ['f' => $relative, 'raw' => '1']);
     $pageTitle = $filename . ' - ALCROS';
 
     header('Content-Type: text/html; charset=UTF-8');

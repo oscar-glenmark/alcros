@@ -705,6 +705,18 @@ function isSensitiveUploadPath(string $path): bool
         || str_starts_with($path, 'uploads/staff/');
 }
 
+function uploadPathIsUnderRoot(string $resolvedPath, string $uploadsRoot): bool
+{
+    $resolvedPath = str_replace('\\', '/', $resolvedPath);
+    $uploadsRoot = str_replace('\\', '/', $uploadsRoot);
+    if (PHP_OS_FAMILY === 'Windows') {
+        $resolvedPath = strtolower($resolvedPath);
+        $uploadsRoot = strtolower($uploadsRoot);
+    }
+
+    return $resolvedPath === $uploadsRoot || str_starts_with($resolvedPath, $uploadsRoot . '/');
+}
+
 function normalizeUploadRelativePath(string $path): ?string
 {
     $path = str_replace('\\', '/', trim($path));
@@ -720,12 +732,19 @@ function normalizeUploadRelativePath(string $path): ?string
 
     $fullPath = __DIR__ . '/../' . str_replace('/', DIRECTORY_SEPARATOR, $path);
     $resolved = realpath($fullPath);
-    if ($resolved !== false) {
-        return str_starts_with($resolved, $root) ? $path : null;
+    if ($resolved !== false && uploadPathIsUnderRoot($resolved, $root)) {
+        return $path;
+    }
+
+    if (is_file($fullPath)) {
+        $parent = realpath(dirname($fullPath));
+        if ($parent !== false && uploadPathIsUnderRoot($parent, $root)) {
+            return $path;
+        }
     }
 
     $parent = realpath(dirname($fullPath));
-    if ($parent === false || !str_starts_with($parent, $root)) {
+    if ($parent === false || !uploadPathIsUnderRoot($parent, $root)) {
         return null;
     }
 
@@ -781,16 +800,14 @@ function protectedUploadUrl(?string $path): ?string
         require_once __DIR__ . '/auth.php';
     }
 
-    $fileScript = 'file.php';
-    if (function_exists('alcrosWebBasePath')) {
-        $base = alcrosWebBasePath();
-        if ($base !== '') {
-            $fileScript = $base . '/file.php';
-        }
-    }
-
-    return buildAuthUrl($fileScript, [
+    $query = [
         'f'   => $normalized,
         'raw' => '1',
-    ]);
+    ];
+    $full = __DIR__ . '/../' . str_replace('/', DIRECTORY_SEPARATOR, $normalized);
+    if (is_file($full)) {
+        $query['v'] = (string) (filemtime($full) ?: time());
+    }
+
+    return buildAuthUrl('file.php', $query);
 }

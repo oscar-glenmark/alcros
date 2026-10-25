@@ -4192,8 +4192,11 @@ function saveStaffPhotoUpload(array $file, string $staffId): ?string
         return null;
     }
 
-    $allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    $allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/pjpeg', 'image/x-png'];
     $mime = mime_content_type($file['tmp_name']);
+    if (!is_string($mime) || $mime === '') {
+        $mime = (string) ($file['type'] ?? '');
+    }
     if (!in_array($mime, $allowed, true)) {
         return null;
     }
@@ -4297,10 +4300,14 @@ function renderStaffAvatar(?string $photoPath, string $name, string $classes = '
         . htmlspecialchars($rounded, ENT_QUOTES, 'UTF-8');
 
     if (staffPhotoExists($photoPath)) {
-        $src = protectedUploadUrl($photoPath) ?? $photoPath;
+        $src = protectedUploadUrl($photoPath);
+        if ($src === null) {
+            return '<span class="' . $shellClass . ' bg-gray-100 font-bold text-gray-500">'
+                . htmlspecialchars($initial, ENT_QUOTES, 'UTF-8') . '</span>';
+        }
 
         return '<span class="' . $shellClass . '">'
-            . '<img src="' . htmlspecialchars($src, ENT_QUOTES, 'UTF-8') . '" alt="" class="staff-avatar-shell__img">'
+            . '<img src="' . htmlspecialchars($src, ENT_QUOTES, 'UTF-8') . '" alt="" class="staff-avatar-shell__img" loading="lazy" decoding="async">'
             . '</span>';
     }
 

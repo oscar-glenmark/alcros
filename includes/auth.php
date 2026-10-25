@@ -350,7 +350,11 @@ function getAuthenticatedStaff(bool $lightweight = false): ?array
             $fromToken = null;
         }
     } elseif ($fromToken !== null && $sessionStaff !== null) {
-        $fromToken = null;
+        $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? ''));
+        $isMediaDelivery = str_ends_with($script, '/file.php');
+        if (!$isMediaDelivery) {
+            $fromToken = null;
+        }
     }
 
     if ($lightweight) {
@@ -454,11 +458,12 @@ function staffAuthToken(): ?string
     }
 
     $hydrated = hydrateStaffFromDatabase($staff);
-    if ($hydrated === null) {
+    $tokenStaff = $hydrated ?? $staff;
+    if (empty($tokenStaff['staff_id'])) {
         return null;
     }
 
-    return createStaffAuthToken($hydrated);
+    return createStaffAuthToken($tokenStaff);
 }
 
 function authFormField(): string

@@ -7,12 +7,28 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/google_drive_backup.php';
 
-requireStaffLogin();
-requireAdmin();
-
 $action = (string) ($_GET['action'] ?? '');
 
+function alcrosGdriveOAuthRedirectToBackup(bool $loggedIn): never
+{
+    $query = http_build_query([
+        'tab'       => 'admin-tools',
+        'admin_sub' => 'backup',
+    ]);
+    $settingsPath = 'system_settings.php?' . $query;
+
+    if ($loggedIn) {
+        redirectWithAuth('system_settings.php', ['tab' => 'admin-tools', 'admin_sub' => 'backup']);
+    }
+
+    header('Location: login.php?redirect=' . rawurlencode($settingsPath));
+    exit;
+}
+
 if ($action === 'start') {
+    requireStaffLogin();
+    requireAdmin();
+
     try {
         if (!alcrosGoogleDriveOAuthClientConfigured()) {
             throw new InvalidArgumentException('Save OAuth Client ID and Client Secret on the Backup page, then try again.');
@@ -31,6 +47,9 @@ if ($action === 'start') {
 }
 
 if ($action === 'callback') {
+    // Google redirects here without ALCROS session cookies — do not require login (state token validates the flow).
+    $loggedIn = (bool) getAuthenticatedStaff(true);
+
     try {
         $state = (string) ($_GET['state'] ?? '');
         $expected = getSetting('registry_backup_gdrive_oauth_state', '');
@@ -51,14 +70,25 @@ if ($action === 'callback') {
 
         alcrosGoogleDriveExchangeOAuthCode((string) ($_GET['code'] ?? ''));
         setSetting('registry_backup_gdrive_auth_mode', 'oauth');
-        settingsFlashSet('success', 'Google Drive connected'
+
+        $msg = 'Google Drive connected'
             . (alcrosGoogleDriveOAuthConnectedEmail() !== '' ? ' as ' . alcrosGoogleDriveOAuthConnectedEmail() : '')
-            . '. Run a registry backup to upload a zip.');
+            . '. Run a registry backup to upload a zip.';
+
+        if ($loggedIn) {
+            settingsFlashSet('success', $msg);
+        } else {
+            alcrosGoogleDriveOAuthSetPendingFlash('success', $msg);
+        }
     } catch (Throwable $e) {
-        settingsFlashSet('error', $e->getMessage());
+        if ($loggedIn) {
+            settingsFlashSet('error', $e->getMessage());
+        } else {
+            alcrosGoogleDriveOAuthSetPendingFlash('error', $e->getMessage());
+        }
     }
 
-    redirectWithAuth('system_settings.php', ['tab' => 'admin-tools', 'admin_sub' => 'backup']);
+    alcrosGdriveOAuthRedirectToBackup($loggedIn);
 }
 
 http_response_code(404);

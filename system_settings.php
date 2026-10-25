@@ -560,6 +560,9 @@ function settingsPageUrl(string $tab, ?string $adminSub = null): string
     ]));
 }
 
+if ($isAdmin) {
+    alcrosGoogleDriveOAuthConsumePendingFlash();
+}
 $flash = settingsFlashGet();
 $activeSystemErrors = [];
 if ($isAdmin) {

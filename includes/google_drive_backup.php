@@ -122,6 +122,25 @@ function alcrosGoogleDriveDisconnectOAuth(): void
     alcrosGoogleDriveClearAccessTokenCache();
 }
 
+function alcrosGoogleDriveOAuthSetPendingFlash(string $type, string $message): void
+{
+    setSetting('registry_backup_gdrive_oauth_flash_type', $type === 'success' ? 'success' : 'error');
+    setSetting('registry_backup_gdrive_oauth_flash_message', $message);
+}
+
+function alcrosGoogleDriveOAuthConsumePendingFlash(): void
+{
+    $type = getSetting('registry_backup_gdrive_oauth_flash_type', '');
+    $message = trim(getSetting('registry_backup_gdrive_oauth_flash_message', ''));
+    if ($type === '' || $message === '') {
+        return;
+    }
+
+    setSetting('registry_backup_gdrive_oauth_flash_type', '');
+    setSetting('registry_backup_gdrive_oauth_flash_message', '');
+    settingsFlashSet($type === 'success' ? 'success' : 'error', $message);
+}
+
 /**
  * @return array{token: string, expires_at: int, refresh_token?: string}
  */

@@ -21,7 +21,7 @@ function alcrosGdriveOAuthRedirectToBackup(bool $loggedIn): never
         redirectWithAuth('system_settings.php', ['tab' => 'admin-tools', 'admin_sub' => 'backup']);
     }
 
-    header('Location: login.php?redirect=' . rawurlencode($settingsPath));
+    header('Location: ' . alcrosPortalUrl('login.php', ['redirect' => $settingsPath]));
     exit;
 }
 

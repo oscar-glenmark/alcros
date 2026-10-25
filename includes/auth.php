@@ -459,13 +459,16 @@ function authFormField(): string
 
 function buildAuthUrl(string $path, array $query = []): string
 {
+    if (!function_exists('alcrosPortalUrl')) {
+        require_once __DIR__ . '/helpers.php';
+    }
+
     $token = staffAuthToken();
     if ($token) {
         $query['alcros_auth'] = $token;
     }
 
-    $queryString = http_build_query($query);
-    return $queryString !== '' ? $path . '?' . $queryString : $path;
+    return alcrosPortalUrl($path, $query);
 }
 
 function redirectWithAuth(string $path, array $query = []): void
@@ -544,7 +547,15 @@ function requireStaffLogin(): void
         jsonClientError(401, 'auth_expired', 'Session expired. Please sign in again.');
     }
 
-    header('Location: login.php?redirect=' . urlencode(basename($_SERVER['PHP_SELF'])));
+    if (!function_exists('alcrosPortalUrl')) {
+        require_once __DIR__ . '/helpers.php';
+    }
+    $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? 'index.php'));
+    $redirectTarget = ltrim($script, '/');
+    if (str_starts_with($redirectTarget, 'api/')) {
+        $redirectTarget = 'dashboard.php';
+    }
+    header('Location: ' . alcrosPortalUrl('login.php', ['redirect' => $redirectTarget]));
     exit;
 }
 

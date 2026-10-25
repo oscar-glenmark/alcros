@@ -5360,6 +5360,19 @@ function alcrosWebBasePath(): string
     return $base;
 }
 
+/** Root-relative URL to a portal page (safe from scripts under /api/). */
+function alcrosPortalUrl(string $path, array $query = []): string
+{
+    $path = ltrim(str_replace('\\', '/', $path), '/');
+    $base = alcrosWebBasePath();
+    $url = ($base !== '' ? rtrim($base, '/') . '/' : '/') . $path;
+    if ($query !== []) {
+        $url .= '?' . http_build_query($query);
+    }
+
+    return $url;
+}
+
 function appBaseUrl(): string
 {
     $scheme = function_exists('alcrosRequestScheme') ? alcrosRequestScheme() : (((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http'));

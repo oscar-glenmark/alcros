@@ -5,6 +5,7 @@
  */
 
 require_once __DIR__ . '/duplicati_backup.php';
+require_once __DIR__ . '/google_drive_backup.php';
 
 function alcrosRegistryBackupEnabled(): bool
 {
@@ -276,14 +277,30 @@ function runAlcrosRegistryHostedBackup(PDO $pdo, bool $requireEnabled = true): a
         setSetting('registry_backup_last_zip_bytes', (string) $bytes);
         setSetting('registry_backup_last_filename', $filename);
 
+        $message = 'Registry backup zip created.';
+        $gdrive = alcrosGoogleDriveMaybeUploadRegistryBackup($zipPath, $filename);
+        $gdrivePruned = 0;
+        if ($gdrive !== null) {
+            if ($gdrive['ok']) {
+                $gdrivePruned = (int) ($gdrive['pruned'] ?? 0);
+                $message .= ' Uploaded to Google Drive.';
+                if ($gdrivePruned > 0) {
+                    $message .= ' Removed ' . $gdrivePruned . ' older Drive file(s).';
+                }
+            } else {
+                $message .= ' Google Drive upload failed: ' . ($gdrive['message'] ?? 'unknown error');
+            }
+        }
+
         return [
             'ok'       => true,
-            'message'  => 'Registry backup zip created.',
+            'message'  => $message,
             'zip'      => str_replace('\\', '/', $zipPath),
             'filename' => $filename,
             'bytes'    => $bytes,
             'manifest' => $bundle['manifest'] ?? null,
             'pruned'   => $pruned,
+            'gdrive'   => $gdrive,
         ];
     } catch (Throwable $e) {
         setSetting('registry_backup_last_run_at', date('Y-m-d H:i:s'));

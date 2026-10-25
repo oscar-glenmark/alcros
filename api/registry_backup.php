@@ -21,13 +21,21 @@ try {
         apiJsonResponse($result, 400);
     }
 
-    apiJsonResponse([
+    $payload = [
         'ok'       => true,
         'filename' => $result['filename'] ?? '',
         'bytes'    => $result['bytes'] ?? 0,
         'pruned'   => $result['pruned'] ?? 0,
         'message'  => $result['message'] ?? '',
-    ]);
+    ];
+    if (isset($result['gdrive']) && is_array($result['gdrive'])) {
+        $payload['gdrive'] = [
+            'ok'      => (bool) ($result['gdrive']['ok'] ?? false),
+            'message' => (string) ($result['gdrive']['message'] ?? ''),
+            'pruned'  => (int) ($result['gdrive']['pruned'] ?? 0),
+        ];
+    }
+    apiJsonResponse($payload);
 } catch (Throwable $e) {
     apiError('Registry backup failed.', 500);
 }

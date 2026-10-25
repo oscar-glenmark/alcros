@@ -381,10 +381,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             setSetting('registry_backup_enabled', $enabled);
             setSetting('registry_backup_retention_count', (string) $retention);
             setSetting('registry_backup_public_url', $publicUrl);
+
+            $gdriveEnabled = isset($_POST['registry_backup_gdrive_enabled']) ? '1' : '0';
+            $gdriveFolder = trim((string) ($_POST['registry_backup_gdrive_folder_id'] ?? ''));
+            $gdriveRetention = max(0, min(90, (int) ($_POST['registry_backup_gdrive_retention_count'] ?? 0)));
+            setSetting('registry_backup_gdrive_enabled', $gdriveEnabled);
+            setSetting('registry_backup_gdrive_folder_id', $gdriveFolder);
+            setSetting('registry_backup_gdrive_retention_count', (string) $gdriveRetention);
+
+            if (!empty($_POST['registry_backup_gdrive_remove_credentials'])) {
+                alcrosGoogleDriveRemoveServiceAccount();
+            } else {
+                $jsonPaste = trim((string) ($_POST['registry_backup_gdrive_service_account_json'] ?? ''));
+                if ($jsonPaste !== '') {
+                    alcrosGoogleDriveSaveServiceAccountJson($jsonPaste);
+                } elseif (!empty($_FILES['registry_backup_gdrive_service_account_file']['tmp_name'])
+                    && is_uploaded_file($_FILES['registry_backup_gdrive_service_account_file']['tmp_name'])) {
+                    $uploaded = file_get_contents($_FILES['registry_backup_gdrive_service_account_file']['tmp_name']);
+                    if ($uploaded === false || trim($uploaded) === '') {
+                        throw new InvalidArgumentException('Could not read the uploaded service account JSON file.');
+                    }
+                    alcrosGoogleDriveSaveServiceAccountJson($uploaded);
+                }
+            }
+
             if ($enabled === '1' && trim(getSetting('registry_backup_cron_token', '')) === '') {
                 alcrosRegistryBackupRegenerateCronToken();
             }
             settingsFlashSet('success', 'Registry backup settings saved.');
+            $handled = true;
+        } elseif ($action === 'test_registry_gdrive' && $isAdmin) {
+            $test = alcrosGoogleDriveTestConnection();
+            settingsFlashSet($test['ok'] ? 'success' : 'error', $test['message']);
             $handled = true;
         } elseif ($action === 'regenerate_registry_backup_token' && $isAdmin) {
             alcrosRegistryBackupRegenerateCronToken();
@@ -400,10 +428,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'Backup Created',
                 'Registry backup zip ' . ($result['filename'] ?? '') . ' (' . alcrosFormatBytes((int) ($result['bytes'] ?? 0)) . ')'
             );
-            settingsFlashSet(
-                'success',
-                'Registry backup created: ' . (string) ($result['filename'] ?? '') . '. Download it below or via FTP from storage/backups/registry/.'
-            );
+            $flashMsg = (string) ($result['message'] ?? ('Registry backup created: ' . (string) ($result['filename'] ?? '')));
+            settingsFlashSet('success', $flashMsg);
             $handled = true;
         }
     } catch (InvalidArgumentException $e) {
@@ -490,6 +516,14 @@ $registryBackupLastStatus = $isAdmin ? getSetting('registry_backup_last_status',
 $registryBackupLastMessage = $isAdmin ? getSetting('registry_backup_last_message', '') : '';
 $registryBackupLastFilename = $isAdmin ? getSetting('registry_backup_last_filename', '') : '';
 $registryBackupArchives = $isAdmin ? alcrosRegistryBackupListArchives() : [];
+$registryBackupGdriveEnabled = $isAdmin && alcrosGoogleDriveBackupEnabled();
+$registryBackupGdriveFolderId = $isAdmin ? alcrosGoogleDriveFolderId() : '';
+$registryBackupGdriveRetention = $isAdmin ? (int) getSetting('registry_backup_gdrive_retention_count', '0') : 0;
+$registryBackupGdriveConfigured = $isAdmin && alcrosGoogleDriveServiceAccountConfigured();
+$registryBackupGdriveServiceEmail = $isAdmin ? alcrosGoogleDriveServiceAccountEmail() : '';
+$registryBackupGdriveLastRun = $isAdmin ? getSetting('registry_backup_gdrive_last_run_at', '') : '';
+$registryBackupGdriveLastStatus = $isAdmin ? getSetting('registry_backup_gdrive_last_status', '') : '';
+$registryBackupGdriveLastMessage = $isAdmin ? getSetting('registry_backup_gdrive_last_message', '') : '';
 $showHostedScheduleTasks = $isAdmin;
 
 function settingsPageUrl(string $tab, ?string $adminSub = null): string
@@ -1225,7 +1259,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     </h3>
                                     <p class="text-xs text-slate-600 mb-4">Creates a password-free zip on the server with the same scope as the green box above. SmarterASP calls a secret URL on a schedule; you download zips via FTP or the list below.</p>
 
-                                    <form method="POST" class="space-y-4 mb-5">
+                                    <form method="POST" enctype="multipart/form-data" class="space-y-4 mb-5">
                                         <?= authFormField() ?>
                                         <input type="hidden" name="settings_action" value="save_registry_backup_settings">
                                         <input type="hidden" name="active_tab" value="admin-tools">
@@ -1246,8 +1280,77 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                                 <p class="text-[11px] text-slate-400 mt-1">Use if the cron URL shown below is wrong; must match HTTPS domain.</p>
                                             </div>
                                             </div>
+
+                                        <div class="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 space-y-4">
+                                            <div>
+                                                <h4 class="text-xs font-bold text-slate-900 flex items-center gap-2">
+                                                    <i data-lucide="hard-drive" class="w-4 h-4"></i> Google Drive cloud copy
+                                                </h4>
+                                                <p class="text-[11px] text-slate-600 mt-1">After each successful zip, ALCROS uploads the same file to a Drive folder (service account). Local retention above still applies.</p>
+                                            </div>
+                                            <label class="flex items-start gap-3 cursor-pointer">
+                                                <input type="checkbox" name="registry_backup_gdrive_enabled" value="1" class="mt-1 rounded border-slate-300" <?= $registryBackupGdriveEnabled ? 'checked' : '' ?>>
+                                                <span class="text-xs text-slate-700"><strong>Upload registry zips to Google Drive</strong></span>
+                                            </label>
+                                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label class="text-[11px] font-bold uppercase text-slate-500">Drive folder ID</label>
+                                                    <input type="text" name="registry_backup_gdrive_folder_id" value="<?= htmlspecialchars($registryBackupGdriveFolderId) ?>" placeholder="From folder URL …/folders/FOLDER_ID" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono">
+                                                </div>
+                                                <div>
+                                                    <label class="text-[11px] font-bold uppercase text-slate-500">Keep copies on Drive</label>
+                                                    <input type="number" name="registry_backup_gdrive_retention_count" min="0" max="90" value="<?= (int) $registryBackupGdriveRetention ?>" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                                                    <p class="text-[11px] text-slate-400 mt-1">0 = same as server retention (<?= (int) $registryBackupRetention ?>).</p>
+                                                </div>
+                                            </div>
+                                            <div class="rounded-lg border border-slate-200 bg-white p-3 text-[11px] text-slate-600 space-y-2">
+                                                <p class="font-bold text-slate-800">Setup (once)</p>
+                                                <ol class="list-decimal pl-4 space-y-1">
+                                                    <li>Google Cloud Console → create a project → enable <strong>Google Drive API</strong>.</li>
+                                                    <li>IAM → Service accounts → create key (JSON). Upload below (stored in <code class="bg-slate-50 px-1 rounded">storage/secrets/</code>, not in git).</li>
+                                                    <li>In Google Drive, create a folder → Share → add the service account email as <strong>Editor</strong>.</li>
+                                                    <li>Paste the folder ID from the folder URL into the field above.</li>
+                                                </ol>
+                                                <?php if ($registryBackupGdriveConfigured): ?>
+                                                <p class="text-emerald-800">Service account on server: <span class="font-mono"><?= htmlspecialchars($registryBackupGdriveServiceEmail) ?></span></p>
+                                                <?php else: ?>
+                                                <p class="text-amber-800">No service account JSON stored yet.</p>
+                                                <?php endif; ?>
+                                            </div>
+                                            <div>
+                                                <label class="text-[11px] font-bold uppercase text-slate-500">Service account JSON file</label>
+                                                <input type="file" name="registry_backup_gdrive_service_account_file" accept=".json,application/json" class="mt-1 block w-full text-xs">
+                                            </div>
+                                            <div>
+                                                <label class="text-[11px] font-bold uppercase text-slate-500">Or paste JSON</label>
+                                                <textarea name="registry_backup_gdrive_service_account_json" rows="3" placeholder="{ &quot;type&quot;: &quot;service_account&quot;, ... }" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono"></textarea>
+                                                <p class="text-[11px] text-slate-400 mt-1">Leave blank to keep the existing key. Saving replaces the file on the server.</p>
+                                            </div>
+                                            <?php if ($registryBackupGdriveConfigured): ?>
+                                            <label class="flex items-start gap-2 cursor-pointer text-xs text-red-700">
+                                                <input type="checkbox" name="registry_backup_gdrive_remove_credentials" value="1" class="mt-0.5 rounded border-red-300">
+                                                Remove stored service account JSON from this server
+                                            </label>
+                                            <?php endif; ?>
+                                            <?php if ($registryBackupGdriveLastMessage !== ''): ?>
+                                            <p class="text-xs <?= $registryBackupGdriveLastStatus === 'success' ? 'text-emerald-800' : 'text-red-800' ?>">
+                                                Last Drive upload: <?= htmlspecialchars($registryBackupGdriveLastRun !== '' ? formatReportDateTime($registryBackupGdriveLastRun) . ' — ' : '') ?><?= htmlspecialchars($registryBackupGdriveLastMessage) ?>
+                                            </p>
+                                            <?php endif; ?>
+                                        </div>
+
                                         <button type="submit" class="inline-flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold">
                                             <i data-lucide="save" class="w-4 h-4"></i> Save registry backup settings
+                                        </button>
+                                    </form>
+
+                                    <form method="POST" class="inline-block mb-4">
+                                        <?= authFormField() ?>
+                                        <input type="hidden" name="settings_action" value="test_registry_gdrive">
+                                        <input type="hidden" name="active_tab" value="admin-tools">
+                                        <input type="hidden" name="admin_sub" value="backup">
+                                        <button type="submit" class="inline-flex items-center gap-2 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 px-4 py-2.5 rounded-xl text-xs font-bold">
+                                            <i data-lucide="plug" class="w-4 h-4"></i> Test Google Drive connection
                                         </button>
                                     </form>
 

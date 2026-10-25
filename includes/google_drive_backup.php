@@ -1,0 +1,530 @@
+<?php
+/**
+ * Upload registry backup zips to Google Drive (service account + shared folder).
+ */
+
+require_once __DIR__ . '/duplicati_backup.php';
+
+const ALCROS_GDRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const ALCROS_GDRIVE_REGISTRY_PREFIX = 'alcros-registry-';
+
+function alcrosGoogleDriveBackupEnabled(): bool
+{
+    return getSetting('registry_backup_gdrive_enabled', '0') === '1';
+}
+
+function alcrosGoogleDriveFolderId(): string
+{
+    return trim(getSetting('registry_backup_gdrive_folder_id', ''));
+}
+
+function alcrosGoogleDriveRetentionCount(): int
+{
+    $custom = (int) getSetting('registry_backup_gdrive_retention_count', '0');
+    if ($custom >= 3) {
+        return min(90, $custom);
+    }
+
+    if (function_exists('alcrosRegistryBackupRetentionCount')) {
+        return alcrosRegistryBackupRetentionCount();
+    }
+
+    return max(3, min(90, (int) getSetting('registry_backup_retention_count', '14')));
+}
+
+function alcrosGoogleDriveSecretsDir(): string
+{
+    $dir = alcrosProjectRoot() . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'secrets';
+    if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
+        throw new RuntimeException('Could not create secrets directory.');
+    }
+
+    require_once __DIR__ . '/hosting.php';
+    alcrosWriteWebAccessDeny($dir);
+    alcrosWriteWebAccessDeny(dirname($dir));
+
+    return $dir;
+}
+
+function alcrosGoogleDriveServiceAccountPath(): string
+{
+    return alcrosGoogleDriveSecretsDir() . DIRECTORY_SEPARATOR . 'gdrive-service-account.json';
+}
+
+function alcrosGoogleDriveServiceAccountConfigured(): bool
+{
+    $path = alcrosGoogleDriveServiceAccountPath();
+
+    return is_file($path) && filesize($path) > 32;
+}
+
+/** @return array<string, mixed>|null */
+function alcrosGoogleDriveLoadServiceAccount(): ?array
+{
+    if (!alcrosGoogleDriveServiceAccountConfigured()) {
+        return null;
+    }
+
+    $raw = file_get_contents(alcrosGoogleDriveServiceAccountPath());
+    if ($raw === false || trim($raw) === '') {
+        return null;
+    }
+
+    $data = json_decode($raw, true);
+
+    return is_array($data) ? $data : null;
+}
+
+function alcrosGoogleDriveServiceAccountEmail(): string
+{
+    $data = alcrosGoogleDriveLoadServiceAccount();
+
+    return is_array($data) ? trim((string) ($data['client_email'] ?? '')) : '';
+}
+
+/**
+ * @param array<string, mixed> $serviceAccount
+ */
+function alcrosGoogleDriveValidateServiceAccount(array $serviceAccount): void
+{
+    foreach (['client_email', 'private_key', 'token_uri'] as $key) {
+        if (trim((string) ($serviceAccount[$key] ?? '')) === '') {
+            throw new InvalidArgumentException('Service account JSON is missing required field: ' . $key . '.');
+        }
+    }
+}
+
+function alcrosGoogleDriveSaveServiceAccountJson(string $json): void
+{
+    $json = trim($json);
+    if ($json === '') {
+        throw new InvalidArgumentException('Service account JSON is empty.');
+    }
+
+    $data = json_decode($json, true);
+    if (!is_array($data)) {
+        throw new InvalidArgumentException('Service account JSON is not valid JSON.');
+    }
+
+    alcrosGoogleDriveValidateServiceAccount($data);
+
+    $path = alcrosGoogleDriveServiceAccountPath();
+    if (file_put_contents($path, json_encode($data, JSON_UNESCAPED_SLASHES)) === false) {
+        throw new RuntimeException('Could not save service account JSON on the server.');
+    }
+
+    setSetting('registry_backup_gdrive_token', '');
+    setSetting('registry_backup_gdrive_token_exp', '0');
+}
+
+function alcrosGoogleDriveRemoveServiceAccount(): void
+{
+    $path = alcrosGoogleDriveServiceAccountPath();
+    if (is_file($path)) {
+        @unlink($path);
+    }
+    setSetting('registry_backup_gdrive_token', '');
+    setSetting('registry_backup_gdrive_token_exp', '0');
+}
+
+function alcrosGoogleDriveBase64UrlEncode(string $data): string
+{
+    return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+}
+
+/** @param array<string, mixed> $serviceAccount */
+function alcrosGoogleDriveCreateJwt(array $serviceAccount): string
+{
+    $now = time();
+    $header = ['alg' => 'RS256', 'typ' => 'JWT'];
+    $payload = [
+        'iss'   => (string) $serviceAccount['client_email'],
+        'scope' => ALCROS_GDRIVE_SCOPE,
+        'aud'   => (string) ($serviceAccount['token_uri'] ?? 'https://oauth2.googleapis.com/token'),
+        'iat'   => $now,
+        'exp'   => $now + 3600,
+    ];
+
+    $segments = [
+        alcrosGoogleDriveBase64UrlEncode(json_encode($header, JSON_UNESCAPED_SLASHES)),
+        alcrosGoogleDriveBase64UrlEncode(json_encode($payload, JSON_UNESCAPED_SLASHES)),
+    ];
+    $signingInput = implode('.', $segments);
+
+    $privateKey = openssl_pkey_get_private((string) $serviceAccount['private_key']);
+    if ($privateKey === false) {
+        throw new RuntimeException('Service account private key is invalid.');
+    }
+
+    $signature = '';
+    if (!openssl_sign($signingInput, $signature, $privateKey, OPENSSL_ALGO_SHA256)) {
+        throw new RuntimeException('Could not sign Google Drive access token request.');
+    }
+
+    $segments[] = alcrosGoogleDriveBase64UrlEncode($signature);
+
+    return implode('.', $segments);
+}
+
+/** @return array{token: string, expires_at: int} */
+function alcrosGoogleDriveFetchAccessToken(): array
+{
+    $serviceAccount = alcrosGoogleDriveLoadServiceAccount();
+    if ($serviceAccount === null) {
+        throw new RuntimeException('Google Drive service account is not configured.');
+    }
+
+    alcrosGoogleDriveValidateServiceAccount($serviceAccount);
+
+    if (!function_exists('curl_init')) {
+        throw new RuntimeException('PHP cURL extension is required for Google Drive backup.');
+    }
+
+    $jwt = alcrosGoogleDriveCreateJwt($serviceAccount);
+    $tokenUri = (string) ($serviceAccount['token_uri'] ?? 'https://oauth2.googleapis.com/token');
+    $body = http_build_query([
+        'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        'assertion'  => $jwt,
+    ]);
+
+    $ch = curl_init($tokenUri);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => $body,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/x-www-form-urlencoded'],
+        CURLOPT_TIMEOUT        => 60,
+    ]);
+    $response = curl_exec($ch);
+    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if ($response === false) {
+        throw new RuntimeException('Google token request failed: ' . ($curlError ?: 'unknown error'));
+    }
+
+    $decoded = json_decode($response, true);
+    if ($httpCode >= 400 || !is_array($decoded) || empty($decoded['access_token'])) {
+        $msg = is_array($decoded) ? (string) ($decoded['error_description'] ?? $decoded['error'] ?? '') : '';
+        throw new RuntimeException('Google token request rejected' . ($msg !== '' ? ': ' . $msg : '') . '.');
+    }
+
+    $expiresIn = max(60, (int) ($decoded['expires_in'] ?? 3600));
+
+    return [
+        'token'      => (string) $decoded['access_token'],
+        'expires_at' => time() + $expiresIn,
+    ];
+}
+
+function alcrosGoogleDriveAccessToken(): string
+{
+    $cached = trim(getSetting('registry_backup_gdrive_token', ''));
+    $expiresAt = (int) getSetting('registry_backup_gdrive_token_exp', '0');
+    if ($cached !== '' && time() < $expiresAt - 120) {
+        return $cached;
+    }
+
+    $fresh = alcrosGoogleDriveFetchAccessToken();
+    setSetting('registry_backup_gdrive_token', $fresh['token']);
+    setSetting('registry_backup_gdrive_token_exp', (string) $fresh['expires_at']);
+
+    return $fresh['token'];
+}
+
+/**
+ * @return array{ok: bool, status: int, body: string}
+ */
+function alcrosGoogleDriveApiRequest(string $method, string $url, string $accessToken, ?string $body = null, array $extraHeaders = []): array
+{
+    $headers = array_merge(['Authorization: Bearer ' . $accessToken], $extraHeaders);
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_CUSTOMREQUEST  => strtoupper($method),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER     => $headers,
+        CURLOPT_TIMEOUT        => 300,
+    ]);
+    if ($body !== null) {
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+    }
+
+    $response = curl_exec($ch);
+    $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if ($response === false) {
+        throw new RuntimeException('Google Drive API request failed: ' . ($curlError ?: 'unknown error'));
+    }
+
+    return [
+        'ok'     => $status >= 200 && $status < 300,
+        'status' => $status,
+        'body'   => $response,
+    ];
+}
+
+/**
+ * @return array{ok: bool, message: string, file_id?: string}
+ */
+function alcrosGoogleDriveUploadRegistryZip(string $zipPath, string $filename): array
+{
+    if (!alcrosGoogleDriveBackupEnabled()) {
+        return ['ok' => false, 'message' => 'Google Drive backup is disabled.'];
+    }
+
+    $folderId = alcrosGoogleDriveFolderId();
+    if ($folderId === '') {
+        return ['ok' => false, 'message' => 'Google Drive folder ID is not set.'];
+    }
+
+    if (!alcrosGoogleDriveServiceAccountConfigured()) {
+        return ['ok' => false, 'message' => 'Google Drive service account JSON is not uploaded.'];
+    }
+
+    if (!is_file($zipPath) || filesize($zipPath) === 0) {
+        return ['ok' => false, 'message' => 'Backup zip file is missing or empty.'];
+    }
+
+    $accessToken = alcrosGoogleDriveAccessToken();
+    $bytes = (int) filesize($zipPath);
+    $mime = 'application/zip';
+
+    $metadata = json_encode([
+        'name'    => $filename,
+        'parents' => [$folderId],
+    ], JSON_UNESCAPED_SLASHES);
+
+    $sessionUrl = alcrosGoogleDriveResumableSessionUrl($accessToken, $metadata, $mime, $bytes);
+    if ($sessionUrl === '') {
+        return ['ok' => false, 'message' => 'Google Drive did not return an upload session URL. Check folder ID and service account sharing.'];
+    }
+
+    $fileHandle = fopen($zipPath, 'rb');
+    if ($fileHandle === false) {
+        return ['ok' => false, 'message' => 'Could not read backup zip for upload.'];
+    }
+
+    $ch = curl_init($sessionUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_CUSTOMREQUEST  => 'PUT',
+        CURLOPT_UPLOAD         => true,
+        CURLOPT_INFILE         => $fileHandle,
+        CURLOPT_INFILESIZE     => $bytes,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER     => [
+            'Content-Type: ' . $mime,
+            'Content-Length: ' . (string) $bytes,
+        ],
+        CURLOPT_TIMEOUT        => 600,
+    ]);
+    $uploadBody = curl_exec($ch);
+    $uploadStatus = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+    fclose($fileHandle);
+
+    if ($uploadBody === false) {
+        return ['ok' => false, 'message' => 'Drive upload failed: ' . ($curlError ?: 'unknown error')];
+    }
+
+    if ($uploadStatus < 200 || $uploadStatus >= 300) {
+        $err = alcrosGoogleDriveApiErrorMessage($uploadBody);
+
+        return ['ok' => false, 'message' => 'Drive upload rejected' . ($err !== '' ? ': ' . $err : '.')];
+    }
+
+    $decoded = json_decode($uploadBody, true);
+    $fileId = is_array($decoded) ? trim((string) ($decoded['id'] ?? '')) : '';
+
+    setSetting('registry_backup_gdrive_last_run_at', date('Y-m-d H:i:s'));
+    setSetting('registry_backup_gdrive_last_status', 'success');
+    setSetting('registry_backup_gdrive_last_message', 'Uploaded ' . $filename);
+    setSetting('registry_backup_gdrive_last_file_id', $fileId);
+
+    return [
+        'ok'      => true,
+        'message' => 'Uploaded to Google Drive.',
+        'file_id' => $fileId,
+    ];
+}
+
+function alcrosGoogleDriveResumableSessionUrl(string $accessToken, string $metadataJson, string $mime, int $bytes): string
+{
+    $ch = curl_init('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name');
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => $metadataJson,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HEADER         => true,
+        CURLOPT_HTTPHEADER     => [
+            'Authorization: Bearer ' . $accessToken,
+            'Content-Type: application/json; charset=UTF-8',
+            'X-Upload-Content-Type: ' . $mime,
+            'X-Upload-Content-Length: ' . (string) $bytes,
+        ],
+        CURLOPT_TIMEOUT        => 120,
+    ]);
+    $response = curl_exec($ch);
+    $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($response === false || !is_string($response)) {
+        return '';
+    }
+
+    if ($status < 200 || $status >= 300) {
+        return '';
+    }
+
+    if (preg_match('/^Location:\s*(.+)$/mi', $response, $matches)) {
+        return trim($matches[1]);
+    }
+
+    return '';
+}
+
+function alcrosGoogleDriveApiErrorMessage(string $body): string
+{
+    $decoded = json_decode($body, true);
+    if (!is_array($decoded)) {
+        return '';
+    }
+
+    $error = $decoded['error'] ?? null;
+    if (is_string($error)) {
+        return $error;
+    }
+    if (is_array($error)) {
+        $message = trim((string) ($error['message'] ?? ''));
+        if ($message !== '') {
+            return $message;
+        }
+    }
+
+    return trim((string) ($decoded['error_description'] ?? ''));
+}
+
+function alcrosGoogleDrivePruneOldUploads(): int
+{
+    $folderId = alcrosGoogleDriveFolderId();
+    if ($folderId === '' || !alcrosGoogleDriveServiceAccountConfigured()) {
+        return 0;
+    }
+
+    $accessToken = alcrosGoogleDriveAccessToken();
+    $query = rawurlencode(
+        "'" . str_replace("'", "\\'", $folderId) . "' in parents and trashed = false and name contains '" . ALCROS_GDRIVE_REGISTRY_PREFIX . "'"
+    );
+    $url = 'https://www.googleapis.com/drive/v3/files?q=' . $query
+        . '&fields=files(id,name,createdTime)&orderBy=createdTime desc&pageSize=100';
+
+    $list = alcrosGoogleDriveApiRequest('GET', $url, $accessToken);
+    if (!$list['ok']) {
+        return 0;
+    }
+
+    $decoded = json_decode($list['body'], true);
+    $files = is_array($decoded) ? ($decoded['files'] ?? []) : [];
+    if (!is_array($files)) {
+        return 0;
+    }
+
+    $keep = alcrosGoogleDriveRetentionCount();
+    $toDelete = array_slice($files, $keep);
+    $removed = 0;
+
+    foreach ($toDelete as $file) {
+        if (!is_array($file)) {
+            continue;
+        }
+        $id = trim((string) ($file['id'] ?? ''));
+        if ($id === '') {
+            continue;
+        }
+        $delete = alcrosGoogleDriveApiRequest(
+            'DELETE',
+            'https://www.googleapis.com/drive/v3/files/' . rawurlencode($id),
+            $accessToken
+        );
+        if ($delete['ok'] || $delete['status'] === 404) {
+            $removed++;
+        }
+    }
+
+    return $removed;
+}
+
+/**
+ * @return array{ok: bool, message: string}
+ */
+function alcrosGoogleDriveTestConnection(): array
+{
+    if (!alcrosGoogleDriveServiceAccountConfigured()) {
+        return ['ok' => false, 'message' => 'Upload a service account JSON file first.'];
+    }
+
+    $folderId = alcrosGoogleDriveFolderId();
+    if ($folderId === '') {
+        return ['ok' => false, 'message' => 'Enter the Google Drive folder ID.'];
+    }
+
+    try {
+        $accessToken = alcrosGoogleDriveAccessToken();
+    } catch (Throwable $e) {
+        return ['ok' => false, 'message' => $e->getMessage()];
+    }
+
+    $url = 'https://www.googleapis.com/drive/v3/files/' . rawurlencode($folderId) . '?fields=id,name,mimeType';
+    $check = alcrosGoogleDriveApiRequest('GET', $url, $accessToken);
+    if (!$check['ok']) {
+        $err = alcrosGoogleDriveApiErrorMessage($check['body']);
+
+        return [
+            'ok'      => false,
+            'message' => 'Could not access folder. Share the folder with the service account email as Editor.'
+                . ($err !== '' ? ' (' . $err . ')' : ''),
+        ];
+    }
+
+    $decoded = json_decode($check['body'], true);
+    $name = is_array($decoded) ? (string) ($decoded['name'] ?? 'Folder') : 'Folder';
+
+    return ['ok' => true, 'message' => 'Connected. Folder: ' . $name];
+}
+
+/**
+ * After a local registry zip is created, upload to Drive when enabled.
+ *
+ * @return array{ok: bool, message: string, file_id?: string, pruned?: int}|null null when skipped
+ */
+function alcrosGoogleDriveMaybeUploadRegistryBackup(string $zipPath, string $filename): ?array
+{
+    if (!alcrosGoogleDriveBackupEnabled()) {
+        return null;
+    }
+
+    try {
+        $upload = alcrosGoogleDriveUploadRegistryZip($zipPath, $filename);
+        if (!$upload['ok']) {
+            setSetting('registry_backup_gdrive_last_run_at', date('Y-m-d H:i:s'));
+            setSetting('registry_backup_gdrive_last_status', 'error');
+            setSetting('registry_backup_gdrive_last_message', $upload['message']);
+
+            return $upload;
+        }
+
+        $pruned = alcrosGoogleDrivePruneOldUploads();
+        $upload['pruned'] = $pruned;
+
+        return $upload;
+    } catch (Throwable $e) {
+        setSetting('registry_backup_gdrive_last_run_at', date('Y-m-d H:i:s'));
+        setSetting('registry_backup_gdrive_last_status', 'error');
+        setSetting('registry_backup_gdrive_last_message', $e->getMessage());
+
+        return ['ok' => false, 'message' => $e->getMessage()];
+    }
+}

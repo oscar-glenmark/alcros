@@ -819,22 +819,30 @@ function fetchNotifications(PDO $pdo, int $limit = 20): array
         ];
     }
 
-    $queueCount = (int) $pdo->query(
-        "SELECT COUNT(*) FROM queue_tickets WHERE status = 'waiting' AND DATE(created_at) = CURDATE()"
-    )->fetchColumn();
-    if ($queueCount > 0) {
-        $latestQueue = $pdo->query(
-            "SELECT created_at FROM queue_tickets
-             WHERE status = 'waiting' AND DATE(created_at) = CURDATE()
-             ORDER BY created_at DESC LIMIT 1"
-        )->fetchColumn();
+    $queuePurposes = queuePurposeConfig();
+    $waitingQueue = $pdo->query(
+        "SELECT id, ticket_number, purpose, first_name, middle_name, last_name, created_at
+         FROM queue_tickets
+         WHERE status = 'waiting'
+           AND created_at >= CURDATE() AND created_at < CURDATE() + INTERVAL 1 DAY
+         ORDER BY created_at DESC
+         LIMIT 5"
+    )->fetchAll();
+    foreach ($waitingQueue as $row) {
+        $purposeKey = (string) ($row['purpose'] ?? 'walk_in');
+        $purposeLabel = $queuePurposes[$purposeKey]['label'] ?? $purposeKey;
+        $name = personNameFromRow($row);
+        $message = (string) $row['ticket_number'] . ' · ' . $purposeLabel;
+        if ($name !== '') {
+            $message .= ' · ' . $name;
+        }
         $items[] = [
-            'id'         => 'queue-waiting-' . date('Y-m-d'),
+            'id'         => 'queue-ticket-' . (int) $row['id'],
             'type'       => 'queue',
             'title'      => 'Queue alert',
-            'message'    => $queueCount . ' citizen(s) waiting in line',
-            'detail'     => 'Live queue',
-            'created_at' => $latestQueue ?: date('Y-m-d H:i:s'),
+            'message'    => $message,
+            'detail'     => (string) $row['ticket_number'],
+            'created_at' => $row['created_at'] ?? date('Y-m-d H:i:s'),
             'href'       => staffOperationalNotificationHref('live-queue.php'),
         ];
     }

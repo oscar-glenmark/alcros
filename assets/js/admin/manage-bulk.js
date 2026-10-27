@@ -73,7 +73,41 @@
         updateBulkState(form);
     }
 
+    function bindFormsInScope(root) {
+        var scope = root && root.querySelectorAll ? root : document;
+        scope.querySelectorAll('[data-manage-bulk-form]').forEach(function (form) {
+            if (form.dataset.manageBulkBound === '1') {
+                return;
+            }
+            form.dataset.manageBulkBound = '1';
+            bindBulkForm(form);
+        });
+    }
+
+    window.AlcrosManageBulk = {
+        bindForms: function (searchForm) {
+            var panelId = searchForm && searchForm.getAttribute
+                ? searchForm.getAttribute('data-list-panel-id')
+                : '';
+            if (panelId) {
+                var panel = document.getElementById(panelId);
+                if (panel) {
+                    bindFormsInScope(panel);
+                    return;
+                }
+            }
+            bindFormsInScope(document);
+        }
+    };
+
     document.addEventListener('DOMContentLoaded', function () {
-        document.querySelectorAll('[data-manage-bulk-form]').forEach(bindBulkForm);
+        bindFormsInScope(document);
+    });
+
+    document.addEventListener('alcros:manage-list-updated', function (ev) {
+        var detail = ev.detail || {};
+        if (window.AlcrosManageBulk && typeof window.AlcrosManageBulk.bindForms === 'function') {
+            window.AlcrosManageBulk.bindForms(detail.form);
+        }
     });
 })();

@@ -1044,24 +1044,28 @@ function ensureCitizenNotifyColumns(PDO $pdo): void
     }
 
     ensureSoftDeleteColumns($pdo);
+    repairAppointmentsMislinkedBySlotMerge($pdo);
+}
+
+/** Undo legacy merge that tagged standalone visits as document requests when date/time/email matched. */
+function repairAppointmentsMislinkedBySlotMerge(PDO $pdo): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
 
     try {
+        ensureSoftDeleteColumns($pdo);
         $pdo->exec(
             "UPDATE appointments a
              INNER JOIN document_requests r
-                ON r.appointment_date = a.appointment_date
-               AND r.appointment_time = a.appointment_time
-               AND (
-                    (r.email IS NOT NULL AND r.email != '' AND r.email = a.email)
-                    OR (
-                        r.first_name = a.first_name
-                        AND IFNULL(r.middle_name, '') = IFNULL(a.middle_name, '')
-                        AND r.last_name = a.last_name
-                    )
-               )
-             SET a.source = 'document_request', a.tracking_code = r.tracking_code
-             WHERE a.source = 'standalone'
-               AND (a.tracking_code IS NULL OR a.tracking_code = '')"
+                ON r.tracking_code = a.tracking_code AND r.deleted_at IS NULL
+             SET a.source = 'standalone', a.tracking_code = NULL
+             WHERE a.source = 'document_request'
+               AND a.status = 'scheduled'
+               AND r.status IN ('pending', 'verified', 'ready', 'processing', 'printing', 'printed', 'quality_check')"
         );
     } catch (Throwable $ignored) {
     }
@@ -1316,7 +1320,7 @@ function softDeleteAllDeletableAppointments(PDO $pdo, string $date): int
          WHERE appointment_date = ?
            AND deleted_at IS NULL
            AND status IN ('completed', 'cancelled', 'no_show')
-           AND " . appointmentStandaloneSql() . "
+           AND " . appointmentStandaloneSql('appointments') . "
          ORDER BY appointment_time ASC"
     );
     $stmt->execute([$date]);
@@ -2144,42 +2148,53 @@ function isValidAppointmentSlot(string $time, string $bookingType = 'standalone'
     return in_array($slot, appointmentTimeSlotOptions($interval), true);
 }
 
-function getBookedAppointmentTimes(PDO $pdo, string $date): array
+/** @return list<string> HH:MM slot labels for one public booking calendar. */
+function normalizeVisitSlotTimeList(array $times): array
 {
-    ensureCitizenNotifyColumns($pdo);
-    ensureSoftDeleteColumns($pdo);
-    $statuses = activeAppointmentSlotStatuses();
-    $placeholders = implode(',', array_fill(0, count($statuses), '?'));
-    $stmt = $pdo->prepare(
-        "SELECT TIME_FORMAT(appointment_time, '%H:%i') AS slot_time
-         FROM appointments
-         WHERE appointment_date = ? AND status IN ($placeholders) AND deleted_at IS NULL
-         ORDER BY appointment_time ASC"
-    );
-    $stmt->execute(array_merge([$date], $statuses));
-    $times = array_column($stmt->fetchAll(), 'slot_time');
-
-    $reqStmt = $pdo->prepare(
-        "SELECT TIME_FORMAT(dr.appointment_time, '%H:%i') AS slot_time
-         FROM document_requests dr
-         WHERE dr.appointment_date = ?
-           AND dr.appointment_time IS NOT NULL
-           AND dr.appointment_time != ''
-           AND " . documentRequestHoldsVisitSlotSql('dr') . "
-         ORDER BY dr.appointment_time ASC"
-    );
-    $reqStmt->execute([$date]);
-    foreach (array_column($reqStmt->fetchAll(), 'slot_time') as $slotTime) {
-        $times[] = $slotTime;
-    }
-
     $times = array_values(array_unique(array_map(
         static fn (string $time): string => substr(normalizeAppointmentTime($time), 0, 5),
-        array_filter($times)
+        array_filter($times, static fn ($time) => is_string($time) && $time !== '')
     )));
     sort($times);
 
     return $times;
+}
+
+/** Certificate pickup visits (document requests) — separate from standalone appointments. */
+function getBookedVisitTimesForCalendar(PDO $pdo, string $date, string $bookingType): array
+{
+    $bookingType = normalizeAppointmentBookingType($bookingType);
+
+    if ($bookingType === 'certificate') {
+        $reqStmt = $pdo->prepare(
+            "SELECT TIME_FORMAT(dr.appointment_time, '%H:%i') AS slot_time
+             FROM document_requests dr
+             WHERE dr.appointment_date = ?
+               AND dr.appointment_time IS NOT NULL
+               AND dr.appointment_time != ''
+               AND " . documentRequestHoldsVisitSlotSql('dr') . '
+             ORDER BY dr.appointment_time ASC'
+        );
+        $reqStmt->execute([$date]);
+
+        return normalizeVisitSlotTimeList(array_column($reqStmt->fetchAll(), 'slot_time'));
+    }
+
+    $statuses = activeAppointmentSlotStatuses();
+    $placeholders = implode(',', array_fill(0, count($statuses), '?'));
+    $standaloneSql = appointmentStandaloneSql('appointments');
+    $stmt = $pdo->prepare(
+        "SELECT TIME_FORMAT(appointment_time, '%H:%i') AS slot_time
+         FROM appointments
+         WHERE appointment_date = ?
+           AND status IN ($placeholders)
+           AND deleted_at IS NULL
+           AND $standaloneSql
+         ORDER BY appointment_time ASC"
+    );
+    $stmt->execute(array_merge([$date], $statuses));
+
+    return normalizeVisitSlotTimeList(array_column($stmt->fetchAll(), 'slot_time'));
 }
 
 function countActiveAppointmentsOnDate(PDO $pdo, string $date): int
@@ -2194,10 +2209,10 @@ function countActiveAppointmentsOnDate(PDO $pdo, string $date): int
     return (int) $stmt->fetchColumn();
 }
 
-/** Distinct visit times occupied on a date (appointments + pending document holds). */
-function countOccupiedVisitSlotsOnDate(PDO $pdo, string $date): int
+/** Distinct visit times occupied on a date for one public booking calendar. */
+function countOccupiedVisitSlotsOnDate(PDO $pdo, string $date, string $bookingType = 'standalone'): int
 {
-    return count(getBookedAppointmentTimes($pdo, $date));
+    return count(getBookedVisitTimesForCalendar($pdo, $date, $bookingType));
 }
 
 function appointmentSlotTimeMatchesSql(string $column): string
@@ -2250,7 +2265,8 @@ function appointmentSlotIsTaken(
     string $time,
     ?string $excludeTrackingCode = null,
     ?int $excludeAppointmentId = null,
-    bool $lockRows = false
+    bool $lockRows = false,
+    string $bookingType = 'standalone'
 ): bool {
     $normalized = normalizeAppointmentTime($time);
     if ($normalized === '') {
@@ -2258,52 +2274,57 @@ function appointmentSlotIsTaken(
     }
 
     ensureSoftDeleteColumns($pdo);
-    $statuses = activeAppointmentSlotStatuses();
-    $placeholders = implode(',', array_fill(0, count($statuses), '?'));
+    $bookingType = normalizeAppointmentBookingType($bookingType);
     $lock = $lockRows ? ' FOR UPDATE' : '';
 
+    if ($bookingType === 'certificate') {
+        $reqSql = 'SELECT COUNT(*) FROM document_requests dr
+             WHERE dr.appointment_date = ?
+               AND ' . appointmentSlotTimeMatchesSql('dr.appointment_time') . '
+               AND ' . documentRequestHoldsVisitSlotSql('dr');
+        $reqParams = [$date, $normalized];
+        if ($excludeTrackingCode !== null && $excludeTrackingCode !== '') {
+            $reqSql .= ' AND dr.tracking_code != ?';
+            $reqParams[] = $excludeTrackingCode;
+        }
+        $reqSql .= $lock;
+
+        $reqStmt = $pdo->prepare($reqSql);
+        $reqStmt->execute($reqParams);
+
+        return (int) $reqStmt->fetchColumn() > 0;
+    }
+
+    $statuses = activeAppointmentSlotStatuses();
+    $placeholders = implode(',', array_fill(0, count($statuses), '?'));
+    $standaloneSql = appointmentStandaloneSql('appointments');
     $apptSql = "SELECT COUNT(*) FROM appointments
             WHERE appointment_date = ?
               AND " . appointmentSlotTimeMatchesSql('appointment_time') . "
               AND status IN ($placeholders)
-              AND deleted_at IS NULL";
+              AND deleted_at IS NULL
+              AND $standaloneSql";
     $apptParams = array_merge([$date, $normalized], $statuses);
     if ($excludeAppointmentId !== null && $excludeAppointmentId > 0) {
         $apptSql .= ' AND id != ?';
         $apptParams[] = $excludeAppointmentId;
     }
-    if ($excludeTrackingCode !== null && $excludeTrackingCode !== '') {
-        $apptSql .= ' AND (tracking_code IS NULL OR tracking_code = \'\' OR tracking_code != ?)';
-        $apptParams[] = $excludeTrackingCode;
-    }
     $apptSql .= $lock;
 
     $apptStmt = $pdo->prepare($apptSql);
     $apptStmt->execute($apptParams);
-    if ((int) $apptStmt->fetchColumn() > 0) {
-        return true;
-    }
 
-    $reqSql = "SELECT COUNT(*) FROM document_requests dr
-         WHERE dr.appointment_date = ?
-           AND " . appointmentSlotTimeMatchesSql('dr.appointment_time') . "
-           AND " . documentRequestHoldsVisitSlotSql('dr');
-    $reqParams = [$date, $normalized];
-    if ($excludeTrackingCode !== null && $excludeTrackingCode !== '') {
-        $reqSql .= ' AND dr.tracking_code != ?';
-        $reqParams[] = $excludeTrackingCode;
-    }
-    $reqSql .= $lock;
-
-    $reqStmt = $pdo->prepare($reqSql);
-    $reqStmt->execute($reqParams);
-
-    return (int) $reqStmt->fetchColumn() > 0;
+    return (int) $apptStmt->fetchColumn() > 0;
 }
 
-function isAppointmentSlotTaken(PDO $pdo, string $date, string $time, ?int $excludeId = null): bool
-{
-    return appointmentSlotIsTaken($pdo, $date, $time, null, $excludeId, false);
+function isAppointmentSlotTaken(
+    PDO $pdo,
+    string $date,
+    string $time,
+    ?int $excludeId = null,
+    string $bookingType = 'standalone'
+): bool {
+    return appointmentSlotIsTaken($pdo, $date, $time, null, $excludeId, false, $bookingType);
 }
 
 /**
@@ -2315,47 +2336,49 @@ function ensureVisitSlotAvailableForWrite(
     string $time,
     ?string $excludeTrackingCode = null,
     ?int $excludeAppointmentId = null,
-    bool $lockRows = false
+    bool $lockRows = false,
+    string $bookingType = 'standalone'
 ): void {
-    if (appointmentSlotIsTaken($pdo, $date, $time, $excludeTrackingCode, $excludeAppointmentId, $lockRows)) {
+    if (appointmentSlotIsTaken($pdo, $date, $time, $excludeTrackingCode, $excludeAppointmentId, $lockRows, $bookingType)) {
         throw new RuntimeException('Visit slot conflict: another booking already uses this date and time.');
     }
 }
 
-function appointmentDayLockKey(string $date): string
+function appointmentDayLockKey(string $date, string $bookingType = 'standalone'): string
 {
-    return 'alcros_visit_day:' . $date;
+    $bookingType = normalizeAppointmentBookingType($bookingType);
+
+    return 'alcros_visit_day:' . $bookingType . ':' . $date;
 }
 
-function acquireAppointmentDayLock(PDO $pdo, string $date, int $timeoutSeconds = 10): bool
+function acquireAppointmentDayLock(PDO $pdo, string $date, int $timeoutSeconds = 10, string $bookingType = 'standalone'): bool
 {
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
         return false;
     }
 
     $stmt = $pdo->prepare('SELECT GET_LOCK(?, ?)');
-    $stmt->execute([appointmentDayLockKey($date), max(1, $timeoutSeconds)]);
+    $stmt->execute([appointmentDayLockKey($date, $bookingType), max(1, $timeoutSeconds)]);
 
     return (int) $stmt->fetchColumn() === 1;
 }
 
-function releaseAppointmentDayLock(PDO $pdo, string $date): void
+function releaseAppointmentDayLock(PDO $pdo, string $date, string $bookingType = 'standalone'): void
 {
     $stmt = $pdo->prepare('SELECT RELEASE_LOCK(?)');
-    $stmt->execute([appointmentDayLockKey($date)]);
+    $stmt->execute([appointmentDayLockKey($date, $bookingType)]);
 }
 
 function buildAppointmentAvailability(PDO $pdo, string $date, string $bookingType = 'standalone'): array
 {
-    ensureCitizenNotifyColumns($pdo);
     ensureSoftDeleteColumns($pdo);
 
     $bookingType = normalizeAppointmentBookingType($bookingType);
     $interval = appointmentSlotIntervalMinutes($bookingType);
     $blockReason = officeDateBlockReason($date);
-    $bookedTimes = $blockReason === null ? getBookedAppointmentTimes($pdo, $date) : [];
+    $bookedTimes = $blockReason === null ? getBookedVisitTimesForCalendar($pdo, $date, $bookingType) : [];
     $bookedLookup = array_fill_keys($bookedTimes, true);
-    $count = $blockReason === null ? countOccupiedVisitSlotsOnDate($pdo, $date) : 0;
+    $count = $blockReason === null ? count($bookedTimes) : 0;
     $maxDaily = maxDailyAppointmentsLimit();
     $dateFull = $blockReason === null && $count >= $maxDaily;
 
@@ -2459,63 +2482,72 @@ function validateAppointmentBooking(
         return 'Please choose a future time slot today, or select another date.';
     }
 
-    if (appointmentSlotIsTaken($pdo, $date, $normalized, null, null, $lockRows)) {
+    if (appointmentSlotIsTaken($pdo, $date, $normalized, null, null, $lockRows, $bookingType)) {
         return 'This time slot is already booked. Please choose another date or time.';
     }
 
     $maxDaily = maxDailyAppointmentsLimit();
-    if (countOccupiedVisitSlotsOnDate($pdo, $date) >= $maxDaily) {
+    if (countOccupiedVisitSlotsOnDate($pdo, $date, $bookingType) >= $maxDaily) {
         return 'No appointment slots remain on this date. Please choose another day.';
     }
 
     if ($email !== null && $email !== '') {
         $normalizedEmail = normalizeGmail($email);
-        $statuses = activeAppointmentSlotStatuses();
-        $statusList = "'" . implode("','", $statuses) . "'";
-        $emailStmt = $pdo->prepare(
-            "SELECT appointment_code FROM appointments
-             WHERE appointment_date = ? AND " . appointmentSlotTimeMatchesSql('appointment_time') . ' AND email = ?
-               AND status IN (' . $statusList . ') AND deleted_at IS NULL LIMIT 1'
-        );
-        $emailStmt->execute([$date, $normalized, $normalizedEmail]);
-        if ($emailStmt->fetchColumn()) {
-            return 'You already have an appointment at this date and time.';
-        }
-
-        ensureSoftDeleteColumns($pdo);
-        $reqEmailStmt = $pdo->prepare(
-            'SELECT tracking_code FROM document_requests
-             WHERE appointment_date = ? AND ' . appointmentSlotTimeMatchesSql('appointment_time') . ' AND email = ?
-               AND deleted_at IS NULL AND status NOT IN (\'rejected\', \'completed\') LIMIT 1'
-        );
-        $reqEmailStmt->execute([$date, $normalized, $normalizedEmail]);
-        if ($reqEmailStmt->fetchColumn()) {
-            return 'You already have a request or appointment at this date and time.';
+        if ($bookingType === 'certificate') {
+            ensureSoftDeleteColumns($pdo);
+            $reqEmailStmt = $pdo->prepare(
+                'SELECT tracking_code FROM document_requests
+                 WHERE appointment_date = ? AND ' . appointmentSlotTimeMatchesSql('appointment_time') . ' AND email = ?
+                   AND deleted_at IS NULL AND status NOT IN (\'rejected\', \'completed\') LIMIT 1'
+            );
+            $reqEmailStmt->execute([$date, $normalized, $normalizedEmail]);
+            if ($reqEmailStmt->fetchColumn()) {
+                return 'You already have a request at this date and time.';
+            }
+        } else {
+            $statuses = activeAppointmentSlotStatuses();
+            $statusList = "'" . implode("','", $statuses) . "'";
+            $standaloneSql = appointmentStandaloneSql('appointments');
+            $emailStmt = $pdo->prepare(
+                "SELECT appointment_code FROM appointments
+                 WHERE appointment_date = ? AND " . appointmentSlotTimeMatchesSql('appointment_time') . ' AND email = ?
+                   AND status IN (' . $statusList . ') AND deleted_at IS NULL AND ' . $standaloneSql . ' LIMIT 1'
+            );
+            $emailStmt->execute([$date, $normalized, $normalizedEmail]);
+            if ($emailStmt->fetchColumn()) {
+                return 'You already have an appointment at this date and time.';
+            }
         }
     }
 
     return null;
 }
 
-function appointmentSlotLockKey(string $date, string $time): string
+function appointmentSlotLockKey(string $date, string $time, string $bookingType = 'standalone'): string
 {
     $normalized = normalizeAppointmentTime($time);
+    $bookingType = normalizeAppointmentBookingType($bookingType);
 
-    return 'alcros_slot:' . $date . ':' . ($normalized !== '' ? $normalized : $time);
+    return 'alcros_slot:' . $bookingType . ':' . $date . ':' . ($normalized !== '' ? $normalized : $time);
 }
 
-function acquireAppointmentSlotLock(PDO $pdo, string $date, string $time, int $timeoutSeconds = 10): bool
-{
-    $key = appointmentSlotLockKey($date, $time);
+function acquireAppointmentSlotLock(
+    PDO $pdo,
+    string $date,
+    string $time,
+    int $timeoutSeconds = 10,
+    string $bookingType = 'standalone'
+): bool {
+    $key = appointmentSlotLockKey($date, $time, $bookingType);
     $stmt = $pdo->prepare('SELECT GET_LOCK(?, ?)');
     $stmt->execute([$key, max(1, $timeoutSeconds)]);
 
     return (int) $stmt->fetchColumn() === 1;
 }
 
-function releaseAppointmentSlotLock(PDO $pdo, string $date, string $time): void
+function releaseAppointmentSlotLock(PDO $pdo, string $date, string $time, string $bookingType = 'standalone'): void
 {
-    $key = appointmentSlotLockKey($date, $time);
+    $key = appointmentSlotLockKey($date, $time, $bookingType);
     $stmt = $pdo->prepare('SELECT RELEASE_LOCK(?)');
     $stmt->execute([$key]);
 }
@@ -6127,7 +6159,8 @@ function syncDocumentRequestAppointment(PDO $pdo, int $requestId, string $reques
             $normalizedTime,
             $trackingCode,
             $existingId ?: null,
-            true
+            true,
+            'certificate'
         );
 
         if ($existing) {
@@ -6384,12 +6417,12 @@ function updateDocumentRequestStatus(
         $slotLockTime = (string) ($visitRow['appointment_time'] ?? '');
         $trackingCode = trim((string) ($visitRow['tracking_code'] ?? ''));
         if ($slotLockDate !== '' && $slotLockTime !== '') {
-            if (!acquireAppointmentDayLock($pdo, $slotLockDate)) {
+            if (!acquireAppointmentDayLock($pdo, $slotLockDate, 10, 'certificate')) {
                 return false;
             }
             $dayLockHeld = true;
-            if (!acquireAppointmentSlotLock($pdo, $slotLockDate, $slotLockTime)) {
-                releaseAppointmentDayLock($pdo, $slotLockDate);
+            if (!acquireAppointmentSlotLock($pdo, $slotLockDate, $slotLockTime, 10, 'certificate')) {
+                releaseAppointmentDayLock($pdo, $slotLockDate, 'certificate');
 
                 return false;
             }
@@ -6403,11 +6436,12 @@ function updateDocumentRequestStatus(
                     $slotLockTime,
                     $trackingCode,
                     $linkedId ?: null,
-                    false
+                    false,
+                    'certificate'
                 );
             } catch (RuntimeException $e) {
-                releaseAppointmentSlotLock($pdo, $slotLockDate, $slotLockTime);
-                releaseAppointmentDayLock($pdo, $slotLockDate);
+                releaseAppointmentSlotLock($pdo, $slotLockDate, $slotLockTime, 'certificate');
+                releaseAppointmentDayLock($pdo, $slotLockDate, 'certificate');
 
                 return false;
             }
@@ -6419,10 +6453,10 @@ function updateDocumentRequestStatus(
         $savedRejectionReason = normalizeStaffRejectionReason($rejectionReason);
         if ($savedRejectionReason === null) {
             if ($slotLockHeld && $slotLockDate !== null && $slotLockTime !== null) {
-                releaseAppointmentSlotLock($pdo, $slotLockDate, $slotLockTime);
+                releaseAppointmentSlotLock($pdo, $slotLockDate, $slotLockTime, 'certificate');
             }
             if ($dayLockHeld && $slotLockDate !== null) {
-                releaseAppointmentDayLock($pdo, $slotLockDate);
+                releaseAppointmentDayLock($pdo, $slotLockDate, 'certificate');
             }
 
             return false;
@@ -6467,10 +6501,10 @@ function updateDocumentRequestStatus(
         return false;
     } finally {
         if ($slotLockHeld && $slotLockDate !== null && $slotLockTime !== null) {
-            releaseAppointmentSlotLock($pdo, $slotLockDate, $slotLockTime);
+            releaseAppointmentSlotLock($pdo, $slotLockDate, $slotLockTime, 'certificate');
         }
         if ($dayLockHeld && $slotLockDate !== null) {
-            releaseAppointmentDayLock($pdo, $slotLockDate);
+            releaseAppointmentDayLock($pdo, $slotLockDate, 'certificate');
         }
     }
 

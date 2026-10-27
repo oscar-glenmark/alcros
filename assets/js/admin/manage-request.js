@@ -268,6 +268,11 @@
                 closeModal();
 
                 if (data.ok) {
+                    var actionsWrap = form.closest('#modalRequestDetailActions, #requestDetailActions');
+                    var reqData = actionsWrap && actionsWrap._requestData;
+                    if (reqData) {
+                        ackNotificationForRequest(reqData);
+                    }
                     var resultType = data.type || 'success';
                     var refreshList = function () {
                         window.location.reload();
@@ -534,7 +539,7 @@
 
     function requestLockable(data) {
         var key = data && data.status_key ? String(data.status_key) : '';
-        return key !== 'completed' && key !== 'rejected';
+        return key === 'pending';
     }
 
     function requestLockReadOnly(data) {
@@ -667,6 +672,7 @@
         var openInModal = options.modal === true || !useSidePanel || !panel || !content || !emptyState;
 
         function showView(viewData) {
+            ackNotificationForRequest(viewData);
             if (openInModal) {
                 openModal(viewData, row);
             } else {
@@ -693,6 +699,9 @@
             'data-request-row',
             'data-request'
         ).then(function (res) {
+            if (res && res.cancelled) {
+                return;
+            }
             if (!res.ok) {
                 if (window.AlcrosActionResult) {
                     var msg = res.error || (res.lock && res.lock.label)
@@ -746,6 +755,13 @@
     function openModal(data, row) {
         if (!modal) return;
 
+        if (
+            panel
+            && (panel.classList.contains('is-open') || (content && !content.classList.contains('hidden')))
+            && window.AlcrosStaffLocks
+        ) {
+            window.AlcrosStaffLocks.releaseActive();
+        }
         hideDetailPanel();
         populateDetailView(modalView, data);
         modal.classList.remove('hidden');
@@ -765,9 +781,19 @@
         modal.classList.add('hidden');
         modal.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('manage-request-modal-open');
+        markSelectedRow(null);
         if (modalActionsWrap) {
             modalActionsWrap.innerHTML = '';
             modalActionsWrap.classList.add('hidden');
+        }
+    }
+
+    function ackNotificationForRequest(data) {
+        if (!data || !data.tracking_code) {
+            return;
+        }
+        if (window.AlcrosNotifications && typeof window.AlcrosNotifications.ackForRequest === 'function') {
+            window.AlcrosNotifications.ackForRequest(data.tracking_code);
         }
     }
 
@@ -974,17 +1000,39 @@
         no_show: 'no_show'
     };
 
+    function liveListSearchQuery() {
+        try {
+            var urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('q')) {
+                return String(urlParams.get('q') || '').trim();
+            }
+        } catch (e) { /* ignore */ }
+        return pageConfig.redirectQ || '';
+    }
+
     function manageRequestNavParams(overrides) {
         var params = overrides || {};
         var status = pageConfig.redirectStatus || 'all';
         if (status && status !== 'all' && params.status === undefined) {
             params.status = status;
         }
-        if (pageConfig.redirectQ && params.q === undefined) {
-            params.q = pageConfig.redirectQ;
+        var liveQ = liveListSearchQuery();
+        if (params.q === undefined && liveQ !== '') {
+            params.q = liveQ;
         }
-        if (!pageConfig.awaitingAllDates && pageConfig.redirectDate && params.date === undefined) {
-            params.date = pageConfig.redirectDate;
+        if (liveQ === '' && !pageConfig.awaitingAllDates && params.date === undefined) {
+            try {
+                var urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.has('date')) {
+                    params.date = urlParams.get('date');
+                } else if (pageConfig.redirectDate) {
+                    params.date = pageConfig.redirectDate;
+                }
+            } catch (e) {
+                if (pageConfig.redirectDate) {
+                    params.date = pageConfig.redirectDate;
+                }
+            }
         }
         return params;
     }
@@ -1183,6 +1231,42 @@
     }
     initRowLocksFromDom();
 
+    function syncListSignatureFromDom() {
+        lastListSignature = listSignature(
+            Array.prototype.map.call(
+                document.querySelectorAll('.manage-requests-row'),
+                function (row) {
+                    var parsed = parseRequestData(row);
+                    return {
+                        id: parseInt(row.getAttribute('data-request-row'), 10),
+                        revision: parsed && parsed.revision ? parsed.revision : ''
+                    };
+                }
+            )
+        );
+    }
+
+    document.addEventListener('alcros:manage-list-updated', function (ev) {
+        var detail = ev.detail || {};
+        if (detail.panelId !== 'manageRequestsListPanel') {
+            return;
+        }
+        bindViewRequestButtons();
+        bindPrintMenus();
+        initRowLocksFromDom();
+        syncListSignatureFromDom();
+        if (window.AlcrosManageBulk && typeof window.AlcrosManageBulk.bindForms === 'function') {
+            window.AlcrosManageBulk.bindForms(detail.form);
+        }
+        var selected = document.querySelector('.manage-requests-row.is-selected');
+        if (selected && !document.getElementById('manageRequestsListPanel').contains(selected)) {
+            if (useSidePanel) {
+                closeDetail();
+            }
+            closeModal();
+        }
+    });
+
     document.addEventListener('alcros:staff-locks-updated', function (ev) {
         var detail = ev.detail || {};
         if (detail.type && detail.type !== 'document_request') {
@@ -1211,6 +1295,10 @@
 
     if (window.AlcrosStaffLocks && typeof window.AlcrosStaffLocks.bootstrapStaffLockPage === 'function') {
         window.AlcrosStaffLocks.bootstrapStaffLockPage();
+    }
+
+    if (pageConfig.redirectQ && window.AlcrosNotifications && typeof window.AlcrosNotifications.ackForRequest === 'function') {
+        window.AlcrosNotifications.ackForRequest(pageConfig.redirectQ);
     }
 
     window.AlcrosManageRequest = {

@@ -184,14 +184,27 @@ function staffResourceLockBlockedByOther(?array $lock, string $staffId): bool
 
 function documentRequestLockEligibleStatus(string $status): bool
 {
-    $normalized = normalizeRequestStatus($status);
-
-    return !in_array($normalized, ['completed', 'rejected'], true);
+    return normalizeRequestStatus($status) === 'pending';
 }
 
 function appointmentLockEligibleStatus(string $status): bool
 {
-    return !in_array($status, ['completed', 'cancelled', 'no_show'], true);
+    return strtolower(trim($status)) === 'scheduled';
+}
+
+/** Lock badge / coordination only when the row is still in the actionable queue state. */
+function staffResourceLockDisplay(
+    PDO $pdo,
+    string $resourceType,
+    int $resourceId,
+    ?array $lockRow,
+    string $staffId
+): ?array {
+    if ($resourceId <= 0 || !$lockRow || !staffResourceLockEligible($pdo, $resourceType, $resourceId)) {
+        return null;
+    }
+
+    return formatStaffResourceLock($lockRow, $staffId);
 }
 
 function documentRequestLockEligible(PDO $pdo, int $id): bool

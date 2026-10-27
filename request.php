@@ -232,10 +232,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                 $pdo = getDB();
                 ensureCitizenNotifyColumns($pdo);
 
-                if (!acquireAppointmentDayLock($pdo, $appointmentDate)) {
+                if (!acquireAppointmentDayLock($pdo, $appointmentDate, 10, 'certificate')) {
                     $error = 'This date is busy with other bookings. Please try again in a moment.';
-                } elseif (!acquireAppointmentSlotLock($pdo, $appointmentDate, $appointmentTime)) {
-                    releaseAppointmentDayLock($pdo, $appointmentDate);
+                } elseif (!acquireAppointmentSlotLock($pdo, $appointmentDate, $appointmentTime, 10, 'certificate')) {
+                    releaseAppointmentDayLock($pdo, $appointmentDate, 'certificate');
                     $error = 'This time slot is being booked by someone else. Please choose another time.';
                 } else {
                     $dayLocked = true;
@@ -260,7 +260,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                             $appointmentTime,
                             null,
                             null,
-                            true
+                            true,
+                            'certificate'
                         );
 
                         $trackingCode = generateTrackingCode();
@@ -356,10 +357,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                 $error = 'Could not submit request. ' . dbConnectionHelpMessage();
             } finally {
                 if ($slotLocked) {
-                    releaseAppointmentSlotLock($pdo, $appointmentDate, $appointmentTime);
+                    releaseAppointmentSlotLock($pdo, $appointmentDate, $appointmentTime, 'certificate');
                 }
                 if ($dayLocked) {
-                    releaseAppointmentDayLock($pdo, $appointmentDate);
+                    releaseAppointmentDayLock($pdo, $appointmentDate, 'certificate');
                 }
             }
         }

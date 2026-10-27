@@ -611,7 +611,7 @@ $pageHeaderMeta = $awaitingAllDates
                             </a>
                         </div>
                         <?php endif; ?>
-                        <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('appointment.php')) ?>" class="manage-controls__search">
+                        <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('appointment.php')) ?>" class="manage-controls__search" data-manage-ajax-search="1" data-list-panel-id="manageAppointmentsListPanel">
                             <?= authFormField() ?>
                             <?php if ($search === '' && !$awaitingAllDates): ?>
                             <input type="hidden" name="date" value="<?= htmlspecialchars($viewDate) ?>">
@@ -637,6 +637,7 @@ $pageHeaderMeta = $awaitingAllDates
 
             <div class="manage-requests-body" id="appointmentsBody">
                 <div class="manage-requests-main">
+            <div id="manageAppointmentsListPanel" class="manage-list-panel">
             <?php if ($isFollowUpsView): ?>
             <div class="manage-requests-table-card">
                 <div class="manage-table-head">
@@ -803,7 +804,13 @@ $pageHeaderMeta = $awaitingAllDates
                         <?php
                         $viewData = appointmentViewData($ap, $pdo);
                         $apLock = $appointmentLockMap[(int) $ap['id']] ?? null;
-                        $viewData['lock'] = $apLock ? formatStaffResourceLock($apLock, staffId()) : null;
+                        $viewData['lock'] = staffResourceLockDisplay(
+                            $pdo,
+                            STAFF_LOCK_TYPE_APPOINTMENT,
+                            (int) $ap['id'],
+                            $apLock,
+                            staffId()
+                        );
                         $canBulkSelect = $isRecentlyDeletedView || appointmentIsDeletable($ap);
                         ?>
                         <tr class="manage-requests-row"
@@ -901,6 +908,7 @@ $pageHeaderMeta = $awaitingAllDates
                 </div>
             </div>
             <?php endif; ?>
+            </div>
                 </div>
 
                 <?php if ($showSidePanel): ?>
@@ -1111,6 +1119,7 @@ $pageHeaderMeta = $awaitingAllDates
     <?= scriptTag('admin/id-preview.js') ?>
     <?= scriptTag('core/page-config.js') ?>
     <?= scriptTag('core/admin-search.js') ?>
+    <?= scriptTag('core/manage-list-search.js') ?>
     <?= scriptTag('admin/manage-bulk.js') ?>
     <?= scriptTag('core/staff-resource-locks.js') ?>
     <?= scriptTag('admin/appointment.js') ?>

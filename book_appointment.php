@@ -79,11 +79,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo = getDB();
                 ensureCitizenNotifyColumns($pdo);
 
-                if (!acquireAppointmentDayLock($pdo, $date)) {
+                if (!acquireAppointmentDayLock($pdo, $date, 10, 'standalone')) {
                     deleteIdUploadFiles($frontPath, $backPath);
                     $error = 'This date is busy with other bookings. Please try again in a moment.';
-                } elseif (!acquireAppointmentSlotLock($pdo, $date, $time)) {
-                    releaseAppointmentDayLock($pdo, $date);
+                } elseif (!acquireAppointmentSlotLock($pdo, $date, $time, 10, 'standalone')) {
+                    releaseAppointmentDayLock($pdo, $date, 'standalone');
                     deleteIdUploadFiles($frontPath, $backPath);
                     $error = 'This time slot is being booked by someone else. Please choose another time.';
                 } else {
@@ -97,7 +97,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         deleteIdUploadFiles($frontPath, $backPath);
                         $error = $bookingError;
                     } else {
-                        ensureVisitSlotAvailableForWrite($pdo, $date, $time, null, null, true);
+                        ensureVisitSlotAvailableForWrite($pdo, $date, $time, null, null, true, 'standalone');
 
                         // Verified Gmail is required to book; enable email updates for this appointment.
                         $notifyEmail = true;
@@ -164,10 +164,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = 'Could not book appointment. ' . dbConnectionHelpMessage();
             } finally {
                 if ($slotLocked) {
-                    releaseAppointmentSlotLock($pdo, $date, $time);
+                    releaseAppointmentSlotLock($pdo, $date, $time, 'standalone');
                 }
                 if ($dayLocked) {
-                    releaseAppointmentDayLock($pdo, $date);
+                    releaseAppointmentDayLock($pdo, $date, 'standalone');
                 }
             }
         }
@@ -365,7 +365,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-[11px] font-bold mb-1">Date *</label>
+                    <label class="block text-[11px] font-bold mb-1">Choose Visit Date *</label>
                     <input type="date" id="appointmentDateInput" name="appointment_date" required min="<?= date('Y-m-d') ?>" value="<?= htmlspecialchars($date) ?>" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
                 </div>
                 <div>

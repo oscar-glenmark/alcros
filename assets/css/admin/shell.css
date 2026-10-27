@@ -1053,3 +1053,9 @@ body.admin-sidebar-minimized .admin-sidebar button {
     object-fit: cover;
     object-position: center;
 }
+
+.manage-list-panel.is-list-search-loading {
+    opacity: 0.65;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}

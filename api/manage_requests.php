@@ -39,7 +39,7 @@ try {
             'status_badge_html' => $view['status_badge_html'],
             'submitted_at'      => $view['submitted_at'],
             'updated_at'        => $view['updated_at'],
-            'lock'              => $lockRow ? formatStaffResourceLock($lockRow, $staffId) : null,
+            'lock'              => staffResourceLockDisplay($pdo, STAFF_LOCK_TYPE_REQUEST, $rid, $lockRow, $staffId),
         ];
     }
 
@@ -73,7 +73,7 @@ try {
             );
             if ($focusLock === null) {
                 $lockRow = fetchStaffResourceLock($pdo, STAFF_LOCK_TYPE_REQUEST, $focusId);
-                $focusLock = $lockRow ? formatStaffResourceLock($lockRow, staffId()) : null;
+                $focusLock = staffResourceLockDisplay($pdo, STAFF_LOCK_TYPE_REQUEST, $focusId, $lockRow, staffId());
             }
             $focus = documentRequestViewData($focusRow);
             $focus['lock'] = $focusLock;

@@ -1,4 +1,7 @@
 <?php
+if (!defined('ALCROS_PUBLIC_READ_API')) {
+    define('ALCROS_PUBLIC_READ_API', true);
+}
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/api_helpers.php';
 
@@ -22,7 +25,7 @@ try {
         $payload['available'] = (bool) ($payload['bookable'] ?? false)
             && isValidAppointmentSlot($time, $bookingType)
             && !$pastToday
-            && !isAppointmentSlotTaken($pdo, $date, $time);
+            && !isAppointmentSlotTaken($pdo, $date, $time, null, $bookingType);
     }
 
     apiJsonResponse($payload);

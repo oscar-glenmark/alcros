@@ -393,7 +393,7 @@ $showVisitLateNoShowColumn = $filterStatus === 'ready';
                             </a>
                         </div>
                         <?php endif; ?>
-                    <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="manage-controls__search">
+                    <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="manage-controls__search" data-manage-ajax-search="1" data-list-panel-id="manageRequestsListPanel">
                         <?= authFormField() ?>
                         <?php if ($search === '' && $showDateNav): ?>
                         <input type="hidden" name="date" value="<?= htmlspecialchars($viewDate) ?>">
@@ -419,6 +419,7 @@ $showVisitLateNoShowColumn = $filterStatus === 'ready';
 
             <div class="manage-requests-body" id="manageRequestsBody">
                 <div class="manage-requests-main">
+            <div id="manageRequestsListPanel" class="manage-list-panel">
             <?php if (empty($requests)): ?>
             <div class="manage-requests-empty">
                 <div class="manage-requests-empty__icon">
@@ -489,7 +490,13 @@ $showVisitLateNoShowColumn = $filterStatus === 'ready';
                         <?php
                         $viewData = documentRequestViewData($req);
                         $reqLock = $requestLockMap[(int) $req['id']] ?? null;
-                        $viewData['lock'] = $reqLock ? formatStaffResourceLock($reqLock, staffId()) : null;
+                        $viewData['lock'] = staffResourceLockDisplay(
+                            $pdo,
+                            STAFF_LOCK_TYPE_REQUEST,
+                            (int) $req['id'],
+                            $reqLock,
+                            staffId()
+                        );
                         $canBulkSelect = $isRecentlyDeletedView || documentRequestIsDeletable($req);
                         ?>
                         <tr class="manage-requests-row"
@@ -611,6 +618,7 @@ $showVisitLateNoShowColumn = $filterStatus === 'ready';
                 </div>
             </div>
             <?php endif; ?>
+            </div>
                 </div>
 
                 <?php if ($showSidePanel): ?>
@@ -767,6 +775,7 @@ $showVisitLateNoShowColumn = $filterStatus === 'ready';
     <?= scriptTag('admin/id-preview.js') ?>
     <?= scriptTag('core/page-config.js') ?>
     <?= scriptTag('core/admin-search.js') ?>
+    <?= scriptTag('core/manage-list-search.js') ?>
     <?= scriptTag('admin/manage-bulk.js') ?>
     <?= scriptTag('core/staff-resource-locks.js') ?>
     <?= scriptTag('admin/manage-request.js') ?>

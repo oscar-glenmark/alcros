@@ -276,6 +276,11 @@
                 closeModal();
 
                 if (data.ok) {
+                    var actionsWrap = form.closest('#modalAppointmentDetailActions, #appointmentDetailActions');
+                    var apptData = actionsWrap && actionsWrap._appointmentData;
+                    if (apptData) {
+                        ackNotificationForAppointment(apptData);
+                    }
                     var resultType = data.type || 'success';
                     var redirectUrl = data.redirect_url || '';
                     var refreshList = function () {
@@ -780,7 +785,7 @@
 
     function appointmentLockable(data) {
         var key = data && data.status_key ? String(data.status_key) : '';
-        return key !== 'completed' && key !== 'cancelled' && key !== 'no_show';
+        return key === 'scheduled';
     }
 
     function appointmentLockReadOnly(data) {
@@ -961,6 +966,7 @@
             || !emptyState;
 
         function showView(viewData) {
+            ackNotificationForAppointment(viewData);
             if (openInModal) {
                 openModal(viewData, row);
             } else {
@@ -987,6 +993,9 @@
             'data-appointment-row',
             'data-appointment'
         ).then(function (res) {
+            if (res && res.cancelled) {
+                return;
+            }
             if (!res.ok) {
                 if (window.AlcrosActionResult) {
                     var msg = res.error || (res.lock && res.lock.label)
@@ -1050,6 +1059,13 @@
     function openModal(data, row) {
         if (!modal) return;
 
+        if (
+            panel
+            && (panel.classList.contains('is-open') || (content && !content.classList.contains('hidden')))
+            && window.AlcrosStaffLocks
+        ) {
+            window.AlcrosStaffLocks.releaseActive();
+        }
         hideDetailPanel();
         modal.classList.remove('hidden');
         modal.setAttribute('aria-hidden', 'false');
@@ -1073,9 +1089,19 @@
         modal.classList.add('hidden');
         modal.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('manage-request-modal-open');
+        markSelectedRow(null);
         if (modalActionsWrap) {
             modalActionsWrap.innerHTML = '';
             modalActionsWrap.classList.add('hidden');
+        }
+    }
+
+    function ackNotificationForAppointment(data) {
+        if (!data || !data.appointment_code) {
+            return;
+        }
+        if (window.AlcrosNotifications && typeof window.AlcrosNotifications.ackForAppointment === 'function') {
+            window.AlcrosNotifications.ackForAppointment(data.appointment_code);
         }
     }
 
@@ -1206,14 +1232,39 @@
         });
     }
 
+    function liveListSearchQuery() {
+        try {
+            var urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('q')) {
+                return String(urlParams.get('q') || '').trim();
+            }
+        } catch (e) { /* ignore */ }
+        return pageConfig.redirectQ || '';
+    }
+
     function appointmentManageNavParams(overrides) {
         var params = overrides || {};
         var status = pageConfig.redirectStatus || 'all';
         if (status && status !== 'all' && params.status === undefined) {
             params.status = status;
         }
-        if (pageConfig.redirectQ && params.q === undefined) {
-            params.q = pageConfig.redirectQ;
+        var liveQ = liveListSearchQuery();
+        if (params.q === undefined && liveQ !== '') {
+            params.q = liveQ;
+        }
+        if (liveQ === '' && !pageConfig.awaitingAllDates && params.date === undefined) {
+            try {
+                var urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.has('date')) {
+                    params.date = urlParams.get('date');
+                } else if (pageConfig.redirectDate) {
+                    params.date = pageConfig.redirectDate;
+                }
+            } catch (e) {
+                if (pageConfig.redirectDate) {
+                    params.date = pageConfig.redirectDate;
+                }
+            }
         }
         return params;
     }
@@ -1489,13 +1540,7 @@
         AlcrosPoll.pollJson(
             pageConfig.pollUrl,
             function () {
-                var params = {
-                    status: pageConfig.redirectStatus || 'all',
-                    q: pageConfig.redirectQ || undefined
-                };
-                if (!pageConfig.awaitingAllDates) {
-                    params.date = pageConfig.redirectDate || undefined;
-                }
+                var params = appointmentManageNavParams({});
                 var selected = document.querySelector('.manage-requests-row.is-selected');
                 if (selected) {
                     params.focus_id = selected.getAttribute('data-appointment-row');
@@ -1520,6 +1565,41 @@
         });
     }
     initAppointmentRowLocksFromDom();
+
+    function syncListSignatureFromDom() {
+        lastListSignature = listSignature(
+            Array.prototype.map.call(
+                appointmentTableRows(),
+                function (row) {
+                    var parsed = parseAppointmentData(row);
+                    return {
+                        id: parseInt(row.getAttribute('data-appointment-row'), 10),
+                        revision: parsed && parsed.revision ? parsed.revision : ''
+                    };
+                }
+            )
+        );
+    }
+
+    document.addEventListener('alcros:manage-list-updated', function (ev) {
+        var detail = ev.detail || {};
+        if (detail.panelId !== 'manageAppointmentsListPanel') {
+            return;
+        }
+        initAppointmentRowLocksFromDom();
+        syncListSignatureFromDom();
+        if (window.AlcrosManageBulk && typeof window.AlcrosManageBulk.bindForms === 'function') {
+            window.AlcrosManageBulk.bindForms(detail.form);
+        }
+        var panel = document.getElementById('manageAppointmentsListPanel');
+        var selected = document.querySelector('.manage-requests-row.is-selected');
+        if (selected && panel && !panel.contains(selected)) {
+            if (useSidePanel) {
+                closeDetail();
+            }
+            closeModal();
+        }
+    });
 
     document.addEventListener('alcros:staff-locks-updated', function (ev) {
         var detail = ev.detail || {};
@@ -1549,5 +1629,9 @@
 
     if (window.AlcrosStaffLocks && typeof window.AlcrosStaffLocks.bootstrapStaffLockPage === 'function') {
         window.AlcrosStaffLocks.bootstrapStaffLockPage();
+    }
+
+    if (pageConfig.redirectQ && window.AlcrosNotifications && typeof window.AlcrosNotifications.ackForAppointment === 'function') {
+        window.AlcrosNotifications.ackForAppointment(pageConfig.redirectQ);
     }
 })();

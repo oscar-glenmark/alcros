@@ -93,8 +93,7 @@ function formattedStaffLocksForIds(PDO $pdo, string $type, array $ids, string $s
 
     $map = fetchStaffResourceLocksMap($pdo, $type, $ids);
     foreach ($ids as $id) {
-        $formatted = isset($map[$id]) ? formatStaffResourceLock($map[$id], $staffId) : null;
-        $locks[(string) $id] = $formatted;
+        $locks[(string) $id] = staffResourceLockDisplay($pdo, $type, (int) $id, $map[$id] ?? null, $staffId);
     }
 
     return $locks;

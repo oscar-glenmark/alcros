@@ -1800,7 +1800,7 @@
     var recordsListRequestId = 0;
     var recordsSearchDebounceTimer = null;
     var recordsListAppliedQuery = '';
-    var RECORDS_SEARCH_DEBOUNCE_MS = 450;
+    var RECORDS_SEARCH_DEBOUNCE_MS = 900;
     var RECORDS_SEARCH_MIN_CHARS = 2;
 
     function recordsSearchLooksLikeDate(value) {

@@ -212,7 +212,7 @@ $showingTo = min($offset + $perPage, $totalCount);
             </div>
 
             <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden mb-5">
-                <form id="activityLogFilterForm" method="GET" action="activity-log.php" class="admin-toolbar !mb-0 !rounded-none !border-0 !shadow-none border-b border-slate-100" data-no-loading>
+                <form id="activityLogFilterForm" method="GET" action="<?= htmlspecialchars(buildAuthUrl('activity-log.php')) ?>" class="admin-toolbar !mb-0 !rounded-none !border-0 !shadow-none border-b border-slate-100" data-no-loading data-manage-ajax-search="1" data-list-panel-id="activityLogListPanel">
                     <?= authFormField() ?>
                     <?php if ($range !== '7d'): ?>
                     <input type="hidden" name="range" value="<?= htmlspecialchars($range) ?>">
@@ -237,6 +237,7 @@ $showingTo = min($offset + $perPage, $totalCount);
                         <?php endforeach; ?>
                     </div>
                 </form>
+                <div id="activityLogListPanel" class="manage-list-panel">
                 <?php if ($search !== '' || $staffFilter !== ''): ?>
                 <div class="px-4 py-2 border-b border-slate-100 bg-slate-50/50 text-right">
                     <a href="<?= htmlspecialchars(activityLogPageUrl(['q' => null, 'staff' => null, 'page' => null])) ?>" class="text-xs font-bold text-slate-500 hover:text-blue-600">Clear filters</a>
@@ -340,6 +341,7 @@ $showingTo = min($offset + $perPage, $totalCount);
                     </table>
                 </div>
                 <?php endif; ?>
+                </div>
             </div>
         </div>
     </main>
@@ -382,6 +384,7 @@ $showingTo = min($offset + $perPage, $totalCount);
     </div>
 
     <?= scriptTag('core/admin-search.js') ?>
+    <?= scriptTag('core/manage-list-search.js') ?>
     <?= scriptTag('admin/activity-log.js') ?>
     <?= lucideInitScript() ?>
 </body>

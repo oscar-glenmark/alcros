@@ -41,6 +41,13 @@ $purposeLabels = queuePurposeLabels();
                     Test
                 </button>
             </div>
+            <button type="button"
+                    id="display-fullscreen-btn"
+                    class="display-fullscreen-btn"
+                    aria-label="Enter full screen"
+                    title="Full screen">
+                <i data-lucide="maximize" class="w-5 h-5" aria-hidden="true"></i>
+            </button>
             <div class="text-right">
                 <p class="text-[8px] font-bold text-gray-500 uppercase">Local Time</p>
                 <span id="clock" class="text-2xl font-black"><?= date('h:i A') ?></span>

@@ -4,6 +4,16 @@
     var heartbeatTimer = null;
     var realtimeStop = null;
     var activeLock = null;
+    var openClaimGeneration = 0;
+
+    var LOCK_BANNER_IDS = [
+        'view-lock-banner',
+        'modal-view-lock-banner',
+        'modal-request-header-lock',
+        'appt-view-lock-banner',
+        'modal-appt-view-lock-banner',
+        'modal-appt-header-lock'
+    ];
 
     function pageConfig() {
         if (window.AlcrosPage && typeof window.AlcrosPage.readConfig === 'function') {
@@ -415,6 +425,36 @@
         }, 30000);
     }
 
+    function hideAllLockBanners() {
+        LOCK_BANNER_IDS.forEach(function (id) {
+            var el = document.getElementById(id);
+            if (!el) {
+                return;
+            }
+            el.textContent = '';
+            el.classList.add('hidden');
+            el.classList.remove('is-lock-other');
+        });
+    }
+
+    function clearLockUiForSnapshot(snapshot, rowAttr, dataAttr) {
+        if (snapshot && snapshot.id) {
+            if (rowAttr && dataAttr) {
+                applyLockToDom(snapshot.id, null, rowAttr, dataAttr);
+            } else {
+                var meta = lockPageMeta();
+                if (meta) {
+                    applyLockToDom(snapshot.id, null, meta.rowAttr, meta.dataAttr);
+                }
+            }
+        }
+        hideAllLockBanners();
+    }
+
+    function cancelPendingOpenClaim() {
+        openClaimGeneration += 1;
+    }
+
     function releaseActiveUnlessSame(resourceType, resourceId) {
         if (
             activeLock
@@ -423,18 +463,46 @@
         ) {
             return Promise.resolve();
         }
-        return releaseActive();
+        return releaseActive(false, { cancelPendingClaim: false });
     }
 
     function beginOpenClaim(resourceType, resourceId, row, rowAttr, dataAttr) {
+        var claimGeneration = openClaimGeneration;
         var pending = localHolderLock();
         activeLock = { type: resourceType, id: resourceId };
         applyLockToDom(resourceId, pending, rowAttr, dataAttr);
         setRowOpenBusy(row, true);
 
+        function claimWasCancelled() {
+            return claimGeneration !== openClaimGeneration;
+        }
+
+        function finishCancelledClaim(res) {
+            setRowOpenBusy(row, false);
+            clearHeartbeat();
+            activeLock = null;
+            applyLockToDom(resourceId, null, rowAttr, dataAttr);
+            hideAllLockBanners();
+            if (res && res.ok) {
+                postLock('release', resourceType, resourceId).catch(function () { /* ignore */ });
+                notifyLockBump();
+            }
+            return { ok: false, cancelled: true, readOnly: true, lock: null };
+        }
+
         return releaseActiveUnlessSame(resourceType, resourceId).then(function () {
+            if (claimWasCancelled()) {
+                setRowOpenBusy(row, false);
+                activeLock = null;
+                applyLockToDom(resourceId, null, rowAttr, dataAttr);
+                hideAllLockBanners();
+                return { ok: false, cancelled: true, readOnly: true, lock: null };
+            }
             return acquireForOpen(resourceType, resourceId);
         }).then(function (res) {
+            if (claimWasCancelled()) {
+                return finishCancelledClaim(res);
+            }
             setRowOpenBusy(row, false);
             if (res.ok && res.lock) {
                 applyLockToDom(resourceId, res.lock, rowAttr, dataAttr);
@@ -455,6 +523,7 @@
             clearHeartbeat();
             activeLock = null;
             applyLockToDom(resourceId, null, rowAttr, dataAttr);
+            hideAllLockBanners();
             return { ok: false, readOnly: true, lock: null, error: 'Could not claim this item.' };
         });
     }
@@ -516,13 +585,19 @@
         }
     }
 
-    function releaseActive(useBeacon) {
+    function releaseActive(useBeacon, options) {
+        options = options || {};
+        if (options.cancelPendingClaim !== false) {
+            cancelPendingOpenClaim();
+        }
         if (!activeLock) {
+            hideAllLockBanners();
             return Promise.resolve();
         }
         var snapshot = activeLock;
         activeLock = null;
         clearHeartbeat();
+        clearLockUiForSnapshot(snapshot);
 
         if (useBeacon && navigator.sendBeacon) {
             var body = new URLSearchParams();
@@ -542,7 +617,9 @@
             return Promise.resolve();
         }
 
-        return postLock('release', snapshot.type, snapshot.id).catch(function () { });
+        return postLock('release', snapshot.type, snapshot.id).then(function () {
+            notifyLockBump();
+        }).catch(function () { /* ignore */ });
     }
 
     function syncStaffPostAuth(formData) {
@@ -764,6 +841,7 @@
         syncDetailLockBanner: syncDetailLockBanner,
         releaseActive: releaseActive,
         releaseActiveUnlessSame: releaseActiveUnlessSame,
+        hideAllLockBanners: hideAllLockBanners,
         clearHeartbeat: clearHeartbeat,
         startListLockPoll: startListLockPoll,
         startRealtimeLockSync: startRealtimeLockSync,

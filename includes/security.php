@@ -58,6 +58,12 @@ function bootstrapSecurity(): void
     }
     $booted = true;
 
+    sendSecurityHeaders();
+
+    if (defined('ALCROS_PUBLIC_READ_API') && ALCROS_PUBLIC_READ_API) {
+        return;
+    }
+
     if (session_status() === PHP_SESSION_NONE) {
         if (!function_exists('alcrosRequestIsHttps')) {
             require_once __DIR__ . '/hosting.php';
@@ -74,7 +80,6 @@ function bootstrapSecurity(): void
         session_start();
     }
 
-    sendSecurityHeaders();
     ensureCsrfToken();
 }
 

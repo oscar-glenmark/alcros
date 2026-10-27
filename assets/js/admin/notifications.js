@@ -199,12 +199,6 @@
             return n.type === type;
         });
         if (!typed.length) {
-            var stillInFeed = (all || []).some(function (n) {
-                return n && n.type === type;
-            });
-            if (stillInFeed) {
-                return 0;
-            }
             return total;
         }
         return typed.some(isBellUnread) ? total : 0;
@@ -380,8 +374,11 @@
                 var link = e.target.closest('.notif-item-link');
                 if (link) {
                     var item = link.closest('.notif-item');
-                    ackBellId(item ? item.getAttribute('data-notif-id') : '');
-                    refresh();
+                    var notifId = item ? item.getAttribute('data-notif-id') : '';
+                    if (notifId) {
+                        ackBellId(notifId);
+                        refresh();
+                    }
                     return;
                 }
 
@@ -467,6 +464,42 @@
             updateAllBadges(latest, latestCounts);
         }
 
+        function ackIdsAndRefresh(ids) {
+            var list = (ids || []).filter(Boolean);
+            if (!list.length) {
+                return;
+            }
+            ackBellIds(list);
+            refresh();
+            if (window.AlcrosAdminLive && typeof window.AlcrosAdminLive.refresh === 'function') {
+                window.AlcrosAdminLive.refresh();
+            }
+        }
+
+        function ackForRequest(trackingCode) {
+            var code = String(trackingCode || '').trim();
+            if (!code) {
+                return;
+            }
+            ackIdsAndRefresh(['req-pending-' + code, 'req-ready-' + code]);
+        }
+
+        function ackForAppointment(appointmentCode) {
+            var code = String(appointmentCode || '').trim();
+            if (!code) {
+                return;
+            }
+            ackIdsAndRefresh(['appt-' + code]);
+        }
+
+        function ackForQueueTicket(ticketId) {
+            var id = parseInt(ticketId, 10);
+            if (!id) {
+                return;
+            }
+            ackIdsAndRefresh(['queue-ticket-' + id]);
+        }
+
         bindPanelActions(refresh, function () { return latest; });
 
         function applyPayload(data) {
@@ -494,7 +527,11 @@
 
         window.AlcrosNotifications = {
             applyPayload: applyPayload,
-            refresh: refresh
+            refresh: refresh,
+            ackBellId: ackBellId,
+            ackForRequest: ackForRequest,
+            ackForAppointment: ackForAppointment,
+            ackForQueueTicket: ackForQueueTicket
         };
 
         if (window.AlcrosAdminLive && typeof window.AlcrosAdminLive.refresh === 'function') {

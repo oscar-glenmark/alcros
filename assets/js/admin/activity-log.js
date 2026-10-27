@@ -94,8 +94,13 @@
         document.body.classList.remove('activity-log-modal-open');
     }
 
-    function bindActivityLogRows() {
-        document.querySelectorAll('.activity-log-row[data-activity-log]').forEach(function (row) {
+    function bindActivityLogRows(root) {
+        var scope = root && root.querySelectorAll ? root : document;
+        scope.querySelectorAll('.activity-log-row[data-activity-log]').forEach(function (row) {
+            if (row.dataset.activityLogBound === '1') {
+                return;
+            }
+            row.dataset.activityLogBound = '1';
             row.addEventListener('click', function () {
                 openActivityLogModal(parseLogPayload(row));
             });
@@ -134,31 +139,19 @@
         });
     }
 
-    function bindActivityLogFilterForm() {
-        var form = document.getElementById('activityLogFilterForm');
-        var staff = document.getElementById('activityLogStaff');
-        if (!form) {
-            return;
-        }
-
-        function submitFilter() {
-            var pageInput = form.querySelector('input[name="page"]');
-            if (pageInput) {
-                pageInput.remove();
-            }
-            form.submit();
-        }
-
-        if (staff) {
-            staff.addEventListener('change', submitFilter);
-        }
-    }
-
     function initActivityLogPage() {
-        bindActivityLogFilterForm();
         bindActivityLogRows();
         bindActivityLogModal();
     }
+
+    document.addEventListener('alcros:manage-list-updated', function (ev) {
+        var detail = ev.detail || {};
+        if (detail.panelId !== 'activityLogListPanel') {
+            return;
+        }
+        var panel = document.getElementById('activityLogListPanel');
+        bindActivityLogRows(panel || document);
+    });
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initActivityLogPage);

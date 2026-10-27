@@ -19,6 +19,8 @@
 
     var selectedTime = timeInput.value || '';
     var availability = null;
+    var loadRequestId = 0;
+    var loadAbortController = null;
 
     function syncAvailabilityState() {
         if (!scheduleForm) return;
@@ -171,10 +173,17 @@
         renderTimeOptions(null);
         syncAvailabilityState();
 
-        fetch('api/appointment_availability.php?date=' + encodeURIComponent(date) + '&type=' + encodeURIComponent(bookingType), {
-            credentials: 'same-origin',
-            cache: 'no-store'
-        })
+        if (loadAbortController && typeof loadAbortController.abort === 'function') {
+            loadAbortController.abort();
+        }
+        loadAbortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        var requestId = ++loadRequestId;
+        var fetchOptions = { credentials: 'same-origin', cache: 'no-store' };
+        if (loadAbortController) {
+            fetchOptions.signal = loadAbortController.signal;
+        }
+
+        fetch('api/appointment_availability.php?date=' + encodeURIComponent(date) + '&type=' + encodeURIComponent(bookingType), fetchOptions)
             .then(function (response) {
                 if (!response.ok) {
                     throw new Error('http_' + response.status);
@@ -182,7 +191,19 @@
                 return response.json();
             })
             .then(function (data) {
+                if (requestId !== loadRequestId) {
+                    return;
+                }
                 if (!data || !data.ok) {
+                    if (statusEl && data && data.error) {
+                        availability = null;
+                        renderTimeOptions(null);
+                        statusEl.classList.remove('hidden');
+                        statusEl.textContent = data.error;
+                        statusEl.className = 'text-xs mt-2 font-semibold text-red-600';
+                        syncAvailabilityState();
+                        return;
+                    }
                     showSlotLoadError();
                     return;
                 }
@@ -190,7 +211,13 @@
                 renderTimeOptions(data);
                 updateStatus();
             })
-            .catch(function () {
+            .catch(function (err) {
+                if (requestId !== loadRequestId) {
+                    return;
+                }
+                if (err && err.name === 'AbortError') {
+                    return;
+                }
                 showSlotLoadError();
             });
     }

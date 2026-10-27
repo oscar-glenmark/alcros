@@ -39,7 +39,7 @@ try {
             'status_badge_html' => $view['status_badge_html'],
             'appointment_time'  => (string) ($row['appointment_time'] ?? ''),
             'appointment_date'  => (string) ($row['appointment_date'] ?? ''),
-            'lock'              => $lockRow ? formatStaffResourceLock($lockRow, $staffId) : null,
+            'lock'              => staffResourceLockDisplay($pdo, STAFF_LOCK_TYPE_APPOINTMENT, $aid, $lockRow, $staffId),
         ];
     }
 
@@ -87,7 +87,7 @@ try {
             );
             if ($focusLock === null) {
                 $lockRow = fetchStaffResourceLock($pdo, STAFF_LOCK_TYPE_APPOINTMENT, $focusId);
-                $focusLock = $lockRow ? formatStaffResourceLock($lockRow, staffId()) : null;
+                $focusLock = staffResourceLockDisplay($pdo, STAFF_LOCK_TYPE_APPOINTMENT, $focusId, $lockRow, staffId());
             }
             $focus = appointmentViewData($focusRow, $pdo);
             $focus['lock'] = $focusLock;

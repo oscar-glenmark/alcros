@@ -936,9 +936,7 @@ $pageHeaderMeta = $awaitingAllDates
                                 <h3>Citizen</h3>
                                 <dl class="manage-detail-rows">
                                     <div class="manage-detail-row manage-detail-row--full"><dt>Name</dt><dd id="appt-view-name"></dd></div>
-                                    <div class="manage-detail-row"><dt>DOB</dt><dd id="appt-view-dob"></dd></div>
                                     <div class="manage-detail-row hidden" id="appt-view-dom-wrap"><dt>DOM</dt><dd id="appt-view-dom"></dd></div>
-                                    <div class="manage-detail-row"><dt>Sex</dt><dd id="appt-view-sex"></dd></div>
                                     <div class="manage-detail-row"><dt>Phone</dt><dd id="appt-view-phone"></dd></div>
                                     <div class="manage-detail-row manage-detail-row--full"><dt>Email</dt><dd id="appt-view-email"></dd></div>
                                     <div class="manage-detail-row"><dt>Gmail alerts</dt><dd id="appt-view-notify"></dd></div>
@@ -1052,9 +1050,7 @@ $pageHeaderMeta = $awaitingAllDates
                         <h3>Citizen</h3>
                         <dl class="manage-detail-rows">
                             <div class="manage-detail-row manage-detail-row--full"><dt>Name</dt><dd id="modal-appt-view-name"></dd></div>
-                            <div class="manage-detail-row"><dt>DOB</dt><dd id="modal-appt-view-dob"></dd></div>
                             <div class="manage-detail-row hidden" id="modal-appt-view-dom-wrap"><dt>DOM</dt><dd id="modal-appt-view-dom"></dd></div>
-                            <div class="manage-detail-row"><dt>Sex</dt><dd id="modal-appt-view-sex"></dd></div>
                             <div class="manage-detail-row"><dt>Phone</dt><dd id="modal-appt-view-phone"></dd></div>
                             <div class="manage-detail-row manage-detail-row--full"><dt>Email</dt><dd id="modal-appt-view-email"></dd></div>
                             <div class="manage-detail-row"><dt>Gmail alerts</dt><dd id="modal-appt-view-notify"></dd></div>

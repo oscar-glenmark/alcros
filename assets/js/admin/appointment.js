@@ -855,9 +855,7 @@
         setText(view.title, data.citizen_name || 'Appointment');
         setText(view.code, data.appointment_code || '');
         setText(prefix + 'appt-view-name', data.citizen_name);
-        setText(prefix + 'appt-view-dob', data.date_of_birth);
         toggleDomRow(prefix, data);
-        setText(prefix + 'appt-view-sex', data.sex);
         setText(prefix + 'appt-view-phone', data.phone);
         setText(prefix + 'appt-view-email', data.email);
         setText(prefix + 'appt-view-notify', data.notify_email);

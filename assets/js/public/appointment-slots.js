@@ -26,6 +26,16 @@
         scheduleForm._alcrosSlotBookable = !!(availability && availability.bookable);
     }
 
+    function slotUnavailableLabel(slot) {
+        if (slot && slot.status === 'past') {
+            return slot.label + ' — Not available';
+        }
+        if (slot && slot.status === 'booked') {
+            return slot.label + ' — Booked';
+        }
+        return slot.label + ' — Not available';
+    }
+
     function blockMessage(reason) {
         if (reason === 'weekend') {
             return 'Visits are available Monday to Friday only. Please choose a weekday.';
@@ -75,7 +85,7 @@
             slots.forEach(function (slot) {
                 var option = document.createElement('option');
                 option.value = slot.value;
-                option.textContent = slot.available ? slot.label : slot.label + ' — Booked';
+                option.textContent = slot.available ? slot.label : slotUnavailableLabel(slot);
                 option.disabled = !slot.available;
                 if (slot.available) {
                     hasAvailable = true;

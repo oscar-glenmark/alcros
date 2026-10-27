@@ -15,8 +15,13 @@ try {
     $payload = buildAppointmentAvailability($pdo, $date, $bookingType);
 
     if ($time !== '') {
+        $normalized = normalizeAppointmentTime($time);
+        $pastToday = $date === date('Y-m-d')
+            && $normalized !== ''
+            && substr($normalized, 0, 5) <= date('H:i');
         $payload['available'] = (bool) ($payload['bookable'] ?? false)
             && isValidAppointmentSlot($time, $bookingType)
+            && !$pastToday
             && !isAppointmentSlotTaken($pdo, $date, $time);
     }
 

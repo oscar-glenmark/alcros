@@ -7,13 +7,6 @@ function citizenCancellationReason(): string
     return 'Cancelled by the applicant through online tracking.';
 }
 
-function isCitizenCancellationReason(?string $reason): bool
-{
-    $reason = trim((string) $reason);
-
-    return $reason !== '' && str_starts_with($reason, 'Cancelled by the applicant');
-}
-
 function documentRequestAllowsCitizenCancel(array $row): bool
 {
     return normalizeRequestStatus((string) ($row['status'] ?? '')) === 'pending';
@@ -26,7 +19,9 @@ function appointmentAllowsCitizenCancel(array $row): bool
 
 function publicCancelledRequestStatusLabel(?string $rejectionReason): string
 {
-    return isCitizenCancellationReason($rejectionReason) ? 'Cancelled' : publicRequestStatusLabel('rejected');
+    return isCitizenCancellationReason($rejectionReason)
+        ? citizenCancelledStatusLabel()
+        : publicRequestStatusLabel('rejected');
 }
 
 function publicCancelledRequestStatusMessage(?string $rejectionReason): string
@@ -56,10 +51,10 @@ function publicTrackStatusTone(string $status, ?string $rejectionReason, bool $i
 function publicAppointmentStatusLabel(string $status, ?string $rejectionReason = null): string
 {
     if ($status === 'cancelled' && isCitizenCancellationReason($rejectionReason)) {
-        return 'Cancelled';
+        return citizenCancelledStatusLabel();
     }
 
-    return appointmentStatusLabel($status);
+    return appointmentStatusLabel($status, $rejectionReason);
 }
 
 function publicAppointmentStatusMessage(string $status, ?string $rejectionReason = null): string
@@ -98,7 +93,7 @@ function publicRequestStatusBadgeForRow(array $requestRow): string
     $reason = $requestRow['rejection_reason'] ?? null;
     if ($status === 'rejected' && isCitizenCancellationReason($reason)) {
         return '<span class="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-emerald-100 text-emerald-800">'
-            . htmlspecialchars('Cancelled')
+            . htmlspecialchars(citizenCancelledStatusLabel())
             . '</span>';
     }
 
@@ -220,7 +215,7 @@ function buildPublicRequestTrackPayload(PDO $pdo, string $code): array
         'document'              => documentTypeLabel($request['document_type']),
         'status_html'           => publicRequestStatusBadgeForRow($request),
         'status_label'          => $status === 'rejected' && isCitizenCancellationReason($reason)
-            ? 'Cancelled'
+            ? citizenCancelledStatusLabel()
             : publicRequestStatusLabel($status),
         'status_message'        => $statusMessage,
         'current_idx'           => $currentIdx === false ? -1 : (int) $currentIdx,

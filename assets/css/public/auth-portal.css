@@ -282,23 +282,6 @@ body.auth-portal {
     box-shadow: none;
 }
 
-.auth-portal-form-footer-mobile {
-    display: block;
-    margin-top: 1rem;
-    text-align: center;
-}
-
-.auth-portal-form-footer-mobile a {
-    color: #2563eb;
-    font-size: 0.6875rem;
-    font-weight: 700;
-    text-decoration: none;
-}
-
-.auth-portal-form-footer-mobile a:hover {
-    text-decoration: underline;
-}
-
 .auth-portal-lockout {
     padding: 0.25rem 0 0.5rem;
 }
@@ -460,9 +443,6 @@ body.auth-portal {
         margin: 0 auto;
     }
 
-    .auth-portal-form-footer-mobile {
-        display: none;
-    }
 }
 
 @media (max-width: 639px) {

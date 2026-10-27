@@ -210,18 +210,19 @@ function fetchQueueSnapshot(PDO $pdo, string $mode = 'full'): array
 function fetchDashboardStats(PDO $pdo, bool $isAdmin, string $staffId): array
 {
     $todayDate = alcrosTodayDate();
+    $reqActive = documentRequestActiveSql();
     $stats = [
-        'pending_count'   => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status IN ('pending','verified')")->fetchColumn(),
+        'pending_count'   => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$reqActive} AND status IN ('pending','verified')")->fetchColumn(),
         'queue_count'     => (int) $pdo->query("SELECT COUNT(*) FROM queue_tickets WHERE status = 'waiting' AND DATE(created_at) = CURDATE()")->fetchColumn(),
         'today_appts'     => countTodaySpecialAppointments($pdo),
-        'pipeline_count'  => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'verified'")->fetchColumn(),
-        'ready_count'     => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'ready'")->fetchColumn(),
-        'completed_today' => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'completed' AND DATE(updated_at) = CURDATE()")->fetchColumn(),
+        'pipeline_count'  => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$reqActive} AND status = 'verified'")->fetchColumn(),
+        'ready_count'     => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$reqActive} AND status = 'ready'")->fetchColumn(),
+        'completed_today' => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$reqActive} AND status = 'completed' AND DATE(updated_at) = CURDATE()")->fetchColumn(),
     ];
 
     $recentRequests = enrichCitizenNameRows($pdo->query(
         "SELECT tracking_code, first_name, middle_name, last_name, document_type, status, submitted_at
-         FROM document_requests ORDER BY submitted_at DESC LIMIT 5"
+         FROM document_requests WHERE {$reqActive} ORDER BY submitted_at DESC LIMIT 5"
     )->fetchAll());
 
     if ($isAdmin) {
@@ -239,7 +240,7 @@ function fetchDashboardStats(PDO $pdo, bool $isAdmin, string $staffId): array
 
     $todayAppts = enrichCitizenNameRows($pdo->query(
         "SELECT first_name, middle_name, last_name, appointment_time, service_type, status FROM appointments
-         WHERE appointment_date = CURDATE() AND status NOT IN ('cancelled', 'no_show')
+         WHERE deleted_at IS NULL AND appointment_date = CURDATE() AND status NOT IN ('cancelled', 'no_show')
          ORDER BY appointment_time ASC LIMIT 8"
     )->fetchAll());
 
@@ -291,14 +292,8 @@ function fetchScheduleDatesInMonth(PDO $pdo, string $yearMonth): array
          WHERE dr.appointment_date BETWEEN ? AND ?
            AND dr.appointment_time IS NOT NULL
            AND dr.appointment_time != ''
-           AND dr.deleted_at IS NULL
-           AND dr.status != 'rejected'
-           AND NOT EXISTS (
-                SELECT 1 FROM appointments a
-                WHERE a.tracking_code = dr.tracking_code
-                  AND a.deleted_at IS NULL
-                  AND a.appointment_date = dr.appointment_date
-           )"
+           AND " . documentRequestHoldsVisitSlotSql('dr') . "
+           "
     );
     $stmt->execute([$start, $end]);
     foreach ($stmt->fetchAll() as $row) {
@@ -366,7 +361,10 @@ function enrichScheduleVisitRow(array $row): array
             $row['service_type'] .= ' · Pickup';
         }
         if (!empty($row['request_status'])) {
-            $row['status'] = requestStatusLabel(normalizeRequestStatus((string) $row['request_status']));
+            $row['status'] = requestStatusLabel(
+                normalizeRequestStatus((string) $row['request_status']),
+                $row['request_rejection_reason'] ?? null
+            );
         } else {
             $row['status'] = appointmentDisplayStatusLabel($row);
         }
@@ -374,7 +372,7 @@ function enrichScheduleVisitRow(array $row): array
         $row['schedule_kind'] = 'appointment';
         $row['appointment_status'] = (string) ($row['status'] ?? 'scheduled');
         $row['service_type'] = appointmentServiceLabel((string) ($row['service_type'] ?? ''));
-        $row['status'] = appointmentStatusLabel($row['appointment_status']);
+        $row['status'] = appointmentStatusLabel($row['appointment_status'], $row['rejection_reason'] ?? null);
     }
 
     return $row;
@@ -595,8 +593,8 @@ function fetchScheduleVisits(
 
     $stmt = $pdo->prepare(
         "SELECT a.appointment_code, a.appointment_date, a.first_name, a.middle_name, a.last_name,
-                a.appointment_time, a.service_type, a.status, a.source, a.tracking_code,
-                dr.status AS request_status
+                a.appointment_time, a.service_type, a.status, a.source, a.tracking_code, a.rejection_reason,
+                dr.status AS request_status, dr.rejection_reason AS request_rejection_reason
          FROM appointments a
          LEFT JOIN document_requests dr ON dr.tracking_code = a.tracking_code AND dr.deleted_at IS NULL
          WHERE a.appointment_date = ?
@@ -619,19 +617,12 @@ function fetchScheduleVisits(
 
     $stmt = $pdo->prepare(
         "SELECT dr.tracking_code, dr.first_name, dr.middle_name, dr.last_name,
-                dr.appointment_date, dr.appointment_time, dr.document_type, dr.status
+                dr.appointment_date, dr.appointment_time, dr.document_type, dr.status, dr.rejection_reason
          FROM document_requests dr
          WHERE dr.appointment_date = ?
            AND dr.appointment_time IS NOT NULL
            AND dr.appointment_time != ''
-           AND dr.deleted_at IS NULL
-           AND dr.status NOT IN ('rejected', 'completed')
-           AND NOT EXISTS (
-                SELECT 1 FROM appointments a
-                WHERE a.tracking_code = dr.tracking_code
-                  AND a.deleted_at IS NULL
-                  AND a.appointment_date = dr.appointment_date
-           )
+           AND " . documentRequestHoldsVisitSlotSql('dr') . "
          ORDER BY dr.appointment_time ASC"
     );
     $stmt->execute([$date]);
@@ -642,10 +633,11 @@ function fetchScheduleVisits(
             'appointment_time' => $req['appointment_time'],
             'appointment_date' => $req['appointment_date'],
             'service_type'     => documentTypeLabel((string) ($req['document_type'] ?? '')) . ' · Pickup',
-            'request_status'   => $requestStatus,
-            'status'           => 'scheduled',
-            'schedule_kind'    => 'certificate',
-            'tracking_code'    => $req['tracking_code'] ?? '',
+            'request_status'              => $requestStatus,
+            'request_rejection_reason'    => $req['rejection_reason'] ?? null,
+            'status'                      => 'scheduled',
+            'schedule_kind'               => 'certificate',
+            'tracking_code'               => $req['tracking_code'] ?? '',
         ]), $date);
     }
 

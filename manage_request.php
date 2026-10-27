@@ -18,7 +18,7 @@ ensurePrintTables($pdo);
 
 function manageRequestStatusFilters(): array
 {
-    return ['all', 'pending', 'ready', 'rejected', 'completed', 'all_requests', 'recently_deleted'];
+    return ['all', 'pending', 'ready', 'rejected', 'completed', 'no_show', 'all_requests', 'recently_deleted'];
 }
 
 function manageRequestsRedirectFilters(): array
@@ -28,8 +28,11 @@ function manageRequestsRedirectFilters(): array
         $status = 'all';
     }
 
+    $date = trim((string) ($_POST['redirect_date'] ?? $_GET['date'] ?? ''));
+
     return [
         'status' => $status,
+        'date'   => preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) ? $date : null,
         'q'      => $_POST['redirect_q'] ?? $_GET['q'] ?? '',
     ];
 }
@@ -62,9 +65,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $isBulkDeleteAll = isset($_POST['bulk_delete_all']);
     $isBulkRestore = isset($_POST['bulk_restore']);
     $isBulkPurge = isset($_POST['bulk_purge']);
-    $isUpdate = isset($_POST['update_status']) || (!$isDelete && !$isBulkDelete && !$isBulkDeleteAll && !$isBulkRestore && !$isBulkPurge && isset($_POST['status']));
+    $isVisitNoShow = isset($_POST['mark_visit_no_show']);
+    $isUpdate = !$isVisitNoShow && (isset($_POST['update_status']) || (!$isDelete && !$isBulkDelete && !$isBulkDeleteAll && !$isBulkRestore && !$isBulkPurge && isset($_POST['status'])));
 
-    if ($isUpdate) {
+    if ($isVisitNoShow) {
+        if ($id > 0 && documentRequestLockEligible($pdo, $id)) {
+            try {
+                assertStaffResourceLockForWrite($pdo, STAFF_LOCK_TYPE_REQUEST, $id, staffId(), staffName());
+            } catch (InvalidArgumentException $e) {
+                $responseMessage = $e->getMessage();
+                if ($isAjax) {
+                    manageRequestJsonResponse(false, $responseMessage);
+                }
+                manageRequestsFlashSet('error', $responseMessage);
+                redirectWithAuth('manage_request.php', array_filter($filters, static fn ($value) => $value !== '' && $value !== 'all'));
+            }
+        }
+
+        if ($id > 0 && markDocumentRequestVisitNoShow($pdo, $id)) {
+            clearStaffResourceLock($pdo, STAFF_LOCK_TYPE_REQUEST, $id);
+            $responseOk = true;
+            $responseMessage = 'Visit marked as no-show.';
+            $responseMessage = staffCitizenNotifyAppendToStaffMessage($responseMessage);
+            $responseType = staffCitizenNotifyFlashType(true);
+            if (!$isAjax) {
+                manageRequestsFlashSet($responseType, $responseMessage);
+            }
+        } else {
+            $responseMessage = 'Could not mark no-show. The visit may not be 20 minutes late yet, or it was already updated.';
+            if (!$isAjax) {
+                manageRequestsFlashSet('error', $responseMessage);
+            }
+        }
+    } elseif ($isUpdate) {
         if ($id > 0 && documentRequestLockEligible($pdo, $id)) {
             try {
                 assertStaffResourceLockForWrite($pdo, STAFF_LOCK_TYPE_REQUEST, $id, staffId(), staffName());
@@ -167,7 +200,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($isAjax) {
-        $ajaxType = $responseOk && $isUpdate ? staffCitizenNotifyFlashType(true) : ($responseOk ? 'success' : 'error');
+        $ajaxType = $responseOk && ($isUpdate || $isVisitNoShow) ? staffCitizenNotifyFlashType(true) : ($responseOk ? 'success' : 'error');
         manageRequestJsonResponse($responseOk, $responseMessage, $ajaxType);
     }
 
@@ -183,12 +216,23 @@ if (!in_array($filterStatus, manageRequestStatusFilters(), true)) {
 }
 
 ensureSoftDeleteColumns($pdo);
+$requestedViewDate = isset($_GET['date']) ? trim((string) $_GET['date']) : null;
+if ($requestedViewDate === '') {
+    $requestedViewDate = null;
+}
 $filters = manageRequestsListFilters([
     'status' => $filterStatus,
     'q'      => $search,
-]);
+    'date'   => $requestedViewDate,
+], $pdo);
 $filterStatus = $filters['status'];
 $search = $filters['q'];
+$viewDate = $filters['date'];
+$usesVisitDate = manageRequestListUsesVisitDate($filters);
+$awaitingAllDates = !$usesVisitDate;
+$showDateNav = $usesVisitDate;
+$prevDate = date('Y-m-d', strtotime($viewDate . ' -1 day'));
+$nextDate = date('Y-m-d', strtotime($viewDate . ' +1 day'));
 $requests = fetchManageRequestsList($pdo, $filters);
 $requestLockMap = fetchStaffResourceLocksMap(
     $pdo,
@@ -196,15 +240,47 @@ $requestLockMap = fetchStaffResourceLocksMap(
     array_map(static fn (array $row): int => (int) ($row['id'] ?? 0), $requests)
 );
 $requestStats = fetchManageRequestStats($pdo);
+$visitDateStats = $showDateNav ? fetchManageRequestVisitDateStats($pdo, $viewDate) : null;
+$todayDate = alcrosTodayDate();
+$visitDayLabel = $viewDate === $todayDate ? 'Total Today' : 'Total This Day';
 
 $pageTitle = 'Manage Requests';
 $pageSubtitle = 'Review and process certificate requests from citizens.';
 
 $statCards = [
-    ['label' => 'Total Requests', 'hint' => 'All time', 'value' => $requestStats['total'], 'icon' => 'files', 'tone' => 'blue', 'filter' => 'all_requests'],
+    [
+        'label'  => $showDateNav ? $visitDayLabel : 'Total Requests',
+        'hint'   => $showDateNav ? 'Pickup visits on selected date' : 'All time',
+        'value'  => $showDateNav ? (int) ($visitDateStats['visit_total'] ?? 0) : $requestStats['total'],
+        'icon'   => $showDateNav ? 'calendar-days' : 'files',
+        'tone'   => 'blue',
+        'filter' => 'all_requests',
+    ],
     ['label' => 'Pending', 'hint' => 'Awaiting review', 'value' => $requestStats['pending'], 'icon' => 'clock', 'tone' => 'amber', 'filter' => 'pending'],
-    ['label' => 'Ready', 'hint' => 'Ready for pickup', 'value' => $requestStats['ready'], 'icon' => 'package', 'tone' => 'violet', 'filter' => 'ready'],
-    ['label' => 'Completed', 'hint' => 'Released to citizen', 'value' => $requestStats['completed'], 'icon' => 'check-circle-2', 'tone' => 'emerald', 'filter' => 'completed'],
+    [
+        'label' => 'Ready',
+        'hint'  => 'Ready for pickup',
+        'value' => $showDateNav ? (int) ($visitDateStats['ready'] ?? 0) : $requestStats['ready'],
+        'icon'  => 'package',
+        'tone'  => 'violet',
+        'filter'=> 'ready',
+    ],
+    [
+        'label' => 'Completed',
+        'hint'  => $showDateNav ? 'Released on this visit date' : 'Released to citizen',
+        'value' => $showDateNav ? (int) ($visitDateStats['completed'] ?? 0) : $requestStats['completed'],
+        'icon'  => 'check-circle-2',
+        'tone'  => 'emerald',
+        'filter'=> 'completed',
+    ],
+    [
+        'label' => 'No-Show',
+        'hint'  => 'Missed pickup visit',
+        'value' => $showDateNav ? (int) ($visitDateStats['no_show'] ?? 0) : $requestStats['no_show'],
+        'icon'  => 'user-x',
+        'tone'  => 'rose',
+        'filter' => 'no_show',
+    ],
     ['label' => 'Rejected', 'hint' => 'Declined requests', 'value' => $requestStats['rejected'], 'icon' => 'x-circle', 'tone' => 'rose', 'filter' => 'rejected'],
 ];
 
@@ -214,14 +290,16 @@ $filterLabels = [
     'rejected'         => 'Rejected',
     'ready'            => 'Ready for Pickup',
     'completed'        => 'Completed',
+    'no_show'          => 'No-Show',
     'all_requests'     => 'All Requests',
     'recently_deleted' => 'Recently Deleted',
 ];
 $currentFilterLabel = $filterLabels[$filterStatus] ?? 'Pending Queue';
 $resultCount = count($requests);
-$showSidePanel = !in_array($filterStatus, ['ready', 'recently_deleted'], true);
+$showSidePanel = !in_array($filterStatus, ['ready', 'no_show', 'recently_deleted'], true);
 $showBulkActions = in_array($filterStatus, ['all_requests', 'recently_deleted'], true);
 $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
+$showVisitLateNoShowColumn = $filterStatus === 'ready';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -247,18 +325,31 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
 
             <section class="manage-section" aria-label="Request overview">
                 <div class="manage-section__head">
-                    <h2 class="manage-section__title">Overview</h2>
+                    <h2 class="manage-section__title"><?= $showDateNav
+                        ? 'Overview · ' . htmlspecialchars(formatDateEmailDisplay($viewDate))
+                        : 'Overview' ?></h2>
                     <p class="manage-section__hint">Click a card to filter the list below</p>
                 </div>
-                <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
                 <?php foreach ($statCards as $card):
                     $cardFilter = $card['filter'];
-                    $cardHref = buildAuthUrl('manage_request.php', array_filter([
+                    $cardQuery = [
                         'status' => $cardFilter,
                         'q'      => $search !== '' ? $search : null,
-                    ]));
+                    ];
+                    $cardUsesVisitDate = !manageRequestManageAwaitingAllDates([
+                        'status' => $cardFilter,
+                        'q'      => $search,
+                    ]) || ($showDateNav && in_array($cardFilter, ['all_requests', 'ready', 'completed', 'no_show'], true));
+                    if ($cardUsesVisitDate) {
+                        $cardQuery['date'] = $viewDate;
+                    }
+                    $cardHref = buildAuthUrl('manage_request.php', array_filter($cardQuery));
                     $cardActive = $filterStatus === $cardFilter
                         || ($cardFilter === 'pending' && $filterStatus === 'all');
+                    if ($cardActive) {
+                        $cardHref .= '#manageRequestsBody';
+                    }
                 ?>
                 <a href="<?= htmlspecialchars($cardHref) ?>"
                    class="manage-stat-card manage-stat-card--<?= htmlspecialchars($card['tone']) ?><?= $cardActive ? ' is-active' : '' ?>"
@@ -286,8 +377,27 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                         <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="manage-controls__reset">Reset</a>
                         <?php endif; ?>
                     </div>
+                    <div class="appointments-controls__tools">
+                        <?php if ($showDateNav): ?>
+                        <div class="appointments-date-nav" aria-label="Change visit date">
+                            <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php', array_filter(['date' => $prevDate, 'status' => $filterStatus !== 'all' ? $filterStatus : null, 'q' => $search ?: null]))) ?>" class="appointments-date-nav__btn" aria-label="Previous day">
+                                <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                            </a>
+                            <label class="appointments-date-nav__date alcros-date-picker">
+                                <i data-lucide="calendar" class="w-3.5 h-3.5 text-blue-600 shrink-0" aria-hidden="true"></i>
+                                <span id="manageRequestDateNavLabel" class="appointments-date-nav__label" data-date-picker-label><?= htmlspecialchars(formatDateEmailDisplay($viewDate)) ?></span>
+                                <input type="date" id="manageRequestDatePicker" value="<?= htmlspecialchars($viewDate) ?>" class="appointments-date-nav__input" aria-label="Choose visit date">
+                            </label>
+                            <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php', array_filter(['date' => $nextDate, 'status' => $filterStatus !== 'all' ? $filterStatus : null, 'q' => $search ?: null]))) ?>" class="appointments-date-nav__btn" aria-label="Next day">
+                                <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                            </a>
+                        </div>
+                        <?php endif; ?>
                     <form method="GET" action="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="manage-controls__search">
                         <?= authFormField() ?>
+                        <?php if ($search === '' && $showDateNav): ?>
+                        <input type="hidden" name="date" value="<?= htmlspecialchars($viewDate) ?>">
+                        <?php endif; ?>
                         <?php if ($filterStatus !== 'all' && $filterStatus !== 'all_requests'): ?>
                         <input type="hidden" name="status" value="<?= htmlspecialchars($filterStatus) ?>">
                         <?php elseif ($filterStatus === 'all_requests'): ?>
@@ -303,6 +413,7 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                             Search
                         </button>
                     </form>
+                    </div>
                 </div>
             </section>
 
@@ -340,6 +451,7 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                 <form method="POST" action="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" id="manageBulkForm" class="manage-bulk-form" data-manage-bulk-form>
                     <?= authFormField() ?>
                     <input type="hidden" name="redirect_status" value="<?= htmlspecialchars($filterStatus) ?>">
+                    <input type="hidden" name="redirect_date" value="<?= htmlspecialchars($viewDate) ?>">
                     <input type="hidden" name="redirect_q" value="<?= htmlspecialchars($search) ?>">
                     <div class="manage-bulk-toolbar hidden" data-bulk-toolbar aria-hidden="true">
                         <label class="manage-bulk-toolbar__all">
@@ -356,7 +468,7 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                 </form>
                 <?php endif; ?>
                 <div class="overflow-x-auto">
-                <table class="manage-requests-table w-full text-left text-sm min-w-[1040px]">
+                <table class="manage-requests-table w-full text-left text-sm min-w-[1120px]">
                     <thead>
                         <tr>
                             <?php if ($showBulkActions): ?><th class="manage-bulk-col"><span class="sr-only">Select</span></th><?php endif; ?>
@@ -368,6 +480,7 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                             <th class="manage-col-submitted">Submitted</th>
                             <?php if ($isRecentlyDeletedView): ?><th class="manage-col-submitted">Deleted</th><?php endif; ?>
                             <th class="manage-col-status">Status</th>
+                            <?php if ($showVisitLateNoShowColumn): ?><th class="manage-col-visit-late">Late / No-show</th><?php endif; ?>
                             <th class="manage-cell-actions">Actions</th>
                         </tr>
                     </thead>
@@ -407,13 +520,28 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                             <td class="manage-col-submitted"><span class="manage-date"><?= !empty($req['deleted_at']) ? htmlspecialchars(formatReportDateTime($req['deleted_at'])) : '—' ?></span></td>
                             <?php endif; ?>
                             <td class="manage-col-status manage-cell-status">
-                                <?= requestStatusBadge($req['status']) ?>
+                                <?= requestStatusBadge($req['status'], $req['rejection_reason'] ?? null) ?>
                                 <?php if (!empty($viewData['lock']) && !empty($viewData['lock']['active'])): ?>
                                 <p class="manage-lock-badge" data-lock-badge-for="<?= (int) $req['id'] ?>"><?= htmlspecialchars($viewData['lock']['label']) ?></p>
                                 <?php else: ?>
                                 <p class="manage-lock-badge hidden" data-lock-badge-for="<?= (int) $req['id'] ?>"></p>
                                 <?php endif; ?>
                             </td>
+                            <?php if ($showVisitLateNoShowColumn): ?>
+                            <td class="manage-col-visit-late">
+                                <?= renderManageVisitLateNoShowCell(
+                                    $pdo,
+                                    $req,
+                                    'request',
+                                    buildAuthUrl('manage_request.php'),
+                                    [
+                                        'redirect_status' => $filterStatus,
+                                        'redirect_date'   => $viewDate,
+                                        'redirect_q'      => $search,
+                                    ]
+                                ) ?>
+                            </td>
+                            <?php endif; ?>
                             <td class="manage-cell-actions">
                                 <div class="manage-row-actions" onclick="event.stopPropagation()">
                                     <?php if (!$isRecentlyDeletedView): ?>
@@ -462,6 +590,7 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
                                     <form method="POST" action="<?= htmlspecialchars(buildAuthUrl('manage_request.php')) ?>" class="manage-delete-form">
                                         <?= authFormField() ?>
                                         <input type="hidden" name="redirect_status" value="<?= htmlspecialchars($filterStatus) ?>">
+                    <input type="hidden" name="redirect_date" value="<?= htmlspecialchars($viewDate) ?>">
                                         <input type="hidden" name="redirect_q" value="<?= htmlspecialchars($search) ?>">
                                         <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
                                         <input type="hidden" name="delete_request" value="1">
@@ -621,8 +750,10 @@ $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
 
     <?= pageConfigJson([
         'formAction'     => buildAuthUrl('manage_request.php'),
-        'redirectStatus' => $filterStatus,
-        'redirectQ'      => $search,
+        'redirectStatus'      => $filterStatus,
+        'redirectQ'           => $search,
+        'redirectDate'        => $viewDate,
+        'awaitingAllDates'    => $awaitingAllDates,
         'useSidePanel'   => $showSidePanel,
         'bulkActions'    => $showBulkActions,
         'pollUrl'        => buildAuthUrl('api/manage_requests.php'),

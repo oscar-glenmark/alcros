@@ -490,18 +490,20 @@ $recordsJumpDesc = sprintf(
                                     <th class="px-5 py-3">Citizen</th>
                                     <th class="px-5 py-3 hidden md:table-cell">Type</th>
                                     <th class="px-5 py-3">Status</th>
+                                    <th class="px-5 py-3">No-show</th>
                                     <th class="px-5 py-3 hidden sm:table-cell">Submitted</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-50">
                                 <?php if (empty($report['requests'])): ?>
-                                <tr><td colspan="5" class="px-5 py-12 text-center text-gray-400 text-sm">No document requests for this period.</td></tr>
+                                <tr><td colspan="6" class="px-5 py-12 text-center text-gray-400 text-sm">No document requests for this period.</td></tr>
                                 <?php else: foreach ($report['requests'] as $row): ?>
                                 <tr class="hover:bg-gray-50/60">
                                     <td class="px-5 py-3 font-mono text-xs font-bold text-blue-600"><?= htmlspecialchars($row['tracking_code']) ?></td>
                                     <td class="px-5 py-3 font-semibold text-slate-800"><?= htmlspecialchars(personNameFromRow($row)) ?></td>
                                     <td class="px-5 py-3 text-gray-500 hidden md:table-cell"><?= htmlspecialchars(documentTypeLabel($row['document_type'])) ?></td>
-                                    <td class="px-5 py-3"><span class="text-[10px] font-bold uppercase text-slate-600"><?= htmlspecialchars(requestStatusLabel($row['status'])) ?></span></td>
+                                    <td class="px-5 py-3"><span class="text-[10px] font-bold uppercase text-slate-600"><?= htmlspecialchars(requestStatusLabel($row['status'], $row['rejection_reason'] ?? null)) ?></span></td>
+                                    <td class="px-5 py-3 text-xs font-semibold text-slate-700"><?= htmlspecialchars(reportDocumentRequestNoShowLabel($row)) ?></td>
                                     <td class="px-5 py-3 text-gray-400 text-xs hidden sm:table-cell"><?= htmlspecialchars(formatDateDisplay(substr($row['submitted_at'], 0, 10))) ?></td>
                                 </tr>
                                 <?php endforeach; endif; ?>
@@ -551,18 +553,20 @@ $recordsJumpDesc = sprintf(
                                     <th class="px-5 py-3 hidden md:table-cell">Service</th>
                                     <th class="px-5 py-3">Schedule</th>
                                     <th class="px-5 py-3">Status</th>
+                                    <th class="px-5 py-3">No-show</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-50">
                                 <?php if (empty($report['appointments'])): ?>
-                                <tr><td colspan="5" class="px-5 py-12 text-center text-gray-400 text-sm">No appointments for this period.</td></tr>
+                                <tr><td colspan="6" class="px-5 py-12 text-center text-gray-400 text-sm">No appointments for this period.</td></tr>
                                 <?php else: foreach ($report['appointments'] as $row): ?>
                                 <tr class="hover:bg-gray-50/60">
                                     <td class="px-5 py-3 font-mono text-xs font-bold text-blue-600"><?= htmlspecialchars($row['appointment_code']) ?></td>
                                     <td class="px-5 py-3 font-semibold text-slate-800"><?= htmlspecialchars(personNameFromRow($row)) ?></td>
                                     <td class="px-5 py-3 text-gray-500 hidden md:table-cell"><?= htmlspecialchars(appointmentServiceLabel($row['service_type'])) ?></td>
                                     <td class="px-5 py-3 text-gray-600 text-xs whitespace-nowrap"><?= htmlspecialchars(formatDateDisplay($row['appointment_date'])) ?> · <?= date('g:i A', strtotime($row['appointment_time'])) ?></td>
-                                    <td class="px-5 py-3"><span class="text-[10px] font-bold uppercase text-slate-600"><?= htmlspecialchars(appointmentStatusLabel($row['status'])) ?></span></td>
+                                    <td class="px-5 py-3"><span class="text-[10px] font-bold uppercase text-slate-600"><?= htmlspecialchars(appointmentStatusLabel($row['status'], $row['rejection_reason'] ?? null)) ?></span></td>
+                                    <td class="px-5 py-3 text-xs font-semibold text-slate-700"><?= htmlspecialchars(reportAppointmentNoShowLabel($row)) ?></td>
                                 </tr>
                                 <?php endforeach; endif; ?>
                             </tbody>

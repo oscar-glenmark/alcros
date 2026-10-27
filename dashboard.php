@@ -40,7 +40,7 @@ if ($isAdminUser) {
     )->fetchAll());
 } else {
     $recentRequests = enrichCitizenNameRows($pdo->query(
-        "SELECT tracking_code, first_name, middle_name, last_name, document_type, status, submitted_at
+        "SELECT tracking_code, first_name, middle_name, last_name, document_type, status, rejection_reason, submitted_at
          FROM document_requests ORDER BY submitted_at DESC LIMIT 6"
     )->fetchAll());
     $activityStmt = $pdo->prepare(
@@ -92,10 +92,11 @@ if (!$isAdminUser) {
     $periodPrevEnd = $periodCurStart;
     $weekAgoDate = date('Y-m-d', strtotime($todayDate . ' -7 days'));
 
-    $pendingCount = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status IN ('pending','verified')")->fetchColumn();
+    $reqActive = documentRequestActiveSql();
+    $pendingCount = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$reqActive} AND status IN ('pending','verified')")->fetchColumn();
     $queueCount = (int) $pdo->query("SELECT COUNT(*) FROM queue_tickets WHERE status = 'waiting' AND DATE(created_at) = CURDATE()")->fetchColumn();
     $todayAppts = countTodaySpecialAppointments($pdo);
-    $readyCount = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'ready'")->fetchColumn();
+    $readyCount = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$reqActive} AND status = 'ready'")->fetchColumn();
 
     $statCards = [
         [
@@ -107,8 +108,8 @@ if (!$isAdminUser) {
             'page' => 'manage_request.php',
             'query' => ['status' => 'pending'],
             'trend' => dashboardTrendPercent(
-                dashboardCountBetween($pdo, 'SELECT COUNT(*) FROM document_requests WHERE submitted_at >= ? AND submitted_at < ?', $periodCurStart, $periodCurEnd),
-                dashboardCountBetween($pdo, 'SELECT COUNT(*) FROM document_requests WHERE submitted_at >= ? AND submitted_at < ?', $periodPrevStart, $periodPrevEnd)
+                dashboardCountBetween($pdo, "SELECT COUNT(*) FROM document_requests WHERE {$reqActive} AND submitted_at >= ? AND submitted_at < ?", $periodCurStart, $periodCurEnd),
+                dashboardCountBetween($pdo, "SELECT COUNT(*) FROM document_requests WHERE {$reqActive} AND submitted_at >= ? AND submitted_at < ?", $periodPrevStart, $periodPrevEnd)
             ),
         ],
         [
@@ -143,8 +144,8 @@ if (!$isAdminUser) {
             'page' => 'manage_request.php',
             'query' => ['status' => 'ready'],
             'trend' => dashboardTrendPercent(
-                dashboardCountBetween($pdo, "SELECT COUNT(*) FROM document_requests WHERE status = 'ready' AND updated_at >= ? AND updated_at < ?", $periodCurStart, $periodCurEnd),
-                dashboardCountBetween($pdo, "SELECT COUNT(*) FROM document_requests WHERE status = 'ready' AND updated_at >= ? AND updated_at < ?", $periodPrevStart, $periodPrevEnd)
+                dashboardCountBetween($pdo, "SELECT COUNT(*) FROM document_requests WHERE {$reqActive} AND status = 'ready' AND updated_at >= ? AND updated_at < ?", $periodCurStart, $periodCurEnd),
+                dashboardCountBetween($pdo, "SELECT COUNT(*) FROM document_requests WHERE {$reqActive} AND status = 'ready' AND updated_at >= ? AND updated_at < ?", $periodPrevStart, $periodPrevEnd)
             ),
         ],
     ];
@@ -373,7 +374,7 @@ if (!$isAdminUser) {
                                     · <?= formatRecordDate(substr($req['submitted_at'], 0, 10)) ?>
                                 </p>
                             </div>
-                            <?= requestStatusBadge($req['status']) ?>
+                            <?= requestStatusBadge($req['status'], $req['rejection_reason'] ?? null) ?>
                         </div>
                         <?php endforeach; ?>
                     </div>

@@ -605,9 +605,10 @@ function buildPrintsReportChartPayload(PDO $pdo, string $from, string $to, array
 
 function fetchAnalyticsDashboard(PDO $pdo): array
 {
-    $totalRequests = (int) $pdo->query('SELECT COUNT(*) FROM document_requests')->fetchColumn();
-    $todayRequests = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE DATE(submitted_at) = CURDATE()")->fetchColumn();
-    $weekRequests  = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE submitted_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)")->fetchColumn();
+    $reqActive = documentRequestActiveSql();
+    $totalRequests = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$reqActive}")->fetchColumn();
+    $todayRequests = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$reqActive} AND DATE(submitted_at) = CURDATE()")->fetchColumn();
+    $weekRequests  = (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$reqActive} AND submitted_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)")->fetchColumn();
 
     $walkInTotal = (int) $pdo->query("SELECT COUNT(*) FROM queue_tickets WHERE purpose = 'walk_in'")->fetchColumn();
     $walkInToday = (int) $pdo->query("SELECT COUNT(*) FROM queue_tickets WHERE purpose = 'walk_in' AND DATE(created_at) = CURDATE()")->fetchColumn();
@@ -618,7 +619,7 @@ function fetchAnalyticsDashboard(PDO $pdo): array
     $weekIntake  = $weekRequests + $walkInWeek;
 
     $statusMap = analyticsCountMap(
-        $pdo->query("SELECT status, COUNT(*) AS cnt FROM document_requests GROUP BY status")->fetchAll(),
+        $pdo->query("SELECT status, COUNT(*) AS cnt FROM document_requests WHERE {$reqActive} GROUP BY status")->fetchAll(),
         'status'
     );
 

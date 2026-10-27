@@ -665,7 +665,7 @@ function notifyAppointmentSmsReminder(array $row, int $hoursBefore = 1): bool
     $visit = smsVisitShort($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
     $message = smsComposeStandaloneAppointmentMessage($row, [
         smsCitizenGreeting($row),
-        'Appt in ' . $hoursLabel . '.',
+        'Appointment in ' . $hoursLabel . '.',
         'Code ' . $code . '.',
         $visit !== '' ? $visit . '.' : '',
     ]);
@@ -718,7 +718,7 @@ function notifyAppointmentVisitSoonSms(array $row): bool
     $visit = smsVisitShort($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
     $message = smsComposeStandaloneAppointmentMessage($row, [
         smsCitizenGreeting($row),
-        'Appt in ' . $soonLabel . '.',
+        'Appointment in ' . $soonLabel . '.',
         'Code ' . $code . '.',
         $visit !== '' ? $visit . '.' : '',
     ]);
@@ -826,7 +826,7 @@ function notifyAppointmentStatusSms(PDO $pdo, int $appointmentId, string $newSta
     $visit = smsVisitShort($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
     $message = smsComposeStandaloneAppointmentMessage($row, [
         smsCitizenGreeting($row),
-        'Appt confirmed.',
+        'Appointment confirmed.',
         'Code ' . $code . '.',
         $visit !== '' ? $visit . '.' : '',
     ]);

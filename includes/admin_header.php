@@ -51,7 +51,8 @@ $pageHeaderMeta = $pageHeaderMeta ?? '';
 
                 <span
                     id="notif-badge"
-                    class="hidden absolute -top-0.5 -right-0.5 min-w-[18px] h-4 px-1 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center leading-none"
+                    class="admin-header__notif-badge hidden"
+                    aria-hidden="true"
                 >
                     0
                 </span>
@@ -59,7 +60,9 @@ $pageHeaderMeta = $pageHeaderMeta ?? '';
 
                 <div
                     id="notif-dropdown"
-                class="hidden fixed sm:absolute left-4 right-4 sm:left-auto sm:right-0 top-16 sm:top-full sm:mt-2 w-auto sm:w-80 lg:w-96 bg-white rounded-xl border border-gray-100 shadow-xl z-50 overflow-hidden"
+                    class="alcros-notif-dropdown hidden fixed sm:absolute left-4 right-4 sm:left-auto sm:right-0 top-16 sm:top-full sm:mt-3 w-auto sm:w-[22rem] lg:w-[26rem] z-50"
+                    role="dialog"
+                    aria-label="<?= htmlspecialchars(staffPortalInboxLabel()) ?>"
                 >
                     <?php
                     $notifPanel = [

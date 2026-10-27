@@ -74,23 +74,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($error === null) {
             $slotLocked = false;
+            $dayLocked = false;
             try {
                 $pdo = getDB();
                 ensureCitizenNotifyColumns($pdo);
-                $pdo->beginTransaction();
 
-                if (!acquireAppointmentSlotLock($pdo, $date, $time)) {
-                    $pdo->rollBack();
+                if (!acquireAppointmentDayLock($pdo, $date)) {
+                    deleteIdUploadFiles($frontPath, $backPath);
+                    $error = 'This date is busy with other bookings. Please try again in a moment.';
+                } elseif (!acquireAppointmentSlotLock($pdo, $date, $time)) {
+                    releaseAppointmentDayLock($pdo, $date);
                     deleteIdUploadFiles($frontPath, $backPath);
                     $error = 'This time slot is being booked by someone else. Please choose another time.';
                 } else {
+                    $dayLocked = true;
                     $slotLocked = true;
+                    $pdo->beginTransaction();
+
                     $bookingError = validateAppointmentBooking($pdo, $date, $time, $email, true, 'standalone');
                     if ($bookingError !== null) {
                         $pdo->rollBack();
                         deleteIdUploadFiles($frontPath, $backPath);
                         $error = $bookingError;
                     } else {
+                        ensureVisitSlotAvailableForWrite($pdo, $date, $time, null, null, true);
+
                         // Verified Gmail is required to book; enable email updates for this appointment.
                         $notifyEmail = true;
                         $appointmentCode = generateAppointmentCode();
@@ -157,6 +165,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } finally {
                 if ($slotLocked) {
                     releaseAppointmentSlotLock($pdo, $date, $time);
+                }
+                if ($dayLocked) {
+                    releaseAppointmentDayLock($pdo, $date);
                 }
             }
         }

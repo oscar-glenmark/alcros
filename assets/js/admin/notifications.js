@@ -2,11 +2,11 @@
     'use strict';
 
     var STYLES = {
-        pending_request: { icon: 'file-text', bg: 'bg-yellow-100', text: 'text-yellow-600' },
-        ready_pickup:    { icon: 'circle-check', bg: 'bg-green-100', text: 'text-green-600' },
-        queue:           { icon: 'users', bg: 'bg-blue-100', text: 'text-blue-600' },
-        appointment:     { icon: 'calendar', bg: 'bg-purple-100', text: 'text-purple-600' },
-        system:          { icon: 'alert-triangle', bg: 'bg-red-100', text: 'text-red-600' }
+        pending_request: { icon: 'file-text', label: 'Pending request' },
+        ready_pickup:    { icon: 'circle-check', label: 'Ready for pickup' },
+        queue:           { icon: 'users', label: 'Queue' },
+        appointment:     { icon: 'calendar', label: 'Appointment' },
+        system:          { icon: 'alert-triangle', label: 'System' }
     };
 
     function staffRoot() {
@@ -52,7 +52,11 @@
     }
 
     function saveJson(key, value) {
-        localStorage.setItem(key, JSON.stringify(value));
+        try {
+            localStorage.setItem(key, JSON.stringify(value));
+        } catch (e) {
+            /* private mode / quota */
+        }
     }
 
     function getBellAckedIds() {
@@ -87,7 +91,11 @@
     }
 
     function setClearedAt(ts) {
-        localStorage.setItem(staffKey('cleared'), String(ts || Date.now()));
+        try {
+            localStorage.setItem(staffKey('cleared'), String(ts || Date.now()));
+        } catch (e) {
+            /* ignore */
+        }
     }
 
     function getDismissed() {
@@ -190,7 +198,15 @@
         var typed = visibleList(all).filter(function (n) {
             return n.type === type;
         });
-        if (!typed.length) return total;
+        if (!typed.length) {
+            var stillInFeed = (all || []).some(function (n) {
+                return n && n.type === type;
+            });
+            if (stillInFeed) {
+                return 0;
+            }
+            return total;
+        }
         return typed.some(isBellUnread) ? total : 0;
     }
 
@@ -208,6 +224,24 @@
     function updateAllBadges(all, counts) {
         updateBellBadges(all, counts);
         updateSidebarBadges(all, counts);
+        updatePanelUnreadMeta(all, counts);
+    }
+
+    function updatePanelUnreadMeta(all, counts) {
+        var visible = visibleList(all);
+        var unread = visible.filter(isBellUnread).length;
+        document.querySelectorAll('[data-notif-unread-count]').forEach(function (el) {
+            el.textContent = String(unread);
+        });
+    }
+
+    function renderEmptyState(listEl, title) {
+        var hint = listEl.getAttribute('data-notif-empty-hint') || '';
+        return '<div class="alcros-notif-empty" role="status">' +
+            '<div class="alcros-notif-empty__icon"><i data-lucide="inbox"></i></div>' +
+            '<p class="alcros-notif-empty__title">' + escapeHtml(title) + '</p>' +
+            (hint ? '<p class="alcros-notif-empty__hint">' + escapeHtml(hint) + '</p>' : '') +
+            '</div>';
     }
 
     function renderListEl(listEl, all, options) {
@@ -222,43 +256,51 @@
         var emptyText = listEl.getAttribute('data-notif-empty') || 'No notifications';
 
         if (!items.length) {
-            listEl.innerHTML = '<p class="text-gray-400 text-xs italic p-8 text-center">' + escapeHtml(emptyText) + '</p>';
+            listEl.innerHTML = renderEmptyState(listEl, emptyText);
+            if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
+                lucide.createIcons({ nameAttr: 'data-lucide', nodes: listEl.querySelectorAll('[data-lucide]') });
+            }
             return;
         }
 
         var showDetail = options.showDetail !== false;
         listEl.innerHTML = items.map(function (n) {
-            var s = STYLES[n.type] || { icon: 'bell', bg: 'bg-gray-100', text: 'text-gray-500' };
+            var s = STYLES[n.type] || { icon: 'bell', label: 'Alert' };
+            var typeKey = n.type ? String(n.type).replace(/[^a-z0-9_]/gi, '') : 'default';
             var href = buildHref(n.href);
-            var faded = isBellUnread(n) ? '' : ' opacity-60';
+            var readClass = isBellUnread(n) ? 'alcros-notif-item--unread' : 'alcros-notif-item--read';
             var detail = showDetail && n.detail
-                ? '<p class="text-[10px] text-gray-400 font-mono truncate mt-0.5">' + escapeHtml(n.detail) + '</p>'
+                ? '<p class="alcros-notif-item__detail">' + escapeHtml(n.detail) + '</p>'
                 : '';
 
             var linkLabel = n.link_label
-                ? '<p class="text-[10px] font-bold text-blue-600 mt-1.5">' + escapeHtml(n.link_label) + '</p>'
+                ? '<p class="alcros-notif-item__cta">' + escapeHtml(n.link_label) + '</p>'
                 : '';
             var roleNote = n.role_note
-                ? '<p class="text-[10px] text-slate-400 mt-0.5 leading-snug">' + escapeHtml(n.role_note) + '</p>'
+                ? '<p class="alcros-notif-item__note">' + escapeHtml(n.role_note) + '</p>'
                 : '';
 
-            var deleteBtn = '<button type="button" class="notif-delete p-1.5 rounded-lg text-gray-300 hover:text-red-500 self-start" data-id="' + escapeHtml(n.id) + '" title="Remove">' +
-                    '<i data-lucide="x" class="w-3.5 h-3.5"></i></button>';
+            var deleteBtn = '<button type="button" class="alcros-notif-item__dismiss notif-delete" data-id="' + escapeHtml(n.id) + '" title="Remove" aria-label="Remove notification">' +
+                    '<i data-lucide="x"></i></button>';
 
-            return '<div class="notif-item group flex gap-2 px-3 py-3 border-b border-gray-50' + faded + '" data-notif-id="' + escapeHtml(n.id) + '">' +
-                '<a href="' + href + '" class="flex gap-3 min-w-0 flex-1 notif-item-link">' +
-                '<div class="w-9 h-9 rounded-full ' + s.bg + ' ' + s.text + ' flex items-center justify-center shrink-0">' +
-                '<i data-lucide="' + s.icon + '" class="w-4 h-4"></i></div>' +
-                '<div class="min-w-0 flex-1">' +
-                '<p class="text-xs font-bold text-slate-800 truncate">' + escapeHtml(n.title) + '</p>' +
-                '<p class="text-[11px] text-gray-500 line-clamp-2">' + escapeHtml(n.message) + '</p>' +
+            return '<article class="alcros-notif-item alcros-notif-item--' + escapeHtml(typeKey) + ' ' + readClass + ' notif-item" role="listitem" data-notif-id="' + escapeHtml(n.id) + '">' +
+                '<a href="' + href + '" class="alcros-notif-item__link notif-item-link">' +
+                '<span class="alcros-notif-item__unread" aria-hidden="true"></span>' +
+                '<span class="alcros-notif-item__icon"><i data-lucide="' + s.icon + '"></i></span>' +
+                '<span class="alcros-notif-item__body">' +
+                '<span class="alcros-notif-item__row">' +
+                '<span class="alcros-notif-item__type">' + escapeHtml(s.label) + '</span>' +
+                '<time class="alcros-notif-item__time" datetime="' + escapeHtml(n.created_at || '') + '">' + formatTime(n.created_at) + '</time>' +
+                '</span>' +
+                '<h3 class="alcros-notif-item__title">' + escapeHtml(n.title) + '</h3>' +
+                '<p class="alcros-notif-item__message">' + escapeHtml(n.message) + '</p>' +
                 detail +
                 linkLabel +
                 roleNote +
-                '</div>' +
-                '<span class="text-[9px] text-gray-400 shrink-0 self-start pt-0.5">' + formatTime(n.created_at) + '</span>' +
+                '</span>' +
                 '</a>' +
-                deleteBtn + '</div>';
+                deleteBtn +
+                '</article>';
         }).join('');
 
         if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
@@ -307,10 +349,17 @@
                 e.preventDefault();
                 e.stopPropagation();
                 function proceed() {
-                    var now = Date.now();
-                    var ids = visibleList(latestGetter()).map(function (n) { return n.id; });
+                    var items = visibleList(latestGetter());
+                    var clearedAt = Date.now();
+                    items.forEach(function (n) {
+                        var t = notifTime(n);
+                        if (!isNaN(t) && t > clearedAt) {
+                            clearedAt = t;
+                        }
+                    });
+                    var ids = items.map(function (n) { return n.id; }).filter(Boolean);
                     ids.forEach(function (id) { dismissId(id); });
-                    setClearedAt(now);
+                    setClearedAt(clearedAt);
                     ackBellIds(ids);
                     refresh();
                     flashButton(btn, 'Cleared');
@@ -364,19 +413,30 @@
 
         var isOpen = false;
 
+        function setOpen(open) {
+            isOpen = open;
+            dropdown.classList.toggle('hidden', !isOpen);
+            bellBtn.classList.toggle('is-open', isOpen);
+            bellBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        }
+
         bellBtn.addEventListener('click', function (e) {
             e.stopPropagation();
-            isOpen = !isOpen;
-            dropdown.classList.toggle('hidden', !isOpen);
-            bellBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-            refresh();
+            setOpen(!isOpen);
+            if (isOpen) {
+                refresh();
+            }
+        });
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && isOpen) {
+                setOpen(false);
+            }
         });
 
         document.addEventListener('click', function (e) {
             if (isOpen && !wrapper.contains(e.target)) {
-                isOpen = false;
-                dropdown.classList.add('hidden');
-                bellBtn.setAttribute('aria-expanded', 'false');
+                setOpen(false);
             }
         });
     }
@@ -392,6 +452,8 @@
 
     function init() {
         if (!window.AlcrosPoll) return;
+        if (window.__alcrosNotificationsInit) return;
+        window.__alcrosNotificationsInit = true;
 
         showInitialSkeletons();
 

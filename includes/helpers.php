@@ -1419,9 +1419,10 @@ function deleteCompletedDocumentRequest(PDO $pdo, int $id): bool
     return softDeleteDocumentRequest($pdo, $id);
 }
 
-function requestStatusBadge(string $status): string
+function requestStatusBadge(string $status, ?string $rejectionReason = null): string
 {
     $status = normalizeRequestStatus($status);
+    $citizenCancelled = $status === 'rejected' && isCitizenCancellationReason($rejectionReason);
     $classes = [
         'pending'       => 'bg-yellow-100 text-yellow-700',
         'processing'    => 'bg-sky-100 text-sky-700',
@@ -1431,10 +1432,10 @@ function requestStatusBadge(string $status): string
         'verified'      => 'bg-blue-100 text-blue-700',
         'ready'         => 'bg-green-100 text-green-700',
         'completed'     => 'bg-gray-100 text-gray-600',
-        'rejected'      => 'bg-red-100 text-red-700',
+        'rejected'      => $citizenCancelled ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-700',
     ];
     $class = $classes[$status] ?? 'bg-gray-100 text-gray-600';
-    $label = requestStatusLabel($status);
+    $label = requestStatusLabel($status, $rejectionReason);
 
     return '<span class="px-2 py-0.5 rounded text-[9px] font-bold uppercase ' . $class . '">' . htmlspecialchars($label) . '</span>';
 }
@@ -1897,13 +1898,28 @@ function countTodaySpecialAppointments(PDO $pdo): int
     return countSpecialAppointmentsOnDate($pdo, date('Y-m-d'));
 }
 
+function isCitizenCancellationReason(?string $reason): bool
+{
+    $reason = trim((string) $reason);
+
+    return $reason !== '' && str_starts_with($reason, 'Cancelled by the applicant');
+}
+
+function citizenCancelledStatusLabel(): string
+{
+    return 'Cancelled by citizen';
+}
+
 function appointmentDisplayStatusLabel(array $row): string
 {
     if (isDocumentRequestAppointment($row) && ($row['status'] ?? '') === 'confirmed') {
         return 'Ready for Pickup';
     }
 
-    return appointmentStatusLabel((string) ($row['status'] ?? 'scheduled'));
+    return appointmentStatusLabel(
+        (string) ($row['status'] ?? 'scheduled'),
+        $row['rejection_reason'] ?? null
+    );
 }
 
 function appointmentStatusWorkflow(): array
@@ -1937,8 +1953,12 @@ function appointmentStatusActionLabel(string $action): string
     };
 }
 
-function appointmentStatusLabel(string $status): string
+function appointmentStatusLabel(string $status, ?string $rejectionReason = null): string
 {
+    if ($status === 'cancelled' && isCitizenCancellationReason($rejectionReason)) {
+        return citizenCancelledStatusLabel();
+    }
+
     return match ($status) {
         'scheduled' => 'Awaiting confirmation',
         'confirmed' => 'Confirmed',
@@ -2145,14 +2165,7 @@ function getBookedAppointmentTimes(PDO $pdo, string $date): array
          WHERE dr.appointment_date = ?
            AND dr.appointment_time IS NOT NULL
            AND dr.appointment_time != ''
-           AND dr.deleted_at IS NULL
-           AND dr.status NOT IN ('rejected', 'completed')
-           AND NOT EXISTS (
-                SELECT 1 FROM appointments a
-                WHERE a.tracking_code = dr.tracking_code
-                  AND a.deleted_at IS NULL
-                  AND a.appointment_date = dr.appointment_date
-           )
+           AND " . documentRequestHoldsVisitSlotSql('dr') . "
          ORDER BY dr.appointment_time ASC"
     );
     $reqStmt->execute([$date]);
@@ -2181,45 +2194,155 @@ function countActiveAppointmentsOnDate(PDO $pdo, string $date): int
     return (int) $stmt->fetchColumn();
 }
 
-function isAppointmentSlotTaken(PDO $pdo, string $date, string $time, ?int $excludeId = null): bool
+/** Distinct visit times occupied on a date (appointments + pending document holds). */
+function countOccupiedVisitSlotsOnDate(PDO $pdo, string $date): int
 {
+    return count(getBookedAppointmentTimes($pdo, $date));
+}
+
+function appointmentSlotTimeMatchesSql(string $column): string
+{
+    return "TIME_FORMAT($column, '%H:%i:%s') = ?";
+}
+
+/**
+ * Linked appointment on the same visit date/time as the request (any resolved visit row).
+ * When true, the document_requests row must not hold the slot — active visits use appointments;
+ * cancelled / no_show / completed rows release the slot.
+ */
+function documentRequestVisitSlotCoveredByLinkedAppointmentSql(string $drAlias = 'dr', string $aAlias = 'a'): string
+{
+    $statuses = ['scheduled', 'confirmed', 'completed', 'cancelled', 'no_show'];
+    $quoted = implode(', ', array_map(
+        static fn (string $status): string => "'" . str_replace("'", "''", $status) . "'",
+        $statuses
+    ));
+
+    return "EXISTS (
+        SELECT 1 FROM appointments $aAlias
+        WHERE $aAlias.tracking_code = $drAlias.tracking_code
+          AND $aAlias.deleted_at IS NULL
+          AND $aAlias.appointment_date = $drAlias.appointment_date
+          AND TIME_FORMAT($aAlias.appointment_time, '%H:%i:%s') = TIME_FORMAT($drAlias.appointment_time, '%H:%i:%s')
+          AND $aAlias.status IN ($quoted)
+    )";
+}
+
+/** SQL condition: document_requests row still reserves a visit slot. */
+function documentRequestHoldsVisitSlotSql(string $drAlias = 'dr'): string
+{
+    $covered = documentRequestVisitSlotCoveredByLinkedAppointmentSql($drAlias);
+
+    return "$drAlias.deleted_at IS NULL
+           AND $drAlias.status NOT IN ('rejected', 'completed')
+           AND NOT ($covered)";
+}
+
+/**
+ * Whether another booking already holds this date/time.
+ *
+ * @param ?string $excludeTrackingCode Ignore holds tied to this document request tracking code
+ * @param ?int    $excludeAppointmentId Ignore this appointment row (e.g. when re-confirming the same visit)
+ */
+function appointmentSlotIsTaken(
+    PDO $pdo,
+    string $date,
+    string $time,
+    ?string $excludeTrackingCode = null,
+    ?int $excludeAppointmentId = null,
+    bool $lockRows = false
+): bool {
     $normalized = normalizeAppointmentTime($time);
     if ($normalized === '') {
         return true;
     }
 
+    ensureSoftDeleteColumns($pdo);
     $statuses = activeAppointmentSlotStatuses();
     $placeholders = implode(',', array_fill(0, count($statuses), '?'));
-    $sql = "SELECT COUNT(*) FROM appointments
-            WHERE appointment_date = ? AND appointment_time = ? AND status IN ($placeholders) AND deleted_at IS NULL";
-    $params = array_merge([$date, $normalized], $statuses);
-    if ($excludeId !== null) {
-        $sql .= ' AND id != ?';
-        $params[] = $excludeId;
+    $lock = $lockRows ? ' FOR UPDATE' : '';
+
+    $apptSql = "SELECT COUNT(*) FROM appointments
+            WHERE appointment_date = ?
+              AND " . appointmentSlotTimeMatchesSql('appointment_time') . "
+              AND status IN ($placeholders)
+              AND deleted_at IS NULL";
+    $apptParams = array_merge([$date, $normalized], $statuses);
+    if ($excludeAppointmentId !== null && $excludeAppointmentId > 0) {
+        $apptSql .= ' AND id != ?';
+        $apptParams[] = $excludeAppointmentId;
     }
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    if ((int) $stmt->fetchColumn() > 0) {
+    if ($excludeTrackingCode !== null && $excludeTrackingCode !== '') {
+        $apptSql .= ' AND (tracking_code IS NULL OR tracking_code = \'\' OR tracking_code != ?)';
+        $apptParams[] = $excludeTrackingCode;
+    }
+    $apptSql .= $lock;
+
+    $apptStmt = $pdo->prepare($apptSql);
+    $apptStmt->execute($apptParams);
+    if ((int) $apptStmt->fetchColumn() > 0) {
         return true;
     }
 
-    ensureSoftDeleteColumns($pdo);
-    $reqStmt = $pdo->prepare(
-        "SELECT COUNT(*) FROM document_requests dr
+    $reqSql = "SELECT COUNT(*) FROM document_requests dr
          WHERE dr.appointment_date = ?
-           AND dr.appointment_time = ?
-           AND dr.deleted_at IS NULL
-           AND dr.status NOT IN ('rejected', 'completed')
-           AND NOT EXISTS (
-                SELECT 1 FROM appointments a
-                WHERE a.tracking_code = dr.tracking_code
-                  AND a.deleted_at IS NULL
-                  AND a.appointment_date = dr.appointment_date
-           )"
-    );
-    $reqStmt->execute([$date, $normalized]);
+           AND " . appointmentSlotTimeMatchesSql('dr.appointment_time') . "
+           AND " . documentRequestHoldsVisitSlotSql('dr');
+    $reqParams = [$date, $normalized];
+    if ($excludeTrackingCode !== null && $excludeTrackingCode !== '') {
+        $reqSql .= ' AND dr.tracking_code != ?';
+        $reqParams[] = $excludeTrackingCode;
+    }
+    $reqSql .= $lock;
+
+    $reqStmt = $pdo->prepare($reqSql);
+    $reqStmt->execute($reqParams);
 
     return (int) $reqStmt->fetchColumn() > 0;
+}
+
+function isAppointmentSlotTaken(PDO $pdo, string $date, string $time, ?int $excludeId = null): bool
+{
+    return appointmentSlotIsTaken($pdo, $date, $time, null, $excludeId, false);
+}
+
+/**
+ * @throws RuntimeException when another booking holds the slot
+ */
+function ensureVisitSlotAvailableForWrite(
+    PDO $pdo,
+    string $date,
+    string $time,
+    ?string $excludeTrackingCode = null,
+    ?int $excludeAppointmentId = null,
+    bool $lockRows = false
+): void {
+    if (appointmentSlotIsTaken($pdo, $date, $time, $excludeTrackingCode, $excludeAppointmentId, $lockRows)) {
+        throw new RuntimeException('Visit slot conflict: another booking already uses this date and time.');
+    }
+}
+
+function appointmentDayLockKey(string $date): string
+{
+    return 'alcros_visit_day:' . $date;
+}
+
+function acquireAppointmentDayLock(PDO $pdo, string $date, int $timeoutSeconds = 10): bool
+{
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        return false;
+    }
+
+    $stmt = $pdo->prepare('SELECT GET_LOCK(?, ?)');
+    $stmt->execute([appointmentDayLockKey($date), max(1, $timeoutSeconds)]);
+
+    return (int) $stmt->fetchColumn() === 1;
+}
+
+function releaseAppointmentDayLock(PDO $pdo, string $date): void
+{
+    $stmt = $pdo->prepare('SELECT RELEASE_LOCK(?)');
+    $stmt->execute([appointmentDayLockKey($date)]);
 }
 
 function buildAppointmentAvailability(PDO $pdo, string $date, string $bookingType = 'standalone'): array
@@ -2232,7 +2355,7 @@ function buildAppointmentAvailability(PDO $pdo, string $date, string $bookingTyp
     $blockReason = officeDateBlockReason($date);
     $bookedTimes = $blockReason === null ? getBookedAppointmentTimes($pdo, $date) : [];
     $bookedLookup = array_fill_keys($bookedTimes, true);
-    $count = $blockReason === null ? countActiveAppointmentsOnDate($pdo, $date) : 0;
+    $count = $blockReason === null ? countOccupiedVisitSlotsOnDate($pdo, $date) : 0;
     $maxDaily = maxDailyAppointmentsLimit();
     $dateFull = $blockReason === null && $count >= $maxDaily;
 
@@ -2246,15 +2369,27 @@ function buildAppointmentAvailability(PDO $pdo, string $date, string $bookingTyp
     $nowSlot = date('H:i');
 
     foreach (appointmentTimeSlotOptions($interval) as $slot) {
-        $available = $blockReason === null && !isset($bookedLookup[$slot]);
-        if ($available && $date === $today && $slot <= $nowSlot) {
-            $available = false;
+        $isBooked = isset($bookedLookup[$slot]);
+        $isPastToday = $date === $today && $slot <= $nowSlot;
+        $available = $blockReason === null && !$isBooked && !$isPastToday;
+
+        if ($available) {
+            $status = 'available';
+        } elseif ($blockReason !== null) {
+            $status = 'unavailable';
+        } elseif ($isPastToday) {
+            $status = 'past';
+        } elseif ($isBooked) {
+            $status = 'booked';
+        } else {
+            $status = 'unavailable';
         }
 
         $entry = [
             'value'     => $slot,
             'label'     => formatAppointmentSlotLabel($slot),
             'available' => $available,
+            'status'    => $status,
         ];
 
         if ((int) substr($slot, 0, 2) < 12) {
@@ -2324,57 +2459,38 @@ function validateAppointmentBooking(
         return 'Please choose a future time slot today, or select another date.';
     }
 
-    $statuses = activeAppointmentSlotStatuses();
-    $statusList = "'" . implode("','", $statuses) . "'";
-    $lock = $lockRows ? ' FOR UPDATE' : '';
-
-    $slotStmt = $pdo->prepare(
-        "SELECT COUNT(*) FROM appointments
-         WHERE appointment_date = ? AND appointment_time = ? AND status IN ($statusList) AND deleted_at IS NULL$lock"
-    );
-    $slotStmt->execute([$date, $normalized]);
-    if ((int) $slotStmt->fetchColumn() > 0) {
-        return 'This time slot is already booked. Please choose another date or time.';
-    }
-
-    ensureSoftDeleteColumns($pdo);
-    $reqStmt = $pdo->prepare(
-        "SELECT COUNT(*) FROM document_requests dr
-         WHERE dr.appointment_date = ?
-           AND dr.appointment_time = ?
-           AND dr.deleted_at IS NULL
-           AND dr.status NOT IN ('rejected', 'completed')
-           AND NOT EXISTS (
-                SELECT 1 FROM appointments a
-                WHERE a.tracking_code = dr.tracking_code
-                  AND a.deleted_at IS NULL
-                  AND a.appointment_date = dr.appointment_date
-           )$lock"
-    );
-    $reqStmt->execute([$date, $normalized]);
-    if ((int) $reqStmt->fetchColumn() > 0) {
+    if (appointmentSlotIsTaken($pdo, $date, $normalized, null, null, $lockRows)) {
         return 'This time slot is already booked. Please choose another date or time.';
     }
 
     $maxDaily = maxDailyAppointmentsLimit();
-    $dailyStmt = $pdo->prepare(
-        "SELECT COUNT(*) FROM appointments
-         WHERE appointment_date = ? AND status IN ($statusList) AND deleted_at IS NULL$lock"
-    );
-    $dailyStmt->execute([$date]);
-    if ((int) $dailyStmt->fetchColumn() >= $maxDaily) {
+    if (countOccupiedVisitSlotsOnDate($pdo, $date) >= $maxDaily) {
         return 'No appointment slots remain on this date. Please choose another day.';
     }
 
     if ($email !== null && $email !== '') {
+        $normalizedEmail = normalizeGmail($email);
+        $statuses = activeAppointmentSlotStatuses();
+        $statusList = "'" . implode("','", $statuses) . "'";
         $emailStmt = $pdo->prepare(
             "SELECT appointment_code FROM appointments
-             WHERE appointment_date = ? AND appointment_time = ? AND email = ?
-               AND status IN ($statusList) AND deleted_at IS NULL LIMIT 1"
+             WHERE appointment_date = ? AND " . appointmentSlotTimeMatchesSql('appointment_time') . ' AND email = ?
+               AND status IN (' . $statusList . ') AND deleted_at IS NULL LIMIT 1'
         );
-        $emailStmt->execute([$date, $normalized, normalizeGmail($email)]);
+        $emailStmt->execute([$date, $normalized, $normalizedEmail]);
         if ($emailStmt->fetchColumn()) {
             return 'You already have an appointment at this date and time.';
+        }
+
+        ensureSoftDeleteColumns($pdo);
+        $reqEmailStmt = $pdo->prepare(
+            'SELECT tracking_code FROM document_requests
+             WHERE appointment_date = ? AND ' . appointmentSlotTimeMatchesSql('appointment_time') . ' AND email = ?
+               AND deleted_at IS NULL AND status NOT IN (\'rejected\', \'completed\') LIMIT 1'
+        );
+        $reqEmailStmt->execute([$date, $normalized, $normalizedEmail]);
+        if ($reqEmailStmt->fetchColumn()) {
+            return 'You already have a request or appointment at this date and time.';
         }
     }
 
@@ -2404,19 +2520,20 @@ function releaseAppointmentSlotLock(PDO $pdo, string $date, string $time): void
     $stmt->execute([$key]);
 }
 
-function appointmentStatusBadge(string $status): string
+function appointmentStatusBadge(string $status, ?string $rejectionReason = null): string
 {
+    $citizenCancelled = $status === 'cancelled' && isCitizenCancellationReason($rejectionReason);
     $classes = [
         'scheduled' => 'bg-blue-100 text-blue-700',
         'confirmed' => 'bg-purple-100 text-purple-700',
         'completed' => 'bg-gray-100 text-gray-600',
-        'cancelled' => 'bg-red-100 text-red-700',
+        'cancelled' => $citizenCancelled ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-700',
         'no_show'   => 'bg-amber-100 text-amber-700',
     ];
     $class = $classes[$status] ?? 'bg-gray-100 text-gray-600';
 
     return '<span class="px-2 py-0.5 rounded text-[9px] font-bold uppercase ' . $class . '">'
-        . htmlspecialchars(appointmentStatusLabel($status)) . '</span>';
+        . htmlspecialchars(appointmentStatusLabel($status, $rejectionReason)) . '</span>';
 }
 
 function appointmentStatusProgressIndex(string $status): int|false
@@ -4466,16 +4583,77 @@ function documentRequestRevision(array $row): string
     );
 }
 
-function manageRequestsListFilters(array $input): array
+function documentRequestVisitNoShowExistsSql(string $tableAlias = 'document_requests'): string
+{
+    $trackingColumn = $tableAlias . '.tracking_code';
+
+    return " AND (
+        SELECT a.status FROM appointments a
+        WHERE a.tracking_code = {$trackingColumn} AND a.deleted_at IS NULL
+        ORDER BY a.updated_at DESC, a.id DESC
+        LIMIT 1
+    ) = 'no_show'";
+}
+
+function countDocumentRequestVisitNoShows(PDO $pdo): int
+{
+    ensureSoftDeleteColumns($pdo);
+    $activeSql = documentRequestActiveSql();
+
+    return (int) $pdo->query(
+        'SELECT COUNT(*) FROM document_requests WHERE ' . $activeSql . documentRequestVisitNoShowExistsSql('document_requests')
+    )->fetchColumn();
+}
+
+/** Pending-style views list every matching request (all visit dates). */
+function manageRequestManageAwaitingAllDates(array $filters): bool
+{
+    if (trim((string) ($filters['q'] ?? '')) !== '') {
+        return false;
+    }
+
+    $status = (string) ($filters['status'] ?? 'all');
+    if ($status === 'all_requests') {
+        return !($filters['date_explicit'] ?? false);
+    }
+
+    return in_array($status, ['all', '', 'pending', 'rejected', 'recently_deleted'], true);
+}
+
+function manageRequestListUsesVisitDate(array $filters): bool
+{
+    if (!manageRequestManageAwaitingAllDates($filters)) {
+        return true;
+    }
+
+    return ($filters['status'] ?? '') === 'all_requests' && ($filters['date_explicit'] ?? false);
+}
+
+function manageRequestsListFilters(array $input, ?PDO $pdo = null): array
 {
     $status = (string) ($input['status'] ?? 'all');
-    if (!in_array($status, ['all', 'pending', 'ready', 'rejected', 'completed', 'all_requests', 'recently_deleted'], true)) {
+    if (!in_array($status, ['all', 'pending', 'ready', 'rejected', 'completed', 'no_show', 'all_requests', 'recently_deleted'], true)) {
         $status = 'all';
     }
 
+    $rawDate = array_key_exists('date', $input) ? trim((string) $input['date']) : null;
+    if ($rawDate === '') {
+        $rawDate = null;
+    }
+
+    if ($pdo !== null) {
+        $date = resolveAppointmentsManageDate($pdo, $rawDate);
+    } elseif ($rawDate !== null && preg_match('/^\d{4}-\d{2}-\d{2}$/', $rawDate)) {
+        $date = $rawDate;
+    } else {
+        $date = alcrosTodayDate();
+    }
+
     return [
-        'status' => $status,
-        'q'      => trim((string) ($input['q'] ?? '')),
+        'status'        => $status,
+        'date'          => $date,
+        'date_explicit' => $rawDate !== null,
+        'q'             => trim((string) ($input['q'] ?? '')),
     ];
 }
 
@@ -4783,7 +4961,9 @@ function manageRequestsListSql(array $filters): array
         $sql .= ' AND deleted_at IS NULL';
     }
     if ($search !== '') {
-        if ($status !== 'all' && $status !== '' && $status !== 'all_requests') {
+        if ($status === 'no_show') {
+            $sql .= documentRequestVisitNoShowExistsSql('document_requests');
+        } elseif ($status !== 'all' && $status !== '' && $status !== 'all_requests' && $status !== 'recently_deleted') {
             $sql .= ' AND status = ?';
             $params[] = $status;
         }
@@ -4791,11 +4971,18 @@ function manageRequestsListSql(array $filters): array
         // all active
     } elseif ($status === 'recently_deleted') {
         // deleted only
+    } elseif ($status === 'no_show') {
+        $sql .= documentRequestVisitNoShowExistsSql('document_requests');
     } elseif ($status === 'all' || $status === '') {
         $sql .= " AND status = 'pending'";
     } elseif ($status !== 'all' && $status !== '') {
         $sql .= ' AND status = ?';
         $params[] = $status;
+    }
+
+    if (manageRequestListUsesVisitDate($filters)) {
+        $sql .= ' AND appointment_date = ?';
+        $params[] = $filters['date'];
     }
 
     [$searchSql, $searchParams] = documentRequestSearchClause($search);
@@ -4804,6 +4991,43 @@ function manageRequestsListSql(array $filters): array
     $sql .= $status === 'recently_deleted' ? ' ORDER BY deleted_at DESC' : ' ORDER BY submitted_at DESC';
 
     return [$sql, $params];
+}
+
+/** Status counts for requests scheduled on a single pickup visit date. */
+function fetchManageRequestVisitDateStats(PDO $pdo, string $viewDate): array
+{
+    ensureSoftDeleteColumns($pdo);
+    $activeSql = documentRequestActiveSql();
+
+    $stmt = $pdo->prepare(
+        "SELECT status, COUNT(*) AS cnt FROM document_requests
+         WHERE {$activeSql} AND appointment_date = ?
+         GROUP BY status"
+    );
+    $stmt->execute([$viewDate]);
+    $byStatus = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $byStatus[(string) $row['status']] = (int) $row['cnt'];
+    }
+
+    $noShowStmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM document_requests dr
+         WHERE ' . documentRequestActiveSql('dr') . '
+           AND dr.appointment_date = ?'
+        . documentRequestVisitNoShowExistsSql('dr')
+    );
+    $noShowStmt->execute([$viewDate]);
+    $noShow = (int) $noShowStmt->fetchColumn();
+
+    $visitTotal = array_sum($byStatus);
+
+    return [
+        'visit_total' => $visitTotal,
+        'ready'       => (int) ($byStatus['ready'] ?? 0),
+        'completed'   => (int) ($byStatus['completed'] ?? 0),
+        'no_show'     => $noShow,
+        'pending'     => (int) ($byStatus['pending'] ?? 0),
+    ];
 }
 
 function fetchManageRequestStats(PDO $pdo): array
@@ -4816,6 +5040,7 @@ function fetchManageRequestStats(PDO $pdo): array
         'pending'          => countPendingDocumentRequests($pdo),
         'ready'            => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$activeSql} AND status = 'ready'")->fetchColumn(),
         'completed'        => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$activeSql} AND status = 'completed'")->fetchColumn(),
+        'no_show'          => countDocumentRequestVisitNoShows($pdo),
         'rejected'         => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE {$activeSql} AND status = 'rejected'")->fetchColumn(),
         'recently_deleted' => (int) $pdo->query('SELECT COUNT(*) FROM document_requests WHERE deleted_at IS NOT NULL')->fetchColumn(),
     ];
@@ -5105,9 +5330,9 @@ function documentRequestViewData(array $row): array
         'id_front_path'  => protectedUploadUrl(!empty($row['id_front_path']) ? (string) $row['id_front_path'] : null),
         'id_back_path'   => protectedUploadUrl(!empty($row['id_back_path']) ? (string) $row['id_back_path'] : null),
         'appointment'    => $appointment !== '' ? $appointment : '—',
-        'status'         => requestStatusLabel($statusKey),
+        'status'         => requestStatusLabel($statusKey, $row['rejection_reason'] ?? null),
         'status_key'     => $statusKey,
-        'status_badge_html' => requestStatusBadge($statusKey),
+        'status_badge_html' => requestStatusBadge($statusKey, $row['rejection_reason'] ?? null),
         'can_delete'     => documentRequestIsDeletable($row),
         'can_print'      => canPrintRequestStatus($statusKey)
             && ($row['document_type'] ?? '') !== 'cenomar',
@@ -5157,7 +5382,7 @@ function appointmentViewData(array $row, ?PDO $pdo = null): array
         'schedule'         => formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null) ?: '—',
         'status'           => appointmentDisplayStatusLabel($row),
         'status_key'       => $statusKey,
-        'status_badge_html' => appointmentStatusBadge($statusKey),
+        'status_badge_html' => appointmentStatusBadge($statusKey, $row['rejection_reason'] ?? null),
         'source'           => $isRequest ? 'Document request visit' : 'Special service appointment',
         'tracking_code'    => !empty($row['tracking_code']) ? (string) $row['tracking_code'] : '',
         'notify_email'     => !empty($row['notify_email']) ? 'Yes' : 'No',
@@ -5250,9 +5475,14 @@ function appointmentSearchClause(string $search, string $alias = 'a', ?string $r
     ];
 }
 
-function requestStatusLabel(string $status): string
+function requestStatusLabel(string $status, ?string $rejectionReason = null): string
 {
-    return match (normalizeRequestStatus($status)) {
+    $status = normalizeRequestStatus($status);
+    if ($status === 'rejected' && isCitizenCancellationReason($rejectionReason)) {
+        return citizenCancelledStatusLabel();
+    }
+
+    return match ($status) {
         'pending'       => 'Pending',
         'processing'    => 'Processing',
         'printing'      => 'Printing',
@@ -5476,10 +5706,8 @@ function citizenEmailText(string $value): string
 function citizenEmailPlain(array $mail): string
 {
     $lines = [];
-    if (!empty($mail['heading_prominent'])) {
-        $lines[] = strtoupper(trim((string) ($mail['heading'] ?? 'Reminder')));
-        $lines[] = '';
-    }
+    $lines[] = mb_strtoupper(trim((string) ($mail['heading'] ?? 'Update from ALCROS')), 'UTF-8');
+    $lines[] = '';
     $name = trim((string) ($mail['name'] ?? ''));
     $lines[] = $name !== '' ? 'Dear ' . $name . ',' : 'Hello,';
     $lines[] = '';
@@ -5606,17 +5834,10 @@ function citizenEmailHtml(array $mail): string
     $footerBits = array_filter([$hours !== '' ? 'Office hours: ' . $hours : '', $phone !== '' ? 'Contact: ' . $phone : '']);
     $footer = implode(' · ', $footerBits);
 
-    $headingProminent = !empty($mail['heading_prominent']);
-    if ($headingProminent) {
-        $titleBlock = '<h1 style="margin:0 0 12px;font-size:28px;line-height:1.25;font-weight:800;color:#0f172a;">'
-            . citizenEmailText($heading) . '</h1>'
-            . '<p style="margin:0 0 16px;font-size:16px;line-height:1.4;color:#334155;font-weight:600;">'
-            . citizenEmailText($hello) . '</p>';
-    } else {
-        $titleBlock = '<p style="margin:0 0 6px;font-size:11px;font-weight:bold;letter-spacing:.08em;text-transform:uppercase;color:' . citizenEmailText($accent) . ';">'
-            . citizenEmailText($heading) . '</p>'
-            . '<h1 style="margin:0 0 14px;font-size:22px;line-height:1.3;color:#0f172a;">' . citizenEmailText($hello) . '</h1>';
-    }
+    $titleBlock = '<h1 style="margin:0 0 12px;font-size:28px;line-height:1.25;font-weight:800;color:#0f172a;text-transform:uppercase;letter-spacing:.04em;">'
+        . citizenEmailText($heading) . '</h1>'
+        . '<p style="margin:0 0 16px;font-size:16px;line-height:1.4;color:#334155;font-weight:600;">'
+        . citizenEmailText($hello) . '</p>';
 
     return '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"></head>'
         . '<body style="margin:0;padding:0;background-color:#f1f5f9;font-family:Arial,Helvetica,sans-serif;">'
@@ -5899,6 +6120,16 @@ function syncDocumentRequestAppointment(PDO $pdo, int $requestId, string $reques
         $normalizedTime = normalizeAppointmentTime($apptTime);
         $serviceType = documentTypeLabel($row['document_type']);
 
+        $existingId = $existing ? (int) ($existing['id'] ?? 0) : null;
+        ensureVisitSlotAvailableForWrite(
+            $pdo,
+            (string) $apptDate,
+            $normalizedTime,
+            $trackingCode,
+            $existingId ?: null,
+            true
+        );
+
         if ($existing) {
             $pdo->prepare(
                 "UPDATE appointments
@@ -6138,25 +6369,84 @@ function updateDocumentRequestStatus(
         return true;
     }
 
+    $slotLockHeld = false;
+    $dayLockHeld = false;
+    $slotLockDate = null;
+    $slotLockTime = null;
+    if ($staffAction === 'verified') {
+        $visitStmt = $pdo->prepare(
+            'SELECT tracking_code, appointment_date, appointment_time
+             FROM document_requests WHERE id = ? AND deleted_at IS NULL LIMIT 1'
+        );
+        $visitStmt->execute([$id]);
+        $visitRow = $visitStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $slotLockDate = (string) ($visitRow['appointment_date'] ?? '');
+        $slotLockTime = (string) ($visitRow['appointment_time'] ?? '');
+        $trackingCode = trim((string) ($visitRow['tracking_code'] ?? ''));
+        if ($slotLockDate !== '' && $slotLockTime !== '') {
+            if (!acquireAppointmentDayLock($pdo, $slotLockDate)) {
+                return false;
+            }
+            $dayLockHeld = true;
+            if (!acquireAppointmentSlotLock($pdo, $slotLockDate, $slotLockTime)) {
+                releaseAppointmentDayLock($pdo, $slotLockDate);
+
+                return false;
+            }
+            $slotLockHeld = true;
+            $linked = $trackingCode !== '' ? fetchLatestLinkedAppointmentForRequest($pdo, $trackingCode) : null;
+            $linkedId = $linked ? (int) ($linked['id'] ?? 0) : null;
+            try {
+                ensureVisitSlotAvailableForWrite(
+                    $pdo,
+                    $slotLockDate,
+                    $slotLockTime,
+                    $trackingCode,
+                    $linkedId ?: null,
+                    false
+                );
+            } catch (RuntimeException $e) {
+                releaseAppointmentSlotLock($pdo, $slotLockDate, $slotLockTime);
+                releaseAppointmentDayLock($pdo, $slotLockDate);
+
+                return false;
+            }
+        }
+    }
+
     $savedRejectionReason = null;
     if ($staffAction === 'rejected') {
         $savedRejectionReason = normalizeStaffRejectionReason($rejectionReason);
         if ($savedRejectionReason === null) {
+            if ($slotLockHeld && $slotLockDate !== null && $slotLockTime !== null) {
+                releaseAppointmentSlotLock($pdo, $slotLockDate, $slotLockTime);
+            }
+            if ($dayLockHeld && $slotLockDate !== null) {
+                releaseAppointmentDayLock($pdo, $slotLockDate);
+            }
+
             return false;
         }
-        $stmt = $pdo->prepare(
-            'UPDATE document_requests SET status = ?, rejection_reason = ?, updated_at = NOW() WHERE id = ? AND status = ?'
-        );
-        $stmt->execute([$saveStatus, $savedRejectionReason, $id, $rawOldStatus]);
-    } else {
-        $stmt = $pdo->prepare('UPDATE document_requests SET status = ?, updated_at = NOW() WHERE id = ? AND status = ?');
-        $stmt->execute([$saveStatus, $id, $rawOldStatus]);
-    }
-    if ($stmt->rowCount() === 0) {
-        return false;
     }
 
     try {
+        $pdo->beginTransaction();
+
+        if ($staffAction === 'rejected') {
+            $stmt = $pdo->prepare(
+                'UPDATE document_requests SET status = ?, rejection_reason = ?, updated_at = NOW() WHERE id = ? AND status = ?'
+            );
+            $stmt->execute([$saveStatus, $savedRejectionReason, $id, $rawOldStatus]);
+        } else {
+            $stmt = $pdo->prepare('UPDATE document_requests SET status = ?, updated_at = NOW() WHERE id = ? AND status = ?');
+            $stmt->execute([$saveStatus, $id, $rawOldStatus]);
+        }
+        if ($stmt->rowCount() === 0) {
+            $pdo->rollBack();
+
+            return false;
+        }
+
         if ($staffAction === 'verified') {
             syncDocumentRequestAppointment($pdo, $id, 'verified');
         } else {
@@ -6167,8 +6457,21 @@ function updateDocumentRequestStatus(
                 $staffAction === 'rejected' ? $savedRejectionReason : null
             );
         }
+
+        $pdo->commit();
     } catch (Throwable $e) {
-        // Status is already saved; appointment sync failure should not block staff.
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
+        return false;
+    } finally {
+        if ($slotLockHeld && $slotLockDate !== null && $slotLockTime !== null) {
+            releaseAppointmentSlotLock($pdo, $slotLockDate, $slotLockTime);
+        }
+        if ($dayLockHeld && $slotLockDate !== null) {
+            releaseAppointmentDayLock($pdo, $slotLockDate);
+        }
     }
 
     if (!$skipNotifications) {
@@ -6200,8 +6503,13 @@ function updateDocumentRequestStatus(
     return true;
 }
 
-function updateAppointmentStatus(PDO $pdo, int $id, string $status, ?string $rejectionReason = null): bool
-{
+function updateAppointmentStatus(
+    PDO $pdo,
+    int $id,
+    string $status,
+    ?string $rejectionReason = null,
+    bool $allowLateScheduledNoShow = false
+): bool {
     if ($id <= 0) {
         return false;
     }
@@ -6211,7 +6519,8 @@ function updateAppointmentStatus(PDO $pdo, int $id, string $status, ?string $rej
     ensureRejectionReasonColumns($pdo);
 
     $oldStmt = $pdo->prepare(
-        'SELECT status, appointment_code FROM appointments WHERE id = ? AND deleted_at IS NULL LIMIT 1'
+        'SELECT status, appointment_code, appointment_date, appointment_time
+         FROM appointments WHERE id = ? AND deleted_at IS NULL LIMIT 1'
     );
     $oldStmt->execute([$id]);
     $row = $oldStmt->fetch(PDO::FETCH_ASSOC);
@@ -6221,7 +6530,13 @@ function updateAppointmentStatus(PDO $pdo, int $id, string $status, ?string $rej
 
     $oldStatus = (string) $row['status'];
     if (!isAllowedAppointmentStatusTransition($oldStatus, $status)) {
-        return false;
+        $lateScheduledNoShow = $allowLateScheduledNoShow
+            && $status === 'no_show'
+            && $oldStatus === 'scheduled'
+            && visitLateQualifiesForNoShow($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
+        if (!$lateScheduledNoShow) {
+            return false;
+        }
     }
 
     if ($oldStatus === $status) {
@@ -6234,22 +6549,39 @@ function updateAppointmentStatus(PDO $pdo, int $id, string $status, ?string $rej
         if ($savedRejectionReason === null) {
             return false;
         }
-        $stmt = $pdo->prepare(
-            'UPDATE appointments SET status = ?, rejection_reason = ?, updated_at = NOW() WHERE id = ? AND status = ?'
-        );
-        $stmt->execute([$status, $savedRejectionReason, $id, $oldStatus]);
-    } else {
-        $stmt = $pdo->prepare('UPDATE appointments SET status = ?, updated_at = NOW() WHERE id = ? AND status = ?');
-        $stmt->execute([$status, $id, $oldStatus]);
-    }
-    if ($stmt->rowCount() === 0) {
-        return false;
     }
 
+    $syncsLinkedRequest = in_array($status, ['cancelled', 'completed'], true);
+
     try {
-        syncAppointmentToDocumentRequest($pdo, $id, $status);
+        $pdo->beginTransaction();
+
+        if ($status === 'cancelled') {
+            $stmt = $pdo->prepare(
+                'UPDATE appointments SET status = ?, rejection_reason = ?, updated_at = NOW() WHERE id = ? AND status = ?'
+            );
+            $stmt->execute([$status, $savedRejectionReason, $id, $oldStatus]);
+        } else {
+            $stmt = $pdo->prepare('UPDATE appointments SET status = ?, updated_at = NOW() WHERE id = ? AND status = ?');
+            $stmt->execute([$status, $id, $oldStatus]);
+        }
+        if ($stmt->rowCount() === 0) {
+            $pdo->rollBack();
+
+            return false;
+        }
+
+        if ($syncsLinkedRequest) {
+            syncAppointmentToDocumentRequest($pdo, $id, $status);
+        }
+
+        $pdo->commit();
     } catch (Throwable $e) {
-        // Status is already saved; request sync failure should not block staff.
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
+        return false;
     }
 
     staffCitizenNotifyWarningsReset();
@@ -6573,7 +6905,6 @@ function notifyAppointmentReminder(array $row, int $hoursBefore): bool
 
     $mail = [
         'heading'            => 'Appointment reminder',
-        'heading_prominent'  => true,
         'name'               => personNameFromRow($row),
         'intro'              => 'This is a reminder that your appointment is in about ' . $hoursLabel . '.',
         'code_label'   => 'Appointment code',
@@ -6612,7 +6943,6 @@ function notifyRequestVisitReminder(array $row, int $hoursBefore): bool
         'ALCROS — Visit in ' . $hoursLabel . ' (' . $row['tracking_code'] . ')',
         citizenMailWithCertificateFees([
             'heading'            => 'Visit reminder',
-            'heading_prominent'  => true,
             'name'               => citizenNotifyPersonName($row),
             'intro'              => 'This is a reminder that your preferred visit for document pickup is in about ' . $hoursLabel . '.',
             'code_label'   => 'Tracking code',
@@ -6671,6 +7001,292 @@ function visitIsWithinSoonWindow(?string $date, ?string $time, ?int $withinMinut
     $minutesUntil = appointmentMinutesUntil($date, $time);
 
     return $minutesUntil !== null && $minutesUntil > 0 && $minutesUntil <= $withinMinutes;
+}
+
+/** Minutes after scheduled visit time before staff may mark no-show from the manage list. */
+function visitNoShowGraceMinutes(): int
+{
+    return 20;
+}
+
+/** Minutes past the scheduled visit, or null if there is no visit or it is not past yet. */
+function visitMinutesLate(?string $date, ?string $time): ?int
+{
+    if (!$date || !$time) {
+        return null;
+    }
+
+    $minutesUntil = appointmentMinutesUntil($date, $time);
+    if ($minutesUntil === null || $minutesUntil >= 0) {
+        return null;
+    }
+
+    return $minutesUntil * -1;
+}
+
+function visitLateQualifiesForNoShow(?string $date, ?string $time): bool
+{
+    $late = visitMinutesLate($date, $time);
+
+    return $late !== null && $late >= visitNoShowGraceMinutes();
+}
+
+function fetchLatestLinkedAppointmentForRequest(PDO $pdo, string $trackingCode): ?array
+{
+    ensureSoftDeleteColumns($pdo);
+    $trackingCode = trim($trackingCode);
+    if ($trackingCode === '') {
+        return null;
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT id, status, appointment_date, appointment_time, appointment_code
+         FROM appointments
+         WHERE tracking_code = ? AND deleted_at IS NULL
+         ORDER BY updated_at DESC, id DESC
+         LIMIT 1'
+    );
+    $stmt->execute([$trackingCode]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $row ?: null;
+}
+
+function documentRequestVisitMarkedNoShow(PDO $pdo, array $row): bool
+{
+    $trackingCode = trim((string) ($row['tracking_code'] ?? ''));
+    if ($trackingCode === '') {
+        return false;
+    }
+
+    $appointment = fetchLatestLinkedAppointmentForRequest($pdo, $trackingCode);
+
+    return $appointment !== null && (string) ($appointment['status'] ?? '') === 'no_show';
+}
+
+function documentRequestCanMarkVisitNoShow(PDO $pdo, array $row): bool
+{
+    if (!empty($row['deleted_at'])) {
+        return false;
+    }
+
+    $status = normalizeRequestStatus((string) ($row['status'] ?? ''));
+    if ($status !== 'ready') {
+        return false;
+    }
+
+    if (documentRequestVisitMarkedNoShow($pdo, $row)) {
+        return false;
+    }
+
+    return visitLateQualifiesForNoShow($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
+}
+
+function appointmentVisitMarkedNoShow(array $row): bool
+{
+    return (string) ($row['status'] ?? '') === 'no_show';
+}
+
+function appointmentCanMarkVisitNoShow(array $row): bool
+{
+    if (!empty($row['deleted_at'])) {
+        return false;
+    }
+
+    $status = (string) ($row['status'] ?? '');
+    if ($status !== 'confirmed') {
+        return false;
+    }
+
+    return visitLateQualifiesForNoShow($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
+}
+
+function insertDocumentRequestNoShowAppointment(PDO $pdo, array $requestRow): ?int
+{
+    ensureCitizenNotifyColumns($pdo);
+    ensureSoftDeleteColumns($pdo);
+
+    $apptDate = $requestRow['appointment_date'] ?? null;
+    $apptTime = $requestRow['appointment_time'] ?? null;
+    if (!$apptDate || !$apptTime) {
+        return null;
+    }
+
+    $normalizedTime = normalizeAppointmentTime((string) $apptTime);
+    if ($normalizedTime === '') {
+        return null;
+    }
+
+    $trackingCode = (string) ($requestRow['tracking_code'] ?? '');
+    $serviceType = documentTypeLabel((string) ($requestRow['document_type'] ?? ''));
+    $apptCode = generateAppointmentCode();
+
+    $pdo->prepare(
+        'INSERT INTO appointments
+         (appointment_code, first_name, middle_name, last_name, email, phone, notify_email, notify_sms,
+          service_type, appointment_date, appointment_time, status, source, tracking_code,
+          id_front_path, id_back_path)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    )->execute([
+        $apptCode,
+        $requestRow['first_name'],
+        $requestRow['middle_name'] ?? null,
+        $requestRow['last_name'],
+        $requestRow['email'],
+        $requestRow['phone'],
+        (int) ($requestRow['notify_email'] ?? 0),
+        (int) ($requestRow['notify_sms'] ?? 0),
+        $serviceType,
+        $apptDate,
+        $normalizedTime,
+        'no_show',
+        'document_request',
+        $trackingCode,
+        $requestRow['id_front_path'] ?? null,
+        $requestRow['id_back_path'] ?? null,
+    ]);
+
+    return (int) $pdo->lastInsertId();
+}
+
+function markAppointmentVisitNoShow(PDO $pdo, int $appointmentId): bool
+{
+    ensureSoftDeleteColumns($pdo);
+
+    $stmt = $pdo->prepare(
+        'SELECT id, status, appointment_date, appointment_time
+         FROM appointments WHERE id = ? AND deleted_at IS NULL LIMIT 1'
+    );
+    $stmt->execute([$appointmentId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) {
+        return false;
+    }
+
+    if (appointmentVisitMarkedNoShow($row)) {
+        return true;
+    }
+
+    if (!appointmentCanMarkVisitNoShow($row)) {
+        return false;
+    }
+
+    $allowLateScheduled = (string) ($row['status'] ?? '') === 'scheduled';
+
+    return updateAppointmentStatus($pdo, $appointmentId, 'no_show', null, $allowLateScheduled);
+}
+
+function markDocumentRequestVisitNoShow(PDO $pdo, int $requestId): bool
+{
+    $row = fetchDocumentRequestById($pdo, $requestId);
+    if (!$row) {
+        return false;
+    }
+
+    if (documentRequestVisitMarkedNoShow($pdo, $row)) {
+        return true;
+    }
+
+    if (!documentRequestCanMarkVisitNoShow($pdo, $row)) {
+        return false;
+    }
+
+    $trackingCode = trim((string) ($row['tracking_code'] ?? ''));
+    $appointment = $trackingCode !== '' ? fetchLatestLinkedAppointmentForRequest($pdo, $trackingCode) : null;
+    if ($appointment) {
+        return markAppointmentVisitNoShow($pdo, (int) $appointment['id']);
+    }
+
+    $newId = insertDocumentRequestNoShowAppointment($pdo, $row);
+    if ($newId === null || $newId <= 0) {
+        return false;
+    }
+
+    staffCitizenNotifyWarningsReset();
+    try {
+        $emailResult = notifyAppointmentStatusChange($pdo, $newId, 'no_show');
+        staffCitizenNotifyRecordEmailAttempt($emailResult);
+    } catch (Throwable $e) {
+        // Saved; notification failure should not block staff.
+    }
+
+    try {
+        require_once __DIR__ . '/sms.php';
+        $smsResult = notifyAppointmentStatusSms($pdo, $newId, 'no_show');
+        staffCitizenNotifyRecordSmsAttempt($smsResult);
+    } catch (Throwable $e) {
+        // Saved; notification failure should not block staff.
+    }
+
+    $actor = function_exists('staffId') ? staffId() : 'system';
+    logActivity($actor, 'Appointment Updated', 'Marked visit no-show for request ' . $row['tracking_code']);
+
+    return true;
+}
+
+/**
+ * @param array<string, string> $redirectHidden
+ */
+function renderManageVisitLateNoShowCell(
+    PDO $pdo,
+    array $row,
+    string $entity,
+    string $formAction,
+    array $redirectHidden
+): string {
+    $date = $row['appointment_date'] ?? null;
+    $time = $row['appointment_time'] ?? null;
+    $minutesLate = visitMinutesLate(is_string($date) ? $date : null, is_string($time) ? $time : null);
+
+    if ($entity === 'request') {
+        $isNoShow = documentRequestVisitMarkedNoShow($pdo, $row);
+        $canMark = documentRequestCanMarkVisitNoShow($pdo, $row);
+        $idField = 'request_id';
+        $entityId = (int) ($row['id'] ?? 0);
+    } else {
+        $isNoShow = appointmentVisitMarkedNoShow($row);
+        $canMark = appointmentCanMarkVisitNoShow($row);
+        $idField = 'appointment_id';
+        $entityId = (int) ($row['id'] ?? 0);
+    }
+
+    $html = '<div class="manage-visit-late-cell" onclick="event.stopPropagation()">';
+
+    if ($isNoShow) {
+        $html .= '<span class="manage-visit-late manage-visit-late--noshow">No-show</span>';
+    } elseif ($minutesLate !== null) {
+        $html .= '<span class="manage-visit-late">' . (int) $minutesLate . ' min late</span>';
+    } else {
+        $html .= '<span class="manage-visit-late manage-visit-late--muted">—</span>';
+    }
+
+    if ($canMark && $entityId > 0) {
+        $html .= '<form method="POST" action="' . htmlspecialchars($formAction) . '" class="manage-visit-noshow-form">';
+        $html .= authFormField();
+        foreach ($redirectHidden as $name => $value) {
+            $html .= '<input type="hidden" name="' . htmlspecialchars((string) $name) . '" value="' . htmlspecialchars((string) $value) . '">';
+        }
+        $html .= '<input type="hidden" name="' . htmlspecialchars($idField) . '" value="' . $entityId . '">';
+        $html .= '<input type="hidden" name="mark_visit_no_show" value="1">';
+        $html .= '<button type="submit" class="manage-row-action manage-row-action--labeled manage-row-action--noshow" ';
+        $html .= 'title="Mark no-show" aria-label="Mark no-show" ';
+        $html .= 'data-bulk-confirm="Mark this visit as a no-show? The citizen may be notified." data-loading-text="Saving…">';
+        $html .= '<span class="manage-row-action__label">NO-SHOW</span></button></form>';
+    }
+
+    $html .= '</div>';
+
+    return $html;
+}
+
+function reportDocumentRequestNoShowLabel(array $row): string
+{
+    return (string) ($row['visit_appointment_status'] ?? '') === 'no_show' ? 'Yes' : 'No';
+}
+
+function reportAppointmentNoShowLabel(array $row): string
+{
+    return ((string) ($row['status'] ?? '')) === 'no_show' ? 'Yes' : 'No';
 }
 
 function markAllVisitEmailRemindersSent(PDO $pdo, string $table, int $id): void
@@ -7789,10 +8405,17 @@ function buildOperationalReport(PDO $pdo, string $from, string $to): array
     }
 
     $requestList = $pdo->prepare(
-        "SELECT tracking_code, first_name, middle_name, last_name, document_type, status, submitted_at, updated_at
-         FROM document_requests
-         WHERE DATE(submitted_at) BETWEEN ? AND ?
-         ORDER BY submitted_at DESC"
+        "SELECT dr.tracking_code, dr.first_name, dr.middle_name, dr.last_name, dr.document_type, dr.status,
+                dr.submitted_at, dr.updated_at, dr.appointment_date, dr.appointment_time,
+                (
+                    SELECT a.status FROM appointments a
+                    WHERE a.tracking_code = dr.tracking_code AND a.deleted_at IS NULL
+                    ORDER BY a.updated_at DESC, a.id DESC
+                    LIMIT 1
+                ) AS visit_appointment_status
+         FROM document_requests dr
+         WHERE DATE(dr.submitted_at) BETWEEN ? AND ?
+         ORDER BY dr.submitted_at DESC"
     );
     $requestList->execute([$from, $to]);
 
@@ -7854,8 +8477,8 @@ function buildOperationalReport(PDO $pdo, string $from, string $to): array
             'queue_served'         => (int) ($queueSummary['queue_served'] ?? 0),
             'queue_waiting'        => (int) ($queueSummary['queue_waiting'] ?? 0),
             'queue_skipped'        => (int) ($queueSummary['queue_skipped'] ?? 0),
-            'pending_requests'     => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'pending'")->fetchColumn(),
-            'ready_for_pickup'     => (int) $pdo->query("SELECT COUNT(*) FROM document_requests WHERE status = 'ready'")->fetchColumn(),
+            'pending_requests'     => (int) $pdo->query('SELECT COUNT(*) FROM document_requests WHERE ' . documentRequestActiveSql() . " AND status = 'pending'")->fetchColumn(),
+            'ready_for_pickup'     => (int) $pdo->query('SELECT COUNT(*) FROM document_requests WHERE ' . documentRequestActiveSql() . " AND status = 'ready'")->fetchColumn(),
             'total_records'        => (int) $pdo->query('SELECT COUNT(*) FROM civil_records WHERE deleted_at IS NULL')->fetchColumn(),
             'certifications_printed' => (int) ($printReport['by_document_kind']['certification'] ?? 0),
             'certificates_printed'   => (int) ($printReport['by_document_kind']['certificate'] ?? 0),

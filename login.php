@@ -427,9 +427,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <i data-lucide="chevron-left" class="back-home__icon w-3 h-3"></i>
                         <span>Back to Citizen Portal</span>
                     </a>
-                    <p class="auth-portal-form-footer-mobile">
-                        <a href="index.php">Return to citizen portal</a>
-                    </p>
                 </footer>
             </div>
         </main>

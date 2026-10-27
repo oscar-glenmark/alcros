@@ -57,14 +57,15 @@ function exportOperationalReportXlsx(
                 $reqRow['tracking_code'] ?? '',
                 personNameFromRow($reqRow),
                 documentTypeLabel($reqRow['document_type'] ?? ''),
-                requestStatusLabel($reqRow['status'] ?? ''),
+                requestStatusLabel($reqRow['status'] ?? '', $reqRow['rejection_reason'] ?? null),
+                reportDocumentRequestNoShowLabel($reqRow),
                 formatDateDisplay(substr((string) ($reqRow['submitted_at'] ?? ''), 0, 10)),
             ];
         }
 
         alcrosExcelWriteTable(
             $sheet,
-            ['Tracking Code', 'Citizen', 'Document Type', 'Status', 'Submitted'],
+            ['Tracking Code', 'Citizen', 'Document Type', 'Status', 'No-show', 'Submitted'],
             $requestRows,
             $row,
             [
@@ -86,13 +87,14 @@ function exportOperationalReportXlsx(
                 appointmentServiceLabel($apptRow['service_type'] ?? ''),
                 formatDateDisplay($apptRow['appointment_date'] ?? ''),
                 $timeLabel,
-                appointmentStatusLabel($apptRow['status'] ?? ''),
+                appointmentStatusLabel($apptRow['status'] ?? '', $apptRow['rejection_reason'] ?? null),
+                reportAppointmentNoShowLabel($apptRow),
             ];
         }
 
         alcrosExcelWriteTable(
             $sheet,
-            ['Code', 'Citizen', 'Service', 'Date', 'Time', 'Status'],
+            ['Code', 'Citizen', 'Service', 'Date', 'Time', 'Status', 'No-show'],
             $appointmentRows,
             $row,
             [
@@ -227,8 +229,6 @@ function exportOperationalReportXlsx(
                 'column_formats' => [2 => 'number', 3 => 'number', 4 => 'number', 5 => 'number'],
             ]
         );
-
-        spreadsheetExportCivilRecordsDetailSection($pdo, $sheet, $row, $reportYear, $recordsType);
     }
 
     alcrosExcelSendDownload($workbook, 'alcros_report_' . date('Y-m-d') . '.xlsx');
@@ -248,17 +248,6 @@ function spreadsheetExportCivilRecordsDetailSection(
     $types = $recordsType === 'all'
         ? $validTypes
         : (in_array($recordsType, $validTypes, true) ? [$recordsType] : $validTypes);
-
-    alcrosExcelWriteSectionHeading(
-        $sheet,
-        'Civil records detail (' . $year . ')',
-        $row,
-        6
-    );
-    $sheet->setCell(1, $row, 'Record filter: ' . ($recordsType === 'all' ? 'All types' : civilRecordTypeLabel($recordsType)));
-    $sheet->mergeCells(1, $row, 6, $row);
-    $sheet->applyStyle(1, $row, 6, $row, ['italic' => true, 'color' => '64748B', 'wrap' => true]);
-    $row += 2;
 
     $chunkSize = 2500;
 

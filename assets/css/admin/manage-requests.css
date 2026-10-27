@@ -41,6 +41,74 @@
     gap: 1.25rem;
 }
 
+.manage-requests-page a.manage-stat-card {
+    cursor: pointer;
+}
+
+.manage-requests-page a.manage-stat-card.is-active {
+    cursor: pointer;
+}
+
+.manage-requests-page .manage-controls {
+    align-items: center;
+}
+
+.manage-requests-page .appointments-controls__tools {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1 1 auto;
+    min-width: 0;
+    justify-content: flex-end;
+}
+
+.manage-requests-page .manage-controls__search {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 28rem;
+    justify-content: flex-end;
+}
+
+.appointments-date-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.625rem;
+    background: #fff;
+    flex-shrink: 0;
+}
+
+.appointments-date-nav__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 0.5rem;
+    color: #64748b;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.appointments-date-nav__btn:hover {
+    background: #f1f5f9;
+    color: #2563eb;
+}
+
+.appointments-date-nav__date {
+    gap: 0.3125rem;
+    padding: 0 0.1875rem;
+    min-width: 0;
+}
+
+.appointments-date-nav__label {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
 /* ── Sections ── */
 .manage-section__head {
     display: flex;
@@ -422,6 +490,51 @@ a.manage-stat-card.is-active {
 
 .manage-col-status {
     min-width: 9rem;
+}
+
+.manage-col-visit-late {
+    min-width: 7.5rem;
+    vertical-align: top;
+}
+
+.manage-visit-late-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+}
+
+.manage-visit-late {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: #b45309;
+    line-height: 1.2;
+}
+
+.manage-visit-late--noshow {
+    color: #be123c;
+    text-transform: uppercase;
+}
+
+.manage-visit-late--muted {
+    color: #94a3b8;
+    font-weight: 600;
+}
+
+.manage-visit-noshow-form {
+    margin: 0;
+}
+
+.manage-row-action--noshow {
+    border-color: #fecdd3;
+    background: #fff1f2;
+    color: #be123c;
+}
+
+.manage-row-action--noshow:hover {
+    background: #ffe4e6;
+    border-color: #fda4af;
 }
 
 .manage-requests-table thead th.manage-cell-actions,

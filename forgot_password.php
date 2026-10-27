@@ -210,9 +210,6 @@ $inputClass = 'w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 tex
                         <i data-lucide="chevron-left" class="back-home__icon w-3 h-3"></i>
                         <span>Back to Citizen Portal</span>
                     </a>
-                    <p class="auth-portal-form-footer-mobile">
-                        <a href="index.php">Return to citizen portal</a>
-                    </p>
                 </footer>
             </div>
         </main>

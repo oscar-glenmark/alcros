@@ -30,6 +30,7 @@ function stylesheetTag(string $path): string
 function adminCoreStyles(): string
 {
     return stylesheetTag('admin/shell.css') . "\n    "
+        . stylesheetTag('admin/notifications.css') . "\n    "
         . stylesheetTag('admin/print-layout.css') . "\n    "
         . stylesheetTag('admin/date-picker.css');
 }

@@ -12,6 +12,7 @@
     var okBtn = null;
     var pendingRedirect = null;
     var autoRedirectTimer = null;
+    var pendingOnClose = null;
 
     function readConfig() {
         var el = document.getElementById('alcros-action-result');
@@ -133,12 +134,19 @@
             window.clearTimeout(autoRedirectTimer);
             autoRedirectTimer = null;
         }
+        var afterClose = pendingOnClose;
+        pendingOnClose = null;
+        if (typeof afterClose === 'function') {
+            afterClose();
+        }
         if (allowRedirect) followPendingRedirect();
     }
 
     function show(type, message, options) {
+        options = options || {};
+        pendingOnClose = typeof options.onClose === 'function' ? options.onClose : null;
         var normalized = type === 'success' || type === 'warning' ? type : 'error';
-        openModal(normalized, message, options || {});
+        openModal(normalized, message, options);
     }
 
     function initFromConfig() {

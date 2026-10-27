@@ -276,17 +276,22 @@
                 closeModal();
 
                 if (data.ok) {
-                    if (window.AlcrosActionResult && typeof window.AlcrosActionResult.show === 'function') {
-                        window.AlcrosActionResult.show(data.type || 'success', data.message || 'Saved successfully.');
-                    }
+                    var resultType = data.type || 'success';
                     var redirectUrl = data.redirect_url || '';
-                    window.setTimeout(function () {
+                    var refreshList = function () {
                         if (redirectUrl) {
                             window.location.href = redirectUrl;
                             return;
                         }
                         window.location.reload();
-                    }, 900);
+                    };
+                    if (window.AlcrosActionResult && typeof window.AlcrosActionResult.show === 'function') {
+                        var resultOptions = resultType === 'warning' ? { onClose: refreshList } : {};
+                        window.AlcrosActionResult.show(resultType, data.message || 'Saved successfully.', resultOptions);
+                    }
+                    if (resultType !== 'warning') {
+                        window.setTimeout(refreshList, 900);
+                    }
                     return;
                 }
 
@@ -1201,6 +1206,18 @@
         });
     }
 
+    function appointmentManageNavParams(overrides) {
+        var params = overrides || {};
+        var status = pageConfig.redirectStatus || 'all';
+        if (status && status !== 'all' && params.status === undefined) {
+            params.status = status;
+        }
+        if (pageConfig.redirectQ && params.q === undefined) {
+            params.q = pageConfig.redirectQ;
+        }
+        return params;
+    }
+
     function bindDatePicker() {
         var picker = document.getElementById('appointmentDatePicker');
         if (!picker) return;
@@ -1211,9 +1228,10 @@
             if (navLabel && window.AlcrosDateDisplay) {
                 navLabel.textContent = AlcrosDateDisplay.formatLongDate(picker.value);
             }
+            var params = appointmentManageNavParams({ date: picker.value });
             var href = window.AlcrosPoll
-                ? AlcrosPoll.buildUrl('appointment.php', { date: picker.value })
-                : 'appointment.php?date=' + encodeURIComponent(picker.value);
+                ? AlcrosPoll.buildUrl('appointment.php', params)
+                : 'appointment.php?' + new URLSearchParams(params).toString();
             window.location.href = href;
         });
     }

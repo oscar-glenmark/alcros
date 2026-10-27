@@ -227,16 +227,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
             $draft['appointment_time'] = $appointmentTime;
 
             $slotLocked = false;
+            $dayLocked = false;
             try {
                 $pdo = getDB();
                 ensureCitizenNotifyColumns($pdo);
-                $pdo->beginTransaction();
 
-                if (!acquireAppointmentSlotLock($pdo, $appointmentDate, $appointmentTime)) {
-                    $pdo->rollBack();
+                if (!acquireAppointmentDayLock($pdo, $appointmentDate)) {
+                    $error = 'This date is busy with other bookings. Please try again in a moment.';
+                } elseif (!acquireAppointmentSlotLock($pdo, $appointmentDate, $appointmentTime)) {
+                    releaseAppointmentDayLock($pdo, $appointmentDate);
                     $error = 'This time slot is being booked by someone else. Please choose another time.';
                 } else {
+                    $dayLocked = true;
                     $slotLocked = true;
+                    $pdo->beginTransaction();
+
                     $bookingError = validateAppointmentBooking(
                         $pdo,
                         $appointmentDate,
@@ -249,6 +254,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                         $pdo->rollBack();
                         $error = $bookingError;
                     } else {
+                        ensureVisitSlotAvailableForWrite(
+                            $pdo,
+                            $appointmentDate,
+                            $appointmentTime,
+                            null,
+                            null,
+                            true
+                        );
+
                         $trackingCode = generateTrackingCode();
                         $marriagePrintFill = null;
                         if (($draft['document_type'] ?? '') === 'marriage') {
@@ -343,6 +357,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
             } finally {
                 if ($slotLocked) {
                     releaseAppointmentSlotLock($pdo, $appointmentDate, $appointmentTime);
+                }
+                if ($dayLocked) {
+                    releaseAppointmentDayLock($pdo, $appointmentDate);
                 }
             }
         }

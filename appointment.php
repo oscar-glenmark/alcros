@@ -74,7 +74,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $isFollowUpCancel = isset($_POST['follow_up_cancel']);
     $isFollowUpComplete = isset($_POST['follow_up_complete']);
     $isFollowUpAction = $isFollowUpSave || $isFollowUpCancel || $isFollowUpComplete;
-    $isUpdate = !$isFollowUpAction && (isset($_POST['update_status']) || (!$isDelete && !$isBulkDelete && !$isBulkDeleteAll && !$isBulkRestore && !$isBulkPurge && isset($_POST['status'])));
+    $isVisitNoShow = isset($_POST['mark_visit_no_show']);
+    $isUpdate = !$isFollowUpAction && !$isVisitNoShow && (isset($_POST['update_status']) || (!$isDelete && !$isBulkDelete && !$isBulkDeleteAll && !$isBulkRestore && !$isBulkPurge && isset($_POST['status'])));
 
     if ($isFollowUpAction) {
         $staffId = (string) ($_SESSION['staff_id'] ?? '');
@@ -154,6 +155,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         redirectWithAuth('appointment.php', array_filter(
             $followUpRedirectQuery ?? [
+                'date'   => $viewDate,
+                'status' => $filters['status'] !== 'all' ? $filters['status'] : null,
+                'q'      => trim($filters['q']) !== '' ? trim($filters['q']) : null,
+            ]
+        ));
+    }
+
+    if ($isVisitNoShow) {
+        if ($id > 0 && appointmentLockEligible($pdo, $id)) {
+            try {
+                assertStaffResourceLockForWrite($pdo, STAFF_LOCK_TYPE_APPOINTMENT, $id, staffId(), staffName());
+            } catch (InvalidArgumentException $e) {
+                $responseMessage = $e->getMessage();
+                if ($isAjax) {
+                    appointmentJsonResponse(false, $responseMessage);
+                }
+                appointmentFlashSet('error', $responseMessage);
+                redirectWithAuth('appointment.php', array_filter(
+                    [
+                        'date'   => $viewDate,
+                        'status' => $filters['status'] !== 'all' ? $filters['status'] : null,
+                        'q'      => trim($filters['q']) !== '' ? trim($filters['q']) : null,
+                    ]
+                ));
+            }
+        }
+
+        if ($id > 0 && markAppointmentVisitNoShow($pdo, $id)) {
+            clearStaffResourceLock($pdo, STAFF_LOCK_TYPE_APPOINTMENT, $id);
+            $responseOk = true;
+            $responseMessage = 'Appointment marked as no-show.';
+            $responseMessage = staffCitizenNotifyAppendToStaffMessage($responseMessage);
+            $responseType = staffCitizenNotifyFlashType(true);
+            if (!$isAjax) {
+                appointmentFlashSet($responseType, $responseMessage);
+            }
+        } else {
+            $responseMessage = 'Could not mark no-show. The visit may not be 20 minutes late yet, or it was already updated.';
+            if (!$isAjax) {
+                appointmentFlashSet('error', $responseMessage);
+            }
+        }
+
+        if ($isAjax) {
+            appointmentJsonResponse($responseOk, $responseMessage);
+        }
+
+        redirectWithAuth('appointment.php', array_filter(
+            [
                 'date'   => $viewDate,
                 'status' => $filters['status'] !== 'all' ? $filters['status'] : null,
                 'q'      => trim($filters['q']) !== '' ? trim($filters['q']) : null,
@@ -342,11 +392,15 @@ $appointmentStats = [
     'follow_ups'       => $pendingFollowUpCount,
 ];
 
+$todayDate = alcrosTodayDate();
+$totalStatLabel = $viewDate === $todayDate ? 'Total Today' : 'Total This Day';
+$completedStatHint = $viewDate === $todayDate ? 'Served today' : 'Served this date';
+
 $statCards = [
-    ['label' => 'Total Today', 'hint' => 'All visits this date', 'value' => $appointmentStats['total'], 'icon' => 'calendar-days', 'tone' => 'blue', 'filter' => 'all_appointments'],
+    ['label' => $totalStatLabel, 'hint' => 'All visits on selected date', 'value' => $appointmentStats['total'], 'icon' => 'calendar-days', 'tone' => 'blue', 'filter' => 'all_appointments'],
     ['label' => 'Awaiting', 'hint' => 'All dates · need confirmation', 'value' => $appointmentStats['scheduled'], 'icon' => 'clock', 'tone' => 'amber', 'filter' => 'scheduled'],
     ['label' => 'Confirmed', 'hint' => 'Ready to serve', 'value' => $appointmentStats['confirmed'], 'icon' => 'badge-check', 'tone' => 'violet', 'filter' => 'confirmed'],
-    ['label' => 'Completed', 'hint' => 'Served today', 'value' => $appointmentStats['completed'], 'icon' => 'check-circle-2', 'tone' => 'emerald', 'filter' => 'completed'],
+    ['label' => 'Completed', 'hint' => $completedStatHint, 'value' => $appointmentStats['completed'], 'icon' => 'check-circle-2', 'tone' => 'emerald', 'filter' => 'completed'],
     ['label' => 'No-Show', 'hint' => 'Did not arrive', 'value' => $appointmentStats['no_show'], 'icon' => 'user-x', 'tone' => 'rose', 'filter' => 'no_show'],
     ['label' => 'Rejected', 'hint' => 'Declined by staff', 'value' => $appointmentStats['cancelled'], 'icon' => 'ban', 'tone' => 'rose', 'filter' => 'cancelled'],
     ['label' => 'Follow-ups', 'hint' => 'Pending return visits', 'value' => $appointmentStats['follow_ups'], 'icon' => 'calendar-clock', 'tone' => 'sky', 'filter' => 'follow_ups'],
@@ -367,6 +421,7 @@ $currentFilterLabel = $filterLabels[$filterStatus] ?? 'Awaiting Queue';
 $showSidePanel = !$isFollowUpsView && !in_array($filterStatus, ['completed', 'confirmed', 'recently_deleted'], true);
 $showBulkActions = !$isFollowUpsView && in_array($filterStatus, ['all_appointments', 'recently_deleted'], true);
 $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
+$showVisitLateNoShowColumn = $filterStatus === 'confirmed';
 
 $appointments = [];
 $appointmentLockMap = [];
@@ -510,6 +565,9 @@ $pageHeaderMeta = $awaitingAllDates
                         $cardHref = buildAuthUrl('appointment.php', array_filter($cardQuery));
                     }
                     $cardActive = $cardFilter === $overviewCardHighlight;
+                    if ($cardActive) {
+                        $cardHref .= '#appointmentsBody';
+                    }
                 ?>
                 <a href="<?= htmlspecialchars($cardHref) ?>"
                    class="manage-stat-card manage-stat-card--<?= htmlspecialchars($card['tone']) ?><?= $cardActive ? ' is-active' : '' ?>"
@@ -725,7 +783,7 @@ $pageHeaderMeta = $awaitingAllDates
                 </form>
                 <?php endif; ?>
                 <div class="overflow-x-auto">
-                <table class="manage-requests-table w-full text-left text-sm min-w-[960px]">
+                <table class="manage-requests-table w-full text-left text-sm min-w-[1040px]">
                     <thead>
                         <tr>
                             <?php if ($showBulkActions): ?><th class="manage-bulk-col"><span class="sr-only">Select</span></th><?php endif; ?>
@@ -736,6 +794,7 @@ $pageHeaderMeta = $awaitingAllDates
                             <th class="manage-col-visit">Visit</th>
                             <?php if ($isRecentlyDeletedView): ?><th class="manage-col-submitted">Deleted</th><?php endif; ?>
                             <th class="manage-col-status">Status</th>
+                            <?php if ($showVisitLateNoShowColumn): ?><th class="manage-col-visit-late">Late / No-show</th><?php endif; ?>
                             <th class="manage-cell-actions">Actions</th>
                         </tr>
                     </thead>
@@ -771,13 +830,28 @@ $pageHeaderMeta = $awaitingAllDates
                             <td><span class="manage-date"><?= !empty($ap['deleted_at']) ? htmlspecialchars(formatReportDateTime($ap['deleted_at'])) : '—' ?></span></td>
                             <?php endif; ?>
                             <td class="manage-cell-status">
-                                <?= appointmentStatusBadge($ap['status']) ?>
+                                <?= appointmentStatusBadge($ap['status'], $ap['rejection_reason'] ?? null) ?>
                                 <?php if (!empty($viewData['lock']) && !empty($viewData['lock']['active'])): ?>
                                 <p class="manage-lock-badge" data-lock-badge-for="<?= (int) $ap['id'] ?>"><?= htmlspecialchars($viewData['lock']['label']) ?></p>
                                 <?php else: ?>
                                 <p class="manage-lock-badge hidden" data-lock-badge-for="<?= (int) $ap['id'] ?>"></p>
                                 <?php endif; ?>
                             </td>
+                            <?php if ($showVisitLateNoShowColumn): ?>
+                            <td class="manage-col-visit-late">
+                                <?= renderManageVisitLateNoShowCell(
+                                    $pdo,
+                                    $ap,
+                                    'appointment',
+                                    buildAuthUrl('appointment.php'),
+                                    [
+                                        'redirect_status' => $filterStatus,
+                                        'redirect_date'   => $viewDate,
+                                        'redirect_q'      => $search,
+                                    ]
+                                ) ?>
+                            </td>
+                            <?php endif; ?>
                             <td class="manage-cell-actions">
                                 <div class="manage-row-actions" onclick="event.stopPropagation()">
                                     <?php if (!$isRecentlyDeletedView): ?>

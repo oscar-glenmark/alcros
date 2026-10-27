@@ -26,31 +26,25 @@ $pageSubtitle = $notifIsAdmin
     <?= adminLayoutHeadStyles() ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>
-<body class="flex min-h-screen" data-realtime="notifications" data-staff-portal-role="<?= $notifIsAdmin ? 'administrator' : 'staff' ?>">
+<body class="flex min-h-screen bg-[#f8fafc]" data-realtime="notifications" data-staff-portal-role="<?= $notifIsAdmin ? 'administrator' : 'staff' ?>">
     <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
     <main class="admin-main flex flex-col">
         <?php require __DIR__ . '/includes/admin_header.php'; ?>
-        <div class="admin-content p-4 sm:p-6 lg:p-8 max-w-3xl w-full mx-auto admin-page-wrap">
-            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <?php
-                $notifPanel = [
-                    'context'       => 'page',
-                    'listId'        => 'notif-page-list',
-                    'listClass'     => 'min-h-[240px]',
-                    'showFooter'    => false,
-                    'toolbarPrefix' => 'page-',
-                ];
-                require __DIR__ . '/includes/notifications_panel.php';
-                ?>
+        <div class="admin-content p-4 sm:p-6 lg:p-8 admin-page-wrap">
+            <div class="notif-page">
+                <div class="notif-page__card">
+                    <?php
+                    $notifPanel = [
+                        'context'       => 'page',
+                        'listId'        => 'notif-page-list',
+                        'listClass'     => 'min-h-[280px]',
+                        'showFooter'    => false,
+                        'toolbarPrefix' => 'page-',
+                    ];
+                    require __DIR__ . '/includes/notifications_panel.php';
+                    ?>
+                </div>
             </div>
-
-            <p class="mt-4 text-center text-xs text-slate-500 max-w-lg mx-auto leading-relaxed">
-                <?php if ($notifIsAdmin): ?>
-                The list updates while you work (about every 15 seconds). You only see <strong>system and maintenance</strong> alerts here (configuration, reminders, server health). Citizen requests, queue, and appointments are sent to <strong>Staff</strong> accounts. Use <strong>Reports</strong> for read-only oversight of office activity.
-                <?php else: ?>
-                The list updates while you work (about every 15 seconds). Tap an alert to open the right screen and help the citizen. The bell icon shows the same list on every page.
-                <?php endif; ?>
-            </p>
         </div>
     </main>
     <?= lucideInitScript() ?>

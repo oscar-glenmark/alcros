@@ -146,6 +146,7 @@
 
         form.insertAdjacentHTML('beforeend',
             '<input type="hidden" name="redirect_status" value="' + escapeHtml(pageConfig.redirectStatus || 'all') + '">' +
+            '<input type="hidden" name="redirect_date" value="' + escapeHtml(pageConfig.redirectDate || '') + '">' +
             '<input type="hidden" name="redirect_q" value="' + escapeHtml(pageConfig.redirectQ || '') + '">' +
             '<input type="hidden" name="request_id" value="' + escapeHtml(data.id) + '">' +
             '<input type="hidden" name="update_status" value="1">' +
@@ -171,6 +172,7 @@
 
         form.insertAdjacentHTML('beforeend',
             '<input type="hidden" name="redirect_status" value="' + escapeHtml(pageConfig.redirectStatus || 'all') + '">' +
+            '<input type="hidden" name="redirect_date" value="' + escapeHtml(pageConfig.redirectDate || '') + '">' +
             '<input type="hidden" name="redirect_q" value="' + escapeHtml(pageConfig.redirectQ || '') + '">' +
             '<input type="hidden" name="request_id" value="' + escapeHtml(data.id) + '">' +
             '<input type="hidden" name="delete_request" value="1">' +
@@ -266,12 +268,17 @@
                 closeModal();
 
                 if (data.ok) {
-                    if (window.AlcrosActionResult && typeof window.AlcrosActionResult.show === 'function') {
-                        window.AlcrosActionResult.show(data.type || 'success', data.message || 'Saved successfully.');
-                    }
-                    window.setTimeout(function () {
+                    var resultType = data.type || 'success';
+                    var refreshList = function () {
                         window.location.reload();
-                    }, 900);
+                    };
+                    if (window.AlcrosActionResult && typeof window.AlcrosActionResult.show === 'function') {
+                        var resultOptions = resultType === 'warning' ? { onClose: refreshList } : {};
+                        window.AlcrosActionResult.show(resultType, data.message || 'Saved successfully.', resultOptions);
+                    }
+                    if (resultType !== 'warning') {
+                        window.setTimeout(refreshList, 900);
+                    }
                     return;
                 }
 
@@ -963,8 +970,42 @@
         pending: 'pending',
         ready: 'ready',
         completed: 'completed',
-        rejected: 'rejected'
+        rejected: 'rejected',
+        no_show: 'no_show'
     };
+
+    function manageRequestNavParams(overrides) {
+        var params = overrides || {};
+        var status = pageConfig.redirectStatus || 'all';
+        if (status && status !== 'all' && params.status === undefined) {
+            params.status = status;
+        }
+        if (pageConfig.redirectQ && params.q === undefined) {
+            params.q = pageConfig.redirectQ;
+        }
+        if (!pageConfig.awaitingAllDates && pageConfig.redirectDate && params.date === undefined) {
+            params.date = pageConfig.redirectDate;
+        }
+        return params;
+    }
+
+    function bindVisitDatePicker() {
+        var picker = document.getElementById('manageRequestDatePicker');
+        if (!picker) return;
+
+        picker.addEventListener('change', function () {
+            if (!picker.value) return;
+            var navLabel = document.getElementById('manageRequestDateNavLabel');
+            if (navLabel && window.AlcrosDateDisplay) {
+                navLabel.textContent = AlcrosDateDisplay.formatLongDate(picker.value);
+            }
+            var params = manageRequestNavParams({ date: picker.value });
+            var href = window.AlcrosPoll
+                ? AlcrosPoll.buildUrl('manage_request.php', params)
+                : 'manage_request.php?' + new URLSearchParams(params).toString();
+            window.location.href = href;
+        });
+    }
 
     function listSignature(requests) {
         return (requests || []).map(function (r) {
@@ -1105,14 +1146,13 @@
         )
     );
 
+    bindVisitDatePicker();
+
     if (window.AlcrosPoll && pageConfig.pollUrl) {
         AlcrosPoll.pollJson(
             pageConfig.pollUrl,
             function () {
-                var params = {
-                    status: pageConfig.redirectStatus || 'all',
-                    q: pageConfig.redirectQ || undefined
-                };
+                var params = manageRequestNavParams({});
                 var selected = document.querySelector('.manage-requests-row.is-selected');
                 if (selected) {
                     params.focus_id = selected.getAttribute('data-request-row');

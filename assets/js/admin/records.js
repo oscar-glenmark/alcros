@@ -565,6 +565,20 @@
         openModal('importModal');
     }
 
+    function closeRecordsExportPanel() {
+        var panel = document.getElementById('recordsExportPanel');
+        if (panel) {
+            panel.classList.add('hidden');
+        }
+    }
+
+    function closeNewEntryMenu() {
+        var newEntryMenu = document.getElementById('newEntryMenu');
+        if (newEntryMenu) {
+            newEntryMenu.classList.add('hidden');
+        }
+    }
+
     function bindRecordsExportMenu() {
         var menu = document.getElementById('recordsExportMenu');
         var btn = document.getElementById('recordsExportBtn');
@@ -573,6 +587,7 @@
 
         btn.addEventListener('click', function (e) {
             e.stopPropagation();
+            closeNewEntryMenu();
             panel.classList.toggle('hidden');
         });
 
@@ -592,6 +607,7 @@
         newEntryBtn.addEventListener('click', function (e) {
             e.preventDefault();
             e.stopPropagation();
+            closeRecordsExportPanel();
             newEntryMenu.classList.toggle('hidden');
         });
 

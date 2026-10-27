@@ -27,6 +27,14 @@
     max-width: none;
 }
 
+.appointments-page a.manage-stat-card {
+    cursor: pointer;
+}
+
+.appointments-page a.manage-stat-card.is-active {
+    cursor: pointer;
+}
+
 .appointments-date-nav {
     display: inline-flex;
     align-items: center;

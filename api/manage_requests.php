@@ -14,7 +14,8 @@ try {
     ensureSoftDeleteColumns($pdo);
     migrateLegacyProcessingStatus($pdo);
 
-    $filters = manageRequestsListFilters($_GET);
+    $filters = manageRequestsListFilters($_GET, $pdo);
+    $awaitingAllDates = !manageRequestListUsesVisitDate($filters);
     $focusId = (int) ($_GET['focus_id'] ?? 0);
     $rows = fetchManageRequestsList($pdo, $filters);
     $lockMap = fetchStaffResourceLocksMap(
@@ -42,8 +43,17 @@ try {
         ];
     }
 
+    $stats = fetchManageRequestStats($pdo);
+    if (!$awaitingAllDates) {
+        $visitStats = fetchManageRequestVisitDateStats($pdo, $filters['date']);
+        $stats['total'] = $visitStats['visit_total'];
+        $stats['ready'] = $visitStats['ready'];
+        $stats['completed'] = $visitStats['completed'];
+        $stats['no_show'] = $visitStats['no_show'];
+    }
+
     $response = [
-        'stats'    => fetchManageRequestStats($pdo),
+        'stats'    => $stats,
         'requests' => $requests,
         'filters'  => $filters,
         'count'    => count($requests),

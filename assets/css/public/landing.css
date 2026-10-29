@@ -162,6 +162,80 @@ body { font-family: 'Inter', sans-serif; color: #1e293b; }
     transition: transform 0.25s ease;
 }
 
+.service-card--highlight {
+    position: relative;
+    border: 2px solid var(--alcros-gold);
+    background: linear-gradient(165deg, #f5f3ff 0%, #ffffff 42%, #fffbeb 100%);
+    box-shadow:
+        0 0 0 3px rgba(244, 180, 0, 0.22),
+        0 16px 40px rgba(91, 33, 182, 0.14);
+    transform: translateY(-2px);
+}
+
+.service-card--highlight:hover {
+    border-color: #d97706;
+    background: linear-gradient(165deg, #ede9fe 0%, #ffffff 42%, #fef3c7 100%);
+    box-shadow:
+        0 0 0 4px rgba(244, 180, 0, 0.32),
+        0 24px 52px rgba(91, 33, 182, 0.18);
+    transform: translateY(-6px);
+}
+
+.service-card__badge {
+    display: inline-block;
+    align-self: center;
+    margin-bottom: 0.85rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, #7c3aed 0%, #b45309 100%);
+    color: #fff;
+    font-size: 0.5625rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    line-height: 1.2;
+    box-shadow: 0 4px 14px rgba(124, 58, 237, 0.28);
+}
+
+.service-card__icon--highlight {
+    box-shadow:
+        0 0 0 3px rgba(244, 180, 0, 0.45),
+        0 10px 24px rgba(124, 58, 237, 0.35);
+}
+
+.service-card__cta--highlight {
+    color: #6d28d9;
+    padding: 0.45rem 0.85rem;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(244, 180, 0, 0.55);
+}
+
+.service-card--highlight:hover .service-card__cta--highlight {
+    background: #fff;
+    border-color: var(--alcros-gold);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .service-card--highlight {
+        animation: service-card-highlight-ring 3s ease-in-out infinite;
+    }
+}
+
+@keyframes service-card-highlight-ring {
+    0%,
+    100% {
+        box-shadow:
+            0 0 0 3px rgba(244, 180, 0, 0.22),
+            0 16px 40px rgba(91, 33, 182, 0.14);
+    }
+    50% {
+        box-shadow:
+            0 0 0 5px rgba(244, 180, 0, 0.38),
+            0 18px 44px rgba(91, 33, 182, 0.17);
+    }
+}
+
 .steps-line {
     top: 2rem;
     left: 10%;

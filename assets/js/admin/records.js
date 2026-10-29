@@ -1502,7 +1502,6 @@
         if (viewContent && window.AlcrosLoading && typeof window.AlcrosLoading.clearSkeletonHost === 'function') {
             window.AlcrosLoading.clearSkeletonHost(viewContent);
         }
-        var viewEditLink = document.getElementById('viewEditLink');
         var viewPrintCertificateLink = document.getElementById('viewPrintCertificateLink');
         var viewPrintCertificationLink = document.getElementById('viewPrintCertificationLink');
         var viewModalTitle = document.getElementById('viewModalTitle');
@@ -1541,16 +1540,6 @@
             viewContent.insertBefore(note, viewContent.firstChild);
         }
 
-        if (canManage && viewEditLink) {
-            viewEditLink.href = recordsAuthUrl + (recordsAuthUrl.indexOf('?') !== -1 ? '&' : '?') + 'edit=' + r.id;
-            viewEditLink.classList.toggle('is-disabled', !!lockActive);
-            viewEditLink.setAttribute('aria-disabled', lockActive ? 'true' : 'false');
-            viewEditLink.onclick = lockActive
-                ? function (event) {
-                    event.preventDefault();
-                }
-                : null;
-        }
         if (canManage && viewPrintCertificateLink) {
             var printBase = cfg.printCertificateUrl || 'print_certificate.php';
             viewPrintCertificateLink.href = printBase + (printBase.indexOf('?') !== -1 ? '&' : '?') + 'record_id=' + r.id;
@@ -1668,7 +1657,7 @@
         }
         document.documentElement.dataset.alcrosRecordsEditNavBound = '1';
         document.addEventListener('click', function (e) {
-            var link = e.target.closest('a.manage-row-action[href*="edit="], a#viewEditLink[href*="edit="]');
+            var link = e.target.closest('a.manage-row-action[href*="edit="]');
             if (!link || link.getAttribute('aria-disabled') === 'true' || link.classList.contains('is-disabled')) {
                 return;
             }

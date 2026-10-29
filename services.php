@@ -6,8 +6,6 @@
 
  */
 
-session_start();
-
 require_once __DIR__ . '/includes/helpers.php';
 
 require_once __DIR__ . '/includes/appointment_service_requirements.php';
@@ -23,10 +21,6 @@ $documentTypes = getDocumentTypes();
 
 $appointmentServices = getAppointmentServices();
 $requirementsModalMeta = appointmentServiceRequirementsModalMeta();
-
-$isStaffLoggedIn = isset($_SESSION['staff_id']);
-
-$staffPortalUrl = $isStaffLoggedIn ? 'dashboard.php' : 'login.php';
 
 $currentPage = basename($_SERVER['PHP_SELF']);
 
@@ -104,12 +98,6 @@ $year = date('Y');
 
                 <div class="flex items-center gap-2 shrink-0">
 
-                    <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="citizen-btn-login hidden sm:inline-block">
-
-                        <?= $isStaffLoggedIn ? 'Dashboard' : 'Login' ?>
-
-                    </a>
-
                     <button type="button" id="citizenMobileNavToggle" class="lg:hidden p-2 text-white" aria-label="Open menu">
 
                         <i data-lucide="menu" class="w-6 h-6"></i>
@@ -137,8 +125,6 @@ $year = date('Y');
                     <a href="index.php#faqs" class="citizen-nav-link">FAQs</a>
 
                     <a href="index.php#contact" class="citizen-nav-link">Contact Us</a>
-
-                    <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="citizen-btn-login inline-block text-center mt-2 w-fit"><?= $isStaffLoggedIn ? 'Dashboard' : 'Login' ?></a>
 
                 </div>
 
@@ -198,7 +184,7 @@ $year = date('Y');
 
                     <a href="request.php?type=<?= urlencode($doc['slug']) ?>" class="citizen-link-gold">
 
-                        Apply Now <i data-lucide="chevron-right" class="w-3 h-3"></i>
+                        Request Now <i data-lucide="chevron-right" class="w-3 h-3"></i>
 
                     </a>
 

@@ -745,10 +745,15 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
             <?php if ($canManageCivilRecords): ?>
             <div class="records-view-modal__actions">
                 <div class="records-view-print-group">
-                    <a href="#" id="viewPrintCertificateLink" class="records-view-action records-view-action--print">Print Certificate</a>
-                    <a href="#" id="viewPrintCertificationLink" class="records-view-action records-view-action--print-secondary">Print Certification</a>
+                    <a href="#" id="viewPrintCertificateLink" class="records-view-action records-view-action--print">
+                        <?= lucideSvg('printer', 'w-4 h-4 shrink-0') ?>
+                        Print Certificate
+                    </a>
+                    <a href="#" id="viewPrintCertificationLink" class="records-view-action records-view-action--print-secondary">
+                        <?= lucideSvg('printer', 'w-4 h-4 shrink-0') ?>
+                        Print Certification
+                    </a>
                 </div>
-                <a href="#" id="viewEditLink" class="records-view-action records-view-action--primary records-view-action--edit-trailing">Edit Records</a>
             </div>
             <?php endif; ?>
         </div>

@@ -149,15 +149,20 @@ $faqs = [
                 <p class="text-slate-500 text-sm mt-2 max-w-xl mx-auto">Select a service below to start your online request.</p>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                <?php foreach ($serviceCards as $card): ?>
-                <a href="<?= htmlspecialchars($card['link']) ?>" class="service-card bg-white rounded-lg p-6 flex flex-col text-center">
-                    <div class="w-16 h-16 rounded-full <?= htmlspecialchars($card['color']) ?> text-white flex items-center justify-center mx-auto mb-5 shadow-md">
+                <?php foreach ($serviceCards as $card):
+                    $isOtherServices = ($card['slug'] ?? '') === 'other';
+                ?>
+                <a href="<?= htmlspecialchars($card['link']) ?>" class="service-card bg-white rounded-lg p-6 flex flex-col text-center<?= $isOtherServices ? ' service-card--highlight' : '' ?>">
+                    <?php if ($isOtherServices): ?>
+                    <span class="service-card__badge">CENOMAR · Appointments · More</span>
+                    <?php endif; ?>
+                    <div class="w-16 h-16 rounded-full <?= htmlspecialchars($card['color']) ?> text-white flex items-center justify-center mx-auto mb-5 shadow-md<?= $isOtherServices ? ' service-card__icon--highlight' : '' ?>">
                         <i data-lucide="<?= htmlspecialchars($card['icon']) ?>" class="w-7 h-7"></i>
                     </div>
                     <h3 class="font-bold text-slate-900 text-sm uppercase tracking-wide mb-2"><?= htmlspecialchars($card['label']) ?></h3>
                     <p class="text-slate-500 text-xs leading-relaxed mb-5 flex-1"><?= htmlspecialchars($card['desc']) ?></p>
-                    <span class="text-[11px] font-bold text-slate-800 uppercase tracking-wide inline-flex items-center justify-center gap-1 group-hover:gap-2">
-                        <?= $card['slug'] === 'other' ? 'View Services' : 'Request Now' ?> <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                    <span class="text-[11px] font-bold uppercase tracking-wide inline-flex items-center justify-center gap-1<?= $isOtherServices ? ' service-card__cta service-card__cta--highlight' : ' text-slate-800' ?>">
+                        <?= $isOtherServices ? 'View Services' : 'Request Now' ?> <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
                     </span>
                 </a>
                 <?php endforeach; ?>

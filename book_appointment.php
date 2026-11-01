@@ -457,6 +457,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?= actionCoreScripts() ?>
     <?= actionResultScript($error ? ['error', $error] : null) ?>
     <?= scriptTag('public/citizen-site.js') ?>
+    <script type="application/json" id="alcrosOfficeHolidayConfig"><?= json_encode(officeHolidayClientConfig(), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?></script>
     <?= scriptTag('public/appointment-slots.js') ?>
     <?= scriptTag('public/forms.js') ?>
     <?php require __DIR__ . '/includes/track_floating.php'; ?>

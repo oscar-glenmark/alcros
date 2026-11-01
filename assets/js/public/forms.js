@@ -300,15 +300,13 @@
         var marriageBlock = document.getElementById('identificationMarriageBlock');
         var deathBlock = document.getElementById('identificationDeathBlock');
         var recordCheckHint = document.getElementById('recordCheckHint');
-        var documentTypeSelect = document.querySelector('#identificationForm select[name="document_type"]');
+        var documentTypeField = document.querySelector('#identificationForm [name="document_type"]');
         var recordVerified = document.getElementById('recordVerified');
         var recordStatus = document.getElementById('recordStatus');
         var form = document.getElementById('identificationForm');
-        var requesterFirstNameInput = document.getElementById('requesterFirstNameInput');
-        var requesterLastNameInput = document.getElementById('requesterLastNameInput');
 
         function activeDocumentType() {
-            return documentTypeSelect ? documentTypeSelect.value : 'birth';
+            return documentTypeField && documentTypeField.value ? documentTypeField.value : 'birth';
         }
 
         function syncIdentificationBlocks() {
@@ -343,11 +341,13 @@
             }
         }
 
-        if (documentTypeSelect) {
-            documentTypeSelect.addEventListener('change', function () {
-                syncIdentificationBlocks();
-                resetRecordCheck();
-            });
+        if (documentTypeField) {
+            if (documentTypeField.tagName === 'SELECT') {
+                documentTypeField.addEventListener('change', function () {
+                    syncIdentificationBlocks();
+                    resetRecordCheck();
+                });
+            }
             syncIdentificationBlocks();
         }
 
@@ -375,11 +375,6 @@
                 clearFormValidation(form);
                 var documentType = activeDocumentType();
                 var ok = true;
-
-                if (!documentType) {
-                    setFieldError(documentTypeSelect, 'Select the document type you need.');
-                    ok = false;
-                }
 
                 var body = new FormData();
                 body.append('document_type', documentType);
@@ -502,17 +497,6 @@
                 var documentType = activeDocumentType();
 
                 if (!documentType) {
-                    setFieldError(documentTypeSelect, 'Select the document type you need.');
-                    ok = false;
-                }
-
-                var reqFirst = requesterFirstNameInput ? requesterFirstNameInput.value.trim() : '';
-                var reqLast = requesterLastNameInput ? requesterLastNameInput.value.trim() : '';
-                if (!reqFirst || !reqLast) {
-                    var requesterGrid = document.getElementById('requesterNameGrid');
-                    if (requesterGrid) {
-                        setGroupError(requesterGrid.parentElement, 'Enter your first and last name as the requester.');
-                    }
                     ok = false;
                 }
 

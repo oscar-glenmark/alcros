@@ -123,7 +123,7 @@ $faqs = [
                     </p>
                     <div class="flex flex-col sm:flex-row gap-3">
                         <?php if ($publicRequestsAllowed && !$maintenanceMode): ?>
-                        <a href="request.php" class="btn-gold inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-sm">
+                        <a href="request.php?entry=hero" class="btn-gold inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-sm">
                             Request a Certificate
                         </a>
                         <?php else: ?>
@@ -162,7 +162,7 @@ $faqs = [
                     <h3 class="font-bold text-slate-900 text-sm uppercase tracking-wide mb-2"><?= htmlspecialchars($card['label']) ?></h3>
                     <p class="text-slate-500 text-xs leading-relaxed mb-5 flex-1"><?= htmlspecialchars($card['desc']) ?></p>
                     <span class="text-[11px] font-bold uppercase tracking-wide inline-flex items-center justify-center gap-1<?= $isOtherServices ? ' service-card__cta service-card__cta--highlight' : ' text-slate-800' ?>">
-                        <?= $isOtherServices ? 'View Services' : 'Request Now' ?> <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                        <?= $isOtherServices ? 'View All Services' : 'Request Now' ?> <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
                     </span>
                 </a>
                 <?php endforeach; ?>
@@ -330,9 +330,9 @@ $faqs = [
                     </ul>
                 </div>
                 <div>
-                    <h4 class="text-white font-bold text-xs uppercase tracking-wider mb-4">Follow Us ky gwapo ko</h4>
+                    <h4 class="text-white font-bold text-xs uppercase tracking-wider mb-4">Follow Us</h4>
                     <div class="flex gap-3">
-                        <a href="https://www.facebook.com/glen.mark.876335" class="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition" aria-label="Facebook">
+                        <a href="https://www.facebook.com/aloranmisamis.occidental.9" class="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition" aria-label="Facebook">
                             <i data-lucide="facebook" class="w-4 h-4"></i>
                         </a>
                     </div>

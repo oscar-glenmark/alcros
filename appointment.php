@@ -1105,7 +1105,7 @@ $pageHeaderMeta = $awaitingAllDates
         'overviewCardHighlight' => $overviewCardHighlight,
         'minFollowUpDate'        => minFollowUpPickDate(),
         'todayDate'              => alcrosTodayDate(),
-        'officeHolidayDates'     => officeHolidayDatesFromSettings(),
+        'officeHolidayDates'     => officeHolidayClientConfig()['dates'],
         'officeHolidayRecurring' => recurringOfficeHolidaySuffixes(),
     ]) ?>
     <div id="appointmentActionAuthFields" class="hidden" aria-hidden="true"><?= authFormField() ?></div>

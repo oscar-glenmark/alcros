@@ -67,7 +67,7 @@
         var actionPath = String(form.getAttribute('action') || '').toLowerCase();
         if (/login\.php|forgot_password\.php/.test(actionPath)) return true;
         if (form.id === 'loginForm' || form.id === 'forgotPasswordForm') return true;
-        if (form.id === 'identificationForm' || form.id === 'requirementsForm' || form.id === 'requestScheduleForm') return true;
+        if (form.id === 'requestStartForm' || form.id === 'identificationForm' || form.id === 'requirementsForm' || form.id === 'requestScheduleForm') return true;
         if (form.id === 'bookAppointmentForm') return true;
 
         if (form.id === 'entryForm') {

@@ -2034,6 +2034,7 @@ function recurringOfficeHolidaySuffixes(): array
         '-06-12',
         '-08-21',
         '-11-01',
+        '-11-02',
         '-11-30',
         '-12-25',
         '-12-30',
@@ -2075,6 +2076,42 @@ function officeHolidayDatesFromSettings(): array
     return $cache;
 }
 
+function philippineNationalHeroesDayDate(int $year): string
+{
+    $cursor = new DateTimeImmutable(sprintf('%d-08-31', $year));
+    while ((int) $cursor->format('N') !== 1) {
+        $cursor = $cursor->modify('-1 day');
+    }
+
+    return $cursor->format('Y-m-d');
+}
+
+/** Movable regular holidays (Maundy Thursday, Good Friday, National Heroes Day). */
+function philippineMovableHolidayDates(int $year): array
+{
+    static $cache = [];
+
+    if (isset($cache[$year])) {
+        return $cache[$year];
+    }
+
+    $dates = [philippineNationalHeroesDayDate($year)];
+
+    if (function_exists('easter_days')) {
+        try {
+            $easter = (new DateTimeImmutable(sprintf('%d-03-21', $year)))->modify('+' . easter_days($year) . ' days');
+            $dates[] = $easter->modify('-3 days')->format('Y-m-d');
+            $dates[] = $easter->modify('-2 days')->format('Y-m-d');
+        } catch (Throwable $e) {
+            // Non-fatal when date math fails.
+        }
+    }
+
+    $cache[$year] = array_values(array_unique($dates));
+
+    return $cache[$year];
+}
+
 function isOfficeHoliday(string $date): bool
 {
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
@@ -2085,7 +2122,27 @@ function isOfficeHoliday(string $date): bool
         return true;
     }
 
+    if (in_array($date, philippineMovableHolidayDates((int) substr($date, 0, 4)), true)) {
+        return true;
+    }
+
     return in_array(substr($date, 4), recurringOfficeHolidaySuffixes(), true);
+}
+
+/** Holiday rules for citizen date pickers (matches server `officeDateBlockReason`). */
+function officeHolidayClientConfig(int $yearsAhead = 2): array
+{
+    $year = (int) date('Y');
+    $extraDates = officeHolidayDatesFromSettings();
+    for ($y = $year; $y <= $year + max(0, $yearsAhead); $y++) {
+        $extraDates = array_merge($extraDates, philippineMovableHolidayDates($y));
+    }
+
+    return [
+        'recurring' => recurringOfficeHolidaySuffixes(),
+        'dates'     => array_values(array_unique($extraDates)),
+        'today'     => date('Y-m-d'),
+    ];
 }
 
 function officeDateBlockReason(string $date): ?string

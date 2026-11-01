@@ -29,23 +29,60 @@ if ($success) {
     $trackingCode = $successData['tracking_code'] ?? null;
 }
 
-$type = $_GET['type'] ?? $draft['document_type'] ?? '';
-if ($type && in_array($type, $validTypes, true)) {
+$type = isset($_GET['type']) ? (string) $_GET['type'] : '';
+if ($type !== '' && in_array($type, $validTypes, true)) {
     $draft['document_type'] = $type;
 }
 
-$step = max(1, min(4, (int) ($_GET['step'] ?? $_POST['step'] ?? 1)));
+if (isset($_GET['entry']) && (string) $_GET['entry'] === 'hero') {
+    $_SESSION['request_wizard_flow'] = 'hero';
+    $heroEntryStep = isset($_GET['step']) ? max(1, (int) $_GET['step']) : 1;
+    if ($heroEntryStep === 1) {
+        unset($draft['document_type']);
+        unset($_SESSION['alcros_civil_record_verified']);
+    }
+} elseif ($type !== '' && in_array($type, $validTypes, true)) {
+    $_SESSION['request_wizard_flow'] = 'card';
+} elseif (!isset($_SESSION['request_wizard_flow'])) {
+    $_SESSION['request_wizard_flow'] = 'hero';
+}
+$isHeroFlow = (($_SESSION['request_wizard_flow'] ?? 'hero') === 'hero');
+$requirementsStep = $isHeroFlow ? 3 : 2;
+$appointmentStep = $isHeroFlow ? 4 : 3;
+$successStep = $isHeroFlow ? 5 : 4;
+
+$requestWizardMaxStep = $successStep;
+$step = max(1, min($requestWizardMaxStep, (int) ($_GET['step'] ?? $_POST['step'] ?? 1)));
+if (!empty($_GET['success']) && $success) {
+    $step = $requestWizardMaxStep;
+}
 $recordVerified = isRequestDraftIdentificationVerified($draft);
 
-if ($step > 1 && $step < 4
+if ($step > 1 && $step < $requestWizardMaxStep
     && (trim((string) ($draft['requester_first_name'] ?? '')) === ''
         || trim((string) ($draft['requester_last_name'] ?? '')) === '')) {
     header('Location: request.php?step=1');
     exit;
 }
 
+$typeGateStep = $isHeroFlow ? 2 : 1;
+if ($step > $typeGateStep && $step < $requestWizardMaxStep) {
+    $draftDocumentType = (string) ($draft['document_type'] ?? '');
+    if (!in_array($draftDocumentType, $validTypes, true)) {
+        header('Location: request.php?step=1');
+        exit;
+    }
+}
+
+$recordGateStep = $isHeroFlow ? 3 : 2;
+$recordRedirectStep = $isHeroFlow ? 2 : 1;
+if ($step >= $recordGateStep && $step < $requestWizardMaxStep && !$recordVerified) {
+    header('Location: request.php?step=' . $recordRedirectStep);
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
-    $postedStep = max(1, min(4, (int) ($_POST['step'] ?? $step)));
+    $postedStep = max(1, min($requestWizardMaxStep, (int) ($_POST['step'] ?? $step)));
     $csrfToken = $_POST['csrf_token'] ?? '';
     if (!validateCsrf(is_string($csrfToken) ? $csrfToken : '')) {
         $step = $postedStep;
@@ -59,12 +96,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
         exit;
     }
 
-    if ($step === 1) {
+    if ($isHeroFlow && $step === 1) {
         $documentType   = $_POST['document_type'] ?? '';
-        $sex            = verifiedCivilRecordSexFromSession();
         $requesterParts = personNamePartsFromInput($_POST, 'requester_');
 
         if (($requesterNameError = validatePersonNameParts($requesterParts)) !== null) {
+            $error = 'Please enter your first and last name as the person requesting this certificate.';
+        } elseif (!in_array($documentType, $validTypes, true)) {
+            $error = 'Please select a service type.';
+        } else {
+            $previousType = (string) ($draft['document_type'] ?? '');
+            if ($previousType !== $documentType) {
+                unset(
+                    $draft['first_name'],
+                    $draft['middle_name'],
+                    $draft['last_name'],
+                    $draft['husband_first_name'],
+                    $draft['husband_middle_name'],
+                    $draft['husband_last_name'],
+                    $draft['wife_first_name'],
+                    $draft['wife_middle_name'],
+                    $draft['wife_last_name'],
+                    $draft['date_of_birth'],
+                    $draft['date_of_marriage'],
+                    $draft['date_of_death'],
+                    $draft['sex'],
+                    $draft['citizen_name']
+                );
+                unset($_SESSION['alcros_civil_record_verified']);
+            }
+            $draft['document_type']         = $documentType;
+            $draft['requester_first_name']  = $requesterParts['first_name'];
+            $draft['requester_middle_name'] = $requesterParts['middle_name'];
+            $draft['requester_last_name']   = $requesterParts['last_name'];
+            header('Location: request.php?step=2');
+            exit;
+        }
+    }
+
+    $processingIdentification = ($isHeroFlow && $step === 2) || (!$isHeroFlow && $step === 1);
+    if ($processingIdentification) {
+        $requesterParts = personNamePartsFromInput($_POST, 'requester_');
+        $documentType   = $_POST['document_type'] ?? ($draft['document_type'] ?? '');
+        $sex            = verifiedCivilRecordSexFromSession();
+
+        if (!$isHeroFlow && ($requesterNameError = validatePersonNameParts($requesterParts)) !== null) {
             $error = 'Please enter your first and last name as the person requesting this certificate.';
         } elseif (!in_array($documentType, $validTypes, true)) {
             $error = 'Please select a service type.';
@@ -97,11 +173,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                 $draft['date_of_marriage']    = $dateOfMarriage;
                 $draft['sex']                 = $sex;
                 $draft['document_type']       = $documentType;
-                $draft['requester_first_name']  = $requesterParts['first_name'];
-                $draft['requester_middle_name'] = $requesterParts['middle_name'];
-                $draft['requester_last_name']   = $requesterParts['last_name'];
+                if (!$isHeroFlow) {
+                    $draft['requester_first_name']  = $requesterParts['first_name'];
+                    $draft['requester_middle_name'] = $requesterParts['middle_name'];
+                    $draft['requester_last_name']   = $requesterParts['last_name'];
+                }
                 unset($draft['citizen_name']);
-                header('Location: request.php?step=2');
+                header('Location: request.php?step=' . $requirementsStep);
                 exit;
             }
         } elseif ($documentType === 'death') {
@@ -126,11 +204,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                 $draft['document_type']     = $documentType;
                 unset($draft['husband_first_name'], $draft['husband_middle_name'], $draft['husband_last_name']);
                 unset($draft['wife_first_name'], $draft['wife_middle_name'], $draft['wife_last_name']);
-                $draft['requester_first_name']  = $requesterParts['first_name'];
-                $draft['requester_middle_name'] = $requesterParts['middle_name'];
-                $draft['requester_last_name']   = $requesterParts['last_name'];
+                if (!$isHeroFlow) {
+                    $draft['requester_first_name']  = $requesterParts['first_name'];
+                    $draft['requester_middle_name'] = $requesterParts['middle_name'];
+                    $draft['requester_last_name']   = $requesterParts['last_name'];
+                }
                 unset($draft['citizen_name']);
-                header('Location: request.php?step=2');
+                header('Location: request.php?step=' . $requirementsStep);
                 exit;
             }
         } else {
@@ -156,17 +236,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                 $draft['document_type']     = $documentType;
                 unset($draft['husband_first_name'], $draft['husband_middle_name'], $draft['husband_last_name']);
                 unset($draft['wife_first_name'], $draft['wife_middle_name'], $draft['wife_last_name']);
-                $draft['requester_first_name']  = $requesterParts['first_name'];
-                $draft['requester_middle_name'] = $requesterParts['middle_name'];
-                $draft['requester_last_name']   = $requesterParts['last_name'];
+                if (!$isHeroFlow) {
+                    $draft['requester_first_name']  = $requesterParts['first_name'];
+                    $draft['requester_middle_name'] = $requesterParts['middle_name'];
+                    $draft['requester_last_name']   = $requesterParts['last_name'];
+                }
                 unset($draft['citizen_name']);
-                header('Location: request.php?step=2');
+                header('Location: request.php?step=' . $requirementsStep);
                 exit;
             }
         }
     }
 
-    if ($step === 2) {
+    if ($step === $requirementsStep) {
         $email         = trim($_POST['email'] ?? '');
         $purpose       = trim($_POST['purpose'] ?? '');
         $phone         = trim($_POST['phone'] ?? '');
@@ -205,14 +287,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                     if ($backPath) {
                         $draft['id_back_path'] = $backPath;
                     }
-                    header('Location: request.php?step=3');
+                    header('Location: request.php?step=' . $appointmentStep);
                     exit;
                 }
             }
         }
     }
 
-    if ($step === 3) {
+    if ($step === $appointmentStep) {
         $appointmentDate = $_POST['appointment_date'] ?? '';
         $appointmentTime = $_POST['appointment_time'] ?? '';
 
@@ -346,7 +428,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                             'notify_email'     => (int) ($draft['notify_email'] ?? 0),
                         ];
                         unset($_SESSION['request_draft']);
-                        header('Location: request.php?step=4&success=1');
+                        header('Location: request.php?step=' . $successStep . '&success=1');
                         exit;
                     }
                 }
@@ -368,18 +450,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
     }
 }
 
-$stepLabels = [
-    1 => ['key' => 'identification', 'label' => 'Identification', 'icon' => 'user'],
-    2 => ['key' => 'requirements',   'label' => 'Requirements',   'icon' => 'mail'],
-    3 => ['key' => 'appointment',    'label' => 'Appointment',    'icon' => 'calendar'],
-    4 => ['key' => 'finish',         'label' => 'Finish',         'icon' => 'check'],
+$stepLabelsHero = [
+    1 => ['key' => 'requester',        'label' => 'Request details',  'icon' => 'user-check'],
+    2 => ['key' => 'identification', 'label' => 'Identification',   'icon' => 'user'],
+    3 => ['key' => 'requirements',   'label' => 'Requirements',     'icon' => 'mail'],
+    4 => ['key' => 'appointment',    'label' => 'Appointment',      'icon' => 'calendar'],
+    5 => ['key' => 'finish',         'label' => 'Finish',           'icon' => 'check'],
 ];
+$stepLabelsCard = [
+    1 => ['key' => 'identification', 'label' => 'Identification',   'icon' => 'user'],
+    2 => ['key' => 'requirements',   'label' => 'Requirements',     'icon' => 'mail'],
+    3 => ['key' => 'appointment',    'label' => 'Appointment',      'icon' => 'calendar'],
+    4 => ['key' => 'finish',         'label' => 'Finish',           'icon' => 'check'],
+];
+$stepLabels = $isHeroFlow ? $stepLabelsHero : $stepLabelsCard;
 
-$stepTitles = [
+$stepTitlesHero = [
+    1 => ['title' => 'REQUEST DETAILS', 'subtitle' => 'Enter your name and choose the certificate you need.'],
+    2 => ['title' => 'IDENTIFICATION', 'subtitle' => 'Verify the name on record with the Local Civil Registry Office.'],
+    3 => ['title' => 'REQUIREMENTS CHECKLIST', 'subtitle' => 'Please provide required documents.'],
+    4 => ['title' => 'SCHEDULE APPOINTMENT', 'subtitle' => 'Choose your preferred date and time for document pickup.'],
+];
+$stepTitlesCard = [
     1 => ['title' => 'REQUEST DETAILS', 'subtitle' => 'Please provide your identity.'],
     2 => ['title' => 'REQUIREMENTS CHECKLIST', 'subtitle' => 'Please provide required documents.'],
     3 => ['title' => 'SCHEDULE APPOINTMENT', 'subtitle' => 'Choose your preferred date and time for document pickup.'],
 ];
+$stepTitles = $isHeroFlow ? $stepTitlesHero : $stepTitlesCard;
+
+$wizardProgressSteps = $isHeroFlow ? 4 : 3;
+$showRequestStart = $isHeroFlow && $step === 1;
+$showHeroIdentification = $isHeroFlow && $step === 2;
+$showCardIdentification = !$isHeroFlow && $step === 1;
+$showRequirements = ($step === $requirementsStep);
+$showAppointment = ($step === $appointmentStep);
+$identBackStep = $isHeroFlow ? 2 : 1;
 
 $requestDocumentLabel = !empty($draft['document_type'])
     ? documentTypeLabel($draft['document_type'])
@@ -455,17 +560,17 @@ $requestDocumentLabel = !empty($draft['document_type'])
         </section>
 
         <section class="max-w-2xl mx-auto px-4 pb-12">
-        <?php if ($success && $step === 4 && $successData): ?>
+        <?php if ($success && $step === $successStep && $successData): ?>
         <div class="flex justify-center mb-10">
             <?php foreach ($stepLabels as $i => $s): ?>
-            <div class="flex items-center <?= $i < 4 ? 'flex-1' : '' ?>">
+            <div class="flex items-center <?= $i < $successStep ? 'flex-1' : '' ?>">
                 <div class="flex flex-col items-center">
                     <div class="w-8 h-8 rounded-full citizen-request-progress-dot is-done flex items-center justify-center">
                         <i data-lucide="check" class="w-4 h-4"></i>
                     </div>
                     <span class="text-[9px] font-bold uppercase mt-1 citizen-request-step-done"><?= $s['label'] ?></span>
                 </div>
-                <?php if ($i < 4): ?><div class="flex-1 h-0.5 citizen-request-progress-line is-done mx-2 mb-4"></div><?php endif; ?>
+                <?php if ($i < $successStep): ?><div class="flex-1 h-0.5 citizen-request-progress-line is-done mx-2 mb-4"></div><?php endif; ?>
             </div>
             <?php endforeach; ?>
         </div>
@@ -534,11 +639,11 @@ $requestDocumentLabel = !empty($draft['document_type'])
         <?php else: ?>
         <?php $identDocType = (string) ($draft['document_type'] ?? ''); ?>
         <p class="citizen-request-step-mobile sm:hidden text-center text-[10px] font-bold uppercase tracking-wide mb-3 citizen-request-step-active">
-            Step <?= min($step, 3) ?> of 3 — <?= htmlspecialchars($stepLabels[$step]['label'] ?? '') ?>
+            Step <?= min($step, $wizardProgressSteps) ?> of <?= $wizardProgressSteps ?> — <?= htmlspecialchars($stepLabels[$step]['label'] ?? '') ?>
         </p>
         <div class="flex justify-center mb-6 sm:mb-10 px-2 sm:px-4 overflow-x-auto">
             <?php foreach ($stepLabels as $i => $s): ?>
-            <?php if ($i <= 3): ?>
+            <?php if ($i <= $wizardProgressSteps): ?>
             <div class="flex items-center flex-1 last:flex-none min-w-[4.5rem]">
                 <div class="flex flex-col items-center">
                     <?php
@@ -554,7 +659,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
                     </div>
                     <span class="hidden sm:block text-[9px] font-bold uppercase mt-1.5 tracking-wide text-center <?= $labelClass ?>"><?= $s['label'] ?></span>
                 </div>
-                <?php if ($i < 3): ?>
+                <?php if ($i < $wizardProgressSteps): ?>
                 <div class="flex-1 h-0.5 mx-2 sm:mx-3 mb-0 sm:mb-5 citizen-request-progress-line <?= $i < $step ? 'is-done' : 'is-pending' ?>"></div>
                 <?php endif; ?>
             </div>
@@ -566,7 +671,52 @@ $requestDocumentLabel = !empty($draft['document_type'])
             <h1 class="text-xl font-black text-slate-900 mb-1"><?= htmlspecialchars($stepTitles[$step]['title'] ?? 'Request') ?></h1>
             <p class="text-gray-400 text-sm mb-6"><?= htmlspecialchars($stepTitles[$step]['subtitle'] ?? '') ?></p>
 
-            <?php if ($step === 1): ?>
+            <?php if ($showRequestStart): ?>
+            <form method="POST" class="space-y-5" id="requestStartForm" data-no-loading>
+                <?= publicCsrfField() ?>
+                <input type="hidden" name="step" value="1">
+                <div>
+                    <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
+                        <i data-lucide="user-check" class="w-3.5 h-3.5 text-blue-500"></i> Your Name (Requester) *
+                    </label>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3" id="requesterNameGrid">
+                        <input type="text" id="requesterFirstNameInput" name="requester_first_name" required placeholder="First name"
+                               value="<?= htmlspecialchars($draft['requester_first_name'] ?? '') ?>"
+                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                        <input type="text" id="requesterMiddleNameInput" name="requester_middle_name" placeholder="Middle name(Optional)"
+                               value="<?= htmlspecialchars($draft['requester_middle_name'] ?? '') ?>"
+                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                        <input type="text" id="requesterLastNameInput" name="requester_last_name" required placeholder="Last name"
+                               value="<?= htmlspecialchars($draft['requester_last_name'] ?? '') ?>"
+                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                    </div>
+                    <p class="text-[10px] text-gray-500 mt-1">Full name of the person submitting this request. This may differ from the name on the certificate.</p>
+                </div>
+                <div>
+                    <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
+                        <i data-lucide="file-text" class="w-3.5 h-3.5 text-blue-500"></i> Select Certificate Type *
+                    </label>
+                    <?php $heroStartDocType = (string) ($draft['document_type'] ?? ''); ?>
+                    <select name="document_type" required class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+                        <option value="" disabled hidden <?= $heroStartDocType === '' ? 'selected' : '' ?>>Select Certificate Type</option>
+                        <?php foreach ($validTypes as $t): ?>
+                        <option value="<?= $t ?>" <?= $heroStartDocType === $t ? 'selected' : '' ?>><?= documentTypeLabel($t) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="citizen-form-actions">
+                    <a href="index.php" class="back-home back-home--step">
+                        <i data-lucide="chevron-left" class="back-home__icon w-4 h-4"></i>
+                        <span>Back</span>
+                    </a>
+                    <div class="citizen-form-actions__forward">
+                        <button type="submit" name="action" value="next" id="step1ContinueBtn" class="citizen-btn-gold px-8 py-3 rounded-full text-sm inline-flex items-center gap-2 ml-auto" data-loading-text="Saving…">Continue <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                    </div>
+                </div>
+            </form>
+
+            <?php elseif ($showCardIdentification): ?>
+            <?php $identDocType = (string) ($draft['document_type'] ?? ''); ?>
             <form method="POST" class="space-y-5" id="identificationForm">
                 <?= publicCsrfField() ?>
                 <input type="hidden" name="step" value="1">
@@ -599,106 +749,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div id="identificationBirthBlock" class="identification-type-block space-y-5 <?= $identDocType === 'birth' || $identDocType === '' ? '' : 'hidden' ?>">
-                    <div>
-                        <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                            <i data-lucide="user" class="w-3.5 h-3.5 text-blue-500"></i> Birth Name on Record *
-                        </label>
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3" id="birthNameGrid">
-                            <input type="text" id="firstNameInput" name="first_name" data-ident-required="birth" placeholder="First name"
-                                   value="<?= htmlspecialchars($draft['first_name'] ?? '') ?>"
-                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                            <input type="text" id="middleNameInput" name="middle_name" placeholder="Middle name(Optional)"
-                                   value="<?= htmlspecialchars($draft['middle_name'] ?? '') ?>"
-                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                            <input type="text" id="lastNameInput" name="last_name" data-ident-required="birth" placeholder="Last name"
-                                   value="<?= htmlspecialchars($draft['last_name'] ?? '') ?>"
-                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                            <i data-lucide="calendar" class="w-3.5 h-3.5 text-blue-500"></i> Date of Birth *
-                        </label>
-                        <input type="date" id="dateOfBirthInput" name="date_of_birth" data-ident-required="birth" value="<?= htmlspecialchars($draft['date_of_birth'] ?? '') ?>"
-                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                    </div>
-                </div>
-
-                <div id="identificationMarriageBlock" class="identification-type-block space-y-5 <?= $identDocType === 'marriage' ? '' : 'hidden' ?>">
-                    <div>
-                        <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-2">
-                            <i data-lucide="users" class="w-3.5 h-3.5 text-blue-500"></i> Couples Name on Record *
-                        </label>
-                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">Husband Name</p>
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4" id="husbandNameGrid">
-                            <input type="text" id="husbandFirstNameInput" name="husband_first_name" data-ident-required="marriage" placeholder="First name"
-                                   value="<?= htmlspecialchars($draft['husband_first_name'] ?? '') ?>"
-                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                            <input type="text" id="husbandMiddleNameInput" name="husband_middle_name" placeholder="Middle name (optional)"
-                                   value="<?= htmlspecialchars($draft['husband_middle_name'] ?? '') ?>"
-                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                            <input type="text" id="husbandLastNameInput" name="husband_last_name" data-ident-required="marriage" placeholder="Last name"
-                                   value="<?= htmlspecialchars($draft['husband_last_name'] ?? '') ?>"
-                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                        </div>
-                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">Wife Name</p>
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3" id="wifeNameGrid">
-                            <input type="text" id="wifeFirstNameInput" name="wife_first_name" data-ident-required="marriage" placeholder="First name"
-                                   value="<?= htmlspecialchars($draft['wife_first_name'] ?? '') ?>"
-                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                            <input type="text" id="wifeMiddleNameInput" name="wife_middle_name" placeholder="Middle name (optional)"
-                                   value="<?= htmlspecialchars($draft['wife_middle_name'] ?? '') ?>"
-                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                            <input type="text" id="wifeLastNameInput" name="wife_last_name" data-ident-required="marriage" placeholder="Last name"
-                                   value="<?= htmlspecialchars($draft['wife_last_name'] ?? '') ?>"
-                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                            <i data-lucide="heart" class="w-3.5 h-3.5 text-blue-500"></i> Date of Marriage *
-                        </label>
-                        <input type="date" id="dateOfMarriageInput" name="date_of_marriage" data-ident-required="marriage" value="<?= htmlspecialchars($draft['date_of_marriage'] ?? '') ?>"
-                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                    </div>
-                </div>
-
-                <div id="identificationDeathBlock" class="identification-type-block space-y-5 <?= $identDocType === 'death' ? '' : 'hidden' ?>">
-                    <div>
-                        <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                            <i data-lucide="user" class="w-3.5 h-3.5 text-blue-500"></i> Deceased Name on Record *
-                        </label>
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3" id="deceasedNameGrid">
-                            <input type="text" id="deceasedFirstNameInput" name="first_name" data-ident-required="death" placeholder="First name"
-                                   value="<?= htmlspecialchars($identDocType === 'death' ? ($draft['first_name'] ?? '') : '') ?>"
-                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                            <input type="text" id="deceasedMiddleNameInput" name="middle_name" placeholder="Middle name (optional)"
-                                   value="<?= htmlspecialchars($identDocType === 'death' ? ($draft['middle_name'] ?? '') : '') ?>"
-                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                            <input type="text" id="deceasedLastNameInput" name="last_name" data-ident-required="death" placeholder="Last name"
-                                   value="<?= htmlspecialchars($identDocType === 'death' ? ($draft['last_name'] ?? '') : '') ?>"
-                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                            <i data-lucide="calendar" class="w-3.5 h-3.5 text-blue-500"></i> Date of Death *
-                        </label>
-                        <input type="date" id="dateOfDeathInput" name="date_of_death" data-ident-required="death" value="<?= htmlspecialchars($draft['date_of_death'] ?? '') ?>"
-                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                    </div>
-                </div>
-
-                <div>
-                    <div class="flex justify-end">
-                        <button type="button" id="checkRecordBtn" class="citizen-btn-navy px-4 py-2.5 rounded-xl text-xs whitespace-nowrap shrink-0">
-                            Check Record
-                        </button>
-                    </div>
-                    <p id="recordCheckHint" class="text-[10px] text-gray-500 mt-2">We verify that your details match LCRO civil records before you can continue.</p>
-                    <p id="recordStatus" class="text-xs mt-2 <?= $recordVerified ? 'font-semibold text-green-600' : 'hidden' ?>"><?= $recordVerified ? 'Record found — you are registered with the Local Civil Registry Office.' : '' ?></p>
-                </div>
+                <?php require __DIR__ . '/includes/request_identification_fields.php'; ?>
                 <div class="citizen-form-actions">
                     <a href="index.php" class="back-home back-home--step">
                         <i data-lucide="chevron-left" class="back-home__icon w-4 h-4"></i>
@@ -710,11 +761,36 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 </div>
             </form>
 
-            <?php elseif ($step === 2): ?>
+            <?php elseif ($showHeroIdentification): ?>
+            <?php $identDocType = (string) ($draft['document_type'] ?? ''); ?>
+            <form method="POST" class="space-y-5" id="identificationForm">
+                <?= publicCsrfField() ?>
+                <input type="hidden" name="step" value="2">
+                <input type="hidden" name="document_type" value="<?= htmlspecialchars($identDocType) ?>">
+                <input type="hidden" name="record_verified" id="recordVerified" value="<?= $recordVerified ? '1' : '0' ?>">
+                <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-1">
+                    <p class="text-[10px] font-bold text-blue-600 uppercase tracking-wide mb-1">Requester</p>
+                    <p class="text-sm font-bold text-blue-900"><?= htmlspecialchars(personRequesterNameFromRow($draft)) ?></p>
+                    <p class="text-[10px] font-bold text-blue-600 uppercase tracking-wide mt-3 mb-1">Service</p>
+                    <p class="text-sm font-semibold text-blue-900"><?= htmlspecialchars(documentTypeLabel($identDocType)) ?></p>
+                </div>
+                <?php require __DIR__ . '/includes/request_identification_fields.php'; ?>
+                <div class="citizen-form-actions">
+                    <a href="request.php?step=1" class="back-home back-home--step">
+                        <i data-lucide="chevron-left" class="back-home__icon w-4 h-4"></i>
+                        <span>Back</span>
+                    </a>
+                    <div class="citizen-form-actions__forward">
+                        <button type="submit" name="action" value="next" id="step2ContinueBtn" class="citizen-btn-gold px-8 py-3 rounded-full text-sm inline-flex items-center gap-2 ml-auto" data-loading-text="Saving…">Continue <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                    </div>
+                </div>
+            </form>
+
+            <?php elseif ($showRequirements): ?>
             <?php $draftGmailVerified = isGmailVerifiedInSession($draft['email'] ?? ''); ?>
             <form method="POST" enctype="multipart/form-data" class="space-y-5" id="requirementsForm">
                 <?= publicCsrfField() ?>
-                <input type="hidden" name="step" value="2">
+                <input type="hidden" name="step" value="<?= (int) $requirementsStep ?>">
                 <input type="hidden" name="email_verified" id="emailVerified" value="<?= isGmailVerifiedInSession($draft['email'] ?? '') ? '1' : '0' ?>">
                 <input type="hidden" name="privacy_agreed" value="1">
                 <input type="hidden" name="notify_email" id="notifyEmailHidden" value="<?= !empty($draft['notify_email']) ? '1' : '0' ?>">
@@ -793,20 +869,20 @@ $requestDocumentLabel = !empty($draft['document_type'])
                     </div>
                 </div>
                 <div class="citizen-form-actions">
-                    <a href="request.php?step=1" class="back-home back-home--step">
+                    <a href="request.php?step=<?= (int) $identBackStep ?>" class="back-home back-home--step">
                         <i data-lucide="chevron-left" class="back-home__icon w-4 h-4"></i>
                         <span>Back</span>
                     </a>
                     <div class="citizen-form-actions__forward">
-                        <button type="submit" name="action" value="next" id="step2ContinueBtn" class="citizen-btn-gold px-8 py-3 rounded-full text-sm inline-flex items-center gap-2 ml-auto" data-loading-text="Saving…">Continue <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                        <button type="submit" name="action" value="next" id="step3ContinueBtn" class="citizen-btn-gold px-8 py-3 rounded-full text-sm inline-flex items-center gap-2 ml-auto" data-loading-text="Saving…">Continue <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
                     </div>
                 </div>
             </form>
 
-            <?php elseif ($step === 3): ?>
+            <?php elseif ($showAppointment): ?>
             <form method="POST" class="space-y-5" id="requestScheduleForm" data-slot-type="certificate">
                 <?= publicCsrfField() ?>
-                <input type="hidden" name="step" value="3">
+                <input type="hidden" name="step" value="<?= (int) $appointmentStep ?>">
                 <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-2">
                     <?php if (($draft['document_type'] ?? '') === 'marriage'): ?>
                     <p class="text-xs text-blue-800">
@@ -848,12 +924,12 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 <p class="text-[11px] text-gray-400">Certificate pickup visits: Monday to Friday only, excluding holidays. Morning 8:00 AM–12:00 NN and afternoon 1:00–5:00 PM, every 10 minutes. Lunch break 12:00–1:00 PM. One booking per slot.</p>
                 <p id="slotAvailabilityStatus" class="hidden text-xs mt-2"></p>
                 <div class="citizen-form-actions">
-                    <a href="request.php?step=2" class="back-home back-home--step">
+                    <a href="request.php?step=<?= (int) $requirementsStep ?>" class="back-home back-home--step">
                         <i data-lucide="chevron-left" class="back-home__icon w-4 h-4"></i>
                         <span>Back</span>
                     </a>
                     <div class="citizen-form-actions__forward">
-                        <button type="submit" name="action" value="next" id="step3SubmitBtn" data-appointment-submit class="citizen-btn-gold px-8 py-3 rounded-full text-sm inline-flex items-center gap-2 ml-auto" data-loading-text="Submitting…">Submit Request <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                        <button type="submit" name="action" value="next" id="step4SubmitBtn" data-appointment-submit class="citizen-btn-gold px-8 py-3 rounded-full text-sm inline-flex items-center gap-2 ml-auto" data-loading-text="Submitting…">Submit Request <i data-lucide="chevron-right" class="w-4 h-4"></i></button>
                     </div>
                 </div>
             </form>
@@ -871,7 +947,10 @@ $requestDocumentLabel = !empty($draft['document_type'])
     <?= scriptTag('public/track-floating.js') ?>
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>
     <?php require __DIR__ . '/includes/notification_consent.php'; ?>
-    <?php if ($step === 3): ?><?= scriptTag('public/appointment-slots.js') ?><?php endif; ?>
+    <?php if ($showAppointment): ?>
+    <script type="application/json" id="alcrosOfficeHolidayConfig"><?= json_encode(officeHolidayClientConfig(), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?></script>
+    <?= scriptTag('public/appointment-slots.js') ?>
+    <?php endif; ?>
     <?= lucideInitScript() ?>
 </body>
 </html>

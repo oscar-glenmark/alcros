@@ -21,6 +21,72 @@
     var availability = null;
     var loadRequestId = 0;
     var loadAbortController = null;
+    var holidayConfig = null;
+
+    function readHolidayConfig() {
+        if (holidayConfig) {
+            return holidayConfig;
+        }
+        var el = document.getElementById('alcrosOfficeHolidayConfig');
+        if (!el || !el.textContent) {
+            holidayConfig = { recurring: [], dates: [], today: '' };
+            return holidayConfig;
+        }
+        try {
+            holidayConfig = JSON.parse(el.textContent);
+        } catch (e) {
+            holidayConfig = { recurring: [], dates: [], today: '' };
+        }
+        if (!holidayConfig.recurring) {
+            holidayConfig.recurring = [];
+        }
+        if (!holidayConfig.dates) {
+            holidayConfig.dates = [];
+        }
+        return holidayConfig;
+    }
+
+    function officeDateBlockReason(iso) {
+        if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+            return 'invalid';
+        }
+        var cfg = readHolidayConfig();
+        var today = cfg.today || new Date().toISOString().slice(0, 10);
+        if (iso < today) {
+            return 'past';
+        }
+        var parts = iso.split('-');
+        var date = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        if (isNaN(date.getTime())) {
+            return 'invalid';
+        }
+        var dow = date.getDay();
+        if (dow === 0 || dow === 6) {
+            return 'weekend';
+        }
+        if (cfg.dates.indexOf(iso) !== -1) {
+            return 'holiday';
+        }
+        var suffix = iso.slice(4);
+        if (cfg.recurring.indexOf(suffix) !== -1) {
+            return 'holiday';
+        }
+        return null;
+    }
+
+    function showBlockedDate(reason) {
+        availability = null;
+        selectedTime = '';
+        timeInput.value = '';
+        renderTimeOptions(null);
+        syncAvailabilityState();
+        if (!statusEl) {
+            return;
+        }
+        statusEl.classList.remove('hidden');
+        statusEl.textContent = blockMessage(reason);
+        statusEl.className = 'text-xs mt-2 font-semibold text-red-600';
+    }
 
     function syncAvailabilityState() {
         if (!scheduleForm) return;
@@ -164,6 +230,13 @@
             return;
         }
 
+        var blockReason = officeDateBlockReason(date);
+        if (blockReason) {
+            dateInput.value = '';
+            showBlockedDate(blockReason);
+            return;
+        }
+
         availability = null;
         if (statusEl) {
             statusEl.classList.remove('hidden');
@@ -225,6 +298,12 @@
     dateInput.addEventListener('change', function () {
         selectedTime = '';
         timeInput.value = '';
+        var reason = officeDateBlockReason(dateInput.value);
+        if (reason) {
+            dateInput.value = '';
+            showBlockedDate(reason);
+            return;
+        }
         loadAvailability();
     });
 

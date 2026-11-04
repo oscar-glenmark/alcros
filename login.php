@@ -74,7 +74,7 @@ $loginLocked = false;
 
 $loginRetryAfter = 0;
 
-const LOGIN_RATE_MAX = 8;
+const LOGIN_RATE_MAX = 3;
 
 const LOGIN_RATE_WINDOW = 900;
 
@@ -310,7 +310,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     <h2 class="auth-portal-lockout__title">Too many sign-in attempts</h2>
 
-                    <p class="auth-portal-lockout__lead">For your security, sign-in for this Staff ID is paused after several failed tries.</p>
+                    <p class="auth-portal-lockout__lead">For your security, sign-in for this Staff ID is paused after 3 failed tries.</p>
 
                     <div class="auth-portal-lockout__timer-card">
 

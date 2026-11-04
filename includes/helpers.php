@@ -4271,7 +4271,7 @@ function sendStaffLoginLockoutAlert(PDO $pdo, string $staffId, int $windowSecond
     $subject = $site . ' — Sign-in attempts on your staff account';
     $plain = "Hello {$displayName},\n\n"
         . "Someone tried to sign in to the ALCROS staff portal using your Staff ID ({$staffIdDisplay}) "
-        . "with incorrect passwords several times.\n\n"
+        . "with an incorrect password 3 times.\n\n"
         . "When: {$when}\n"
         . "Source IP: {$ip}\n"
         . "Sign-in for this Staff ID was temporarily paused for about {$windowMinutes} minutes.\n\n"
@@ -4279,7 +4279,7 @@ function sendStaffLoginLockoutAlert(PDO $pdo, string $staffId, int $windowSecond
         . "If this was not you, contact your administrator immediately and consider resetting your password.";
     $html = '<p>Hello <strong>' . htmlspecialchars($displayName) . '</strong>,</p>'
         . '<p>Someone tried to sign in to the ALCROS staff portal using your Staff ID '
-        . '(<strong>' . htmlspecialchars($staffIdDisplay) . '</strong>) with incorrect passwords several times.</p>'
+        . '(<strong>' . htmlspecialchars($staffIdDisplay) . '</strong>) with an incorrect password 3 times.</p>'
         . '<p><strong>When:</strong> ' . htmlspecialchars($when) . '<br>'
         . '<strong>Source IP:</strong> ' . htmlspecialchars($ip) . '<br>'
         . 'Sign-in for this Staff ID was temporarily paused for about <strong>' . $windowMinutes . ' minutes</strong>.</p>'
@@ -7815,6 +7815,47 @@ function formatAppointmentDisplay(?string $date, ?string $time): string
     }
 
     return $out;
+}
+
+/**
+ * Stack date over time in manage-request / appointment tables so columns do not overlap.
+ */
+function manageTableDateTimeHtml(?string $dateOrDatetime, ?string $time = null, string $empty = '—'): string
+{
+    $dateOrDatetime = $dateOrDatetime !== null ? trim($dateOrDatetime) : '';
+    $time = $time !== null ? trim($time) : '';
+
+    if ($dateOrDatetime === '' && $time === '') {
+        return '<span class="manage-datetime"><span class="manage-datetime__date">' . htmlspecialchars($empty) . '</span></span>';
+    }
+
+    $dateLabel = '';
+    $timeLabel = '';
+
+    if ($time !== '') {
+        $dateLabel = $dateOrDatetime !== '' ? formatDateEmailDisplay($dateOrDatetime) : '';
+        $ts = strtotime($time);
+        $timeLabel = $ts ? date('g:i A', $ts) : '';
+    } else {
+        $ts = strtotime($dateOrDatetime);
+        if ($ts) {
+            $dateLabel = date('M j, Y', $ts);
+            if (preg_match('/\d{1,2}:\d{2}/', $dateOrDatetime)) {
+                $timeLabel = date('g:i A', $ts);
+            }
+        } else {
+            $dateLabel = $dateOrDatetime;
+        }
+    }
+
+    $html = '<span class="manage-datetime">';
+    $html .= '<span class="manage-datetime__date">' . htmlspecialchars($dateLabel !== '' ? $dateLabel : $empty) . '</span>';
+    if ($timeLabel !== '') {
+        $html .= '<span class="manage-datetime__time">' . htmlspecialchars($timeLabel) . '</span>';
+    }
+    $html .= '</span>';
+
+    return $html;
 }
 
 function isMaintenanceMode(): bool

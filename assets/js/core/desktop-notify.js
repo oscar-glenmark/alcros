@@ -70,7 +70,7 @@
         return href || 'dashboard.php';
     }
 
-    var TOAST_VISIBLE_MS = 10000;
+    var TOAST_VISIBLE_MS = 60000;
 
     function showToast(item) {
         if (!('Notification' in window) || Notification.permission !== 'granted') {
@@ -83,7 +83,8 @@
         var note = new Notification(String(item.title || 'ALCROS'), {
             body: body,
             icon: 'images/favicon.png',
-            tag: String(item.id || 'alcros-alert')
+            tag: String(item.id || 'alcros-alert'),
+            requireInteraction: true
         });
         var dismissTimer = setTimeout(function () {
             try {

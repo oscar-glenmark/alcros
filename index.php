@@ -337,16 +337,14 @@ $faqs = [
                         </a>
                     </div>
                     <p class="text-[11px] text-white/50 mt-4"><?= htmlspecialchars($site['hours']) ?></p>
-                </div>
+                </div>  
             </div>
         </div>
         <div class="border-t border-white/10">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-center gap-2 text-[11px] text-white/50">
                 <span>&copy; <?= htmlspecialchars($year) ?> ALCROS. All Rights Reserved.</span>
                 <div class="flex gap-4">
-                    <button type="button" data-open-privacy class="hover:text-white transition bg-transparent border-0 p-0 cursor-pointer">Privacy Policy</button>
-                    <span class="text-white/30">|</span>
-                    <a href="privacy.php" class="hover:text-white transition">Terms of Use</a>
+                    <button type="button" data-open-privacy class="hover:text-white transition bg-transparent border-0 p-0 cursor-pointer">Privacy Policy Notice</button>
                 </div>
             </div>
         </div>

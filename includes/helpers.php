@@ -5905,6 +5905,7 @@ function citizenEmailPlain(array $mail): string
         $lines[] = '';
     }
     $office = getSetting('office_name', 'Local Civil Registrar Office');
+    $lines[] = 'DO NOT REPLY. This is an automated message from ALCROS.';
     $lines[] = '— ALCROS, ' . $office;
 
     return implode("\n", $lines);
@@ -6020,7 +6021,7 @@ function citizenEmailHtml(array $mail): string
         . '<tr><td style="padding:16px 28px 24px;border-top:1px solid #e2e8f0;">'
         . '<p style="margin:0;font-size:12px;line-height:1.6;color:#94a3b8;">'
         . citizenEmailText($footer) . ($footer !== '' ? '<br>' : '')
-        . 'This is an automated message from ALCROS. Please do not reply to this email.'
+        . '<strong style="color:#64748b;">DO NOT REPLY.</strong> This is an automated message from ALCROS.'
         . '</p></td></tr>'
         . '</table></td></tr></table></body></html>';
 }

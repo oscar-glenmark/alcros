@@ -107,7 +107,33 @@
             .replace(/"/g, '&quot;');
     }
 
-    function actionButtonClass(action) {
+    function isDetailActionPair(data, canPrint) {
+        if (!data || !data.status_key) return false;
+        if (data.status_key === 'pending') return true;
+        if (canPrint && data.status_key === 'ready') {
+            return Array.isArray(data.actions) && data.actions.length > 0;
+        }
+        return false;
+    }
+
+    function sortVerifyActionsFirst(actions) {
+        var rejectFirst = { rejected: 1, cancelled: 1 };
+        return actions.slice().sort(function (a, b) {
+            var aReject = rejectFirst[a.value] ? 0 : 1;
+            var bReject = rejectFirst[b.value] ? 0 : 1;
+            return aReject - bReject;
+        });
+    }
+
+    function actionButtonClass(action, pairLayout) {
+        if (pairLayout) {
+            if (action === 'rejected' || action === 'cancelled') {
+                return 'manage-detail-action manage-detail-action--pair manage-detail-action--danger';
+            }
+            if (action === 'verified' || action === 'confirmed' || action === 'completed') {
+                return 'manage-detail-action manage-detail-action--pair manage-detail-action--primary';
+            }
+        }
         if (action === 'verified' || action === 'completed') {
             return 'manage-detail-action manage-detail-action--primary';
         }
@@ -115,6 +141,13 @@
             return 'manage-detail-action manage-detail-action--danger';
         }
         return 'manage-detail-action';
+    }
+
+    function actionButtonIcon(action, pairLayout) {
+        if (!pairLayout) return '';
+        if (action === 'rejected' || action === 'cancelled') return 'x-circle';
+        if (action === 'verified' || action === 'confirmed' || action === 'completed') return 'circle-check';
+        return '';
     }
 
     function actionConfirmMessage(action, data) {
@@ -131,11 +164,11 @@
         return 'Update ' + code + '?';
     }
 
-    function buildStatusForm(data, action, label) {
+    function buildStatusForm(data, action, label, pairLayout) {
         var form = document.createElement('form');
         form.method = 'POST';
         form.action = pageConfig.formAction || 'manage_request.php';
-        form.className = 'manage-detail-action-form';
+        form.className = 'manage-detail-action-form' + (pairLayout ? ' manage-detail-action-form--pair' : '');
         form.dataset.noConfirm = '';
         form.dataset.ajax = '1';
         form.dataset.noLoading = '';
@@ -144,6 +177,11 @@
             form.innerHTML = authFieldsEl.innerHTML;
         }
 
+        var iconName = actionButtonIcon(action, pairLayout);
+        var buttonInner = iconName
+            ? '<i data-lucide="' + iconName + '" class="w-4 h-4 shrink-0"></i><span>' + escapeHtml(label) + '</span>'
+            : escapeHtml(label);
+
         form.insertAdjacentHTML('beforeend',
             '<input type="hidden" name="redirect_status" value="' + escapeHtml(pageConfig.redirectStatus || 'all') + '">' +
             '<input type="hidden" name="redirect_date" value="' + escapeHtml(pageConfig.redirectDate || '') + '">' +
@@ -151,7 +189,7 @@
             '<input type="hidden" name="request_id" value="' + escapeHtml(data.id) + '">' +
             '<input type="hidden" name="update_status" value="1">' +
             '<input type="hidden" name="status" value="' + escapeHtml(action) + '">' +
-            '<button type="button" class="' + actionButtonClass(action) + ' manage-action-trigger" data-manage-action="' + escapeHtml(action) + '" data-loading-text="Saving…">' + escapeHtml(label) + '</button>'
+            '<button type="button" class="' + actionButtonClass(action, pairLayout) + ' manage-action-trigger" data-manage-action="' + escapeHtml(action) + '" data-loading-text="Saving…">' + buttonInner + '</button>'
         );
 
         return form;
@@ -176,8 +214,9 @@
             '<input type="hidden" name="redirect_q" value="' + escapeHtml(pageConfig.redirectQ || '') + '">' +
             '<input type="hidden" name="request_id" value="' + escapeHtml(data.id) + '">' +
             '<input type="hidden" name="delete_request" value="1">' +
-            '<button type="button" class="manage-detail-action manage-detail-action--danger manage-detail-action--icon manage-action-trigger" data-manage-action="delete" data-loading-text="Deleting…" title="Delete completed request" aria-label="Delete completed request">' +
-                '<i data-lucide="trash-2" class="w-4 h-4"></i>' +
+            '<button type="button" class="manage-detail-action manage-detail-action--danger manage-action-trigger" data-manage-action="delete" data-loading-text="Deleting…" title="Delete completed request" aria-label="Delete completed request">' +
+                '<i data-lucide="trash-2" class="w-4 h-4 shrink-0"></i>' +
+                '<span>Delete</span>' +
             '</button>'
         );
 
@@ -375,9 +414,9 @@
         });
     }
 
-    function buildPrintMenu(data) {
+    function buildPrintMenu(data, pairLayout) {
         var menu = document.createElement('div');
-        menu.className = 'manage-print-menu manage-print-menu--detail';
+        menu.className = 'manage-print-menu manage-print-menu--detail' + (pairLayout ? ' manage-print-menu--pair' : '');
 
         var trigger = document.createElement('button');
         trigger.type = 'button';
@@ -588,14 +627,20 @@
 
         var group = document.createElement('div');
         group.className = 'manage-detail-actions__buttons';
+        var pairLayout = isDetailActionPair(data, canPrint);
+
+        if (pairLayout) {
+            group.classList.add('manage-detail-actions__buttons--pair');
+        }
 
         if (canPrint && data.print_url) {
-            group.appendChild(buildPrintMenu(data));
+            group.appendChild(buildPrintMenu(data, pairLayout));
         }
 
         if (hasActions) {
-            data.actions.forEach(function (action) {
-                group.appendChild(buildStatusForm(data, action.value, action.label));
+            var actionsList = pairLayout ? sortVerifyActionsFirst(data.actions) : data.actions;
+            actionsList.forEach(function (action) {
+                group.appendChild(buildStatusForm(data, action.value, action.label, pairLayout));
             });
         }
 

@@ -358,13 +358,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $recordBefore = fetchFullCivilRecord($pdo, $id);
             $data = normalizeRecordInput(prepareCivilRecordFormInput($_POST), false, $recordBefore);
             saveCivilRecord($pdo, $data, $id);
+            $auditLogged = false;
             if ($recordBefore) {
                 $recordAfter = fetchFullCivilRecord($pdo, $id) ?? $recordBefore;
-                recordCivilRecordAudit($pdo, $id, 'updated', $recordBefore, $recordAfter, $editReason);
+                $auditLogged = recordCivilRecordAudit($pdo, $id, 'updated', $recordBefore, $recordAfter, $editReason);
             }
             releaseCivilRecordEditLock($pdo, $id, staffId());
-            logActivity(staffId(), 'Record Updated', "Updated record #$id: " . civilRecordDisplayName($data));
-            recordsFlashSet('success', 'Record updated successfully.');
+            if ($auditLogged) {
+                logActivity(staffId(), 'Record Updated', "Updated record #$id: " . civilRecordDisplayName($data));
+                recordsFlashSet('success', 'Record updated successfully.');
+            } else {
+                recordsFlashSet('success', 'No field changes were detected — nothing was logged.');
+            }
         } elseif ($action === 'import_csv') {
             @set_time_limit(600);
             if (empty($_FILES['csv_file']['tmp_name']) || !is_uploaded_file($_FILES['csv_file']['tmp_name'])) {

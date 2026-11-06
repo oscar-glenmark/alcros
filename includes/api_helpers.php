@@ -244,14 +244,17 @@ function fetchDashboardStats(PDO $pdo, bool $isAdmin, string $staffId): array
          ORDER BY appointment_time ASC LIMIT 8"
     )->fetchAll());
 
+    $recentAppointments = $isAdmin ? [] : fetchRecentStandaloneAppointments($pdo, 6);
+
     return [
-        'stats'           => $stats,
-        'recent_requests' => $recentRequests,
-        'activities'      => $activities,
-        'today_appts'     => $todayAppts,
-        'incoming_appts'  => fetchIncomingAppointments($pdo, 8),
-        'incoming_date'   => incomingAppointmentsDate(),
-        'today_date'      => $todayDate,
+        'stats'               => $stats,
+        'recent_requests'     => $recentRequests,
+        'recent_appointments' => $recentAppointments,
+        'activities'          => $activities,
+        'today_appts'         => $todayAppts,
+        'incoming_appts'      => fetchIncomingAppointments($pdo, 8),
+        'incoming_date'       => incomingAppointmentsDate(),
+        'today_date'          => $todayDate,
     ];
 }
 
@@ -684,6 +687,33 @@ function fetchAppointments(PDO $pdo, string $date): array
 function fetchIncomingAppointments(PDO $pdo, int $limit = 8): array
 {
     return fetchScheduleVisits($pdo, incomingAppointmentsDate(), $limit, false, true);
+}
+
+/** Latest standalone appointment bookings (excludes certificate pickup visits). */
+function fetchRecentStandaloneAppointments(PDO $pdo, int $limit = 6): array
+{
+    $limit = max(1, min(20, $limit));
+    $standaloneSql = appointmentStandaloneSql('a');
+    $activeSql = appointmentActiveSql('a');
+    $stmt = $pdo->prepare(
+        "SELECT a.appointment_code, a.first_name, a.middle_name, a.last_name, a.service_type,
+                a.status, a.rejection_reason, a.appointment_date, a.created_at
+         FROM appointments a
+         WHERE {$activeSql} AND {$standaloneSql}
+         ORDER BY a.created_at DESC
+         LIMIT {$limit}"
+    );
+    $stmt->execute();
+    $rows = enrichCitizenNameRows($stmt->fetchAll());
+    foreach ($rows as &$row) {
+        $row['status_badge_html'] = appointmentStatusBadge(
+            (string) ($row['status'] ?? ''),
+            isset($row['rejection_reason']) ? (string) $row['rejection_reason'] : null
+        );
+    }
+    unset($row);
+
+    return $rows;
 }
 
 function incomingAppointmentsDate(): string

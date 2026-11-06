@@ -310,16 +310,16 @@ function recordCivilRecordAudit(
     array $before,
     array $after,
     ?string $editReason = null
-): void {
+): bool {
     if ($recordId <= 0 || !in_array($eventType, ['created', 'updated'], true)) {
-        return;
+        return false;
     }
 
     ensureCivilRecordUpdatesTable($pdo);
 
     $type = (string) ($after['record_type'] ?? $before['record_type'] ?? '');
     if (!in_array($type, ['birth', 'death', 'marriage'], true)) {
-        return;
+        return false;
     }
 
     $staffId = function_exists('staffId') ? staffId() : 'System';
@@ -349,7 +349,7 @@ function recordCivilRecordAudit(
         $newSnap = civilRecordBuildAuditSnapshot($after);
         $changes = civilRecordDiffAuditSnapshots($oldSnap, $newSnap, $type);
         if ($changes === []) {
-            return;
+            return false;
         }
         $summary = civilRecordAuditSummary('updated', $type, $changes, $after);
     }
@@ -377,6 +377,8 @@ function recordCivilRecordAudit(
         $storedEditReason,
         json_encode($changes, JSON_UNESCAPED_UNICODE),
     ]);
+
+    return true;
 }
 
 /** @return list<array<string, mixed>> */

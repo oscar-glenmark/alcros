@@ -105,7 +105,29 @@
             .replace(/"/g, '&quot;');
     }
 
-    function actionButtonClass(action) {
+    function isVerifyActionPair(data) {
+        if (!data || !data.status_key) return false;
+        return data.status_key === 'scheduled' || data.status_key === 'confirmed';
+    }
+
+    function sortVerifyActionsFirst(actions) {
+        var leftFirst = { rejected: 1, cancelled: 1, no_show: 1 };
+        return actions.slice().sort(function (a, b) {
+            var aLeft = leftFirst[a.value] ? 0 : 1;
+            var bLeft = leftFirst[b.value] ? 0 : 1;
+            return aLeft - bLeft;
+        });
+    }
+
+    function actionButtonClass(action, pairLayout) {
+        if (pairLayout) {
+            if (action === 'rejected' || action === 'cancelled' || action === 'no_show') {
+                return 'manage-detail-action manage-detail-action--pair manage-detail-action--danger';
+            }
+            if (action === 'verified' || action === 'confirmed' || action === 'completed') {
+                return 'manage-detail-action manage-detail-action--pair manage-detail-action--primary';
+            }
+        }
         if (action === 'confirmed' || action === 'completed') {
             return 'manage-detail-action manage-detail-action--primary';
         }
@@ -113,6 +135,13 @@
             return 'manage-detail-action manage-detail-action--danger';
         }
         return 'manage-detail-action';
+    }
+
+    function actionButtonIcon(action, pairLayout) {
+        if (!pairLayout) return '';
+        if (action === 'rejected' || action === 'cancelled' || action === 'no_show') return 'x-circle';
+        if (action === 'verified' || action === 'confirmed' || action === 'completed') return 'circle-check';
+        return '';
     }
 
     function actionConfirmMessage(action, data) {
@@ -132,11 +161,11 @@
         return 'Update ' + code + '?';
     }
 
-    function buildStatusForm(data, action, label) {
+    function buildStatusForm(data, action, label, pairLayout) {
         var form = document.createElement('form');
         form.method = 'POST';
         form.action = pageConfig.formAction || 'appointment.php';
-        form.className = 'manage-detail-action-form';
+        form.className = 'manage-detail-action-form' + (pairLayout ? ' manage-detail-action-form--pair' : '');
         form.dataset.noConfirm = '';
         form.dataset.ajax = '1';
         form.dataset.noLoading = '';
@@ -145,6 +174,11 @@
             form.innerHTML = authFieldsEl.innerHTML;
         }
 
+        var iconName = actionButtonIcon(action, pairLayout);
+        var buttonInner = iconName
+            ? '<i data-lucide="' + iconName + '" class="w-4 h-4 shrink-0"></i><span>' + escapeHtml(label) + '</span>'
+            : escapeHtml(label);
+
         form.insertAdjacentHTML('beforeend',
             '<input type="hidden" name="redirect_status" value="' + escapeHtml(pageConfig.redirectStatus || 'all') + '">' +
             '<input type="hidden" name="redirect_date" value="' + escapeHtml(pageConfig.redirectDate || '') + '">' +
@@ -152,7 +186,7 @@
             '<input type="hidden" name="appointment_id" value="' + escapeHtml(data.id) + '">' +
             '<input type="hidden" name="update_status" value="1">' +
             '<input type="hidden" name="status" value="' + escapeHtml(action) + '">' +
-            '<button type="button" class="' + actionButtonClass(action) + ' manage-action-trigger" data-manage-action="' + escapeHtml(action) + '" data-loading-text="Saving…">' + escapeHtml(label) + '</button>'
+            '<button type="button" class="' + actionButtonClass(action, pairLayout) + ' manage-action-trigger" data-manage-action="' + escapeHtml(action) + '" data-loading-text="Saving…">' + buttonInner + '</button>'
         );
 
         return form;
@@ -177,8 +211,9 @@
             '<input type="hidden" name="redirect_q" value="' + escapeHtml(pageConfig.redirectQ || '') + '">' +
             '<input type="hidden" name="appointment_id" value="' + escapeHtml(data.id) + '">' +
             '<input type="hidden" name="delete_appointment" value="1">' +
-            '<button type="button" class="manage-detail-action manage-detail-action--danger manage-detail-action--icon manage-action-trigger" data-manage-action="delete" data-loading-text="Deleting…" title="Delete completed appointment" aria-label="Delete completed appointment">' +
-                '<i data-lucide="trash-2" class="w-4 h-4"></i>' +
+            '<button type="button" class="manage-detail-action manage-detail-action--danger manage-action-trigger" data-manage-action="delete" data-loading-text="Deleting…" title="Delete completed appointment" aria-label="Delete completed appointment">' +
+                '<i data-lucide="trash-2" class="w-4 h-4 shrink-0"></i>' +
+                '<span>Delete</span>' +
             '</button>'
         );
 
@@ -833,8 +868,13 @@
         group.className = 'manage-detail-actions__buttons';
 
         if (hasActions) {
-            data.actions.forEach(function (action) {
-                group.appendChild(buildStatusForm(data, action.value, action.label));
+            var pairLayout = isVerifyActionPair(data);
+            if (pairLayout) {
+                group.classList.add('manage-detail-actions__buttons--pair');
+            }
+            var actionsList = pairLayout ? sortVerifyActionsFirst(data.actions) : data.actions;
+            actionsList.forEach(function (action) {
+                group.appendChild(buildStatusForm(data, action.value, action.label, pairLayout));
             });
         }
 

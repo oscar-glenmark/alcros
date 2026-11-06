@@ -174,6 +174,30 @@ function handleDeleteField(PDO $pdo): void
     apiJsonResponse(['field_id' => $fieldId, 'field_name' => $fieldName]);
 }
 
+function printFieldNormalizedCompareValue(string $key, mixed $value): string
+{
+    if ($key === 'enabled') {
+        return in_array($value, [1, '1', true, 'true', 'on'], true) ? '1' : '0';
+    }
+    if (in_array($key, ['x_mm', 'y_mm', 'width_mm', 'height_mm'], true)) {
+        return number_format((float) $value, 2, '.', '');
+    }
+    if ($key === 'font_size' || $key === 'max_length' || $key === 'line_height') {
+        return (string) (int) round((float) $value);
+    }
+
+    return trim((string) $value);
+}
+
+function printFieldExistingCompareValue(array $existing, string $key): string
+{
+    if (!array_key_exists($key, $existing)) {
+        return '';
+    }
+
+    return printFieldNormalizedCompareValue($key, $existing[$key]);
+}
+
 function printFieldUpdateDataFromInput(PDO $pdo, int $fieldId, array $input): array
 {
     $existing = getPrintFieldById($pdo, $fieldId);
@@ -185,9 +209,16 @@ function printFieldUpdateDataFromInput(PDO $pdo, int $fieldId, array $input): ar
         return ['skip' => true];
     }
 
+    $template = getPrintTemplateById($pdo, (int) ($existing['template_id'] ?? 0));
+    $clientField = static fn (array $row): array => printFieldConfigForClient($row, $template ?: null);
+
     $data = [];
     foreach (['x_mm', 'y_mm', 'width_mm', 'height_mm', 'font_size', 'font_family', 'font_weight', 'alignment', 'max_length', 'line_height', 'enabled'] as $key) {
-        if (array_key_exists($key, $input)) {
+        if (!array_key_exists($key, $input)) {
+            continue;
+        }
+        $incoming = printFieldNormalizedCompareValue($key, $input[$key]);
+        if ($incoming !== printFieldExistingCompareValue($existing, $key)) {
             $data[$key] = $input[$key];
         }
     }
@@ -197,11 +228,14 @@ function printFieldUpdateDataFromInput(PDO $pdo, int $fieldId, array $input): ar
         if ($label === '') {
             return ['error' => 'Field name cannot be empty.'];
         }
-        $data['label'] = mb_substr($label, 0, 120);
+        $label = mb_substr($label, 0, 120);
+        if ($label !== printFieldExistingCompareValue($existing, 'label')) {
+            $data['label'] = $label;
+        }
     }
 
     if ($data === []) {
-        return ['error' => 'Nothing to update for field #' . $fieldId . '.'];
+        return ['unchanged' => true, 'field' => $clientField($existing)];
     }
 
     if (!updatePrintField($pdo, $fieldId, $data)) {
@@ -213,9 +247,7 @@ function printFieldUpdateDataFromInput(PDO $pdo, int $fieldId, array $input): ar
         return ['error' => 'Field #' . $fieldId . ' saved but could not be reloaded.'];
     }
 
-    $template = getPrintTemplateById($pdo, (int) ($existing['template_id'] ?? 0));
-
-    return ['field' => printFieldConfigForClient($updated, $template ?: null)];
+    return ['field' => $clientField($updated), 'updated' => true];
 }
 
 function handleSaveField(PDO $pdo): void
@@ -235,6 +267,13 @@ function handleSaveField(PDO $pdo): void
     }
     if (isset($result['error'])) {
         apiError($result['error']);
+    }
+    if (!empty($result['unchanged'])) {
+        apiJsonResponse([
+            'field_id' => $fieldId,
+            'field'    => $result['field'],
+            'unchanged'=> true,
+        ]);
     }
 
     logActivity(staffId(), 'Print Field Updated', 'Updated print field #' . $fieldId);
@@ -258,6 +297,7 @@ function handleSaveFields(PDO $pdo): void
     }
 
     $saved = [];
+    $updatedCount = 0;
     $lastError = null;
 
     foreach ($entries as $entry) {
@@ -287,18 +327,24 @@ function handleSaveFields(PDO $pdo): void
         }
 
         $saved[] = $result['field'];
+        if (!empty($result['updated'])) {
+            $updatedCount++;
+        }
     }
 
     if ($saved === []) {
         apiError($lastError ?: 'No fields were saved.');
     }
 
+    if ($updatedCount > 0) {
+        logActivity(
+            staffId(),
+            'Print Fields Updated',
+            'Updated ' . $updatedCount . ' print field' . ($updatedCount === 1 ? '' : 's')
+        );
+    }
+
     $count = count($saved);
-    logActivity(
-        staffId(),
-        'Print Fields Updated',
-        'Updated ' . $count . ' print field' . ($count === 1 ? '' : 's')
-    );
     bumpPrintCalibrationRevision();
     apiJsonResponse([
         'fields' => $saved,

@@ -27,6 +27,7 @@ $pageSubtitle = $isAdminUser
 $todayDate = alcrosTodayDate();
 $adminAnalytics = null;
 $recentRequests = [];
+$recentAppointments = [];
 $scheduleMonth = date('Y-m');
 $scheduleDate = $todayDate;
 $scheduleCalendar = ['appointments' => [], 'dates' => []];
@@ -43,6 +44,7 @@ if ($isAdminUser) {
         "SELECT tracking_code, first_name, middle_name, last_name, document_type, status, rejection_reason, submitted_at
          FROM document_requests ORDER BY submitted_at DESC LIMIT 6"
     )->fetchAll());
+    $recentAppointments = fetchRecentStandaloneAppointments($pdo, 6);
     $activityStmt = $pdo->prepare(
         "SELECT staff_id, action, details, created_at FROM activity_logs WHERE staff_id = ? ORDER BY created_at DESC LIMIT 6"
     );
@@ -238,7 +240,8 @@ if (!$isAdminUser) {
 
             <?php else: ?>
 
-            <!-- Row 1: Today's schedule 40% · Incoming 60%. Row 2: Recent requests 40% · Activity 60%. -->
+            <!-- Row 1: Today's schedule 40% · Incoming 60%. Row 2: Recent requests · appointments · activity (3 columns). -->
+            <div class="space-y-6">
             <div class="grid grid-cols-1 xl:grid-cols-10 gap-6">
 
                 <!-- Today's schedule -->
@@ -345,8 +348,10 @@ if (!$isAdminUser) {
                     <?php endif; ?>
                 </div>
 
-                <!-- Recent requests (40%) — same row as activity -->
-                <div class="xl:col-span-4 bg-white rounded-2xl border border-gray-100 dash-card overflow-hidden dash-panel-pair">
+            </div>
+
+            <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 dash-staff-recents-row">
+                <div class="bg-white rounded-2xl border border-gray-100 dash-card overflow-hidden dash-panel-pair min-w-0">
                     <div class="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
                         <div>
                             <h2 class="font-bold text-sm text-slate-900">Recent Requests</h2>
@@ -381,8 +386,42 @@ if (!$isAdminUser) {
                     <?php endif; ?>
                 </div>
 
-                <!-- My recent activity (60%) — same row as recent requests -->
-                <div class="xl:col-span-6 bg-white rounded-2xl border border-gray-100 dash-card overflow-hidden dash-panel-pair">
+                <div class="bg-white rounded-2xl border border-gray-100 dash-card overflow-hidden dash-panel-pair min-w-0">
+                    <div class="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+                        <div>
+                            <h2 class="font-bold text-sm text-slate-900">Recent Appointments</h2>
+                            <p class="text-[10px] text-gray-400 mt-0.5">Latest standalone appointment bookings</p>
+                        </div>
+                        <a href="<?= htmlspecialchars(buildStaffOperationalUrl('appointment.php', ['date' => $todayDate, 'status' => 'all_appointments'])) ?>" class="text-blue-600 text-[10px] font-bold uppercase hover:underline">View all</a>
+                    </div>
+                    <?php if (empty($recentAppointments)): ?>
+                    <div class="p-10 text-center">
+                        <div class="bg-gray-50 w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-3">
+                            <i data-lucide="calendar-plus" class="w-6 h-6 text-gray-300"></i>
+                        </div>
+                        <p class="text-sm font-semibold text-slate-700">No appointments yet</p>
+                        <p class="text-xs text-gray-400 mt-1">New bookings will appear here.</p>
+                    </div>
+                    <?php else: ?>
+                    <div id="recent-appointments-list" class="divide-y divide-gray-50">
+                        <?php foreach ($recentAppointments as $ap): ?>
+                        <div class="px-5 py-3.5 flex items-center justify-between gap-4 hover:bg-gray-50/50">
+                            <div class="min-w-0 flex-1">
+                                <p class="text-sm font-semibold text-slate-800 truncate"><?= htmlspecialchars($ap['citizen_name']) ?></p>
+                                <p class="text-[11px] text-gray-400 mt-0.5">
+                                    <?= htmlspecialchars($ap['service_type']) ?>
+                                    · <span class="font-mono text-blue-600"><?= htmlspecialchars($ap['appointment_code']) ?></span>
+                                    · <?= formatRecordDate(substr((string) ($ap['appointment_date'] ?? ''), 0, 10)) ?>
+                                </p>
+                            </div>
+                            <?= $ap['status_badge_html'] ?? appointmentStatusBadge($ap['status'], $ap['rejection_reason'] ?? null) ?>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+
+                <div class="bg-white rounded-2xl border border-gray-100 dash-card overflow-hidden dash-panel-pair min-w-0">
                     <div class="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
                         <div>
                             <h2 class="font-bold text-sm text-slate-900">My Recent Activity</h2>
@@ -392,7 +431,7 @@ if (!$isAdminUser) {
                     <?php if (empty($activities)): ?>
                     <div class="p-10 text-center text-gray-400 text-xs">No activity recorded yet.</div>
                     <?php else: ?>
-                    <div id="activity-feed-list" class="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 max-h-[420px] xl:max-h-none overflow-y-auto">
+                    <div id="activity-feed-list" class="grid grid-cols-1 gap-3 p-4 max-h-[420px] xl:max-h-none overflow-y-auto">
                         <?php foreach ($activities as $act): ?>
                         <div class="flex items-start gap-3 p-3 rounded-xl bg-gray-50/80 border border-gray-100">
                             <span class="shrink-0 mt-0.5" aria-hidden="true">
@@ -414,6 +453,7 @@ if (!$isAdminUser) {
                     </div>
                     <?php endif; ?>
                 </div>
+            </div>
             </div>
 
             <?php endif; ?>

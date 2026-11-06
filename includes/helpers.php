@@ -782,6 +782,17 @@ function setSetting(string $key, string $value): void
     settingsCacheStore()[$key] = $value;
 }
 
+/** @return bool True when the stored value changed. */
+function setSettingIfChanged(string $key, string $value, string $default = ''): bool
+{
+    if (getSetting($key, $default) === $value) {
+        return false;
+    }
+    setSetting($key, $value);
+
+    return true;
+}
+
 function getSiteSettings(): array
 {
     ensureSettingsLoaded();
@@ -4120,6 +4131,62 @@ function staffRecoveryGmail2svConfirmedValue(?array $existingStaff, string $newE
     }
 
     return (int) ($existingStaff['recovery_gmail_2sv_confirmed'] ?? 0);
+}
+
+function staffProfileFieldNorm(mixed $value): string
+{
+    return trim((string) ($value ?? ''));
+}
+
+/**
+ * @return list<string> Human-readable labels for staff profile fields that changed.
+ */
+function staffProfileChangedFieldLabels(
+    array $existing,
+    array $nameParts,
+    string $email,
+    int $confirmedValue,
+    ?string $newRole = null
+): array {
+    $labels = [];
+
+    if (staffProfileFieldNorm($existing['first_name'] ?? null) !== staffProfileFieldNorm($nameParts['first_name'] ?? null)) {
+        $labels[] = 'first name';
+    }
+    if (staffProfileFieldNorm($existing['middle_name'] ?? null) !== staffProfileFieldNorm($nameParts['middle_name'] ?? null)) {
+        $labels[] = 'middle name';
+    }
+    if (staffProfileFieldNorm($existing['last_name'] ?? null) !== staffProfileFieldNorm($nameParts['last_name'] ?? null)) {
+        $labels[] = 'last name';
+    }
+
+    $oldEmail = normalizeStaffEmail((string) ($existing['email'] ?? ''));
+    $newEmail = normalizeStaffEmail($email);
+    if ($oldEmail !== $newEmail) {
+        $labels[] = 'recovery Gmail';
+    }
+
+    if ((int) ($existing['recovery_gmail_2sv_confirmed'] ?? 0) !== $confirmedValue) {
+        $labels[] = '2-Step Verification confirmation';
+    }
+
+    if ($newRole !== null) {
+        $oldRole = (string) ($existing['role'] ?? 'Staff');
+        if ($newRole !== $oldRole) {
+            $labels[] = 'role';
+        }
+    }
+
+    return $labels;
+}
+
+function staffProfileChangeActivityDetails(array $changedLabels): string
+{
+    if ($changedLabels === []) {
+        return 'No profile changes detected';
+    }
+
+    return 'Updated ' . implode(', ', $changedLabels);
 }
 
 function staffEmailInUse(PDO $pdo, string $email, ?string $exceptStaffId = null): bool

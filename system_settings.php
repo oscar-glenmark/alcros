@@ -100,11 +100,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new InvalidArgumentException($error2sv);
             }
             $confirmedValue = staffRecoveryGmail2svConfirmedValue($existing, $email, $confirmedCheckbox);
+            $profileChangedLabels = staffProfileChangedFieldLabels($existing, $nameParts, $email, $confirmedValue);
             $pdo->prepare('UPDATE staff SET first_name = ?, middle_name = ?, last_name = ?, email = ?, recovery_gmail_2sv_confirmed = ? WHERE staff_id = ?')
                 ->execute([$nameParts['first_name'], $nameParts['middle_name'], $nameParts['last_name'], $email, $confirmedValue, $currentStaffId]);
             $_SESSION['staff_name'] = formatPersonName($nameParts['first_name'], $nameParts['middle_name'], $nameParts['last_name']);
-            logActivity($currentStaffId, 'Profile Updated', 'Updated display name and recovery Gmail');
-            settingsFlashSet('success', 'Your profile has been updated.');
+            if ($profileChangedLabels !== []) {
+                logActivity($currentStaffId, 'Profile Updated', staffProfileChangeActivityDetails($profileChangedLabels));
+            }
+            settingsFlashSet('success', $profileChangedLabels !== [] ? 'Your profile has been updated.' : 'No profile changes were detected.');
             $handled = true;
         } elseif ($action === 'change_password') {
             $current = $_POST['current_password'] ?? '';
@@ -128,46 +131,80 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             settingsFlashSet('success', 'Password changed successfully.');
             $handled = true;
         } elseif ($action === 'save_settings' && $isAdmin) {
+            $smtpPassMask = '••••••••••••••••';
+            $settingsChanged = false;
+            $feesBefore = getSetting(officeFeesSettingKey(), '');
+            $requirementsBefore = getSetting(officeRequirementsSettingKey(), '');
+
             foreach ($adminSettingKeys as $key) {
+                $default = $defaults[$key] ?? '';
                 if (in_array($key, ['maintenance_mode', 'allow_public_requests', 'sms_enabled'], true)) {
-                    setSetting($key, isset($_POST[$key]) ? '1' : '0');
+                    $newValue = isset($_POST[$key]) ? '1' : '0';
+                    if (setSettingIfChanged($key, $newValue, $default)) {
+                        $settingsChanged = true;
+                    }
                 } elseif ($key === 'smtp_pass') {
                     $smtpPass = (string) ($_POST['smtp_pass'] ?? '');
-                    $smtpPassMask = '••••••••••••••••';
                     if ($smtpPass !== '' && $smtpPass !== $smtpPassMask) {
-                        setSetting($key, $smtpPass);
+                        if (setSettingIfChanged($key, $smtpPass, $default)) {
+                            $settingsChanged = true;
+                        }
                     }
                 } elseif ($key === 'iprog_api_token') {
                     $apiKey = (string) ($_POST['iprog_api_token'] ?? '');
-                    $secretMask = '••••••••••••••••';
-                    if ($apiKey !== '' && $apiKey !== $secretMask) {
-                        setSetting($key, $apiKey);
+                    if ($apiKey !== '' && $apiKey !== $smtpPassMask) {
+                        if (setSettingIfChanged($key, $apiKey, $default)) {
+                            $settingsChanged = true;
+                        }
                     }
                 } elseif ($key === 'iprog_sender_name') {
-                    setSetting($key, trim((string) ($_POST[$key] ?? '')));
+                    $newValue = trim((string) ($_POST[$key] ?? ''));
+                    if (setSettingIfChanged($key, $newValue, $default)) {
+                        $settingsChanged = true;
+                    }
                 } elseif (isset($_POST[$key])) {
-                    setSetting($key, trim($_POST[$key]));
+                    $newValue = trim((string) $_POST[$key]);
+                    if (setSettingIfChanged($key, $newValue, $default)) {
+                        $settingsChanged = true;
+                    }
                 }
             }
             if (getSetting('maintenance_mode', '0') === '1') {
-                setSetting('allow_public_requests', '0');
+                if (setSettingIfChanged('allow_public_requests', '0', $defaults['allow_public_requests'] ?? '1')) {
+                    $settingsChanged = true;
+                }
             } elseif (getSetting('allow_public_requests', '0') === '1') {
-                setSetting('maintenance_mode', '0');
+                if (setSettingIfChanged('maintenance_mode', '0', $defaults['maintenance_mode'] ?? '0')) {
+                    $settingsChanged = true;
+                }
             }
             if (isset($_POST['office_fees']) && is_array($_POST['office_fees'])) {
                 saveOfficeFeesFromPost($_POST['office_fees']);
+                if (getSetting(officeFeesSettingKey(), '') !== $feesBefore) {
+                    $settingsChanged = true;
+                }
             }
             if (isset($_POST['office_requirements']) && is_array($_POST['office_requirements'])) {
                 saveOfficeRequirementsFromPost($_POST['office_requirements']);
+                if (getSetting(officeRequirementsSettingKey(), '') !== $requirementsBefore) {
+                    $settingsChanged = true;
+                }
             }
-            logActivity($currentStaffId, 'Settings Updated', 'System configuration saved');
+            if ($settingsChanged) {
+                logActivity($currentStaffId, 'Settings Updated', 'System configuration saved');
+            }
             require_once __DIR__ . '/includes/sms.php';
             purgeObsoleteSemaphoreSettings();
             require_once __DIR__ . '/includes/system_errors.php';
             clearStaleEmailConfigFailureAlert($pdo);
             clearStaleEmailDeliveryFailureAlert($pdo);
             syncSystemErrors($pdo);
-            settingsFlashSet('success', 'System settings saved successfully.');
+            settingsFlashSet(
+                'success',
+                $settingsChanged
+                    ? 'System settings saved successfully.'
+                    : 'No setting changes were detected — activity log was not updated.'
+            );
             $handled = true;
         } elseif ($action === 'add_staff' && $isAdmin) {
             $nameParts = normalizeCitizenNameParts(personNamePartsFromInput($_POST, 'staff_'));
@@ -236,13 +273,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($targetId === $currentStaffId && $role !== 'Administrator' && adminCount($pdo) <= 1) {
                 throw new InvalidArgumentException('Cannot demote the last administrator account.');
             }
+            $staffChangedLabels = staffProfileChangedFieldLabels($existing, $nameParts, $email, $confirmedValue, $role);
             $pdo->prepare('UPDATE staff SET first_name = ?, middle_name = ?, last_name = ?, email = ?, recovery_gmail_2sv_confirmed = ?, role = ? WHERE staff_id = ?')
                 ->execute([$nameParts['first_name'], $nameParts['middle_name'], $nameParts['last_name'], $email, $confirmedValue, $role, $targetId]);
             if ($targetId === $currentStaffId) {
                 $_SESSION['staff_name'] = formatPersonName($nameParts['first_name'], $nameParts['middle_name'], $nameParts['last_name']);
             }
-            logActivity($currentStaffId, 'Staff Updated', "Updated account $targetId");
-            settingsFlashSet('success', "Staff account $targetId updated.");
+            if ($staffChangedLabels !== []) {
+                logActivity(
+                    $currentStaffId,
+                    'Staff Updated',
+                    'Updated account ' . $targetId . ' (' . implode(', ', $staffChangedLabels) . ')'
+                );
+            }
+            settingsFlashSet(
+                'success',
+                $staffChangedLabels !== []
+                    ? "Staff account $targetId updated."
+                    : "No changes were detected for $targetId."
+            );
             $handled = true;
         } elseif ($action === 'reset_staff_password' && $isAdmin) {
             $targetId = strtoupper(trim($_POST['target_staff_id'] ?? ''));

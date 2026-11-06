@@ -297,8 +297,8 @@ $filterLabels = [
 $currentFilterLabel = $filterLabels[$filterStatus] ?? 'Pending Queue';
 $resultCount = count($requests);
 $showSidePanel = !in_array($filterStatus, ['ready', 'no_show', 'recently_deleted'], true);
-$showBulkActions = in_array($filterStatus, ['all_requests', 'recently_deleted'], true);
 $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
+$showBulkActions = $isRecentlyDeletedView;
 $showVisitLateNoShowColumn = $filterStatus === 'ready';
 ?>
 <!DOCTYPE html>
@@ -439,9 +439,9 @@ $showVisitLateNoShowColumn = $filterStatus === 'ready';
                         <p class="manage-table-head__meta">
                             <?= number_format($resultCount) ?> request<?= $resultCount === 1 ? '' : 's' ?>
                             <?= $search !== '' ? ' · matching “' . htmlspecialchars($search) . '”' : '' ?>
-                            <?php if ($showBulkActions && !$isRecentlyDeletedView): ?>
+                            <?php if (!$isRecentlyDeletedView): ?>
                             · <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php', ['status' => 'recently_deleted'])) ?>" class="manage-bulk-meta-link">Recently deleted<?= $requestStats['recently_deleted'] > 0 ? ' (' . number_format($requestStats['recently_deleted']) . ')' : '' ?></a>
-                            <?php elseif ($isRecentlyDeletedView): ?>
+                            <?php else: ?>
                             · <a href="<?= htmlspecialchars(buildAuthUrl('manage_request.php', ['status' => 'all_requests'])) ?>" class="manage-bulk-meta-link">Back to all requests</a>
                             <?php endif; ?>
                         </p>
@@ -469,7 +469,7 @@ $showVisitLateNoShowColumn = $filterStatus === 'ready';
                 </form>
                 <?php endif; ?>
                 <div class="overflow-x-auto">
-                <table class="manage-requests-table w-full text-left text-sm min-w-[1120px]">
+                <table class="manage-requests-table w-full text-left text-sm min-w-[1000px]">
                     <thead>
                         <tr>
                             <?php if ($showBulkActions): ?><th class="manage-bulk-col"><span class="sr-only">Select</span></th><?php endif; ?>
@@ -478,7 +478,6 @@ $showVisitLateNoShowColumn = $filterStatus === 'ready';
                             <th class="manage-col-record-name">Name on record</th>
                             <th class="manage-col-certificate">Certificate</th>
                             <th class="manage-col-visit">Visit</th>
-                            <th class="manage-col-submitted">Submitted</th>
                             <?php if ($isRecentlyDeletedView): ?><th class="manage-col-submitted">Deleted</th><?php endif; ?>
                             <th class="manage-col-status">Status</th>
                             <?php if ($showVisitLateNoShowColumn): ?><th class="manage-col-visit-late">Late / No-show</th><?php endif; ?>
@@ -521,10 +520,9 @@ $showVisitLateNoShowColumn = $filterStatus === 'ready';
                                 <p class="manage-citizen-name"><?= htmlspecialchars(documentRequestNameOnRecord($req)) ?></p>
                             </td>
                             <td class="manage-col-certificate"><span class="manage-doc-type"><?= htmlspecialchars(documentTypeLabel($req['document_type'])) ?></span></td>
-                            <td class="manage-col-visit"><span class="manage-date"><?= htmlspecialchars(formatAppointmentDisplay($req['appointment_date'] ?? null, $req['appointment_time'] ?? null) ?: '—') ?></span></td>
-                            <td class="manage-col-submitted"><span class="manage-date"><?= htmlspecialchars(formatReportDateTime($req['submitted_at'])) ?></span></td>
+                            <td class="manage-col-visit"><?= manageTableDateTimeHtml($req['appointment_date'] ?? null, $req['appointment_time'] ?? null) ?></td>
                             <?php if ($isRecentlyDeletedView): ?>
-                            <td class="manage-col-submitted"><span class="manage-date"><?= !empty($req['deleted_at']) ? htmlspecialchars(formatReportDateTime($req['deleted_at'])) : '—' ?></span></td>
+                            <td class="manage-col-submitted"><?= !empty($req['deleted_at']) ? manageTableDateTimeHtml($req['deleted_at']) : manageTableDateTimeHtml(null) ?></td>
                             <?php endif; ?>
                             <td class="manage-col-status manage-cell-status">
                                 <?= requestStatusBadge($req['status'], $req['rejection_reason'] ?? null) ?>
@@ -601,8 +599,9 @@ $showVisitLateNoShowColumn = $filterStatus === 'ready';
                                         <input type="hidden" name="redirect_q" value="<?= htmlspecialchars($search) ?>">
                                         <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>">
                                         <input type="hidden" name="delete_request" value="1">
-                                        <button type="submit" title="Delete completed request" class="manage-row-action manage-row-action--danger" data-loading-text="Deleting…">
-                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                        <button type="submit" title="Delete completed request" aria-label="Delete completed request" class="manage-row-action manage-row-action--labeled manage-row-action--danger" data-loading-text="Deleting…">
+                                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                            <span class="manage-row-action__label">DELETE</span>
                                         </button>
                                     </form>
                                     <?php endif; ?>

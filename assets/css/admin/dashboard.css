@@ -137,12 +137,17 @@
     }
 
     .dash-panel-pair #recent-requests-list,
+    .dash-panel-pair #recent-appointments-list,
     .dash-panel-pair #incoming-appts-list,
     .dash-panel-pair #today-appts-list,
     .dash-panel-pair #activity-feed-list {
         flex: 1 1 auto;
         max-height: none;
         overflow-y: auto;
+    }
+
+    .dash-staff-recents-row .dash-panel-pair {
+        min-height: 22rem;
     }
 }
 

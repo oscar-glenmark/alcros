@@ -419,8 +419,8 @@ $filterLabels = [
 ];
 $currentFilterLabel = $filterLabels[$filterStatus] ?? 'Awaiting Queue';
 $showSidePanel = !$isFollowUpsView && !in_array($filterStatus, ['completed', 'confirmed', 'recently_deleted'], true);
-$showBulkActions = !$isFollowUpsView && in_array($filterStatus, ['all_appointments', 'recently_deleted'], true);
 $isRecentlyDeletedView = $filterStatus === 'recently_deleted';
+$showBulkActions = !$isFollowUpsView && $isRecentlyDeletedView;
 $showVisitLateNoShowColumn = $filterStatus === 'confirmed';
 
 $appointments = [];
@@ -697,7 +697,7 @@ $pageHeaderMeta = $awaitingAllDates
                                 <p class="manage-citizen-meta"><?= htmlspecialchars($fuRow['appointment_code'] ?? '') ?></p>
                             </td>
                             <td><span class="manage-doc-type"><?= htmlspecialchars(appointmentServiceLabel((string) ($fuRow['service_type'] ?? ''))) ?></span></td>
-                            <td><span class="manage-date"><?= htmlspecialchars(formatAppointmentDisplay($fuRow['visit_date'] ?? null, $fuRow['visit_time'] ?? null) ?: '—') ?></span></td>
+                            <td class="manage-col-visit"><?= manageTableDateTimeHtml($fuRow['visit_date'] ?? null, $fuRow['visit_time'] ?? null) ?></td>
                             <td><span class="manage-date"><?= htmlspecialchars(formatDateEmailDisplay((string) ($fuRow['follow_up_date'] ?? ''))) ?></span></td>
                             <td><span class="text-xs text-gray-600"><?= htmlspecialchars(implode(' · ', $reminderBits)) ?></span></td>
                             <td class="manage-cell-actions">
@@ -744,9 +744,9 @@ $pageHeaderMeta = $awaitingAllDates
                             · <?= htmlspecialchars(formatDateEmailDisplay($viewDate)) ?>
                             <?php endif; ?>
                             <?= $search !== '' ? ' · matching “' . htmlspecialchars($search) . '”' : '' ?>
-                            <?php if ($showBulkActions && !$isRecentlyDeletedView): ?>
+                            <?php if (!$isRecentlyDeletedView): ?>
                             · <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $viewDate, 'status' => 'recently_deleted'])) ?>" class="manage-bulk-meta-link">Recently deleted<?= $appointmentStats['recently_deleted'] > 0 ? ' (' . number_format($appointmentStats['recently_deleted']) . ')' : '' ?></a>
-                            <?php elseif ($isRecentlyDeletedView): ?>
+                            <?php else: ?>
                             · <a href="<?= htmlspecialchars(buildAuthUrl('appointment.php', ['date' => $viewDate, 'status' => 'all_appointments'])) ?>" class="manage-bulk-meta-link">Back to all appointments</a>
                             <?php endif; ?>
                         </p>
@@ -832,9 +832,9 @@ $pageHeaderMeta = $awaitingAllDates
                             <?php if ($isSearchMode): ?>
                             <td><span class="manage-date"><?= htmlspecialchars(formatDateEmailDisplay($ap['appointment_date'])) ?></span></td>
                             <?php endif; ?>
-                            <td><span class="manage-date"><?= htmlspecialchars(formatAppointmentDisplay($ap['appointment_date'] ?? null, $ap['appointment_time'] ?? null) ?: '—') ?></span></td>
+                            <td class="manage-col-visit"><?= manageTableDateTimeHtml($ap['appointment_date'] ?? null, $ap['appointment_time'] ?? null) ?></td>
                             <?php if ($isRecentlyDeletedView): ?>
-                            <td><span class="manage-date"><?= !empty($ap['deleted_at']) ? htmlspecialchars(formatReportDateTime($ap['deleted_at'])) : '—' ?></span></td>
+                            <td class="manage-col-submitted"><?= !empty($ap['deleted_at']) ? manageTableDateTimeHtml($ap['deleted_at']) : manageTableDateTimeHtml(null) ?></td>
                             <?php endif; ?>
                             <td class="manage-cell-status">
                                 <?= appointmentStatusBadge($ap['status'], $ap['rejection_reason'] ?? null) ?>
@@ -891,8 +891,9 @@ $pageHeaderMeta = $awaitingAllDates
                                         <input type="hidden" name="redirect_q" value="<?= htmlspecialchars($search) ?>">
                                         <input type="hidden" name="appointment_id" value="<?= (int) $ap['id'] ?>">
                                         <input type="hidden" name="delete_appointment" value="1">
-                                        <button type="submit" title="Delete completed appointment" aria-label="Delete completed appointment" class="manage-row-action manage-row-action--danger" data-loading-text="Deleting…">
-                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                        <button type="submit" title="Delete completed appointment" aria-label="Delete completed appointment" class="manage-row-action manage-row-action--labeled manage-row-action--danger" data-loading-text="Deleting…">
+                                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                            <span class="manage-row-action__label">DELETE</span>
                                         </button>
                                     </form>
                                     <?php endif; ?>

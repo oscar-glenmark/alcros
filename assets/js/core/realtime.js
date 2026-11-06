@@ -297,6 +297,15 @@
                 }).join('') : '';
             }
 
+            var recentApptEl = document.getElementById('recent-appointments-list');
+            if (recentApptEl && data.recent_appointments) {
+                recentApptEl.innerHTML = data.recent_appointments.length ? data.recent_appointments.map(function (a) {
+                    var visitDate = (a.appointment_date || '').split(' ')[0];
+                    var badge = a.status_badge_html || ('<span class="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-gray-100 text-gray-600">' + escapeHtml(a.status) + '</span>');
+                    return '<div class="px-5 py-3.5 flex items-center justify-between gap-4 hover:bg-gray-50/50"><div class="min-w-0 flex-1"><p class="text-sm font-semibold text-slate-800 truncate">' + escapeHtml(a.citizen_name) + '</p><p class="text-[11px] text-gray-400 mt-0.5">' + escapeHtml(a.service_type) + ' · <span class="font-mono text-blue-600">' + escapeHtml(a.appointment_code) + '</span>' + (visitDate ? ' · ' + escapeHtml(formatDateDisplay(visitDate)) : '') + '</p></div>' + badge + '</div>';
+                }).join('') : '';
+            }
+
             var actEl = document.getElementById('activity-feed-list');
             if (actEl && data.activities) {
                 var adminFeed = actEl.tagName === 'UL' || actEl.classList.contains('dash-admin-activity__list');

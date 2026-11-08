@@ -10,6 +10,12 @@ $ticket = null;
 $error = null;
 $tables = queuePurposeConfig();
 
+$purposeButtonClass = [
+    'walk_in'         => 'kiosk-choice-btn--walk-in',
+    'appointment'     => 'kiosk-choice-btn--appointment',
+    'document_claim'  => 'kiosk-choice-btn--claim',
+];
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     requirePublicPostCsrf();
     $purpose = (string) ($_POST['purpose'] ?? '');
@@ -39,48 +45,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?= alcrosUiHead() ?>
     <?= publicStylesheet('kiosk') ?>
 </head>
-<body class="flex items-center justify-center min-h-screen p-6">
+<body class="kiosk-body">
+    <div class="kiosk-shell">
+        <header class="kiosk-header">
+            <div class="kiosk-header__brand">
+                <?= alcrosFaviconImg(44, 'shadow-md shadow-blue-900/30') ?>
+                <div>
+                    <h2 class="kiosk-header__title">ALCROS<span>Queue</span></h2>
+                    <p class="kiosk-header__sub">Self-service kiosk · Tap your visit type</p>
+                </div>
+            </div>
+            <button type="button"
+                    id="display-fullscreen-btn"
+                    class="display-fullscreen-btn"
+                    aria-label="Enter full screen"
+                    title="Full screen">
+                <i data-lucide="maximize" class="w-5 h-5" aria-hidden="true"></i>
+            </button>
+        </header>
 
-    <div class="w-full max-w-3xl text-center">
-        <?php if ($ticket): ?>
-        <div class="bg-white rounded-3xl p-12 shadow-2xl max-w-sm mx-auto">
-            <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">Your number</p>
-            <p class="text-7xl font-black text-blue-600 mb-4"><?= htmlspecialchars($ticket['number']) ?></p>
-            <p class="text-slate-800 font-bold">Go to Table <?= (int) $ticket['table'] ?></p>
-            <p class="text-slate-500 text-sm mt-1"><?= htmlspecialchars($ticket['label']) ?></p>
-            <p class="text-slate-400 text-xs mt-6">Wait for your number on the screen.</p>
-            <a href="kiosk.php" class="inline-block mt-8 bg-slate-900 text-white px-8 py-3 rounded-xl text-sm font-bold">Done</a>
-        </div>
-        <?php else: ?>
-        <h1 class="text-3xl font-black text-white mb-2">Get a queue number</h1>
-        <p class="text-slate-400 text-sm mb-10">Tap the reason for your visit</p>
+        <main class="kiosk-main">
+            <?php if ($ticket): ?>
+            <div class="kiosk-ticket">
+                <p class="kiosk-ticket__eyebrow">Your number</p>
+                <p class="kiosk-ticket__number"><?= htmlspecialchars($ticket['number']) ?></p>
+                <p class="kiosk-ticket__table">Go to Table <?= (int) $ticket['table'] ?></p>
+                <p class="kiosk-ticket__purpose"><?= htmlspecialchars($ticket['label']) ?></p>
+                <p class="kiosk-ticket__hint">Wait for your number on the display screen.</p>
+                <a href="kiosk.php" class="kiosk-ticket__done">Done</a>
+            </div>
+            <?php else: ?>
+            <div class="kiosk-intro">
+                <h1 class="kiosk-intro__title">Get a queue number</h1>
+                <p class="kiosk-intro__lead">Tap the reason for your visit</p>
+            </div>
 
-        <?php if ($error): ?>
-        <p class="text-red-400 text-sm mb-6"><?= htmlspecialchars($error) ?></p>
-        <?php endif; ?>
+            <?php if ($error): ?>
+            <p class="kiosk-error"><?= htmlspecialchars($error) ?></p>
+            <?php endif; ?>
 
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <?php foreach ($tables as $purpose => $cfg): ?>
-            <form method="POST" class="contents kiosk-form" data-no-confirm>
-                <?= publicCsrfField() ?>
-                <input type="hidden" name="purpose" value="<?= htmlspecialchars($purpose) ?>">
-                <button type="submit"
-                    data-loading-text="Getting your number…"
-                    class="rounded-2xl p-8 text-left transition active:scale-95 shadow-lg w-full h-full <?= $purpose === 'walk_in' ? 'bg-white hover:bg-orange-50' : ($purpose === 'appointment' ? 'bg-blue-600 hover:bg-blue-500' : 'bg-emerald-600 hover:bg-emerald-500') ?>">
-                    <p class="text-[10px] font-black uppercase tracking-widest mb-4 <?= $purpose === 'walk_in' ? 'text-orange-500' : 'text-white/70' ?>">
-                        Table <?= (int) $cfg['table'] ?>
-                    </p>
-                    <p class="text-2xl font-black <?= $purpose === 'walk_in' ? 'text-slate-900' : 'text-white' ?>">
-                        <?= htmlspecialchars($cfg['label']) ?>
-                    </p>
-                </button>
-            </form>
-            <?php endforeach; ?>
-        </div>
-        <?php endif; ?>
+            <div class="kiosk-choices">
+                <?php foreach ($tables as $purpose => $cfg): ?>
+                <form method="POST" class="kiosk-form" data-no-confirm>
+                    <?= publicCsrfField() ?>
+                    <input type="hidden" name="purpose" value="<?= htmlspecialchars($purpose) ?>">
+                    <button type="submit"
+                        data-loading-text="Getting your number…"
+                        class="kiosk-choice-btn <?= htmlspecialchars($purposeButtonClass[$purpose] ?? '') ?>">
+                        <p class="kiosk-choice-btn__table">Table <?= (int) $cfg['table'] ?></p>
+                        <p class="kiosk-choice-btn__label"><?= htmlspecialchars($cfg['label']) ?></p>
+                    </button>
+                </form>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+        </main>
     </div>
 
     <?= actionCoreScripts() ?>
+    <?= scriptTag('public/kiosk.js') ?>
     <?= lucideInitScript() ?>
 </body>
 </html>

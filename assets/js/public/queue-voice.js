@@ -3,6 +3,8 @@
 
     var STORAGE_ENABLED = 'alcros_voice_enabled';
     var STORAGE_LAST = 'alcros_voice_last';
+    /** Speech synthesis rate (1 = default; lower = slower). */
+    var SPEECH_RATE = 0.84;
     var SILENT_AUDIO_SRC = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
 
     var enabled = sessionStorage.getItem(STORAGE_ENABLED) === '1';
@@ -346,7 +348,7 @@
         } else {
             utterance.lang = 'en-US';
         }
-        utterance.rate = 0.92;
+        utterance.rate = SPEECH_RATE;
         utterance.pitch = 1;
         utterance.volume = 1;
 

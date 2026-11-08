@@ -354,9 +354,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     <div>
 
-                        <label class="block text-[11px] font-bold text-gray-700 mb-2 flex items-center gap-2">
+                        <label class="auth-portal-field-label">
 
-                            <i data-lucide="circle-user-round" class="w-3.5 h-3.5 text-gray-400"></i> Staff ID
+                            <i data-lucide="circle-user-round" aria-hidden="true"></i> Staff ID
 
                         </label>
 
@@ -380,9 +380,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     <div>
 
-                        <label class="block text-[11px] font-bold text-gray-700 mb-2 flex items-center gap-2">
+                        <label class="auth-portal-field-label">
 
-                            <i data-lucide="lock" class="w-3.5 h-3.5 text-gray-400"></i> Password
+                            <i data-lucide="lock" aria-hidden="true"></i> Password
 
                         </label>
 

@@ -270,7 +270,7 @@ function ensurePrintRequestStatuses(PDO $pdo): void
 
 function syncPrintFieldsFromCatalog(PDO $pdo): void
 {
-    $targetVersion = '3';
+    $targetVersion = '4';
     if (getSetting('print_field_catalog_version', '') === $targetVersion) {
         return;
     }
@@ -322,6 +322,28 @@ function syncPrintFieldsFromCatalog(PDO $pdo): void
 
                 if ($insertedNames !== []) {
                     syncPrintFieldCoordinatesFromPresets($pdo, $type, $side, $insertedNames);
+                }
+            }
+        }
+
+        $deprecated = [
+            'husband_father_name',
+            'husband_mother_maiden_name',
+            'wife_father_name',
+            'wife_mother_maiden_name',
+            'paternity_father_name',
+            'paternity_mother_name',
+        ];
+        $disable = $pdo->prepare('UPDATE print_fields SET enabled = 0 WHERE template_id = ? AND field_name = ?');
+        foreach (['birth', 'marriage', 'death'] as $type) {
+            foreach (['front', 'back'] as $side) {
+                $template = getPrintTemplate($pdo, $type, $side);
+                if (!$template) {
+                    continue;
+                }
+                $templateId = (int) $template['id'];
+                foreach ($deprecated as $fieldName) {
+                    $disable->execute([$templateId, $fieldName]);
                 }
             }
         }
@@ -1067,8 +1089,12 @@ function printDefaultSampleValue(string $fieldName, string $label): string
         'child_birth_type'                      => 'Single',
         'child_birth_order'                     => '1',
         'child_age_mother'                        => 'N/A',
-        'paternity_father_name'                 => 'Juan Dela Reyes',
-        'paternity_mother_name'                 => 'Ana Santos Garcia',
+        'paternity_father_first_name'           => 'Juan',
+        'paternity_father_middle_name'        => 'Dela',
+        'paternity_father_last_name'          => 'Reyes',
+        'paternity_mother_first_name'         => 'Ana',
+        'paternity_mother_middle_name'        => 'Santos',
+        'paternity_mother_last_name'          => 'Garcia',
         'paternity_child_name'                  => 'Maria Santos Reyes',
         'paternity_birth_date'                  => 'March 15, 2024',
         'paternity_birth_place'                 => 'Barangay Sample, Aloran',
@@ -1144,9 +1170,12 @@ function printDefaultSampleValue(string $fieldName, string $label): string
             'mother_first_name', 'wife_first_name' => 'Ana',
             'mother_middle_name', 'wife_middle_name' => 'Santos',
             'mother_last_name', 'wife_last_name' => 'Garcia',
-            'father_first_name' => 'Juan',
-            'father_middle_name' => 'Dela',
-            'father_last_name' => 'Reyes',
+            'father_first_name', 'paternity_father_first_name', 'husband_father_first_name', 'wife_father_first_name' => 'Juan',
+            'father_middle_name', 'paternity_father_middle_name', 'husband_father_middle_name', 'wife_father_middle_name' => 'Dela',
+            'father_last_name', 'paternity_father_last_name', 'husband_father_last_name', 'wife_father_last_name' => 'Reyes',
+            'paternity_mother_first_name', 'husband_mother_first_name', 'wife_mother_first_name' => 'Ana',
+            'paternity_mother_middle_name', 'husband_mother_middle_name', 'wife_mother_middle_name' => 'Santos',
+            'paternity_mother_last_name', 'husband_mother_last_name', 'wife_mother_last_name' => 'Garcia',
             default => 'Sample',
         };
     }
@@ -1510,8 +1539,14 @@ function printBuildFieldValues(array $record, string $certificateType, array $op
 
         $childName = trim(($values['child_first_name'] . ' ' . $values['child_middle_name'] . ' ' . $values['child_last_name']));
         $childName = preg_replace('/\s+/', ' ', $childName);
-        $values['paternity_father_name'] = trim((string) ($record['father_name'] ?? ''));
-        $values['paternity_mother_name'] = trim((string) ($record['mother_name'] ?? ''));
+        $patFather = splitFullName($record['father_name'] ?? '');
+        $values['paternity_father_first_name'] = $patFather['first'];
+        $values['paternity_father_middle_name'] = $patFather['middle'];
+        $values['paternity_father_last_name'] = $patFather['last'];
+        $patMother = splitFullName($record['mother_name'] ?? '');
+        $values['paternity_mother_first_name'] = $patMother['first'];
+        $values['paternity_mother_middle_name'] = $patMother['middle'];
+        $values['paternity_mother_last_name'] = $patMother['last'];
         $values['paternity_child_name'] = $childName;
         $values['paternity_birth_date'] = trim(($values['birth_month'] . ' ' . $values['birth_day'] . ', ' . $values['birth_year']));
         $values['paternity_birth_place'] = $values['birth_place'];
@@ -1541,9 +1576,15 @@ function printBuildFieldValues(array $record, string $certificateType, array $op
         $values['husband_residence'] = trim((string) ($record['husband_residence'] ?? ''));
         $values['husband_religion'] = trim((string) ($record['husband_religion'] ?? ''));
         $values['husband_civil_status'] = trim((string) ($record['husband_civil_status'] ?? ''));
-        $values['husband_father_name'] = trim((string) ($record['husband_father_name'] ?? ''));
+        $husbandFather = splitFullName($record['husband_father_name'] ?? '');
+        $values['husband_father_first_name'] = $husbandFather['first'];
+        $values['husband_father_middle_name'] = $husbandFather['middle'];
+        $values['husband_father_last_name'] = $husbandFather['last'];
         $values['husband_father_citizenship'] = trim((string) ($record['husband_father_citizenship'] ?? ''));
-        $values['husband_mother_maiden_name'] = trim((string) ($record['husband_mother_maiden_name'] ?? ''));
+        $husbandMother = splitFullName($record['husband_mother_maiden_name'] ?? '');
+        $values['husband_mother_first_name'] = $husbandMother['first'];
+        $values['husband_mother_middle_name'] = $husbandMother['middle'];
+        $values['husband_mother_last_name'] = $husbandMother['last'];
         $values['husband_mother_citizenship'] = trim((string) ($record['husband_mother_citizenship'] ?? ''));
         $values['husband_consent_person_name'] = trim((string) ($record['husband_consent_person_name'] ?? ''));
         $values['husband_consent_relationship'] = trim((string) ($record['husband_consent_relationship'] ?? ''));
@@ -1560,9 +1601,15 @@ function printBuildFieldValues(array $record, string $certificateType, array $op
         $values['wife_residence'] = trim((string) ($record['wife_residence'] ?? ''));
         $values['wife_religion'] = trim((string) ($record['wife_religion'] ?? ''));
         $values['wife_civil_status'] = trim((string) ($record['wife_civil_status'] ?? ''));
-        $values['wife_father_name'] = trim((string) ($record['wife_father_name'] ?? ''));
+        $wifeFather = splitFullName($record['wife_father_name'] ?? '');
+        $values['wife_father_first_name'] = $wifeFather['first'];
+        $values['wife_father_middle_name'] = $wifeFather['middle'];
+        $values['wife_father_last_name'] = $wifeFather['last'];
         $values['wife_father_citizenship'] = trim((string) ($record['wife_father_citizenship'] ?? ''));
-        $values['wife_mother_maiden_name'] = trim((string) ($record['wife_mother_maiden_name'] ?? ''));
+        $wifeMother = splitFullName($record['wife_mother_maiden_name'] ?? '');
+        $values['wife_mother_first_name'] = $wifeMother['first'];
+        $values['wife_mother_middle_name'] = $wifeMother['middle'];
+        $values['wife_mother_last_name'] = $wifeMother['last'];
         $values['wife_mother_citizenship'] = trim((string) ($record['wife_mother_citizenship'] ?? ''));
         $values['wife_consent_person_name'] = trim((string) ($record['wife_consent_person_name'] ?? ''));
         $values['wife_consent_relationship'] = trim((string) ($record['wife_consent_relationship'] ?? ''));
@@ -3157,16 +3204,16 @@ function civilRecordExpandPrintFieldInput(array $input, string $type): array
         csvAssignIfEmpty($input, 'wife_religion', $printFill['wife_religion'] ?? '');
         csvAssignIfEmpty($input, 'husband_civil_status', $printFill['husband_civil_status'] ?? '');
         csvAssignIfEmpty($input, 'wife_civil_status', $printFill['wife_civil_status'] ?? '');
-        csvAssignIfEmpty($input, 'husband_father_name', $printFill['husband_father_name'] ?? '');
+        csvAssignIfEmpty($input, 'husband_father_name', csvPersonNameFromParts($printFill, 'husband_father_'));
         csvAssignIfEmpty($input, 'husband_father_citizenship', $printFill['husband_father_citizenship'] ?? '');
-        csvAssignIfEmpty($input, 'husband_mother_maiden_name', $printFill['husband_mother_maiden_name'] ?? '');
+        csvAssignIfEmpty($input, 'husband_mother_maiden_name', csvPersonNameFromParts($printFill, 'husband_mother_'));
         csvAssignIfEmpty($input, 'husband_mother_citizenship', $printFill['husband_mother_citizenship'] ?? '');
         csvAssignIfEmpty($input, 'husband_consent_person_name', $printFill['husband_consent_person_name'] ?? '');
         csvAssignIfEmpty($input, 'husband_consent_relationship', $printFill['husband_consent_relationship'] ?? '');
         csvAssignIfEmpty($input, 'husband_consent_residence', $printFill['husband_consent_residence'] ?? '');
-        csvAssignIfEmpty($input, 'wife_father_name', $printFill['wife_father_name'] ?? '');
+        csvAssignIfEmpty($input, 'wife_father_name', csvPersonNameFromParts($printFill, 'wife_father_'));
         csvAssignIfEmpty($input, 'wife_father_citizenship', $printFill['wife_father_citizenship'] ?? '');
-        csvAssignIfEmpty($input, 'wife_mother_maiden_name', $printFill['wife_mother_maiden_name'] ?? '');
+        csvAssignIfEmpty($input, 'wife_mother_maiden_name', csvPersonNameFromParts($printFill, 'wife_mother_'));
         csvAssignIfEmpty($input, 'wife_mother_citizenship', $printFill['wife_mother_citizenship'] ?? '');
         csvAssignIfEmpty($input, 'wife_consent_person_name', $printFill['wife_consent_person_name'] ?? '');
         csvAssignIfEmpty($input, 'wife_consent_relationship', $printFill['wife_consent_relationship'] ?? '');

@@ -4399,6 +4399,97 @@ function notifyStaffLoginLockoutIfNeeded(
     rateLimitMarkLockoutAlertSent($rateLimitKey, $windowSeconds);
 }
 
+function adminAlertInboxEmail(): string
+{
+    $office = trim(getSetting('office_email', ''));
+    if ($office !== '' && filter_var($office, FILTER_VALIDATE_EMAIL)) {
+        return $office;
+    }
+
+    $notification = trim(getSetting('notification_email', ''));
+    if ($notification !== '' && filter_var($notification, FILTER_VALIDATE_EMAIL)) {
+        return $notification;
+    }
+
+    return 'aloran@gov.ph';
+}
+
+function sendUnknownStaffLoginLockoutAlertToAdmin(
+    string $attemptedStaffId,
+    int $windowSeconds = 900,
+    ?string $sourceIp = null
+): bool {
+    $email = adminAlertInboxEmail();
+    if ($email === '') {
+        return false;
+    }
+
+    $site = getSiteSettings()['name'];
+    $staffIdDisplay = strtoupper(trim($attemptedStaffId));
+    $when = date('F j, Y \a\t g:i A');
+    $ip = formatClientIpAddress($sourceIp);
+    $windowMinutes = (int) max(1, round($windowSeconds / 60));
+
+    $subject = $site . ' — Staff portal lockout (unrecognized Staff ID)';
+    $plain = "ALCROS staff portal security notice\n\n"
+        . "Someone attempted to sign in 3 times using the Staff ID \"{$staffIdDisplay}\", which is not registered in the system.\n\n"
+        . "When: {$when}\n"
+        . "Source IP: {$ip}\n"
+        . "Sign-in for that Staff ID entry was temporarily paused for about {$windowMinutes} minutes.\n\n"
+        . "Review your staff accounts and sign-in activity if this was unexpected.";
+    $html = '<p><strong>ALCROS staff portal security notice</strong></p>'
+        . '<p>Someone attempted to sign in 3 times using the Staff ID '
+        . '<strong>' . htmlspecialchars($staffIdDisplay) . '</strong>, which is <strong>not registered</strong> in the system.</p>'
+        . '<p><strong>When:</strong> ' . htmlspecialchars($when) . '<br>'
+        . '<strong>Source IP:</strong> ' . htmlspecialchars($ip) . '<br>'
+        . 'Sign-in for that Staff ID entry was temporarily paused for about <strong>' . $windowMinutes . ' minutes</strong>.</p>'
+        . '<p style="color:#64748b;font-size:13px;">Review staff accounts and recent sign-in activity if this was unexpected.</p>';
+
+    if (!sendCitizenEmail($email, $subject, $plain, $html)) {
+        logEmailDelivery($email, $subject, 'unknown_staff_login_lockout_alert', $staffIdDisplay, false, citizenEmailFailureReason());
+
+        return false;
+    }
+
+    logEmailDelivery($email, $subject, 'unknown_staff_login_lockout_alert', $staffIdDisplay, true);
+    logActivity(
+        $staffIdDisplay,
+        'Login lockout alert',
+        'Admin notified: unrecognized Staff ID locked after repeated failed sign-in attempts (IP ' . $ip . ')'
+    );
+
+    return true;
+}
+
+function notifyUnknownStaffLoginLockoutIfNeeded(
+    string $staffId,
+    string $rateLimitKey,
+    int $maxAttempts,
+    int $windowSeconds
+): void {
+    $staffId = strtoupper(trim($staffId));
+    if ($staffId === '' || $rateLimitKey === '') {
+        return;
+    }
+
+    if (!rateLimitIsBlocked($rateLimitKey, $maxAttempts, $windowSeconds)) {
+        return;
+    }
+
+    if (rateLimitLockoutAlertAlreadySent($rateLimitKey, $windowSeconds)) {
+        return;
+    }
+
+    $state = rateLimitReadState($rateLimitKey, $windowSeconds);
+    $sourceIp = ($state['last_ip'] ?? '') !== '' ? (string) $state['last_ip'] : null;
+
+    if (!sendUnknownStaffLoginLockoutAlertToAdmin($staffId, $windowSeconds, $sourceIp)) {
+        return;
+    }
+
+    rateLimitMarkLockoutAlertSent($rateLimitKey, $windowSeconds);
+}
+
 function resetStaffPasswordWithOtp(PDO $pdo, string $staffId, string $otp, string $newPassword): array
 {
     ensureExtendedSchema($pdo);
@@ -7821,10 +7912,18 @@ function alcrosAppointmentReminderDiagnostics(PDO $pdo): array
     }
     $followUpDiagnostics = alcrosFollowUpReminderDiagnostics($pdo);
 
+    $reminderStorageDir = __DIR__ . '/../storage';
+    $reminderLockFile = $reminderStorageDir . '/appointment_reminders.lock';
+
     return [
         'office_timezone' => function_exists('alcrosOfficeTimezone') ? alcrosOfficeTimezone() : date_default_timezone_get(),
         'php_now'         => date('c'),
         'mysql_now'       => $mysqlNow,
+        'scheduler_storage' => [
+            'storage_dir_exists'  => is_dir($reminderStorageDir),
+            'storage_dir_writable' => is_dir($reminderStorageDir) && is_writable($reminderStorageDir),
+            'lock_can_open'       => @fopen($reminderLockFile, 'c') !== false,
+        ],
         'document_requests' => [
             'future_visits'              => $count($pdo, "SELECT COUNT(*) FROM document_requests WHERE {$docStatuses} AND {$visitFutureSql}"),
             'in_email_window_5h'         => $count($pdo, "SELECT COUNT(*) FROM document_requests WHERE {$docStatuses} AND {$visitIn5hSql}"),
@@ -7844,7 +7943,7 @@ function alcrosAppointmentReminderDiagnostics(PDO $pdo): array
             'Email reminders run only for visits in the next 5 hours with notify_email = 1 (citizen must opt in on the notification preferences modal).',
             'Visit reminders run only after staff accept a request (verified/ready) or confirm an appointment (confirmed).',
             'SMS reminders run only about 1 hour before; standalone appointments must be status confirmed.',
-            'Follow-up reminders send the day before the staff follow-up date (from 8:00 AM), with same-day catch-up if that run was missed.',
+            'Follow-up reminders send email/SMS the day before the follow-up date and again on the follow-up date (from 8:00 AM local).',
             'sent=0 with ok=true means the cron ran but no eligible citizen matched this run (or SMTP/SMS send failed after match).',
         ],
     ];

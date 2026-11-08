@@ -107,7 +107,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         try {
             $pdo = getDB();
-            notifyStaffLoginLockoutIfNeeded($pdo, $submittedStaffId, $loginRateKey, LOGIN_RATE_MAX, LOGIN_RATE_WINDOW);
+            if (staffRowById($pdo, $submittedStaffId)) {
+                notifyStaffLoginLockoutIfNeeded($pdo, $submittedStaffId, $loginRateKey, LOGIN_RATE_MAX, LOGIN_RATE_WINDOW);
+            } else {
+                notifyUnknownStaffLoginLockoutIfNeeded($submittedStaffId, $loginRateKey, LOGIN_RATE_MAX, LOGIN_RATE_WINDOW);
+            }
         } catch (PDOException $e) {
             // Lockout UI still applies.
         }
@@ -165,6 +169,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($attempt['limit_reached']) {
 
                     notifyStaffLoginLockoutIfNeeded($pdo, $submittedStaffId, $loginRateKey, LOGIN_RATE_MAX, LOGIN_RATE_WINDOW);
+
+                }
+
+            } else {
+
+                $attempt = rateLimitRecordFailedAttempt($loginRateKey, LOGIN_RATE_MAX, LOGIN_RATE_WINDOW);
+
+                if (!$attempt['allowed']) {
+
+                    $applyLoginLockout();
+
+                }
+
+                if ($attempt['limit_reached']) {
+
+                    notifyUnknownStaffLoginLockoutIfNeeded($submittedStaffId, $loginRateKey, LOGIN_RATE_MAX, LOGIN_RATE_WINDOW);
 
                 }
 

@@ -14,6 +14,37 @@ function printFormAccent(string $certificateType): string
     };
 }
 
+/** Light fill/border for preview textboxes (screen only — matches municipal form accent). */
+function printFormFieldPreviewColors(string $certificateType): array
+{
+    return match ($certificateType) {
+        'birth' => [
+            'bg'            => '#d1fae5',
+            'border'        => '#6ee7b7',
+            'border_active' => '#34d399',
+            'focus_bg'      => '#ecfdf5',
+        ],
+        'marriage' => [
+            'bg'            => '#fee2e2',
+            'border'        => '#fca5a5',
+            'border_active' => '#f87171',
+            'focus_bg'      => '#fef2f2',
+        ],
+        'death' => [
+            'bg'            => '#dbeafe',
+            'border'        => '#93c5fd',
+            'border_active' => '#60a5fa',
+            'focus_bg'      => '#eff6ff',
+        ],
+        default => [
+            'bg'            => '#f1f5f9',
+            'border'        => '#cbd5e1',
+            'border_active' => '#94a3b8',
+            'focus_bg'      => '#f8fafc',
+        ],
+    };
+}
+
 function printFormSvgStyles(string $accent): string
 {
     return <<<CSS

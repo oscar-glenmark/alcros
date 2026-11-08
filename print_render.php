@@ -175,6 +175,8 @@ $printCsrfToken = csrfToken();
 $isPreview = !empty($_GET['preview']);
 $embeddedPreview = $isPreview && !empty($_GET['embedded']);
 $autoPrint = !empty($_GET['autoprint']);
+$showPreviewFieldBoxes = $isPreview || $calibrationPreview;
+$fieldPreviewColors = printFormFieldPreviewColors($certificateType);
 if ($isCertificationDoc) {
     $showBackground = !empty($_GET['background']);
 } else {
@@ -352,7 +354,8 @@ $overlayHtml = renderPrintOverlayHtml($printData, array_merge($printOptions, [
             body:not(.print-render--with-background) .print-sheet__background {
                 display: none !important;
             }
-            .print-field--editable {
+            .print-field--editable,
+            body.print-render--field-boxes .print-field {
                 outline: none !important;
                 box-shadow: none !important;
                 background: transparent !important;
@@ -375,15 +378,21 @@ $overlayHtml = renderPrintOverlayHtml($printData, array_merge($printOptions, [
         .print-field--editable:empty::before {
             font-weight: 400;
         }
-        .print-field--editable {
-            cursor: text;
-            background: rgba(255, 255, 255, 0.55);
-            border: 1px dashed rgba(37, 99, 235, 0.35);
+        body.print-render--field-boxes .print-field {
+            z-index: 2;
+            background-color: <?= htmlspecialchars($fieldPreviewColors['bg']) ?>;
+            border: 1px solid <?= htmlspecialchars($fieldPreviewColors['border']) ?>;
             border-radius: 1px;
+            box-sizing: border-box;
         }
-        .print-field--editable:focus {
-            outline: 2px solid rgba(37, 99, 235, 0.45);
-            background: rgba(255, 255, 255, 0.85);
+        body.print-render--field-boxes .print-field--editable {
+            cursor: text;
+            border-style: dashed;
+            border-color: <?= htmlspecialchars($fieldPreviewColors['border_active']) ?>;
+        }
+        body.print-render--field-boxes .print-field--editable:focus {
+            outline: 2px solid <?= htmlspecialchars(printFormAccent($certificateType)) ?>;
+            background-color: <?= htmlspecialchars($fieldPreviewColors['focus_bg']) ?>;
         }
         .print-field--editable:empty::before {
             content: 'Click to type…';
@@ -393,7 +402,7 @@ $overlayHtml = renderPrintOverlayHtml($printData, array_merge($printOptions, [
         }
     </style>
 </head>
-<body class="<?= trim(($isPreview ? 'print-render--preview ' : '') . ($autoPrint ? 'print-render--autoprint ' : '') . ($documentKind === 'certification' ? ' print-render--certification' : '') . ($printWithBackground ? ' print-render--with-background' : '')) ?>">
+<body class="<?= trim(($isPreview ? 'print-render--preview ' : '') . ($showPreviewFieldBoxes ? 'print-render--field-boxes ' : '') . ($autoPrint ? 'print-render--autoprint ' : '') . ($documentKind === 'certification' ? ' print-render--certification' : '') . ($printWithBackground ? ' print-render--with-background' : '')) ?>">
     <?php if ($autoPrint && $documentKind !== 'certification'): ?>
     <div class="print-setup-notice" id="printSetupNotice" role="dialog" aria-labelledby="printSetupTitle">
         <div class="print-setup-notice__card">

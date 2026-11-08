@@ -479,7 +479,7 @@ function rateLimitIsBlocked(string $key, int $maxAttempts, int $windowSeconds): 
 }
 
 /**
- * Record a failed login for a valid Staff ID (wrong password). Matches rateLimitCheck counting semantics.
+ * Record a failed staff portal sign-in (wrong password or unrecognized Staff ID).
  *
  * @return array{allowed: bool, count: int, limit_reached: bool}
  */

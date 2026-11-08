@@ -1044,9 +1044,7 @@
 
 .print-cal-marker {
     position: absolute;
-    border: 1px dashed #2563eb;
-    background: rgba(37, 99, 235, 0.08);
-    color: #1e3a8a;
+    color: #0f172a;
     overflow: hidden;
     cursor: move;
     user-select: none;
@@ -1057,10 +1055,39 @@
     text-align: left;
 }
 
-.print-cal-marker.is-placed:not(.is-selected) {
+.print-cal-body--birth .print-cal-marker {
+    border: 1px dashed #34d399;
+    background-color: #d1fae5;
+}
+
+.print-cal-body--marriage .print-cal-marker {
+    border: 1px dashed #f87171;
+    background-color: #fee2e2;
+}
+
+.print-cal-body--death .print-cal-marker {
+    border: 1px dashed #60a5fa;
+    background-color: #dbeafe;
+}
+
+.print-cal-body--birth .print-cal-marker.is-placed:not(.is-selected) {
     border-style: solid;
-    border-color: #60a5fa;
-    background: rgba(37, 99, 235, 0.06);
+    border-color: #6ee7b7;
+    background-color: #d1fae5;
+    z-index: 1;
+}
+
+.print-cal-body--marriage .print-cal-marker.is-placed:not(.is-selected) {
+    border-style: solid;
+    border-color: #fca5a5;
+    background-color: #fee2e2;
+    z-index: 1;
+}
+
+.print-cal-body--death .print-cal-marker.is-placed:not(.is-selected) {
+    border-style: solid;
+    border-color: #93c5fd;
+    background-color: #dbeafe;
     z-index: 1;
 }
 
@@ -1089,9 +1116,7 @@
 }
 
 .print-cal-marker.is-sample-mode {
-    background: rgba(255, 255, 255, 0.72);
     border-style: solid;
-    border-color: rgba(37, 99, 235, 0.35);
     color: #0f172a;
     font-weight: 700;
     text-transform: uppercase;

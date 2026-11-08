@@ -151,6 +151,12 @@
         lucide.createIcons({ nameAttr: 'data-lucide', nodes: Array.prototype.slice.call(nodes) });
     }
 
+    function initCascadingLocations() {
+        if (window.AlcrosCascadingLocation && cfg.locationsApiUrl) {
+            window.AlcrosCascadingLocation.init({ apiUrl: cfg.locationsApiUrl });
+        }
+    }
+
     function openModal(id) {
         var el = document.getElementById(id);
         if (!el) return;
@@ -178,6 +184,7 @@
         } else if (id === 'entryModal') {
             el.classList.add('is-open');
             document.body.classList.add('records-entry-modal-open');
+            initCascadingLocations();
         } else {
             el.classList.add('flex');
             document.body.classList.add('records-entry-modal-open');
@@ -523,6 +530,11 @@
             });
         });
 
+        var entryModal = document.getElementById('entryModal');
+        if (entryModal && entryModal.classList.contains('is-open')) {
+            initCascadingLocations();
+        }
+
         clearEntrySectionHtmlRequired();
         if (type === 'birth') syncSingleBirthDetails();
         updateEntryModalTitle(type);
@@ -534,8 +546,8 @@
 
     function openSingleEntryModal(type) {
         type = type || cfg.defaultEntryType || 'birth';
-        openModal('entryModal');
         setRecordType(type);
+        openModal('entryModal');
     }
 
     function openImportModal(type) {
@@ -2173,9 +2185,7 @@
             startRecordLockHeartbeat();
         }
 
-        if (window.AlcrosCascadingLocation && cfg.locationsApiUrl) {
-            window.AlcrosCascadingLocation.init({ apiUrl: cfg.locationsApiUrl });
-        }
+        initCascadingLocations();
 
         // Do not release edit locks on beforeunload — that raced with Update Record and
         // falsely blocked the same staff member as "another staff" on submit.

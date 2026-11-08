@@ -62,12 +62,12 @@ function printFillDefaultPlaceholder(string $fieldName, string $label): string
         'witnesses'                => 'Names, separated by commas',
         'remarks_annotations'      => 'Optional remarks',
         'citizenship'              => 'e.g. Filipino',
-        'civil_status'             => 'e.g. Single, Married, Widowed',
+        'civil_status'             => 'e.g. Single',
         'occupation'               => 'e.g. Farmer, Teacher',
         'religion'                 => 'e.g. Roman Catholic',
         'autopsy_performed'        => 'Yes or No',
         'solemnizing_officer'      => 'Name of solemnizing officer',
-        'place_of_death'           => 'Hospital, home, or other place',
+        'place_of_death'           => 'Barangay, city/municipality, province',
         'place_of_burial'          => 'Cemetery or burial place',
         'marriage_place'           => 'City/municipality and province',
         'birth_place'              => 'Barangay, municipality, province',
@@ -89,6 +89,9 @@ function printFillDefaultPlaceholder(string $fieldName, string $label): string
     }
     if (preg_match('/occupation/i', $fieldName)) {
         return 'e.g. Farmer, Teacher';
+    }
+    if (preg_match('/civil_status/i', $fieldName)) {
+        return 'e.g. Single';
     }
     if (preg_match('/_(day)$/', $fieldName)) {
         return '00';
@@ -405,6 +408,7 @@ function renderPrintFillFieldInput(array $fillField, array $options = []): void
     $isLocation = cascadingLocationUsesField($fieldName);
     $isLcro = printIsLcroFooterField($fieldName);
     $isPhBirth = cascadingLocationIsPhBirthPlaceField($fieldName);
+    $isPhDeath = cascadingLocationIsPhDeathPlaceField($fieldName);
     $isPhResidence = cascadingLocationIsPhResidenceField($fieldName);
     $isPhMarriage = cascadingLocationIsPhMarriagePlaceField($fieldName);
 
@@ -417,7 +421,7 @@ function renderPrintFillFieldInput(array $fillField, array $options = []): void
     }
 
     $placeholder = '';
-    if ($isPhBirth) {
+    if ($isPhBirth || $isPhDeath) {
         $placeholder = 'Barangay, city/municipality, province';
     } elseif ($isPhMarriage) {
         $placeholder = 'City/municipality, province, country';

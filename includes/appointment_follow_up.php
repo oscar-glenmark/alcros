@@ -42,6 +42,8 @@ function ensureAppointmentFollowUpsTable(PDO $pdo): void
             service_slug VARCHAR(80) DEFAULT NULL,
             reminder_sent_at TIMESTAMP NULL DEFAULT NULL,
             sms_reminder_sent_at TIMESTAMP NULL DEFAULT NULL,
+            day_of_reminder_sent_at TIMESTAMP NULL DEFAULT NULL,
+            day_of_sms_reminder_sent_at TIMESTAMP NULL DEFAULT NULL,
             created_by VARCHAR(50) DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -53,6 +55,35 @@ function ensureAppointmentFollowUpsTable(PDO $pdo): void
                 FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE
         ) ENGINE=InnoDB"
     );
+
+    ensureFollowUpDayOfReminderColumns($pdo);
+}
+
+function ensureFollowUpDayOfReminderColumns(PDO $pdo): void
+{
+    static $columnsDone = false;
+    if ($columnsDone) {
+        return;
+    }
+    $columnsDone = true;
+
+    try {
+        $pdo->query('SELECT day_of_reminder_sent_at FROM appointment_follow_ups LIMIT 1');
+    } catch (PDOException $e) {
+        $pdo->exec(
+            'ALTER TABLE appointment_follow_ups
+             ADD COLUMN day_of_reminder_sent_at TIMESTAMP NULL DEFAULT NULL AFTER sms_reminder_sent_at'
+        );
+    }
+
+    try {
+        $pdo->query('SELECT day_of_sms_reminder_sent_at FROM appointment_follow_ups LIMIT 1');
+    } catch (PDOException $e) {
+        $pdo->exec(
+            'ALTER TABLE appointment_follow_ups
+             ADD COLUMN day_of_sms_reminder_sent_at TIMESTAMP NULL DEFAULT NULL AFTER day_of_reminder_sent_at'
+        );
+    }
 }
 
 function appointmentAllowsFollowUp(array $appointmentRow): bool
@@ -469,10 +500,12 @@ function appointmentFollowUpLogEntryViewData(array $row): array
     $status = (string) ($row['status'] ?? 'pending');
     $reminderBits = [];
     if (!empty($row['notify_email'])) {
-        $reminderBits[] = !empty($row['reminder_sent_at']) ? 'Email sent' : 'Email pending';
+        $reminderBits[] = !empty($row['reminder_sent_at']) ? 'Advance email sent' : 'Advance email pending';
+        $reminderBits[] = !empty($row['day_of_reminder_sent_at']) ? 'Day-of email sent' : 'Day-of email pending';
     }
     if (!empty($row['notify_sms'])) {
-        $reminderBits[] = !empty($row['sms_reminder_sent_at']) ? 'SMS sent' : 'SMS pending';
+        $reminderBits[] = !empty($row['sms_reminder_sent_at']) ? 'Advance SMS sent' : 'Advance SMS pending';
+        $reminderBits[] = !empty($row['day_of_sms_reminder_sent_at']) ? 'Day-of SMS sent' : 'Day-of SMS pending';
     }
 
     return [
@@ -498,7 +531,7 @@ function notifyFollowUpReminderEmail(array $row): bool
         return false;
     }
 
-    $followUpDisplay = formatDateDisplay((string) ($row['follow_up_date'] ?? ''));
+    $followUpDisplay = formatDateEmailDisplay((string) ($row['follow_up_date'] ?? ''));
     $serviceLabel = appointmentServiceLabel((string) ($row['service_type'] ?? ''));
 
     $details = [
@@ -534,6 +567,58 @@ function notifyFollowUpReminderEmail(array $row): bool
     );
 }
 
+function notifyFollowUpDayOfReminderEmail(array $row): bool
+{
+    if (empty($row['notify_email']) || empty($row['email'])) {
+        return false;
+    }
+    if (!filter_var((string) $row['email'], FILTER_VALIDATE_EMAIL)) {
+        return false;
+    }
+
+    $followUpDisplay = formatDateEmailDisplay((string) ($row['follow_up_date'] ?? ''));
+    $serviceLabel = appointmentServiceLabel((string) ($row['service_type'] ?? ''));
+
+    $details = [
+        'Visit date' => $followUpDisplay,
+        'Service'    => $serviceLabel,
+    ];
+
+    $note = 'This is your scheduled follow-up visit day. Please come today during office hours.';
+    $staffNote = trim((string) ($row['staff_note'] ?? ''));
+    if ($staffNote !== '') {
+        $note .= "\n\nNote from the office: " . $staffNote;
+    }
+    $note .= "\n\nIf you have questions, contact us using the details below.";
+
+    $nameRow = [
+        'first_name'  => (string) ($row['first_name'] ?? ''),
+        'middle_name' => (string) ($row['middle_name'] ?? ''),
+        'last_name'   => (string) ($row['last_name'] ?? ''),
+    ];
+
+    return sendCitizenNotice(
+        (string) $row['email'],
+        'ALCROS — Reminder: your follow-up visit is today',
+        [
+            'heading' => 'Visit today',
+            'name'    => personNameFromRow($nameRow),
+            'intro'   => 'This is a reminder that your follow-up visit to our office is today.',
+            'details' => $details,
+            'note'    => $note,
+            'accent'  => '#2563eb',
+        ],
+        'follow_up_reminder_day_of'
+    );
+}
+
+function followUpReminderPhaseForRow(array $row): string
+{
+    $followUpDate = (string) ($row['follow_up_date'] ?? '');
+
+    return $followUpDate === alcrosTodayDate() ? 'day_of' : 'day_before';
+}
+
 function followUpReminderSendAfterTime(): string
 {
     return sprintf('%02d:00:00', APPOINTMENT_FOLLOW_UP_REMINDER_HOUR);
@@ -548,12 +633,18 @@ function followUpReminderEligibilityWhereSql(): string
            AND CURTIME() >= ?
            AND (f.notify_email = 1 OR f.notify_sms = 1)
            AND (
-             f.follow_up_date = DATE_ADD(CURDATE(), INTERVAL {$days} DAY)
-             OR (
-               f.follow_up_date = CURDATE()
+             (
+               f.follow_up_date = DATE_ADD(CURDATE(), INTERVAL {$days} DAY)
                AND (
                  (f.notify_email = 1 AND f.reminder_sent_at IS NULL)
                  OR (f.notify_sms = 1 AND f.sms_reminder_sent_at IS NULL)
+               )
+             )
+             OR (
+               f.follow_up_date = CURDATE()
+               AND (
+                 (f.notify_email = 1 AND f.day_of_reminder_sent_at IS NULL)
+                 OR (f.notify_sms = 1 AND f.day_of_sms_reminder_sent_at IS NULL)
                )
              )
            )";
@@ -581,39 +672,78 @@ function dispatchFollowUpReminderChannels(PDO $pdo, array $row): int
         return 0;
     }
 
+    $phase = followUpReminderPhaseForRow($row);
     $sent = 0;
 
-    if (!empty($row['notify_email']) && empty($row['reminder_sent_at'])) {
-        $claim = $pdo->prepare(
-            "UPDATE appointment_follow_ups SET reminder_sent_at = NOW()
-             WHERE id = ? AND reminder_sent_at IS NULL"
-        );
-        $claim->execute([$id]);
-        if ($claim->rowCount() > 0) {
-            if (notifyFollowUpReminderEmail($row)) {
-                $sent++;
-            } else {
-                $pdo->prepare(
-                    'UPDATE appointment_follow_ups SET reminder_sent_at = NULL WHERE id = ?'
-                )->execute([$id]);
+    if (!empty($row['notify_email'])) {
+        if ($phase === 'day_of') {
+            if (empty($row['day_of_reminder_sent_at'])) {
+                $claim = $pdo->prepare(
+                    "UPDATE appointment_follow_ups SET day_of_reminder_sent_at = NOW()
+                     WHERE id = ? AND day_of_reminder_sent_at IS NULL"
+                );
+                $claim->execute([$id]);
+                if ($claim->rowCount() > 0) {
+                    if (notifyFollowUpDayOfReminderEmail($row)) {
+                        $sent++;
+                    } else {
+                        $pdo->prepare(
+                            'UPDATE appointment_follow_ups SET day_of_reminder_sent_at = NULL WHERE id = ?'
+                        )->execute([$id]);
+                    }
+                }
+            }
+        } elseif (empty($row['reminder_sent_at'])) {
+            $claim = $pdo->prepare(
+                "UPDATE appointment_follow_ups SET reminder_sent_at = NOW()
+                 WHERE id = ? AND reminder_sent_at IS NULL"
+            );
+            $claim->execute([$id]);
+            if ($claim->rowCount() > 0) {
+                if (notifyFollowUpReminderEmail($row)) {
+                    $sent++;
+                } else {
+                    $pdo->prepare(
+                        'UPDATE appointment_follow_ups SET reminder_sent_at = NULL WHERE id = ?'
+                    )->execute([$id]);
+                }
             }
         }
     }
 
-    if (!empty($row['notify_sms']) && empty($row['sms_reminder_sent_at'])) {
+    if (!empty($row['notify_sms'])) {
         require_once __DIR__ . '/sms.php';
-        $claimSms = $pdo->prepare(
-            "UPDATE appointment_follow_ups SET sms_reminder_sent_at = NOW()
-             WHERE id = ? AND sms_reminder_sent_at IS NULL"
-        );
-        $claimSms->execute([$id]);
-        if ($claimSms->rowCount() > 0) {
-            if (notifyFollowUpReminderSms($row)) {
-                $sent++;
-            } else {
-                $pdo->prepare(
-                    'UPDATE appointment_follow_ups SET sms_reminder_sent_at = NULL WHERE id = ?'
-                )->execute([$id]);
+        if ($phase === 'day_of') {
+            if (empty($row['day_of_sms_reminder_sent_at'])) {
+                $claimSms = $pdo->prepare(
+                    "UPDATE appointment_follow_ups SET day_of_sms_reminder_sent_at = NOW()
+                     WHERE id = ? AND day_of_sms_reminder_sent_at IS NULL"
+                );
+                $claimSms->execute([$id]);
+                if ($claimSms->rowCount() > 0) {
+                    if (notifyFollowUpDayOfReminderSms($row)) {
+                        $sent++;
+                    } else {
+                        $pdo->prepare(
+                            'UPDATE appointment_follow_ups SET day_of_sms_reminder_sent_at = NULL WHERE id = ?'
+                        )->execute([$id]);
+                    }
+                }
+            }
+        } elseif (empty($row['sms_reminder_sent_at'])) {
+            $claimSms = $pdo->prepare(
+                "UPDATE appointment_follow_ups SET sms_reminder_sent_at = NOW()
+                 WHERE id = ? AND sms_reminder_sent_at IS NULL"
+            );
+            $claimSms->execute([$id]);
+            if ($claimSms->rowCount() > 0) {
+                if (notifyFollowUpReminderSms($row)) {
+                    $sent++;
+                } else {
+                    $pdo->prepare(
+                        'UPDATE appointment_follow_ups SET sms_reminder_sent_at = NULL WHERE id = ?'
+                    )->execute([$id]);
+                }
             }
         }
     }
@@ -656,9 +786,10 @@ function alcrosFollowUpReminderDiagnostics(PDO $pdo): array
     $join = 'FROM appointment_follow_ups f
          INNER JOIN appointments a ON a.id = f.appointment_id AND a.deleted_at IS NULL';
     $notifyOn = '(f.notify_email = 1 OR f.notify_sms = 1)';
-    $dayBefore = "f.status = 'pending' AND f.follow_up_date = DATE_ADD(CURDATE(), INTERVAL {$days} DAY) AND {$notifyOn}";
-    $catchUp = "f.status = 'pending' AND f.follow_up_date = CURDATE() AND {$notifyOn}
+    $dayBefore = "f.status = 'pending' AND f.follow_up_date = DATE_ADD(CURDATE(), INTERVAL {$days} DAY) AND {$notifyOn}
         AND ((f.notify_email = 1 AND f.reminder_sent_at IS NULL) OR (f.notify_sms = 1 AND f.sms_reminder_sent_at IS NULL))";
+    $dayOf = "f.status = 'pending' AND f.follow_up_date = CURDATE() AND {$notifyOn}
+        AND ((f.notify_email = 1 AND f.day_of_reminder_sent_at IS NULL) OR (f.notify_sms = 1 AND f.day_of_sms_reminder_sent_at IS NULL))";
 
     $eligibleNow = 0;
     if (followUpRemindersAllowedNow()) {
@@ -678,7 +809,7 @@ function alcrosFollowUpReminderDiagnostics(PDO $pdo): array
             "SELECT COUNT(*) {$join} WHERE f.status = 'pending' AND f.follow_up_date >= CURDATE()"
         ),
         'due_day_before_visit'       => $count($pdo, "SELECT COUNT(*) {$join} WHERE {$dayBefore}"),
-        'due_same_day_catch_up'      => $count($pdo, "SELECT COUNT(*) {$join} WHERE {$catchUp}"),
+        'due_day_of_visit'           => $count($pdo, "SELECT COUNT(*) {$join} WHERE {$dayOf}"),
         'eligible_to_send_now'       => $eligibleNow,
         'email_still_pending'        => $count(
             $pdo,

@@ -266,6 +266,8 @@
     font-weight: 400;
 }
 
+.print-cert-fill-grid--sectioned input,
+.print-cert-fill-section-grid input,
 .print-cert-fill-grid--sectioned select.print-fill-select,
 .print-cert-fill-section-grid select.print-fill-select,
 .print-cert-fill-grid--sectioned input.print-fill-date,
@@ -591,7 +593,7 @@
 
 .cascading-location__panel {
     position: fixed;
-    z-index: 120;
+    z-index: 1000;
     background: #fff;
     border: 1px solid #cbd5e1;
     border-radius: 0.75rem;
@@ -733,6 +735,7 @@
     font-size: 0.8125rem;
     font-weight: 700;
     color: #0f172a;
+    background: #fff;
 }
 
 .print-cert-fill-field input:not(.print-fill-date) {

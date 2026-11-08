@@ -738,7 +738,7 @@ body.records-view-modal-open {
 
 .cascading-location__panel {
     position: fixed;
-    z-index: 120;
+    z-index: 1000;
     background: #fff;
     border: 1px solid #cbd5e1;
     border-radius: 0.75rem;

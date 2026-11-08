@@ -5,7 +5,6 @@ require_once __DIR__ . '/../includes/cascading_location.php';
 
 try {
     requireStaffLogin();
-    requirePageAccess('records.php');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
         apiError('Method not allowed.', 405);

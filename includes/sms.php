@@ -478,11 +478,6 @@ function smsComposeStandaloneAppointmentMessage(array $row, array $segments): st
 {
     require_once __DIR__ . '/appointment_notice_requirements.php';
     $tail = smsTailForStandaloneAppointment($row);
-    if ($tail === 'Bring valid ID.') {
-        $segments[] = $tail;
-
-        return smsComposeCitizenMessage($segments);
-    }
     if ($tail === '') {
         return smsComposeCitizenMessage($segments);
     }
@@ -737,7 +732,7 @@ function smsFollowUpVisitReminderMessage(array $row): string
     $greeting = $first !== '' ? 'Hi ' . $first . ',' : 'Hi,';
 
     $dateRaw = (string) ($row['follow_up_date'] ?? '');
-    $dateDisplay = formatDateDisplay($dateRaw);
+    $dateDisplay = formatDateEmailDisplay($dateRaw);
     $service = appointmentServiceLabel((string) ($row['service_type'] ?? ''));
 
     $compose = static function (string $greet, string $date, string $serviceLabel): string {
@@ -754,20 +749,13 @@ function smsFollowUpVisitReminderMessage(array $row): string
         return $message;
     }
 
-    $ts = strtotime($dateRaw);
-    $shortDate = $ts !== false ? date('M j, Y', $ts) : $dateDisplay;
-    $message = $compose($greeting, $shortDate, $service);
-    if (mb_strlen($message) <= SMS_BODY_MAX_LENGTH) {
-        return $message;
-    }
-
-    $withoutService = $compose($greeting, $shortDate, '');
+    $withoutService = $compose($greeting, $dateDisplay, '');
     $budget = SMS_BODY_MAX_LENGTH - mb_strlen($withoutService);
     if ($service !== '' && $budget > 8) {
         $trimmed = mb_strlen($service) > $budget
             ? mb_substr($service, 0, max(1, $budget - 1)) . '…'
             : $service;
-        $message = $compose($greeting, $shortDate, $trimmed);
+        $message = $compose($greeting, $dateDisplay, $trimmed);
     } else {
         $message = $withoutService;
     }
@@ -797,6 +785,58 @@ function notifyFollowUpReminderSms(array $row): bool
     $ref = (string) ($row['appointment_code'] ?? 'follow-up');
 
     return sendCitizenSms($phone, $message, 'follow_up_reminder', $ref);
+}
+
+/**
+ * @param array<string, mixed> $row
+ */
+function smsFollowUpVisitDayOfReminderMessage(array $row): string
+{
+    $first = trim((string) ($row['first_name'] ?? ''));
+    $greeting = $first !== '' ? 'Hi ' . $first . ',' : 'Hi,';
+
+    $service = appointmentServiceLabel((string) ($row['service_type'] ?? ''));
+
+    $compose = static function (string $greet, string $serviceLabel): string {
+        $message = $greet . ' reminder: your follow-up visit is today';
+        if ($serviceLabel !== '') {
+            $message .= ' for ' . $serviceLabel;
+        }
+
+        return $message . '. Please come during office hours.';
+    };
+
+    $message = $compose($greeting, $service);
+    if (mb_strlen($message) <= SMS_BODY_MAX_LENGTH) {
+        return $message;
+    }
+
+    $message = $compose($greeting, '');
+    if (mb_strlen($message) <= SMS_BODY_MAX_LENGTH) {
+        return $message;
+    }
+
+    return mb_substr($message, 0, SMS_BODY_MAX_LENGTH - 1) . '…';
+}
+
+/** @param array<string, mixed> $row Follow-up row with phone, service fields */
+function notifyFollowUpDayOfReminderSms(array $row): bool
+{
+    if (!isSmsConfigured()) {
+        return false;
+    }
+    if (empty($row['notify_sms'])) {
+        return false;
+    }
+    $phone = trim((string) ($row['phone'] ?? ''));
+    if ($phone === '' || !isValidPhilippineMobile($phone)) {
+        return false;
+    }
+
+    $message = smsFollowUpVisitDayOfReminderMessage($row);
+    $ref = (string) ($row['appointment_code'] ?? 'follow-up');
+
+    return sendCitizenSms($phone, $message, 'follow_up_reminder_day_of', $ref);
 }
 
 /** @return array{attempted: bool, sent: bool} */

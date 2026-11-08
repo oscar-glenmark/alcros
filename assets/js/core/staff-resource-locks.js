@@ -35,6 +35,10 @@
     }
 
     function locksApiPath() {
+        var cfg = pageConfig();
+        if (cfg.locksApiUrl) {
+            return cfg.locksApiUrl;
+        }
         return 'api/staff_locks.php';
     }
 

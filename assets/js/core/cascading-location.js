@@ -2,6 +2,7 @@
     'use strict';
 
     var registeredPickers = [];
+    var PANEL_Z_INDEX = 1000;
 
     var STEPS = ['country', 'province', 'municipality', 'barangay'];
     var STEP_LABELS = {
@@ -312,10 +313,15 @@
             e.stopPropagation();
         });
 
-        document.addEventListener('click', function () {
-            if (self.open) {
-                self.toggle(false);
+        document.addEventListener('click', function (e) {
+            if (!self.open) {
+                return;
             }
+            var target = e.target;
+            if (target === self.input || self.root.contains(target) || self.panel.contains(target)) {
+                return;
+            }
+            self.toggle(false);
         });
 
         document.addEventListener('keydown', function (e) {
@@ -383,7 +389,7 @@
         this.panel.style.left = left + 'px';
         this.panel.style.width = width + 'px';
         this.panel.style.right = 'auto';
-        this.panel.style.zIndex = '120';
+        this.panel.style.zIndex = String(PANEL_Z_INDEX);
 
         this.panel.style.visibility = 'hidden';
         this.panel.hidden = false;
@@ -808,7 +814,12 @@
         }
 
         document.querySelectorAll('.js-cascading-location').forEach(function (input) {
-            if (input.dataset.cascadingLocationInit === '1') return;
+            if (input.disabled) {
+                return;
+            }
+            if (input.dataset.cascadingLocationInit === '1') {
+                return;
+            }
             input.dataset.cascadingLocationInit = '1';
             new CascadingLocationPicker(input, {
                 apiUrl: apiUrl,

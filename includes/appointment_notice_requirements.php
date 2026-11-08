@@ -176,10 +176,6 @@ function appendSpecialServiceRequirementsToCitizenMail(array $mail, array $row):
 
 function smsTailForStandaloneAppointment(array $row): string
 {
-    if (!isStandaloneSpecialServiceAppointmentRow($row)) {
-        return 'Bring valid ID.';
-    }
-
-    // IPROG rejects many URLs (especially http:// localhost) as phishing; requirements stay in email.
-    return 'Bring valid ID and required documents (see confirmation email).';
+    // IPROG rejects many URLs (especially http://localhost) as phishing; full list stays in confirmation email.
+    return 'Bring required documents (see confirmation email).';
 }

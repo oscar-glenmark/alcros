@@ -82,7 +82,7 @@ $pageSubtitle = 'Blank certificate and certification forms for manual entry';
     <?= adminPageStyles('print-calibration') ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>
-<body class="flex min-h-screen<?= $isCertification ? ' print-page--certification' : '' ?>">
+<body class="flex min-h-screen print-page--<?= htmlspecialchars($certificateType) ?><?= $isCertification ? ' print-page--certification' : '' ?>">
 <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
 <main class="admin-main">
     <?php require __DIR__ . '/includes/admin_header.php'; ?>

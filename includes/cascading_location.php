@@ -7,6 +7,7 @@ function cascadingLocationFieldNames(): array
 {
     return [
         'birth_place',
+        'place_of_death',
         'mother_residence',
         'father_residence',
         'residence',
@@ -33,6 +34,12 @@ function cascadingLocationIsPhBirthPlaceField(string $fieldName): bool
     return $fieldName === 'birth_place';
 }
 
+/** Death certificate place of death: province → city/municipality → barangay (no country step). */
+function cascadingLocationIsPhDeathPlaceField(string $fieldName): bool
+{
+    return $fieldName === 'place_of_death';
+}
+
 /** Marriage spouse place of birth: country → province → city/municipality. */
 function cascadingLocationIsPhMarriageBirthPlaceField(string $fieldName): bool
 {
@@ -56,6 +63,7 @@ function cascadingLocationIsPhMarriageResidenceField(string $fieldName): bool
 function cascadingLocationIsPhResidenceField(string $fieldName): bool
 {
     if (cascadingLocationIsPhBirthPlaceField($fieldName)
+        || cascadingLocationIsPhDeathPlaceField($fieldName)
         || cascadingLocationIsPhMarriageBirthPlaceField($fieldName)
         || cascadingLocationIsPhMarriagePlaceField($fieldName)
         || cascadingLocationIsPhMarriageResidenceField($fieldName)) {
@@ -71,6 +79,9 @@ function cascadingLocationPickerMode(string $fieldName): string
 {
     if (cascadingLocationIsPhBirthPlaceField($fieldName)) {
         return 'ph_birth_place';
+    }
+    if (cascadingLocationIsPhDeathPlaceField($fieldName)) {
+        return 'ph_death_place';
     }
     if (cascadingLocationIsPhMarriageBirthPlaceField($fieldName) || cascadingLocationIsPhMarriagePlaceField($fieldName)) {
         return 'ph_marriage_place';

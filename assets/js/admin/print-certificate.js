@@ -138,15 +138,22 @@
         return compact.split('').join('  ');
     }
 
-    function storedPrintFieldValue(value, fieldName) {
-        var trimmed = String(value || '').trim();
+    /** @param {boolean} [whileTyping] When true, keep edge spaces while the user is typing multi-word values. */
+    function storedPrintFieldValue(value, fieldName, whileTyping) {
+        var text = String(value ?? '');
+        if (text.trim() === '') {
+            return '';
+        }
+        if (!whileTyping) {
+            text = text.trim();
+        }
         if (isLcroFooterField(fieldName)) {
-            return normalizeLcroFooterText(trimmed);
+            return normalizeLcroFooterText(text);
         }
         if (window.AlcrosPrintFillDates && AlcrosPrintFillDates.isPrintFillCalendarDateField(fieldName)) {
-            return AlcrosPrintFillDates.storageValue(trimmed, fieldName);
+            return AlcrosPrintFillDates.storageValue(text.trim(), fieldName);
         }
-        return formatPrintFieldText(trimmed, fieldName);
+        return formatPrintFieldText(text, fieldName);
     }
 
     function formatPrintFieldText(value, fieldName) {
@@ -178,8 +185,8 @@
         });
     }
 
-    function syncFillInput(fieldName, value) {
-        var stored = storedPrintFieldValue(value, fieldName);
+    function syncFillInput(fieldName, value, whileTyping) {
+        var stored = storedPrintFieldValue(value, fieldName, whileTyping);
         var input = document.querySelector('[data-field-name="' + fieldName + '"]');
         if (input && document.activeElement !== input) {
             if (window.AlcrosPrintFillDates && AlcrosPrintFillDates.isPrintFillCalendarDateField(fieldName)) {
@@ -665,12 +672,21 @@
             el.addEventListener('input', function () {
                 var name = el.getAttribute('data-field');
                 if (!name) return;
-                syncFillInput(name, storedPrintFieldValue((el.textContent || '').trim(), name));
+                syncFillInput(name, el.textContent || '', true);
                 if (isLcroFooterField(name)) {
                     el.textContent = formatPrintFieldText(fillOverrides[name] || '', name);
                 }
                 if (window.AlcrosPrintFitText) {
                     AlcrosPrintFitText.fitOne(el);
+                }
+            });
+
+            el.addEventListener('blur', function () {
+                var name = el.getAttribute('data-field');
+                if (!name) return;
+                syncFillInput(name, el.textContent || '', false);
+                if (!isLcroFooterField(name) && fillOverrides[name] !== undefined) {
+                    el.textContent = formatPrintFieldText(fillOverrides[name], name);
                 }
             });
 
@@ -869,12 +885,13 @@
     }
 
     function bindFillFieldControl(input) {
-        function applyFillFieldValue() {
+        function applyFillFieldValue(whileTyping) {
             var name = input.getAttribute('data-field-name');
             if (!name) {
                 return;
             }
-            var stored = storedPrintFieldValue(input.value, name);
+            var typing = whileTyping !== false;
+            var stored = storedPrintFieldValue(input.value, name, typing);
             if (window.AlcrosPrintFillDates && AlcrosPrintFillDates.isPrintFillCalendarDateField(name)) {
                 if (stored === '') {
                     delete fillOverrides[name];
@@ -896,8 +913,15 @@
             schedulePreviewRefresh(true);
         }
 
-        input.addEventListener('input', applyFillFieldValue);
-        input.addEventListener('change', applyFillFieldValue);
+        input.addEventListener('input', function () {
+            applyFillFieldValue(true);
+        });
+        input.addEventListener('change', function () {
+            applyFillFieldValue(false);
+        });
+        input.addEventListener('blur', function () {
+            applyFillFieldValue(false);
+        });
     }
 
     function bindFillEditor() {

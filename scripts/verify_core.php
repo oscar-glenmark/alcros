@@ -5,6 +5,8 @@ $root = dirname(__DIR__);
 require_once $root . '/includes/helpers.php';
 require_once $root . '/includes/print_field_definitions.php';
 require_once $root . '/includes/printing.php';
+require_once $root . '/includes/appointment_follow_up.php';
+require_once $root . '/includes/sms.php';
 
 $errors = [];
 
@@ -24,6 +26,19 @@ $mapped = prepareCivilRecordFormInput([
 ]);
 if (($mapped['first_name'] ?? '') !== 'Ana' || ($mapped['last_name'] ?? '') !== 'Cruz') {
     $errors[] = 'prepareCivilRecordFormInput failed to map child names';
+}
+
+foreach ([
+    'notifyFollowUpReminderEmail',
+    'notifyFollowUpDayOfReminderEmail',
+    'notifyFollowUpReminderSms',
+    'notifyFollowUpDayOfReminderSms',
+    'sendCitizenEmail',
+    'sendCitizenSms',
+] as $fn) {
+    if (!function_exists($fn)) {
+        $errors[] = "Missing function: {$fn}";
+    }
 }
 
 if ($errors !== []) {

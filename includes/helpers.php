@@ -1548,9 +1548,9 @@ function getAppointmentServices(): array
 function getPsaDocumentAppointmentTypes(): array
 {
     return [
-        'psa-birth'    => 'PSA Birth',
-        'psa-death'    => 'PSA Death',
-        'psa-marriage' => 'PSA Marriage Certificates',
+        'psa-birth'    => 'PSA Birth Certificate',
+        'psa-death'    => 'PSA Death Certificate',
+        'psa-marriage' => 'PSA Marriage Certificate',
     ];
 }
 
@@ -1573,9 +1573,9 @@ function normalizePsaAppointmentServiceType(string $value): string
     }
 
     static $legacyPsaLabels = [
-        'PSA Birth Certificate'    => 'PSA Birth',
-        'PSA Death Certificate'    => 'PSA Death',
-        'PSA Marriage Certificate' => 'PSA Marriage Certificates',
+        'PSA Birth'                => 'PSA Birth Certificate',
+        'PSA Death'                => 'PSA Death Certificate',
+        'PSA Marriage Certificates' => 'PSA Marriage Certificate',
     ];
     if (isset($legacyPsaLabels[$value])) {
         return $legacyPsaLabels[$value];

@@ -57,15 +57,8 @@ if (!$frontTemplate) {
         $paperW = (float) ($frontTemplate['paper_width_mm'] ?? printOfficialPaperWidthMm());
         $paperH = (float) ($frontTemplate['paper_height_mm'] ?? printOfficialPaperHeightMm());
     }
-    $paperSizeLabel = printPaperSizeLabel($paperW, $paperH, true);
-    $paperSizeTitle = printPaperSizeLabel($paperW, $paperH);
-    $meta = $isCertification
-        ? ['title' => certificationTitle($certificateType), 'form_number' => certificationFormNumber($certificateType)]
-        : printCertificateMeta()[$certificateType];
 }
 
-$globalCalibration = printGlobalCalibration();
-$printModeSetting = printMode();
 $pageTitle = 'Documents';
 $pageSubtitle = 'Blank certificate and certification forms for manual entry';
 ?>
@@ -115,27 +108,6 @@ $pageSubtitle = 'Blank certificate and certification forms for manual entry';
                     </div>
                 </div>
             </div>
-
-            <section class="print-cert-summary">
-                <div class="print-cert-summary__grid">
-                    <div class="print-cert-summary__item">
-                        <span class="print-cert-label"><?= $isCertification ? 'Document' : 'Certificate' ?></span>
-                        <strong><?= htmlspecialchars($isCertification ? certificationTitle($certificateType) : printCertificateTitle($certificateType)) ?></strong>
-                    </div>
-                    <div class="print-cert-summary__item">
-                        <span class="print-cert-label">Entry mode</span>
-                        <strong>Manual (blank form)</strong>
-                    </div>
-                    <div class="print-cert-summary__item">
-                        <span class="print-cert-label">Print Mode</span>
-                        <strong><?= $printModeSetting === 'digital' ? 'Digital Form' : 'Pre-printed Overlay' ?></strong>
-                    </div>
-                    <div class="print-cert-summary__item print-cert-summary__item--paper">
-                        <span class="print-cert-label">Paper Size</span>
-                        <strong title="<?= htmlspecialchars($paperSizeTitle) ?>"><?= htmlspecialchars($paperSizeLabel) ?></strong>
-                    </div>
-                </div>
-            </section>
 
             <?php if (!$isCertification): ?>
             <section class="print-cert-options no-print" id="backPageOptions" hidden>

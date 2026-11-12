@@ -310,7 +310,7 @@ $activities = $activities ?? [];
                         <?= $act['staff_avatar_html'] ?? renderStaffAvatar($act['staff_photo_path'] ?? null, $actStaffName, 'w-9 h-9 text-xs') ?>
                     </span>
                     <div class="min-w-0 flex-1">
-                        <p class="dash-admin-activity__action"><?= htmlspecialchars($act['action']) ?></p>
+                        <p class="dash-admin-activity__action"><?= htmlspecialchars($act['action_display'] ?? activityLogDisplayAction((string) ($act['action'] ?? ''))) ?></p>
                         <?php if (!empty($act['details'])): ?>
                         <p class="dash-admin-activity__details"><?= htmlspecialchars($act['details']) ?></p>
                         <?php endif; ?>

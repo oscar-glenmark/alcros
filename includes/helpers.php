@@ -4679,6 +4679,37 @@ function renderStaffAvatar(?string $photoPath, string $name, string $classes = '
         . htmlspecialchars($initial, ENT_QUOTES, 'UTF-8') . '</span>';
 }
 
+/**
+ * Human-readable activity action for UI/export (entries in activity_logs are successful outcomes).
+ */
+function activityLogDisplayAction(string $action): string
+{
+    $action = trim($action);
+    if ($action === '') {
+        return 'Activity';
+    }
+
+    if (preg_match('/^(Successful|Failed|Unsuccessful)\b/i', $action)) {
+        return $action;
+    }
+
+    static $labels = [
+        'Staff Login'  => 'Successful Login',
+        'Staff Logout' => 'Successful Logout',
+    ];
+    if (isset($labels[$action])) {
+        return $labels[$action];
+    }
+
+    if (preg_match('/\b(Login|Logout|Created|Updated|Added|Removed|Deleted|Restored|Purged|Saved|Printed|Cleared|Fixed|Cancelled|Canceled|Exported|Imported|Changed|Reset)\b/i', $action)) {
+        $trimmed = preg_replace('/^Staff\s+/i', '', $action) ?? $action;
+
+        return 'Successful ' . $trimmed;
+    }
+
+    return $action;
+}
+
 /** @param list<array<string, mixed>> $activities */
 function enrichActivityLogsForDisplay(PDO $pdo, array $activities, string $avatarClasses = 'w-9 h-9 text-xs'): array
 {
@@ -4716,6 +4747,7 @@ function enrichActivityLogsForDisplay(PDO $pdo, array $activities, string $avata
         $activity['staff_display_name'] = $displayName;
         $activity['staff_photo_path'] = $photoPath;
         $activity['staff_avatar_html'] = renderStaffAvatar($photoPath, $displayName, $avatarClasses);
+        $activity['action_display'] = activityLogDisplayAction((string) ($activity['action'] ?? ''));
 
         $enriched[] = $activity;
     }

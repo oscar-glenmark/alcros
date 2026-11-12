@@ -58,7 +58,7 @@ $quickActions = [];
 if ($isAdminUser) {
     $quickActions = [
         ['href' => 'records.php', 'label' => 'Civil Records', 'desc' => 'Manage life event data', 'icon' => 'book-open', 'color' => 'bg-orange-50 text-orange-600'],
-        ['href' => 'documents.php', 'label' => 'Documents', 'desc' => 'Certification services', 'icon' => 'files', 'color' => 'bg-violet-50 text-violet-600'],
+        ['href' => 'report.php', 'label' => 'Reports', 'desc' => 'Summaries, charts & Excel export', 'icon' => 'bar-chart-2', 'color' => 'bg-violet-50 text-violet-600'],
         ['href' => 'analytics.php', 'label' => 'Analytics', 'desc' => 'Office charts, trends & queue', 'icon' => 'trending-up', 'color' => 'bg-blue-50 text-blue-600'],
         ['href' => 'system_settings.php', 'label' => 'Settings', 'desc' => 'System configuration', 'icon' => 'settings', 'color' => 'bg-slate-100 text-slate-600'],
     ];
@@ -442,7 +442,7 @@ if (!$isAdminUser) {
                                 ) ?>
                             </span>
                             <div class="min-w-0">
-                                <p class="text-xs font-bold text-slate-800"><?= htmlspecialchars($act['action']) ?></p>
+                                <p class="text-xs font-bold text-slate-800"><?= htmlspecialchars($act['action_display'] ?? activityLogDisplayAction((string) ($act['action'] ?? ''))) ?></p>
                                 <?php if (!empty($act['details'])): ?>
                                 <p class="text-[10px] text-gray-500 mt-0.5 line-clamp-2"><?= htmlspecialchars($act['details']) ?></p>
                                 <?php endif; ?>

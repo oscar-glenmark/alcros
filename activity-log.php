@@ -100,9 +100,11 @@ function activityLogFormatWhenFull(string $datetime): string
 
 function activityLogRowPayload(array $log, string $staffName, string $staffId): string
 {
+    $actionRaw = (string) ($log['action'] ?? '');
     $payload = [
         'id'        => (int) ($log['id'] ?? 0),
-        'action'    => (string) ($log['action'] ?? ''),
+        'action'    => (string) ($log['action_display'] ?? activityLogDisplayAction($actionRaw)),
+        'actionRaw' => $actionRaw,
         'details'   => (string) ($log['details'] ?? ''),
         'staffId'   => $staffId,
         'staffName' => $staffName,
@@ -161,22 +163,7 @@ $offset = ($page - 1) * $perPage;
 
 $stmt = $pdo->prepare("SELECT id, staff_id, action, details, created_at FROM activity_logs $whereSql ORDER BY created_at DESC LIMIT $perPage OFFSET $offset");
 $stmt->execute($params);
-$logs = $stmt->fetchAll();
-
-ensureStaffProfileColumns($pdo);
-$staffById = [];
-$logStaffIds = array_values(array_unique(array_filter(array_column($logs, 'staff_id'))));
-if ($logStaffIds !== []) {
-    $staffPlaceholders = implode(',', array_fill(0, count($logStaffIds), '?'));
-    $staffStmt = $pdo->prepare(
-        "SELECT staff_id, first_name, middle_name, last_name, profile_photo_path
-         FROM staff WHERE staff_id IN ($staffPlaceholders)"
-    );
-    $staffStmt->execute($logStaffIds);
-    foreach ($staffStmt->fetchAll() as $staffRow) {
-        $staffById[(string) $staffRow['staff_id']] = $staffRow;
-    }
-}
+$logs = enrichActivityLogsForDisplay($pdo, $stmt->fetchAll());
 
 $staffList = $pdo->query("SELECT DISTINCT staff_id FROM activity_logs WHERE staff_id IS NOT NULL AND staff_id != '' ORDER BY staff_id")->fetchAll(PDO::FETCH_COLUMN);
 
@@ -289,10 +276,10 @@ $showingTo = min($offset + $perPage, $totalCount);
                             <?php foreach ($logs as $log): ?>
                             <?php
                             $logStaffId = trim((string) ($log['staff_id'] ?? ''));
-                            $logStaff = $logStaffId !== '' ? ($staffById[$logStaffId] ?? null) : null;
-                            $logStaffName = $logStaff ? personNameFromRow($logStaff) : ($logStaffId !== '' ? $logStaffId : 'System');
+                            $logStaffName = (string) ($log['staff_display_name'] ?? ($logStaffId !== '' ? $logStaffId : 'System'));
+                            $logActionDisplay = (string) ($log['action_display'] ?? activityLogDisplayAction((string) ($log['action'] ?? '')));
                             $logPayloadJson = activityLogRowPayload($log, $logStaffName, $logStaffId);
-                            $logAriaLabel = 'View full details: ' . ($log['action'] ?? 'Activity');
+                            $logAriaLabel = 'View full details: ' . $logActionDisplay;
                             ?>
                             <tr class="activity-log-row hover:bg-slate-50/60"
                                 tabindex="0"
@@ -306,7 +293,7 @@ $showingTo = min($offset + $perPage, $totalCount);
                                 <td class="px-4 sm:px-5 py-3.5 align-top">
                                     <span class="inline-flex items-center gap-2.5 text-xs font-bold text-slate-700">
                                         <?php if ($logStaffId !== ''): ?>
-                                            <?= renderStaffAvatar($logStaff ? ($logStaff['profile_photo_path'] ?? null) : null, $logStaffName, 'w-8 h-8 text-[10px]') ?>
+                                            <?= $log['staff_avatar_html'] ?? renderStaffAvatar($log['staff_photo_path'] ?? null, $logStaffName, 'w-8 h-8 text-[10px]') ?>
                                         <?php else: ?>
                                             <span class="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 text-slate-400 flex items-center justify-center shrink-0">
                                                 <i data-lucide="bot" class="w-3.5 h-3.5"></i>
@@ -314,14 +301,14 @@ $showingTo = min($offset + $perPage, $totalCount);
                                         <?php endif; ?>
                                         <span class="min-w-0">
                                             <span class="block truncate"><?= htmlspecialchars($logStaffName) ?></span>
-                                            <?php if ($logStaff && $logStaffName !== $logStaffId): ?>
+                                            <?php if ($logStaffName !== $logStaffId && $logStaffId !== ''): ?>
                                             <span class="block text-[10px] font-semibold text-slate-400 truncate"><?= htmlspecialchars($logStaffId) ?></span>
                                             <?php endif; ?>
                                         </span>
                                     </span>
                                 </td>
                                 <td class="px-4 sm:px-5 py-3.5 align-top">
-                                    <p class="font-semibold text-slate-800"><?= htmlspecialchars($log['action']) ?></p>
+                                    <p class="font-semibold text-slate-800"><?= htmlspecialchars($logActionDisplay) ?></p>
                                     <?php if (!empty($log['details'])): ?>
                                     <p class="text-xs text-slate-500 mt-1 md:hidden"><?= htmlspecialchars($log['details']) ?></p>
                                     <?php endif; ?>

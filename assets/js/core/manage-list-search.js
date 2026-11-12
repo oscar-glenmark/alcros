@@ -62,7 +62,9 @@
 
         var panel = document.getElementById(panelId);
         var input = form.querySelector('input[name="q"]');
+        var staffSelect = form.querySelector('select[name="staff"]');
         var appliedQuery = input ? String(input.value || '').trim() : '';
+        var appliedStaff = staffSelect ? String(staffSelect.value || '').trim() : '';
         var debounceTimer = null;
         var requestId = 0;
         var abortController = null;
@@ -104,7 +106,8 @@
 
             var execute = function () {
                 var query = input ? input.value.trim() : '';
-                if (query === appliedQuery) {
+                var staff = staffSelect ? String(staffSelect.value || '').trim() : '';
+                if (query === appliedQuery && staff === appliedStaff) {
                     return;
                 }
                 if (query !== '' && query.length < MIN_CHARS && !looksLikeDateInput(query)) {
@@ -140,6 +143,7 @@
                         }
                         applyPanelHtml(html);
                         appliedQuery = query;
+                        appliedStaff = staff;
                         try {
                             window.history.pushState({ alcrosManageListSearch: panelId }, '', url);
                         } catch (e) { /* ignore */ }
@@ -196,10 +200,8 @@
             });
         }
 
-        var staffSelect = form.querySelector('select[name="staff"]');
         if (staffSelect) {
             staffSelect.addEventListener('change', function () {
-                appliedQuery = input ? input.value.trim() : appliedQuery;
                 runSearch(true);
             });
         }

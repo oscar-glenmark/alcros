@@ -1259,7 +1259,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                                 ) ?>
                                             </span>
                                             <div class="min-w-0">
-                                                <p class="text-sm font-semibold text-slate-800 truncate"><?= htmlspecialchars($log['action']) ?></p>
+                                                <p class="text-sm font-semibold text-slate-800 truncate"><?= htmlspecialchars($log['action_display'] ?? activityLogDisplayAction((string) ($log['action'] ?? ''))) ?></p>
                                                 <p class="text-xs text-slate-400 truncate"><?= htmlspecialchars($log['staff_id'] ?? 'System') ?> · <?= htmlspecialchars($log['details'] ?? '') ?></p>
                                             </div>
                                         </div>

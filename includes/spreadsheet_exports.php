@@ -372,7 +372,7 @@ function exportActivityLogXlsx(array $exportRows, string $rangeLabel, string $se
             $logRow['created_at'] ?? '',
             $logRow['staff_id'] ?? '',
             $staffName,
-            $logRow['action'] ?? '',
+            activityLogDisplayAction((string) ($logRow['action'] ?? '')),
             $logRow['details'] ?? '',
         ];
     }

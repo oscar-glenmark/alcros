@@ -45,6 +45,17 @@ function printFillSpelledDatePlaceholder(): string
     return printFillMonthPlaceholderExample() . ' 00, 0000';
 }
 
+/** Primary municipal form section required for manual save (birth → Child, death → Deceased, marriage → Husband/Wife). */
+function printFillPrimaryRequiredSectionLabel(string $recordType): string
+{
+    return match (strtolower(trim($recordType))) {
+        'birth' => 'Child',
+        'death' => 'Deceased',
+        'marriage' => 'Husband/Wife',
+        default => 'Child',
+    };
+}
+
 function printFillDefaultPlaceholder(string $fieldName, string $label): string
 {
     static $exact = [
@@ -1101,7 +1112,8 @@ function renderRecordsEntryPrintFillSection(PDO $pdo, string $type, array $modal
     <div id="<?= htmlspecialchars($panelId) ?>" class="records-entry-print-fill <?= $active ? '' : 'hidden' ?>">
         <div class="records-entry-print-fill__head">
             <div>
-                <p class="records-entry-print-fill__hint">Front and back of the municipal certificate. <strong>Child</strong>, <strong>Deceased</strong>, or <strong>Husband/Wife</strong> sections must be completed to save (middle names optional). Other sections are optional. Custom fields from Print Calibration appear here.</p>
+                <?php $primarySection = printFillPrimaryRequiredSectionLabel($type); ?>
+                <p class="records-entry-print-fill__hint">Front and back of the municipal certificate. <strong><?= htmlspecialchars($primarySection) ?></strong> section must be completed to save (middle names optional). Other sections are optional. Custom fields from Print Calibration appear here.</p>
             </div>
         </div>
         <div class="records-entry-print-fill__tabs" role="tablist" aria-label="<?= htmlspecialchars(ucfirst($type)) ?> fill-in page">

@@ -125,6 +125,10 @@
     color: #fff;
 }
 
+body.print-cal-leave-open {
+    overflow: hidden;
+}
+
 .print-cal-panel[hidden] {
     display: none !important;
 }

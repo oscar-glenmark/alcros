@@ -847,6 +847,303 @@
         return saveAllChangedFields({ manual: true, toast: true });
     }
 
+    function calibrationHasUnsavedChanges() {
+        return dirtyFieldIds.size > 0 || templateCalibrationChanged();
+    }
+
+    /**
+     * @returns {Promise<boolean>} true when save succeeded or there was nothing to save
+     */
+    function saveAllChangesPromise(options) {
+        options = options || {};
+        if (saveInFlight) {
+            return Promise.resolve(false);
+        }
+
+        var needFields = dirtyFieldIds.size > 0;
+        var needTemplateCal = templateCalibrationChanged();
+
+        if (!needFields && !needTemplateCal) {
+            setSaveStatus('saved');
+            return Promise.resolve(true);
+        }
+
+        function saveDirtyFields() {
+            if (!needFields) {
+                return Promise.resolve(true);
+            }
+            return saveAllChangedFields({
+                manual: options.manual !== false,
+                toast: options.toast !== false,
+                message: options.message || 'Saved calibration changes.'
+            }).then(function (res) {
+                return !!(res && res.ok !== false);
+            });
+        }
+
+        if (needTemplateCal && !needFields) {
+            saveInFlight = true;
+            updateSaveAllButton();
+            return saveTemplateCalibrationNow()
+                .then(function () {
+                    saveInFlight = false;
+                    updateSaveAllButton();
+                    setSaveStatus('saved');
+                    if (options.toast !== false) {
+                        showToast('success', 'Form shift saved.');
+                    }
+                    return true;
+                })
+                .catch(function (err) {
+                    saveInFlight = false;
+                    updateSaveAllButton();
+                    setSaveStatus('error', err.message || 'Could not save form shift.');
+                    if (options.toast !== false) {
+                        showToast('error', err.message || 'Could not save form shift.');
+                    }
+                    return false;
+                });
+        }
+
+        if (needTemplateCal) {
+            return saveTemplateCalibrationNow()
+                .then(saveDirtyFields)
+                .catch(function (err) {
+                    saveInFlight = false;
+                    updateSaveAllButton();
+                    setSaveStatus('error', err.message || 'Could not save form shift.');
+                    if (options.toast !== false) {
+                        showToast('error', err.message || 'Could not save form shift.');
+                    }
+                    return false;
+                });
+        }
+
+        return saveDirtyFields();
+    }
+
+    var leaveModalEl = null;
+    var leaveModalPendingUrl = '';
+    var leaveNavigationBypass = false;
+    var LEAVE_AFTER_SAVE_DELAY_MS = 1500;
+
+    function leaveGuardSummaryMessage() {
+        var parts = [];
+        var count = dirtyFieldIds.size;
+        if (count > 0) {
+            parts.push(count + ' unsaved field change' + (count === 1 ? '' : 's'));
+        }
+        if (templateCalibrationChanged()) {
+            parts.push('unsaved form shift settings');
+        }
+        if (!parts.length) {
+            return 'You have unsaved calibration changes.';
+        }
+        return 'You have ' + parts.join(' and ') + '. Save before leaving this page.';
+    }
+
+    function ensureLeaveModal() {
+        if (leaveModalEl) {
+            return leaveModalEl;
+        }
+
+        leaveModalEl = document.createElement('div');
+        leaveModalEl.id = 'printCalLeaveModal';
+        leaveModalEl.className = 'alcros-confirm-modal print-cal-leave-modal is-hidden';
+        leaveModalEl.setAttribute('role', 'dialog');
+        leaveModalEl.setAttribute('aria-modal', 'true');
+        leaveModalEl.setAttribute('aria-labelledby', 'printCalLeaveTitle');
+        leaveModalEl.innerHTML =
+            '<div class="alcros-confirm-modal__panel">' +
+                '<button type="button" class="alcros-modal-close" id="printCalLeaveCloseBtn" aria-label="Close">' +
+                    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>' +
+                '</button>' +
+                '<div class="alcros-confirm-modal__hero">' +
+                    '<div class="alcros-confirm-modal__icon-wrap" aria-hidden="true">' +
+                        '<div class="alcros-confirm-modal__icon">' +
+                            '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>' +
+                        '</div>' +
+                    '</div>' +
+                    '<p class="alcros-modal-badge alcros-modal-badge--confirm">Unsaved changes</p>' +
+                    '<h3 id="printCalLeaveTitle" class="alcros-confirm-modal__title">Leave calibration?</h3>' +
+                    '<p id="printCalLeaveMessage" class="alcros-confirm-modal__message"></p>' +
+                '</div>' +
+                '<div class="alcros-confirm-modal__actions print-cal-leave-modal__actions">' +
+                    '<button type="button" id="printCalLeaveCancelBtn" class="alcros-confirm-modal__btn alcros-confirm-modal__btn--cancel">Stay on page</button>' +
+                    '<button type="button" id="printCalLeaveSaveBtn" class="alcros-confirm-modal__btn alcros-confirm-modal__btn--ok">Save all and leave</button>' +
+                '</div>' +
+            '</div>';
+
+        document.body.appendChild(leaveModalEl);
+
+        var messageEl = leaveModalEl.querySelector('#printCalLeaveMessage');
+        var cancelBtn = leaveModalEl.querySelector('#printCalLeaveCancelBtn');
+        var saveBtn = leaveModalEl.querySelector('#printCalLeaveSaveBtn');
+        var closeBtn = leaveModalEl.querySelector('#printCalLeaveCloseBtn');
+        var panel = leaveModalEl.querySelector('.alcros-confirm-modal__panel');
+
+        function closeLeaveModal() {
+            leaveModalEl.classList.add('is-hidden');
+            leaveModalEl.classList.remove('is-open');
+            document.body.classList.remove('print-cal-leave-open');
+            leaveModalPendingUrl = '';
+            saveBtn.disabled = false;
+        }
+
+        function navigatePendingLeave(delayMs) {
+            var url = leaveModalPendingUrl;
+            closeLeaveModal();
+            if (!url) {
+                return;
+            }
+            var delay = typeof delayMs === 'number' && delayMs > 0 ? delayMs : 0;
+            function go() {
+                leaveNavigationBypass = true;
+                window.location.href = url;
+            }
+            if (delay) {
+                window.setTimeout(go, delay);
+            } else {
+                go();
+            }
+        }
+
+        cancelBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            closeLeaveModal();
+        });
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                closeLeaveModal();
+            });
+        }
+        saveBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            if (saveInFlight) {
+                return;
+            }
+            saveBtn.disabled = true;
+            saveAllChangesPromise({ manual: true, toast: true, message: 'Saved calibration changes.' })
+                .then(function (ok) {
+                    if (ok && !calibrationHasUnsavedChanges()) {
+                        navigatePendingLeave(LEAVE_AFTER_SAVE_DELAY_MS);
+                        return;
+                    }
+                    saveBtn.disabled = false;
+                });
+        });
+        if (panel) {
+            panel.addEventListener('click', function (e) {
+                e.stopPropagation();
+            });
+        }
+        leaveModalEl.addEventListener('click', function (e) {
+            if (e.target === leaveModalEl) {
+                closeLeaveModal();
+            }
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key !== 'Escape') {
+                return;
+            }
+            if (!leaveModalEl.classList.contains('is-open')) {
+                return;
+            }
+            e.stopPropagation();
+            closeLeaveModal();
+        });
+
+        leaveModalEl._setMessage = function (text) {
+            if (messageEl) {
+                messageEl.textContent = text || '';
+            }
+        };
+
+        return leaveModalEl;
+    }
+
+    function openLeaveModal(url) {
+        var modal = ensureLeaveModal();
+        leaveModalPendingUrl = url || '';
+        if (modal._setMessage) {
+            modal._setMessage(leaveGuardSummaryMessage());
+        }
+        document.body.classList.add('print-cal-leave-open');
+        document.body.appendChild(modal);
+        modal.classList.remove('is-hidden');
+        modal.classList.add('is-open');
+        var saveBtn = modal.querySelector('#printCalLeaveSaveBtn');
+        if (saveBtn) {
+            window.requestAnimationFrame(function () {
+                saveBtn.focus();
+            });
+        }
+    }
+
+    function shouldGuardNavigationLink(link) {
+        if (!link || !link.href) {
+            return false;
+        }
+        if (link.dataset.printCalLeaveBypass !== undefined) {
+            return false;
+        }
+        if (link.target && link.target !== '_self') {
+            return false;
+        }
+        if (link.hasAttribute('download')) {
+            return false;
+        }
+        if (link.id === 'calPreviewPrintLink') {
+            return false;
+        }
+
+        if (link.classList.contains('print-cal-cert-tab') || link.classList.contains('print-cal-page-tab')) {
+            return !link.classList.contains('is-active');
+        }
+
+        try {
+            var dest = new URL(link.href, window.location.href);
+            var here = new URL(window.location.href);
+            if (dest.origin !== here.origin) {
+                return true;
+            }
+            if (dest.pathname === here.pathname && dest.search === here.search && dest.hash === here.hash) {
+                return false;
+            }
+            if (dest.hash && dest.pathname === here.pathname && dest.search === here.search) {
+                return false;
+            }
+            return true;
+        } catch (err) {
+            return false;
+        }
+    }
+
+    function bindLeaveGuard() {
+        if (!document.querySelector('.print-cal-page')) {
+            return;
+        }
+
+        document.addEventListener('click', function (e) {
+            if (!calibrationHasUnsavedChanges() || leaveNavigationBypass) {
+                return;
+            }
+            if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+                return;
+            }
+
+            var link = e.target.closest('a[href]');
+            if (!link || !shouldGuardNavigationLink(link)) {
+                return;
+            }
+
+            e.preventDefault();
+            e.stopPropagation();
+            openLeaveModal(link.href);
+        }, true);
+    }
+
     function clearFieldsDirty(fieldIds) {
         fieldIds.forEach(function (fieldId) {
             dirtyFieldIds.delete(Number(fieldId));
@@ -1885,7 +2182,10 @@
         }
 
         window.addEventListener('beforeunload', function (e) {
-            if (dirtyFieldIds.size > 0 || templateCalibrationChanged()) {
+            if (leaveNavigationBypass) {
+                return;
+            }
+            if (calibrationHasUnsavedChanges()) {
                 e.preventDefault();
                 e.returnValue = '';
             }
@@ -2022,6 +2322,7 @@
             bindDrag();
             bindAddTextbox();
             bindForms();
+            bindLeaveGuard();
             bindZoom();
         });
 

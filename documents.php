@@ -114,19 +114,6 @@ $pageSubtitle = 'Blank certificate and certification forms for manual entry';
                         <?php endforeach; ?>
                     </div>
                 </div>
-                <div class="print-cal-toolbar-meta">
-                    <p class="print-cal-note">
-                        <?= htmlspecialchars($meta['title']) ?> · Form <?= htmlspecialchars($meta['form_number']) ?>
-                        · Manual entry — fields start empty. Auto-fill from requests and records is unchanged.
-                    </p>
-                    <?php if (isAdmin()): ?>
-                        <a href="<?= htmlspecialchars(buildAuthUrl('print_calibration.php', $docQueryParams(['page' => 'front']))) ?>"
-                           class="print-cert-btn print-cert-btn--ghost"
-                           id="openPrintCalibration">
-                            Open print calibration
-                        </a>
-                    <?php endif; ?>
-                </div>
             </div>
 
             <section class="print-cert-summary">
@@ -198,7 +185,8 @@ $pageSubtitle = 'Blank certificate and certification forms for manual entry';
                     </div>
                     <?php else: ?>
                     <div class="print-cert-fill-chrome__body">
-                        <p class="print-cert-hint print-cert-fill-chrome__hint"><strong>Child</strong>, <strong>Deceased</strong>, or <strong>Husband/Wife</strong> sections must be complete to add a record (middle names optional). Other sections are optional.</p>
+                        <?php $primarySection = printFillPrimaryRequiredSectionLabel($certificateType); ?>
+                        <p class="print-cert-hint print-cert-fill-chrome__hint"><strong><?= htmlspecialchars($primarySection) ?></strong> section must be complete to add a record (middle names optional). Other sections are optional.</p>
                     </div>
                     <?php endif; ?>
                     <?php if (!$isCertification): ?>

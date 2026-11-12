@@ -213,15 +213,6 @@ if (!$formDefaults && !empty($fields[0])) {
                 </div>
                 <?php endif; ?>
             </div>
-
-            <div class="print-cal-toolbar-meta">
-                <form method="post" class="print-cal-reset-all" data-confirm="Reset all fields on this page to their default positions?">
-                    <?= csrfField() ?>
-                    <input type="hidden" name="action" value="reset_all_fields">
-                    <button type="submit" class="print-cal-reset print-cal-reset--inline">Reset all fields on this page</button>
-                </form>
-                <p class="print-cal-note"><?= htmlspecialchars($meta['title']) ?> · Form <?= htmlspecialchars($meta['form_number']) ?> · <?= $isCertification ? 'LCRO certification form layout' : 'Official LGU bond-paper layout' ?></p>
-            </div>
         </div>
 
         <div class="print-cal-layout print-cal-layout--wide">

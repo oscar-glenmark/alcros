@@ -215,7 +215,7 @@ $pageSubtitle = 'Blank certificate and certification forms for manual entry';
                 <?php printFillEntryFormSetContext([]); ?>
             </section>
 
-            <section class="print-cert-previews<?= !$isCertification ? ' print-cert-previews--local' : '' ?>"
+            <section class="print-cert-previews print-cert-previews--local"
                      data-preview-view="front"
                      data-paper-w="<?= htmlspecialchars((string) $paperW) ?>"
                      data-paper-h="<?= htmlspecialchars((string) $paperH) ?>">

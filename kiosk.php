@@ -76,7 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <?php else: ?>
             <div class="kiosk-intro">
-                <h1 class="kiosk-intro__title">Get a queue number</h1>
+                <h1 class="kiosk-intro__title">Get a queue ticket</h1>
                 <p class="kiosk-intro__lead">Tap the reason for your visit</p>
             </div>
 

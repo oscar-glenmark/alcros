@@ -98,21 +98,31 @@ body.kiosk-body {
 
 .kiosk-choices {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: clamp(0.875rem, 2vw, 1.5rem);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-rows: 1fr;
+    align-items: stretch;
+    gap: clamp(0.75rem, 1.5vw, 1.25rem);
     width: 100%;
-    max-width: 64rem;
+    max-width: min(96vw, 88rem);
     margin: 0 auto;
-    flex: 0 1 auto;
-    min-height: 0;
-    max-height: min(56vh, 28rem);
-    align-self: center;
+    flex: 1 1 auto;
+    align-self: stretch;
+    min-height: clamp(12rem, 34vh, 22rem);
+    height: clamp(16rem, 44vh, 28rem);
+    max-height: min(70vh, 30rem);
 }
 
 @media (max-width: 720px) {
     .kiosk-choices {
         grid-template-columns: 1fr;
+        grid-auto-rows: auto;
+        height: auto;
         max-height: none;
+        min-height: 0;
+    }
+
+    .kiosk-choice-btn {
+        min-height: clamp(9rem, 22vh, 14rem);
     }
 }
 
@@ -121,17 +131,20 @@ body.kiosk-body {
 }
 
 .kiosk-choice-btn {
+    container-type: inline-size;
     display: flex;
     flex-direction: column;
-    justify-content: flex-end;
-    align-items: flex-start;
-    text-align: left;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    gap: clamp(0.5rem, 2cqi, 1.25rem);
     width: 100%;
+    min-width: 0;
     height: 100%;
-    min-height: clamp(9rem, 24vh, 17rem);
+    min-height: 100%;
     border: none;
     border-radius: clamp(1.125rem, 2.2vw, 1.75rem);
-    padding: clamp(1.5rem, 3.5vw, 2.5rem);
+    padding: clamp(1rem, 2vw, 1.65rem);
     cursor: pointer;
     transition: transform 0.12s ease, filter 0.15s ease;
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
@@ -166,11 +179,11 @@ body.kiosk-body {
 }
 
 .kiosk-choice-btn__table {
-    font-size: clamp(1rem, 2.4vh, 1.375rem);
+    font-size: clamp(1.25rem, 2.1cqi + 0.8rem, 2rem);
     font-weight: 900;
     letter-spacing: 0.16em;
     text-transform: uppercase;
-    margin: 0 0 auto 0;
+    margin: 0;
 }
 
 .kiosk-choice-btn--walk-in .kiosk-choice-btn__table {
@@ -183,11 +196,22 @@ body.kiosk-body {
 }
 
 .kiosk-choice-btn__label {
-    font-size: clamp(1.75rem, 6.5vh, 3.5rem);
+    /* Scale to fit "Appointment" in each equal column — same size on all three tiles */
+    font-size: clamp(1.65rem, 12.5cqi, 3.65rem);
     font-weight: 900;
-    line-height: 1.05;
+    line-height: 1.12;
     margin: 0;
-    white-space: nowrap;
+    width: 100%;
+    max-width: 100%;
+    word-break: normal;
+    overflow-wrap: normal;
+    hyphens: manual;
+}
+
+@media (max-width: 720px) {
+    .kiosk-choice-btn__label {
+        font-size: clamp(2.25rem, 11vw, 4.25rem);
+    }
 }
 
 .kiosk-choice-btn--walk-in .kiosk-choice-btn__label {

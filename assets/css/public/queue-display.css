@@ -10,12 +10,19 @@ body { font-family: 'Inter', sans-serif; background-color: #020617; color: white
 }
 
 #display-tables {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
     gap: clamp(0.75rem, 1.5vw, 1.25rem);
 }
 
 .display-table-slot {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    height: 100%;
+    min-height: clamp(9rem, 24vh, 17rem);
     padding: clamp(1.5rem, 2.5vh, 2.25rem) clamp(1rem, 2vw, 1.5rem);
-    min-height: clamp(8.5rem, 14vh, 11rem);
 }
 
 .display-table-slot__table {

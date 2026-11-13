@@ -406,15 +406,16 @@ function rateLimitStorageFile(string $key): string
     return $dir . '/' . hash('sha256', $key) . '.json';
 }
 
-/** @return array{count: int, reset: int, lockout_alert_sent: int, last_ip: string} */
+/** @return array{count: int, reset: int, lockout_alert_sent: int, lockout_admin_inbox_sent: int, last_ip: string} */
 function rateLimitReadState(string $key, int $windowSeconds): array
 {
     $now = time();
     $defaults = [
-        'count'               => 0,
-        'reset'               => $now + $windowSeconds,
-        'lockout_alert_sent'  => 0,
-        'last_ip'             => '',
+        'count'                     => 0,
+        'reset'                     => $now + $windowSeconds,
+        'lockout_alert_sent'        => 0,
+        'lockout_admin_inbox_sent'  => 0,
+        'last_ip'                   => '',
     ];
 
     $file = rateLimitStorageFile($key);
@@ -440,20 +441,22 @@ function rateLimitReadState(string $key, int $windowSeconds): array
     }
 
     return [
-        'count'              => (int) ($decoded['count'] ?? 0),
-        'reset'              => (int) ($decoded['reset'] ?? ($now + $windowSeconds)),
-        'lockout_alert_sent' => !empty($decoded['lockout_alert_sent']) ? 1 : 0,
-        'last_ip'            => $lastIp,
+        'count'                    => (int) ($decoded['count'] ?? 0),
+        'reset'                    => (int) ($decoded['reset'] ?? ($now + $windowSeconds)),
+        'lockout_alert_sent'       => !empty($decoded['lockout_alert_sent']) ? 1 : 0,
+        'lockout_admin_inbox_sent' => !empty($decoded['lockout_admin_inbox_sent']) ? 1 : 0,
+        'last_ip'                  => $lastIp,
     ];
 }
 
-/** @param array{count?: int, reset?: int, lockout_alert_sent?: int, last_ip?: string} $data */
+/** @param array{count?: int, reset?: int, lockout_alert_sent?: int, lockout_admin_inbox_sent?: int, last_ip?: string} $data */
 function rateLimitWriteState(string $key, array $data): void
 {
     $payload = [
-        'count'              => (int) ($data['count'] ?? 0),
-        'reset'              => (int) ($data['reset'] ?? (time() + 900)),
-        'lockout_alert_sent' => !empty($data['lockout_alert_sent']) ? 1 : 0,
+        'count'                    => (int) ($data['count'] ?? 0),
+        'reset'                    => (int) ($data['reset'] ?? (time() + 900)),
+        'lockout_alert_sent'       => !empty($data['lockout_alert_sent']) ? 1 : 0,
+        'lockout_admin_inbox_sent' => !empty($data['lockout_admin_inbox_sent']) ? 1 : 0,
     ];
 
     $lastIp = trim((string) ($data['last_ip'] ?? ''));
@@ -519,6 +522,20 @@ function rateLimitMarkLockoutAlertSent(string $key, int $windowSeconds): void
 {
     $data = rateLimitReadState($key, $windowSeconds);
     $data['lockout_alert_sent'] = 1;
+    rateLimitWriteState($key, $data);
+}
+
+function rateLimitAdminInboxLockoutAlreadySent(string $key, int $windowSeconds): bool
+{
+    $data = rateLimitReadState($key, $windowSeconds);
+
+    return $data['lockout_admin_inbox_sent'] === 1;
+}
+
+function rateLimitMarkAdminInboxLockoutSent(string $key, int $windowSeconds): void
+{
+    $data = rateLimitReadState($key, $windowSeconds);
+    $data['lockout_admin_inbox_sent'] = 1;
     rateLimitWriteState($key, $data);
 }
 

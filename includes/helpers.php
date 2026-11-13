@@ -4369,6 +4369,82 @@ function sendStaffLoginLockoutAlert(PDO $pdo, string $staffId, int $windowSecond
     return true;
 }
 
+function adminLoginLockoutSystemErrorKey(string $staffId): string
+{
+    $id = strtoupper(preg_replace('/[^A-Z0-9_-]/', '', trim($staffId)) ?? '');
+    if ($id === '') {
+        $id = 'UNKNOWN';
+    }
+
+    return mb_substr('login-lockout-' . $id, 0, 80);
+}
+
+function adminLoginLockoutActivityLogUrl(): string
+{
+    if (function_exists('buildAuthUrl')) {
+        return buildAuthUrl('activity-log.php', ['q' => 'Login lockout']);
+    }
+
+    return 'activity-log.php?q=Login+lockout';
+}
+
+function notifyAdminLoginLockoutInAppIfNeeded(
+    PDO $pdo,
+    string $staffId,
+    string $rateLimitKey,
+    int $maxAttempts,
+    int $windowSeconds,
+    bool $staffRegistered
+): void {
+    $staffId = strtoupper(trim($staffId));
+    if ($staffId === '' || $rateLimitKey === '') {
+        return;
+    }
+
+    if (!rateLimitIsBlocked($rateLimitKey, $maxAttempts, $windowSeconds)) {
+        return;
+    }
+
+    if (rateLimitAdminInboxLockoutAlreadySent($rateLimitKey, $windowSeconds)) {
+        return;
+    }
+
+    $state = rateLimitReadState($rateLimitKey, $windowSeconds);
+    $sourceIp = ($state['last_ip'] ?? '') !== '' ? (string) $state['last_ip'] : null;
+    $ip = formatClientIpAddress($sourceIp);
+    $windowMinutes = (int) max(1, round($windowSeconds / 60));
+
+    if ($staffRegistered) {
+        $title = 'Staff sign-in lockout';
+        $reason = 'Three failed staff portal sign-in attempts for Staff ID '
+            . $staffId . '. Sign-in is paused for about ' . $windowMinutes . ' minutes. Source IP: ' . $ip
+            . '. Review sign-in activity if this was unexpected.';
+        $logDetail = 'Administrator inbox: registered Staff ID locked after repeated failed sign-in (IP ' . $ip . ')';
+    } else {
+        $title = 'Unrecognized Staff ID lockout';
+        $reason = 'Three failed staff portal sign-in attempts using Staff ID '
+            . $staffId . ', which is not registered. Sign-in is paused for about ' . $windowMinutes . ' minutes. Source IP: '
+            . $ip . '. Review staff accounts if this was unexpected.';
+        $logDetail = 'Administrator inbox: unrecognized Staff ID locked after repeated failed sign-in (IP ' . $ip . ')';
+    }
+
+    try {
+        raiseSystemError(
+            $pdo,
+            adminLoginLockoutSystemErrorKey($staffId),
+            'security',
+            $title,
+            $reason,
+            'acknowledge',
+            adminLoginLockoutActivityLogUrl()
+        );
+        logActivity($staffId, 'Login lockout alert', $logDetail);
+        rateLimitMarkAdminInboxLockoutSent($rateLimitKey, $windowSeconds);
+    } catch (Throwable $e) {
+        // Non-fatal — email lockout paths remain unchanged.
+    }
+}
+
 function notifyStaffLoginLockoutIfNeeded(
     PDO $pdo,
     string $staffId,
@@ -4384,6 +4460,8 @@ function notifyStaffLoginLockoutIfNeeded(
     if (!rateLimitIsBlocked($rateLimitKey, $maxAttempts, $windowSeconds)) {
         return;
     }
+
+    notifyAdminLoginLockoutInAppIfNeeded($pdo, $staffId, $rateLimitKey, $maxAttempts, $windowSeconds, true);
 
     if (rateLimitLockoutAlertAlreadySent($rateLimitKey, $windowSeconds)) {
         return;
@@ -4462,6 +4540,7 @@ function sendUnknownStaffLoginLockoutAlertToAdmin(
 }
 
 function notifyUnknownStaffLoginLockoutIfNeeded(
+    PDO $pdo,
     string $staffId,
     string $rateLimitKey,
     int $maxAttempts,
@@ -4475,6 +4554,8 @@ function notifyUnknownStaffLoginLockoutIfNeeded(
     if (!rateLimitIsBlocked($rateLimitKey, $maxAttempts, $windowSeconds)) {
         return;
     }
+
+    notifyAdminLoginLockoutInAppIfNeeded($pdo, $staffId, $rateLimitKey, $maxAttempts, $windowSeconds, false);
 
     if (rateLimitLockoutAlertAlreadySent($rateLimitKey, $windowSeconds)) {
         return;
@@ -4694,8 +4775,9 @@ function activityLogDisplayAction(string $action): string
     }
 
     static $labels = [
-        'Staff Login'  => 'Successful Login',
-        'Staff Logout' => 'Successful Logout',
+        'Staff Login'         => 'Successful Login',
+        'Staff Logout'        => 'Successful Logout',
+        'Login lockout alert' => 'Sign-in lockout alert',
     ];
     if (isset($labels[$action])) {
         return $labels[$action];

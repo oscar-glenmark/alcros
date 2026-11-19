@@ -151,21 +151,11 @@ body.citizen-site {
     padding: 0.45rem 1.1rem;
     transition: background 0.2s, color 0.2s;
     text-decoration: none;
-    display: inline-block;
 }
 
 .citizen-btn-login:hover {
     background: #fff;
     color: var(--alcros-navy);
-}
-
-@media (max-width: 639px) {
-    .citizen-staff-login-header {
-        font-size: 0.5625rem;
-        letter-spacing: 0.06em;
-        padding: 0.35rem 0.65rem;
-        white-space: nowrap;
-    }
 }
 
 .citizen-page-hero {

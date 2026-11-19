@@ -15,7 +15,7 @@ try {
 $maintenanceMode = isMaintenanceMode();
 $publicRequestsAllowed = arePublicRequestsAllowed();
 
-// Public landing page always links to staff login — never auto-route to the staff dashboard.
+// Staff login in header on desktop; mobile uses More menu / footer — never auto-route to the staff dashboard.
 $staffPortalUrl   = 'login.php';
 $staffPortalLabel = 'Staff Login';
 $currentPage = basename($_SERVER['PHP_SELF']);
@@ -87,7 +87,7 @@ $faqs = [
                 </nav>
 
                 <div class="flex items-center gap-2 shrink-0">
-                    <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="btn-login inline-block">
+                    <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="btn-login hidden lg:inline-block shrink-0">
                         <?= htmlspecialchars($staffPortalLabel) ?>
                     </a>
                     <button type="button" id="mobileNavToggle" class="lg:hidden p-2 text-white" aria-label="Open menu">
@@ -104,7 +104,6 @@ $faqs = [
                     <a href="#about" class="nav-link" data-nav-section="about">About</a>
                     <a href="#faqs" class="nav-link" data-nav-section="faqs">FAQs</a>
                     <a href="#contact" class="nav-link" data-nav-section="contact">Contact Us</a>
-                    <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="btn-login inline-block text-center mt-2 w-fit"><?= htmlspecialchars($staffPortalLabel) ?></a>
                 </div>
             </div>
         </div>

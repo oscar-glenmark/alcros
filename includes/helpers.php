@@ -4700,9 +4700,10 @@ function alcrosFaviconImg(int $sizePx = 20, string $extraClass = ''): string
     );
 }
 
+/** Staff login in citizen header — desktop (lg+) only; mobile uses More menu / footer. */
 function citizenStaffLoginHeaderLink(string $label = 'Staff Login'): string
 {
-    return '<a href="login.php" class="citizen-btn-login citizen-staff-login-header shrink-0">'
+    return '<a href="login.php" class="citizen-btn-login hidden lg:inline-block shrink-0">'
         . htmlspecialchars($label, ENT_QUOTES, 'UTF-8')
         . '</a>';
 }

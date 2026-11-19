@@ -86,15 +86,6 @@ body { font-family: 'Inter', sans-serif; color: #1e293b; }
 }
 .btn-login:hover { background: #fff; color: var(--alcros-navy); }
 
-@media (max-width: 639px) {
-    .site-header .btn-login {
-        font-size: 0.5625rem;
-        letter-spacing: 0.06em;
-        padding: 0.35rem 0.65rem;
-        white-space: nowrap;
-    }
-}
-
 .hero-section {
     position: relative;
     min-height: 520px;
@@ -315,8 +306,7 @@ body { font-family: 'Inter', sans-serif; color: #1e293b; }
         gap: 0.625rem;
     }
 
-    #mobileNav .nav-link,
-    #mobileNav .btn-login {
+    #mobileNav .nav-link {
         display: flex;
         align-items: center;
         min-height: var(--alcros-touch-min);

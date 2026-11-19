@@ -98,9 +98,7 @@ $year = date('Y');
 
 
                 <div class="flex items-center gap-2 shrink-0">
-
                     <?= citizenStaffLoginHeaderLink() ?>
-
                     <button type="button" id="citizenMobileNavToggle" class="lg:hidden p-2 text-white" aria-label="Open menu">
 
                         <i data-lucide="menu" class="w-6 h-6"></i>

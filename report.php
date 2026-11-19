@@ -26,7 +26,7 @@ $rangeLabel = reportRangeLabel($range, $fromDate, $toDate);
 $reportYear = resolveReportYear($_GET['year'] ?? null);
 
 $report = buildOperationalReport($pdo, $fromDate, $toDate);
-$recordsReport = buildQuarterlyCivilRecordsReport($pdo, $reportYear);
+$recordsReport = buildCivilRecordsYearReport($pdo, $reportYear);
 $summary = $report['summary'];
 $requestsReportCharts = buildRequestsReportChartPayload(
     $pdo,
@@ -259,7 +259,7 @@ $recordsJumpDesc = sprintf(
                                         </label>
                                         <?php endforeach; ?>
                                     </div>
-                                    <p id="reportExportRecordsYearNote" class="text-[10px] text-gray-400 mt-2 leading-snug">Includes quarterly summary plus full record rows for <strong class="text-slate-600"><?= (int) $reportYear ?></strong>.</p>
+                                    <p id="reportExportRecordsYearNote" class="text-[10px] text-gray-400 mt-2 leading-snug">Includes monthly summary plus full record rows for <strong class="text-slate-600"><?= (int) $reportYear ?></strong>.</p>
                                 </div>
                                 <div class="flex items-center justify-between gap-2 pt-3 border-t border-gray-100 mb-3">
                                     <button type="button" id="reportExportSelectAll" class="text-emerald-600 font-bold hover:underline">Select all</button>
@@ -271,8 +271,33 @@ $recordsJumpDesc = sprintf(
                             </div>
                         </div>
             <?php
+            elseif ($section === 'records'):
+            ?>
+                        <div class="relative" id="reportRecordsExportMenu">
+                            <button type="button" id="reportRecordsExportBtn" class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg text-xs font-bold">
+                                <i data-lucide="download" class="w-3.5 h-3.5"></i> Export
+                                <i data-lucide="chevron-down" class="w-3.5 h-3.5 opacity-80"></i>
+                            </button>
+                            <div id="reportRecordsExportPanel" class="hidden absolute right-0 mt-2 w-64 bg-white border border-gray-100 rounded-xl shadow-lg z-50 py-1 text-xs">
+                                <?php
+                                $recordsTabExportOptions = [
+                                    'all'      => 'All records',
+                                    'birth'    => 'Birth records',
+                                    'death'    => 'Death records',
+                                    'marriage' => 'Marriage records',
+                                ];
+                                foreach ($recordsTabExportOptions as $exportKey => $exportLabel):
+                                ?>
+                                <a href="<?= htmlspecialchars(reportCivilRecordsExcelUrl($exportKey, $reportYear, $range, $fromDate, $toDate)) ?>"
+                                   class="report-records-export-link block px-3 py-2.5 font-semibold text-slate-700 hover:bg-gray-50">
+                                    <?= htmlspecialchars($exportLabel) ?>
+                                </a>
+                                <?php endforeach; ?>
+                                <p class="px-3 py-2 border-t border-gray-100 text-[10px] text-gray-400 leading-snug">Monthly summary and full rows for <strong class="text-slate-600"><?= (int) $reportYear ?></strong>. Registry search does not apply.</p>
+                            </div>
+                        </div>
+            <?php
             elseif ($reportDetailSection):
-                $detailExportLabel = $reportTabs[$section]['label'] ?? ucfirst($section);
             ?>
                         <button type="button"
                                 id="reportExportDirectBtn"
@@ -731,18 +756,20 @@ $recordsJumpDesc = sprintf(
                                     <th class="px-5 py-3">Printed</th>
                                     <th class="px-5 py-3">Kind</th>
                                     <th class="px-5 py-3 hidden md:table-cell">Record type</th>
+                                    <th class="px-5 py-3 text-right">Copies</th>
                                     <th class="px-5 py-3">Source</th>
                                     <th class="px-5 py-3 hidden lg:table-cell">Staff</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-50">
                                 <?php if (empty($report['print_jobs'])): ?>
-                                <tr><td colspan="5" class="px-5 py-12 text-center text-gray-400 text-sm">No completed print jobs for this period.</td></tr>
+                                <tr><td colspan="6" class="px-5 py-12 text-center text-gray-400 text-sm">No completed print jobs for this period.</td></tr>
                                 <?php else: foreach ($report['print_jobs'] as $row): ?>
                                 <tr class="hover:bg-gray-50/60">
                                     <td class="px-5 py-3 text-gray-500 text-xs whitespace-nowrap"><?= htmlspecialchars(formatReportDateTime($row['printed_at'] ?? null)) ?></td>
                                     <td class="px-5 py-3 font-semibold text-slate-800"><?= htmlspecialchars(printJobDocumentKindLabel((string) ($row['document_kind'] ?? ''))) ?></td>
                                     <td class="px-5 py-3 text-gray-500 hidden md:table-cell"><?= htmlspecialchars(civilRecordTypeLabel((string) ($row['certificate_type'] ?? ''))) ?></td>
+                                    <td class="px-5 py-3 text-right font-bold text-slate-800 tabular-nums"><?= number_format(max(1, (int) ($row['copies'] ?? 1))) ?></td>
                                     <td class="px-5 py-3 text-xs text-slate-600"><?= htmlspecialchars(printJobSourceSummary($row)) ?></td>
                                     <td class="px-5 py-3 font-mono text-[11px] text-gray-400 hidden lg:table-cell"><?= htmlspecialchars((string) ($row['printed_by'] ?? '—')) ?></td>
                                 </tr>
@@ -756,14 +783,14 @@ $recordsJumpDesc = sprintf(
                 </section>
             </div>
 
-            <!-- Civil Records (Quarterly) -->
+            <!-- Civil Records (Monthly) -->
             <div class="report-panel" <?= $section !== 'records' ? 'hidden' : '' ?>>
                 <section class="report-section bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
                     <div class="px-5 py-4 border-b border-gray-100">
                         <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                             <div>
-                                <h2 class="text-base font-black text-slate-900">Civil Records — Quarterly Registration</h2>
-                                <p class="text-xs text-gray-400 mt-0.5">Registrations in <?= (int) $reportYear ?> by quarter, type, and month · compared to <?= (int) ($recordsReport['prior_year'] ?? $reportYear - 1) ?>.</p>
+                                <h2 class="text-base font-black text-slate-900">Civil Records — Monthly Registration</h2>
+                                <p class="text-xs text-gray-400 mt-0.5">Registrations in <?= (int) $reportYear ?> by month and type · compared to <?= (int) ($recordsReport['prior_year'] ?? $reportYear - 1) ?>.</p>
                             </div>
                             <a href="<?= htmlspecialchars($recordsRegistryUrl) ?>" class="no-print inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline shrink-0">
                                 View details
@@ -824,14 +851,14 @@ $recordsJumpDesc = sprintf(
                         </div>
                     </div>
 
-                    <?php if (!empty($recordsReport['peak_quarter'])): ?>
+                    <?php if (!empty($recordsReport['peak_month'])): ?>
                     <div class="px-5 py-3 border-b border-gray-50 bg-amber-50/40 text-xs text-slate-700">
-                        <strong class="text-slate-900">Busiest quarter:</strong>
-                        <?= htmlspecialchars($recordsReport['peak_quarter']['label']) ?>
-                        with <?= number_format((int) $recordsReport['peak_quarter']['total']) ?> registration(s)
-                        (<?= number_format((int) $recordsReport['peak_quarter']['birth']) ?> birth ·
-                        <?= number_format((int) $recordsReport['peak_quarter']['death']) ?> death ·
-                        <?= number_format((int) $recordsReport['peak_quarter']['marriage']) ?> marriage).
+                        <strong class="text-slate-900">Busiest month:</strong>
+                        <?= htmlspecialchars($recordsReport['peak_month']['label']) ?>
+                        with <?= number_format((int) $recordsReport['peak_month']['total']) ?> registration(s)
+                        (<?= number_format((int) $recordsReport['peak_month']['birth']) ?> birth ·
+                        <?= number_format((int) $recordsReport['peak_month']['death']) ?> death ·
+                        <?= number_format((int) $recordsReport['peak_month']['marriage']) ?> marriage).
                     </div>
                     <?php endif; ?>
 
@@ -842,10 +869,10 @@ $recordsJumpDesc = sprintf(
                         <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
                             <div class="analytics-chart-card xl:col-span-2">
                                 <div class="analytics-chart-head">
-                                    <h2>Registrations by quarter</h2>
+                                    <h2>Registrations by month</h2>
                                     <p>Birth, death, and marriage · <?= (int) $reportYear ?></p>
                                 </div>
-                                <div class="chart-box chart-box--compact"><canvas id="chartRecordsQuarterly"></canvas></div>
+                                <div class="chart-box chart-box--compact"><canvas id="chartRecordsMonthly"></canvas></div>
                             </div>
                             <div class="analytics-chart-card">
                                 <div class="analytics-chart-head">
@@ -853,13 +880,6 @@ $recordsJumpDesc = sprintf(
                                     <p>Year total composition</p>
                                 </div>
                                 <div class="chart-box chart-box--donut"><canvas id="chartRecordsReportTypes"></canvas></div>
-                            </div>
-                            <div class="analytics-chart-card xl:col-span-3">
-                                <div class="analytics-chart-head">
-                                    <h2>Monthly volume</h2>
-                                    <p>All record types · registration date in <?= (int) $reportYear ?></p>
-                                </div>
-                                <div class="chart-box chart-box--compact"><canvas id="chartRecordsMonthly"></canvas></div>
                             </div>
                         </div>
                         <?php endif; ?>
@@ -869,23 +889,25 @@ $recordsJumpDesc = sprintf(
                         <table class="w-full text-sm text-left print-table">
                             <thead class="bg-white text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
                                 <tr>
-                                    <th class="px-5 py-3">Quarter</th>
+                                    <th class="px-5 py-3">Month</th>
                                     <th class="px-5 py-3 text-right">Birth</th>
                                     <th class="px-5 py-3 text-right">Death</th>
                                     <th class="px-5 py-3 text-right">Marriage</th>
-                                    <th class="px-5 py-3 text-right">Quarter total</th>
+                                    <th class="px-5 py-3 text-right">Month total</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-50">
-                                <?php foreach ($recordsReport['quarters'] as $quarter): ?>
+                                <?php for ($monthNum = 1; $monthNum <= 12; $monthNum++):
+                                    $monthRow = $recordsReport['months'][$monthNum] ?? [];
+                                ?>
                                 <tr class="hover:bg-gray-50/60">
-                                    <td class="px-5 py-3.5 font-semibold text-slate-800"><?= htmlspecialchars($quarter['label']) ?></td>
-                                    <td class="px-5 py-3.5 text-right font-bold text-blue-700"><?= number_format((int) $quarter['birth']) ?></td>
-                                    <td class="px-5 py-3.5 text-right font-bold text-teal-700"><?= number_format((int) $quarter['death']) ?></td>
-                                    <td class="px-5 py-3.5 text-right font-bold text-pink-700"><?= number_format((int) $quarter['marriage']) ?></td>
-                                    <td class="px-5 py-3.5 text-right font-black text-slate-900"><?= number_format((int) $quarter['total']) ?></td>
+                                    <td class="px-5 py-3.5 font-semibold text-slate-800"><?= htmlspecialchars($monthRow['label'] ?? date('F', mktime(0, 0, 0, $monthNum, 1, $reportYear))) ?></td>
+                                    <td class="px-5 py-3.5 text-right font-bold text-blue-700"><?= number_format((int) ($monthRow['birth'] ?? 0)) ?></td>
+                                    <td class="px-5 py-3.5 text-right font-bold text-teal-700"><?= number_format((int) ($monthRow['death'] ?? 0)) ?></td>
+                                    <td class="px-5 py-3.5 text-right font-bold text-pink-700"><?= number_format((int) ($monthRow['marriage'] ?? 0)) ?></td>
+                                    <td class="px-5 py-3.5 text-right font-black text-slate-900"><?= number_format((int) ($monthRow['total'] ?? 0)) ?></td>
                                 </tr>
-                                <?php endforeach; ?>
+                                <?php endfor; ?>
                                 <tr class="bg-slate-50 font-bold">
                                     <td class="px-5 py-3.5 text-slate-900"><?= (int) $reportYear ?> total</td>
                                     <td class="px-5 py-3.5 text-right text-blue-800"><?= number_format((int) $recordsReport['year_totals']['birth']) ?></td>

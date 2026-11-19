@@ -19,60 +19,6 @@
         cornerRadius: 8
     };
 
-    var quarterlyEl = document.getElementById('chartRecordsQuarterly');
-    if (quarterlyEl && data.quarterly) {
-        var q = data.quarterly;
-        new Chart(quarterlyEl, {
-            type: 'bar',
-            data: {
-                labels: q.labels,
-                datasets: [
-                    {
-                        label: 'Birth',
-                        data: q.birth,
-                        backgroundColor: 'rgba(37, 99, 235, 0.88)',
-                        borderRadius: 4,
-                        stack: 'records'
-                    },
-                    {
-                        label: 'Death',
-                        data: q.death,
-                        backgroundColor: 'rgba(100, 116, 139, 0.88)',
-                        borderRadius: 4,
-                        stack: 'records'
-                    },
-                    {
-                        label: 'Marriage',
-                        data: q.marriage,
-                        backgroundColor: 'rgba(236, 72, 153, 0.88)',
-                        borderRadius: 4,
-                        stack: 'records'
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: { boxWidth: 8, boxHeight: 8, padding: 12, font: { size: 10 }, color: '#64748b' }
-                    },
-                    tooltip: tooltip
-                },
-                scales: {
-                    x: { stacked: true, grid: { display: false }, ticks: { font: { size: 10, weight: '600' }, color: '#475569' } },
-                    y: {
-                        stacked: true,
-                        beginAtZero: true,
-                        grid: axisGrid,
-                        ticks: { precision: 0, maxTicksLimit: 6, font: { size: 10 } }
-                    }
-                }
-            }
-        });
-    }
-
     var typesEl = document.getElementById('chartRecordsReportTypes');
     if (typesEl && data.types) {
         new Chart(typesEl, {
@@ -103,33 +49,53 @@
 
     var monthlyEl = document.getElementById('chartRecordsMonthly');
     if (monthlyEl && data.monthly) {
+        var m = data.monthly;
         new Chart(monthlyEl, {
             type: 'bar',
             data: {
-                labels: data.monthly.labels,
-                datasets: [{
-                    label: 'Registrations',
-                    data: data.monthly.totals,
-                    backgroundColor: 'rgba(37, 99, 235, 0.75)',
-                    borderRadius: 6,
-                    barThickness: 18,
-                    maxBarThickness: 28
-                }]
+                labels: m.labels,
+                datasets: [
+                    {
+                        label: 'Birth',
+                        data: m.birth,
+                        backgroundColor: 'rgba(37, 99, 235, 0.88)',
+                        borderRadius: 4,
+                        stack: 'records'
+                    },
+                    {
+                        label: 'Death',
+                        data: m.death,
+                        backgroundColor: 'rgba(100, 116, 139, 0.88)',
+                        borderRadius: 4,
+                        stack: 'records'
+                    },
+                    {
+                        label: 'Marriage',
+                        data: m.marriage,
+                        backgroundColor: 'rgba(236, 72, 153, 0.88)',
+                        borderRadius: 4,
+                        stack: 'records'
+                    }
+                ]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { display: false },
+                    legend: {
+                        position: 'bottom',
+                        labels: { boxWidth: 8, boxHeight: 8, padding: 12, font: { size: 10 }, color: '#64748b' }
+                    },
                     tooltip: tooltip
                 },
                 scales: {
+                    x: { stacked: true, grid: { display: false }, ticks: { font: { size: 10, weight: '600' }, color: '#475569' } },
                     y: {
+                        stacked: true,
                         beginAtZero: true,
                         grid: axisGrid,
                         ticks: { precision: 0, maxTicksLimit: 6, font: { size: 10 } }
-                    },
-                    x: { grid: { display: false }, ticks: { font: { size: 10 } } }
+                    }
                 }
             }
         });

@@ -40,7 +40,7 @@
         exportYearField.value = exportYearSelect.value;
 
         if (exportRecordsYearNote) {
-            exportRecordsYearNote.innerHTML = 'Includes quarterly summary plus full record rows for <strong class="text-slate-600">'
+            exportRecordsYearNote.innerHTML = 'Includes monthly summary plus full record rows for <strong class="text-slate-600">'
                 + exportYearSelect.value
                 + '</strong>.';
         }
@@ -127,6 +127,7 @@
 
     syncRecordsTypeFilterVisibility();
     bindDropdown('reportExportMenu', 'reportExportBtn', 'reportExportPanel');
+    bindDropdown('reportRecordsExportMenu', 'reportRecordsExportBtn', 'reportRecordsExportPanel');
 
     var exportDirectBtn = document.getElementById('reportExportDirectBtn');
 

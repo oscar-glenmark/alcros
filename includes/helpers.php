@@ -4369,25 +4369,6 @@ function sendStaffLoginLockoutAlert(PDO $pdo, string $staffId, int $windowSecond
     return true;
 }
 
-function adminLoginLockoutSystemErrorKey(string $staffId): string
-{
-    $id = strtoupper(preg_replace('/[^A-Z0-9_-]/', '', trim($staffId)) ?? '');
-    if ($id === '') {
-        $id = 'UNKNOWN';
-    }
-
-    return mb_substr('login-lockout-' . $id, 0, 80);
-}
-
-function adminLoginLockoutActivityLogUrl(): string
-{
-    if (function_exists('buildAuthUrl')) {
-        return buildAuthUrl('activity-log.php', ['q' => 'Login lockout']);
-    }
-
-    return 'activity-log.php?q=Login+lockout';
-}
-
 function notifyAdminLoginLockoutInAppIfNeeded(
     PDO $pdo,
     string $staffId,
@@ -4412,32 +4393,14 @@ function notifyAdminLoginLockoutInAppIfNeeded(
     $state = rateLimitReadState($rateLimitKey, $windowSeconds);
     $sourceIp = ($state['last_ip'] ?? '') !== '' ? (string) $state['last_ip'] : null;
     $ip = formatClientIpAddress($sourceIp);
-    $windowMinutes = (int) max(1, round($windowSeconds / 60));
 
     if ($staffRegistered) {
-        $title = 'Staff sign-in lockout';
-        $reason = 'Three failed staff portal sign-in attempts for Staff ID '
-            . $staffId . '. Sign-in is paused for about ' . $windowMinutes . ' minutes. Source IP: ' . $ip
-            . '. Review sign-in activity if this was unexpected.';
         $logDetail = 'Administrator inbox: registered Staff ID locked after repeated failed sign-in (IP ' . $ip . ')';
     } else {
-        $title = 'Unrecognized Staff ID lockout';
-        $reason = 'Three failed staff portal sign-in attempts using Staff ID '
-            . $staffId . ', which is not registered. Sign-in is paused for about ' . $windowMinutes . ' minutes. Source IP: '
-            . $ip . '. Review staff accounts if this was unexpected.';
         $logDetail = 'Administrator inbox: unrecognized Staff ID locked after repeated failed sign-in (IP ' . $ip . ')';
     }
 
     try {
-        raiseSystemError(
-            $pdo,
-            adminLoginLockoutSystemErrorKey($staffId),
-            'security',
-            $title,
-            $reason,
-            'acknowledge',
-            adminLoginLockoutActivityLogUrl()
-        );
         logActivity($staffId, 'Login lockout alert', $logDetail);
         rateLimitMarkAdminInboxLockoutSent($rateLimitKey, $windowSeconds);
     } catch (Throwable $e) {
@@ -8399,10 +8362,10 @@ function resolveReportDateRange(string $range, ?string $from = null, ?string $to
 function reportRangeLabel(string $range, string $from, string $to): string
 {
     if ($from === $to) {
-        return formatDateDisplay($from);
+        return formatDateEmailDisplay($from);
     }
 
-    return formatDateDisplay($from) . ' – ' . formatDateDisplay($to);
+    return formatDateEmailDisplay($from) . ' – ' . formatDateEmailDisplay($to);
 }
 
 function civilRecordRegisteredDateExpr(string $recordsAlias = 'cr'): string
@@ -8460,57 +8423,10 @@ function reportCivilRecordsYearOptions(PDO $pdo): array
     return $years !== [] ? $years : [$current];
 }
 
-function quarterLabels(): array
-{
-    return [
-        1 => 'Q1 (Jan–Mar)',
-        2 => 'Q2 (Apr–Jun)',
-        3 => 'Q3 (Jul–Sep)',
-        4 => 'Q4 (Oct–Dec)',
-    ];
-}
-
-function buildQuarterlyCivilRecordsReport(PDO $pdo, int $year): array
+function buildCivilRecordsYearReport(PDO $pdo, int $year): array
 {
     $dateExpr = civilRecordRegisteredDateExpr();
-    $stmt = $pdo->prepare(
-        "SELECT QUARTER($dateExpr) AS quarter_num, cr.record_type, COUNT(*) AS cnt
-         FROM civil_records cr
-         LEFT JOIN birth_record_details brd ON brd.civil_record_id = cr.id
-         LEFT JOIN death_record_details drd ON drd.civil_record_id = cr.id
-         WHERE cr.deleted_at IS NULL AND YEAR($dateExpr) = ?
-         GROUP BY quarter_num, cr.record_type
-         ORDER BY quarter_num, cr.record_type"
-    );
-    $stmt->execute([$year]);
-
-    $quarters = [];
-    foreach (quarterLabels() as $num => $label) {
-        $quarters[$num] = [
-            'label' => $label,
-            'birth' => 0,
-            'death' => 0,
-            'marriage' => 0,
-            'total' => 0,
-        ];
-    }
-
     $yearTotals = ['birth' => 0, 'death' => 0, 'marriage' => 0, 'total' => 0];
-
-    foreach ($stmt->fetchAll() as $row) {
-        $quarterNum = (int) $row['quarter_num'];
-        $recordType = (string) $row['record_type'];
-        $count = (int) $row['cnt'];
-
-        if (!isset($quarters[$quarterNum]) || !in_array($recordType, ['birth', 'death', 'marriage'], true)) {
-            continue;
-        }
-
-        $quarters[$quarterNum][$recordType] = $count;
-        $quarters[$quarterNum]['total'] += $count;
-        $yearTotals[$recordType] += $count;
-        $yearTotals['total'] += $count;
-    }
 
     $priorYear = $year - 1;
     $priorTotals = ['birth' => 0, 'death' => 0, 'marriage' => 0, 'total' => 0];
@@ -8535,6 +8451,51 @@ function buildQuarterlyCivilRecordsReport(PDO $pdo, int $year): array
         }
     }
 
+    $monthStmt = $pdo->prepare(
+        "SELECT MONTH($dateExpr) AS month_num, cr.record_type, COUNT(*) AS cnt
+         FROM civil_records cr
+         LEFT JOIN birth_record_details brd ON brd.civil_record_id = cr.id
+         LEFT JOIN death_record_details drd ON drd.civil_record_id = cr.id
+         WHERE cr.deleted_at IS NULL AND YEAR($dateExpr) = ?
+         GROUP BY month_num, cr.record_type
+         ORDER BY month_num, cr.record_type"
+    );
+    $monthStmt->execute([$year]);
+    $months = [];
+    for ($m = 1; $m <= 12; $m++) {
+        $months[$m] = [
+            'label' => date('F', mktime(0, 0, 0, $m, 1, $year)),
+            'birth' => 0,
+            'death' => 0,
+            'marriage' => 0,
+            'total' => 0,
+        ];
+    }
+    foreach ($monthStmt->fetchAll() as $row) {
+        $m = (int) $row['month_num'];
+        $type = (string) $row['record_type'];
+        if ($m < 1 || $m > 12 || !in_array($type, ['birth', 'death', 'marriage'], true)) {
+            continue;
+        }
+        $cnt = (int) $row['cnt'];
+        $months[$m][$type] = $cnt;
+        $months[$m]['total'] += $cnt;
+        $yearTotals[$type] += $cnt;
+        $yearTotals['total'] += $cnt;
+    }
+
+    $peakMonth = null;
+    $peakTotal = -1;
+    foreach ($months as $monthRow) {
+        if ((int) $monthRow['total'] > $peakTotal) {
+            $peakTotal = (int) $monthRow['total'];
+            $peakMonth = $monthRow;
+        }
+    }
+    if ($peakMonth !== null && $peakTotal <= 0) {
+        $peakMonth = null;
+    }
+
     $yoy = static function (int $current, int $previous): ?array {
         if ($previous === 0) {
             return $current > 0 ? ['pct' => 100, 'up' => true, 'label' => 'new'] : null;
@@ -8550,55 +8511,17 @@ function buildQuarterlyCivilRecordsReport(PDO $pdo, int $year): array
         $typeYoY[$typeKey] = $yoy((int) $yearTotals[$typeKey], (int) $priorTotals[$typeKey]);
     }
 
-    $peakQuarter = null;
-    $peakTotal = -1;
-    foreach ($quarters as $q) {
-        if ((int) $q['total'] > $peakTotal) {
-            $peakTotal = (int) $q['total'];
-            $peakQuarter = $q;
-        }
-    }
-    if ($peakQuarter !== null && $peakTotal <= 0) {
-        $peakQuarter = null;
-    }
-
-    $monthStmt = $pdo->prepare(
-        "SELECT MONTH($dateExpr) AS month_num, cr.record_type, COUNT(*) AS cnt
-         FROM civil_records cr
-         LEFT JOIN birth_record_details brd ON brd.civil_record_id = cr.id
-         LEFT JOIN death_record_details drd ON drd.civil_record_id = cr.id
-         WHERE cr.deleted_at IS NULL AND YEAR($dateExpr) = ?
-         GROUP BY month_num, cr.record_type
-         ORDER BY month_num, cr.record_type"
-    );
-    $monthStmt->execute([$year]);
-    $months = [];
-    for ($m = 1; $m <= 12; $m++) {
-        $months[$m] = ['birth' => 0, 'death' => 0, 'marriage' => 0, 'total' => 0];
-    }
-    foreach ($monthStmt->fetchAll() as $row) {
-        $m = (int) $row['month_num'];
-        $type = (string) $row['record_type'];
-        if ($m < 1 || $m > 12 || !in_array($type, ['birth', 'death', 'marriage'], true)) {
-            continue;
-        }
-        $cnt = (int) $row['cnt'];
-        $months[$m][$type] = $cnt;
-        $months[$m]['total'] += $cnt;
-    }
-
     $report = [
         'year' => $year,
         'prior_year' => $priorYear,
         'generated_at' => date('Y-m-d H:i:s'),
         'office_name' => getSetting('office_name', 'Local Civil Registrar Office'),
         'site_name' => getSetting('site_name', 'ALCROS'),
-        'quarters' => $quarters,
         'year_totals' => $yearTotals,
         'prior_year_totals' => $priorTotals,
         'year_yoy' => $yearYoY,
         'type_yoy' => $typeYoY,
-        'peak_quarter' => $peakQuarter,
+        'peak_month' => $peakMonth,
         'months' => $months,
         'record_types' => ['birth', 'death', 'marriage'],
     ];
@@ -8610,26 +8533,25 @@ function buildQuarterlyCivilRecordsReport(PDO $pdo, int $year): array
 /** @param array<string, mixed> $recordsReport */
 function buildCivilRecordsReportChartPayload(array $recordsReport): array
 {
-    $quarterList = array_values($recordsReport['quarters'] ?? []);
     $totals = $recordsReport['year_totals'] ?? ['birth' => 0, 'death' => 0, 'marriage' => 0, 'total' => 0];
     $months = $recordsReport['months'] ?? [];
 
     $monthLabels = [];
+    $monthBirth = [];
+    $monthDeath = [];
+    $monthMarriage = [];
     $monthTotals = [];
     for ($m = 1; $m <= 12; $m++) {
         $ts = mktime(0, 0, 0, $m, 1, (int) ($recordsReport['year'] ?? date('Y')));
         $monthLabels[] = date('M', $ts);
+        $monthBirth[] = (int) ($months[$m]['birth'] ?? 0);
+        $monthDeath[] = (int) ($months[$m]['death'] ?? 0);
+        $monthMarriage[] = (int) ($months[$m]['marriage'] ?? 0);
         $monthTotals[] = (int) ($months[$m]['total'] ?? 0);
     }
 
     return [
         'hasData' => (int) ($totals['total'] ?? 0) > 0,
-        'quarterly' => [
-            'labels'   => array_map(static fn (array $q): string => (string) ($q['label'] ?? ''), $quarterList),
-            'birth'    => array_map(static fn (array $q): int => (int) ($q['birth'] ?? 0), $quarterList),
-            'death'    => array_map(static fn (array $q): int => (int) ($q['death'] ?? 0), $quarterList),
-            'marriage' => array_map(static fn (array $q): int => (int) ($q['marriage'] ?? 0), $quarterList),
-        ],
         'types' => [
             'labels' => ['Birth', 'Death', 'Marriage'],
             'counts' => [
@@ -8640,8 +8562,11 @@ function buildCivilRecordsReportChartPayload(array $recordsReport): array
             'colors' => ['#2563eb', '#64748b', '#ec4899'],
         ],
         'monthly' => [
-            'labels' => $monthLabels,
-            'totals' => $monthTotals,
+            'labels'   => $monthLabels,
+            'birth'    => $monthBirth,
+            'death'    => $monthDeath,
+            'marriage' => $monthMarriage,
+            'totals'   => $monthTotals,
         ],
     ];
 }
@@ -8919,7 +8844,7 @@ function formatReportDateTime(?string $value): string
 
     $ts = strtotime($value);
 
-    return $ts ? date('M j, Y g:i A', $ts) : $value;
+    return $ts ? date('F j, Y g:i A', $ts) : $value;
 }
 
 /** @return list<string> */
@@ -8949,6 +8874,77 @@ function reportExportRecordsType(?string $raw): string
     $type = strtolower(trim((string) $raw));
 
     return in_array($type, ['all', 'birth', 'death', 'marriage'], true) ? $type : 'all';
+}
+
+/** @param list<string> $sections */
+function reportOperationalExcelFilename(array $sections, string $recordsType, int $reportYear): string
+{
+    require_once __DIR__ . '/excel_export.php';
+
+    $slug = [
+        'overview'     => 'overview',
+        'requests'     => 'document_requests',
+        'appointments' => 'appointments',
+        'queue'        => 'queue',
+        'prints'       => 'print_jobs',
+        'records'      => 'civil_records',
+    ];
+
+    $sections = array_values(array_unique($sections));
+    sort($sections);
+
+    $sectionParts = [];
+    foreach ($sections as $key) {
+        $sectionParts[] = $slug[$key] ?? $key;
+    }
+
+    if (count($sections) === 1) {
+        $only = $sections[0];
+        if ($only === 'records') {
+            return alcrosExcelDownloadFilename(
+                'report_civil_records',
+                (string) $reportYear,
+                $recordsType !== 'all' ? $recordsType : 'all_types'
+            );
+        }
+
+        return alcrosExcelDownloadFilename('report_' . ($slug[$only] ?? $only));
+    }
+
+    $segments = ['report_operational', implode('-', $sectionParts)];
+    if (in_array('records', $sections, true)) {
+        $segments[] = (string) $reportYear;
+        if ($recordsType !== 'all') {
+            $segments[] = $recordsType;
+        }
+    }
+
+    return alcrosExcelDownloadFilename(...$segments);
+}
+
+function reportCivilRecordsExcelUrl(
+    string $recordsType,
+    int $year,
+    string $range = 'today',
+    string $fromDate = '',
+    string $toDate = ''
+): string {
+    $params = [
+        'action'       => 'export',
+        'sections'     => 'records',
+        'records_type' => reportExportRecordsType($recordsType),
+        'year'         => max(2000, $year),
+    ];
+
+    if ($range !== 'today') {
+        $params['range'] = $range;
+    }
+    if ($range === 'custom') {
+        $params['from'] = $fromDate;
+        $params['to'] = $toDate;
+    }
+
+    return buildAuthUrl('report.php', $params);
 }
 
 function reportRecordsExportFromClause(): string

@@ -14,15 +14,18 @@ function exportOperationalReportXlsx(
     $purposeLabels = ['walk_in' => 'Walk-in', 'appointment' => 'Appointment', 'document_claim' => 'Document claim'];
     $summary = $report['summary'];
 
-    $workbook = alcrosExcelNewSpreadsheet('ALCROS Operational Report');
+    $officeName = trim((string) ($report['office_name'] ?? ''));
+    if ($officeName === '') {
+        $officeName = 'Local Civil Registrar Office';
+    }
+
+    $workbook = alcrosExcelNewSpreadsheet($officeName);
     $sheet = $workbook->getActiveSheet();
     $sheet->setTitle('Operational report');
 
     $row = 1;
     alcrosExcelWriteMetaBlock($sheet, [
-        'ALCROS Operational Report',
-        ['Office', (string) ($report['office_name'] ?? '')],
-        ['Site', (string) ($report['site_name'] ?? '')],
+        ['Office', $officeName],
         ['Period', $rangeLabel],
         ['Generated', formatReportDateTime($report['generated_at'] ?? null)],
     ], $row);
@@ -111,7 +114,7 @@ function exportOperationalReportXlsx(
                 formatReportDateTime($printRow['printed_at'] ?? null),
                 printJobDocumentKindLabel((string) ($printRow['document_kind'] ?? '')),
                 civilRecordTypeLabel((string) ($printRow['certificate_type'] ?? '')),
-                (int) ($printRow['copies'] ?? 1),
+                max(1, (int) ($printRow['copies'] ?? 1)),
                 printJobSourceSummary($printRow),
                 $printRow['printed_by'] ?? '',
             ];
@@ -188,50 +191,108 @@ function exportOperationalReportXlsx(
     }
 
     if (in_array('records', $sections, true)) {
-        $quarterRows = [];
-        foreach ($recordsReport['quarters'] as $quarter) {
-            $quarterRows[] = [
-                $quarter['label'] ?? '',
-                (int) ($quarter['birth'] ?? 0),
-                (int) ($quarter['death'] ?? 0),
-                (int) ($quarter['marriage'] ?? 0),
-                (int) ($quarter['total'] ?? 0),
-            ];
-        }
+        [$monthHeaders, $monthRows, $monthColumnFormats] = spreadsheetCivilRecordsMonthlySummaryForExport(
+            $recordsReport,
+            $reportYear,
+            $recordsType
+        );
 
-        $quarterRows[] = [
-            $reportYear . ' total',
-            (int) ($recordsReport['year_totals']['birth'] ?? 0),
-            (int) ($recordsReport['year_totals']['death'] ?? 0),
-            (int) ($recordsReport['year_totals']['marriage'] ?? 0),
-            (int) ($recordsReport['year_totals']['total'] ?? 0),
-        ];
-
-        $priorYear = (int) ($recordsReport['prior_year'] ?? ($reportYear - 1));
-        $priorTotals = $recordsReport['prior_year_totals'] ?? null;
-        if (is_array($priorTotals)) {
-            $quarterRows[] = [
-                $priorYear . ' total (comparison)',
-                (int) ($priorTotals['birth'] ?? 0),
-                (int) ($priorTotals['death'] ?? 0),
-                (int) ($priorTotals['marriage'] ?? 0),
-                (int) ($priorTotals['total'] ?? 0),
-            ];
+        $summaryTitle = 'Civil records monthly summary (' . $reportYear . ')';
+        if ($recordsType !== 'all') {
+            $summaryTitle .= ' — ' . civilRecordTypeLabel($recordsType);
         }
 
         alcrosExcelWriteTable(
             $sheet,
-            ['Quarter', 'Birth', 'Death', 'Marriage', 'Quarter Total'],
-            $quarterRows,
+            $monthHeaders,
+            $monthRows,
             $row,
             [
-                'section_title'  => 'Civil records quarterly summary (' . $reportYear . ')',
-                'column_formats' => [2 => 'number', 3 => 'number', 4 => 'number', 5 => 'number'],
+                'section_title'  => $summaryTitle,
+                'column_formats' => $monthColumnFormats,
             ]
         );
+
+        spreadsheetExportCivilRecordsDetailSection($pdo, $sheet, $row, $reportYear, $recordsType);
     }
 
-    alcrosExcelSendDownload($workbook, 'alcros_report_' . date('Y-m-d') . '.xlsx');
+    alcrosExcelSendDownload(
+        $workbook,
+        reportOperationalExcelFilename($sections, $recordsType, $reportYear)
+    );
+}
+
+/**
+ * @return array{0: list<string>, 1: list<list<mixed>>, 2: array<int, string>}
+ */
+function spreadsheetCivilRecordsMonthlySummaryForExport(
+    array $recordsReport,
+    int $reportYear,
+    string $recordsType
+): array {
+    $recordsType = reportExportRecordsType($recordsType);
+    $typeColumns = $recordsType === 'all'
+        ? ['birth', 'death', 'marriage']
+        : [$recordsType];
+
+    $typeLabels = [
+        'birth'    => 'Birth',
+        'death'    => 'Death',
+        'marriage' => 'Marriage',
+    ];
+
+    $headers = ['Month'];
+    foreach ($typeColumns as $typeKey) {
+        $headers[] = $typeLabels[$typeKey];
+    }
+    $headers[] = 'Month total';
+
+    $monthRows = [];
+    $months = $recordsReport['months'] ?? [];
+    for ($m = 1; $m <= 12; $m++) {
+        $month = $months[$m] ?? [];
+        $row = [$month['label'] ?? date('F', mktime(0, 0, 0, $m, 1, $reportYear))];
+        $typeSum = 0;
+        foreach ($typeColumns as $typeKey) {
+            $count = (int) ($month[$typeKey] ?? 0);
+            $row[] = $count;
+            $typeSum += $count;
+        }
+        $row[] = $recordsType === 'all' ? (int) ($month['total'] ?? 0) : $typeSum;
+        $monthRows[] = $row;
+    }
+
+    $yearTotals = $recordsReport['year_totals'] ?? [];
+    $yearRow = [$reportYear . ' total'];
+    $yearTypeSum = 0;
+    foreach ($typeColumns as $typeKey) {
+        $count = (int) ($yearTotals[$typeKey] ?? 0);
+        $yearRow[] = $count;
+        $yearTypeSum += $count;
+    }
+    $yearRow[] = $recordsType === 'all' ? (int) ($yearTotals['total'] ?? 0) : $yearTypeSum;
+    $monthRows[] = $yearRow;
+
+    $priorYear = (int) ($recordsReport['prior_year'] ?? ($reportYear - 1));
+    $priorTotals = $recordsReport['prior_year_totals'] ?? null;
+    if (is_array($priorTotals)) {
+        $priorRow = [$priorYear . ' total (comparison)'];
+        $priorTypeSum = 0;
+        foreach ($typeColumns as $typeKey) {
+            $count = (int) ($priorTotals[$typeKey] ?? 0);
+            $priorRow[] = $count;
+            $priorTypeSum += $count;
+        }
+        $priorRow[] = $recordsType === 'all' ? (int) ($priorTotals['total'] ?? 0) : $priorTypeSum;
+        $monthRows[] = $priorRow;
+    }
+
+    $columnFormats = [];
+    for ($col = 2, $colMax = count($headers); $col <= $colMax; $col++) {
+        $columnFormats[$col] = 'number';
+    }
+
+    return [$headers, $monthRows, $columnFormats];
 }
 
 function spreadsheetExportCivilRecordsDetailSection(
@@ -308,7 +369,7 @@ function exportCivilRecordsXlsx(PDO $pdo, array $filters): void
     $row = 1;
     alcrosExcelWriteMetaBlock($sheet, [
         'ALCROS Civil Records Export',
-        ['Generated on', date('Y-m-d g:i A')],
+        ['Generated on', formatReportDateTime(date('Y-m-d H:i:s'))],
         ['Total records', (string) $totalRecords],
         ['Scope', $exportType === 'all' ? 'All record types' : civilRecordTypeLabel($exportType)],
     ], $row);
@@ -348,11 +409,13 @@ function exportCivilRecordsXlsx(PDO $pdo, array $filters): void
         ]);
     }
 
-    $filename = 'alcros_civil_records_'
-        . ($exportType !== 'all' ? $exportType . '_' : 'all_')
-        . date('Y-m-d') . '.xlsx';
-
-    alcrosExcelSendDownload($workbook, $filename);
+    alcrosExcelSendDownload(
+        $workbook,
+        alcrosExcelDownloadFilename(
+            'registry_civil_records',
+            $exportType !== 'all' ? $exportType : 'all_types'
+        )
+    );
 }
 
 /** @param list<array<string, mixed>> $exportRows */
@@ -392,7 +455,7 @@ function exportActivityLogXlsx(array $exportRows, string $rangeLabel, string $se
     if ($staffFilter !== '') {
         $meta[] = ['Staff filter', $staffFilter];
     }
-    $meta[] = ['Exported', date('Y-m-d H:i:s')];
+    $meta[] = ['Exported', formatReportDateTime(date('Y-m-d H:i:s'))];
     $meta[] = ['Row limit', (string) $exportLimit];
 
     $row = 1;
@@ -409,5 +472,5 @@ function exportActivityLogXlsx(array $exportRows, string $rangeLabel, string $se
         ]
     );
 
-    alcrosExcelSendDownload($workbook, 'alcros_activity_log_' . date('Y-m-d') . '.xlsx');
+    alcrosExcelSendDownload($workbook, alcrosExcelDownloadFilename('report_activity_log'));
 }

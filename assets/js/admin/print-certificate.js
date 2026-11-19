@@ -49,6 +49,21 @@
         return id > 0 ? id : 0;
     }
 
+    function readPrintCopies() {
+        var el = document.getElementById('printCopies');
+        if (!el) {
+            return 1;
+        }
+        var copies = parseInt(el.value, 10);
+        if (!isFinite(copies) || copies < 1) {
+            return 1;
+        }
+        if (copies > 99) {
+            return 99;
+        }
+        return copies;
+    }
+
     function isLcroFooterField(fieldName) {
         return /^lcro_box_/.test(String(fieldName || ''));
     }
@@ -258,7 +273,7 @@
         if (!section) return;
 
         var defaultW = cfg.documentKind === 'certification' ? '210' : '215.9';
-        var defaultH = cfg.documentKind === 'certification' ? '297' : '358.9';
+        var defaultH = cfg.documentKind === 'certification' ? '297' : '330.2';
         var paperW = parseFloat(section.getAttribute('data-paper-w') || cfg.paperWidthMm || defaultW);
         var paperH = parseFloat(section.getAttribute('data-paper-h') || cfg.paperHeightMm || defaultH);
         if (!(paperW > 0 && paperH > 0)) return;
@@ -321,7 +336,7 @@
     function localPreviewPaperPixels() {
         var section = document.querySelector('.print-cert-previews');
         var defaultW = cfg.documentKind === 'certification' ? '210' : '215.9';
-        var defaultH = cfg.documentKind === 'certification' ? '297' : '358.9';
+        var defaultH = cfg.documentKind === 'certification' ? '297' : '330.2';
         var paperW = parseFloat((section && section.getAttribute('data-paper-w')) || cfg.paperWidthMm || defaultW);
         var paperH = parseFloat((section && section.getAttribute('data-paper-h')) || cfg.paperHeightMm || defaultH);
         var pxPerMm = 96 / 25.4;
@@ -674,7 +689,7 @@
         }
 
         var paperW = parseFloat(cfg.paperWidthMm || '215.9');
-        var paperH = parseFloat(cfg.paperHeightMm || '358.9');
+        var paperH = parseFloat(cfg.paperHeightMm || '330.2');
         if (!(paperW > 0 && paperH > 0)) return;
 
         document.querySelectorAll('.print-cert-frame:not(.print-cert-frame--local)').forEach(function (iframe) {
@@ -801,6 +816,7 @@
         if (requestId > 0) body.append('request_id', String(requestId));
         if (recordId > 0) body.append('record_id', String(recordId));
         if (testMode) body.append('test', '1');
+        body.append('copies', String(readPrintCopies()));
 
         var flags = optionFlags();
         Object.keys(flags).forEach(function (key) {

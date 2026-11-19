@@ -118,6 +118,17 @@ function resolveSystemErrorIfActive(PDO $pdo, string $errorKey, ?string $staffId
     resolveSystemError($pdo, $errorKey, $staffId);
 }
 
+function dismissLoginLockoutSystemErrors(PDO $pdo): void
+{
+    ensureSystemErrorsTable($pdo);
+    $stmt = $pdo->prepare(
+        'UPDATE system_errors
+         SET resolved_at = NOW(), resolved_by = ?
+         WHERE resolved_at IS NULL AND error_key LIKE ?'
+    );
+    $stmt->execute(['system', 'login-lockout-%']);
+}
+
 /** @return list<array<string, mixed>> */
 function fetchActiveSystemErrors(PDO $pdo): array
 {
@@ -126,6 +137,7 @@ function fetchActiveSystemErrors(PDO $pdo): array
         'SELECT error_key, category, title, reason, fix_action, href, created_at, updated_at
          FROM system_errors
          WHERE resolved_at IS NULL
+           AND error_key NOT LIKE \'login-lockout-%\'
          ORDER BY updated_at DESC'
     );
 
@@ -136,7 +148,9 @@ function countActiveSystemErrors(PDO $pdo): int
 {
     ensureSystemErrorsTable($pdo);
 
-    return (int) $pdo->query('SELECT COUNT(*) FROM system_errors WHERE resolved_at IS NULL')->fetchColumn();
+    return (int) $pdo->query(
+        'SELECT COUNT(*) FROM system_errors WHERE resolved_at IS NULL AND error_key NOT LIKE \'login-lockout-%\''
+    )->fetchColumn();
 }
 
 function reminderSchedulerTickPath(): string
@@ -586,6 +600,7 @@ function clearStaleEmailDeliveryFailureAlert(PDO $pdo): bool
 function syncSystemErrors(PDO $pdo): void
 {
     ensureSystemErrorsTable($pdo);
+    dismissLoginLockoutSystemErrors($pdo);
     normalizeReminderSchedulerLockFile();
     require_once __DIR__ . '/sms.php';
 

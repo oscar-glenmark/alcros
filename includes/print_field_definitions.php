@@ -402,23 +402,23 @@ function printOfficialPaperWidthMm(): float
     return 215.9;
 }
 
-/** Official Municipal Forms 102, 97, 103 height — matches scanned form aspect ratio (616×1024 px). */
+/** Official Municipal Forms 102, 97, 103 height — long bond (8.5 × 13 in). */
 function printOfficialPaperHeightMm(): float
 {
-    return 358.9;
+    return 330.2;
 }
 
-/** Built-in Legal paper preset for municipal forms 102 / 97 / 103. */
+/** Built-in long bond preset for municipal forms 102 / 97 / 103. */
 function printBuiltInPaperSpec(): array
 {
     return [
         'width_mm'    => printOfficialPaperWidthMm(),
         'height_mm'   => printOfficialPaperHeightMm(),
         'width_in'    => 8.5,
-        'height_in'   => 14,
-        'name'        => 'Legal',
-        'label'       => 'Legal (8.5 × 14 in) or 215.9 × 358.9 mm',
-        'label_short' => 'Legal · 215.9 × 358.9 mm',
+        'height_in'   => 13,
+        'name'        => 'Folio',
+        'label'       => 'Folio / Long bond (8.5 × 13 in) · 215.9 × 330.2 mm',
+        'label_short' => 'Long bond · 215.9 × 330.2 mm',
     ];
 }
 
@@ -436,7 +436,7 @@ function printPaperPresets(): array
             'label'      => 'Folio / Long bond (8.5 × 13 in)',
             'width_mm'   => 215.9,
             'height_mm'  => 330.2,
-            'printer_hint' => 'Folio or Custom',
+            'printer_hint' => 'Folio',
         ],
         'letter' => [
             'label'      => 'Letter (8.5 × 11 in)',
@@ -449,12 +449,6 @@ function printPaperPresets(): array
             'width_mm'   => 210.0,
             'height_mm'  => 297.0,
             'printer_hint' => 'A4',
-        ],
-        'custom' => [
-            'label'      => 'Custom size…',
-            'width_mm'   => null,
-            'height_mm'  => null,
-            'printer_hint' => 'Custom or User defined',
         ],
     ];
 }
@@ -472,16 +466,13 @@ function printPaperCssSizeFromMm(float $widthMm, float $heightMm): string
 function printPaperPresetKeyForSize(float $widthMm, float $heightMm): string
 {
     foreach (printPaperPresets() as $key => $preset) {
-        if ($key === 'custom' || $preset['width_mm'] === null || $preset['height_mm'] === null) {
-            continue;
-        }
         if (abs($widthMm - (float) $preset['width_mm']) < 0.5
             && abs($heightMm - (float) $preset['height_mm']) < 0.5) {
             return $key;
         }
     }
 
-    return 'custom';
+    return 'folio';
 }
 
 function printPaperSizeLabel(?float $widthMm = null, ?float $heightMm = null, bool $compact = false): string
@@ -498,12 +489,15 @@ function printPaperSizeLabel(?float $widthMm = null, ?float $heightMm = null, bo
             : $builtIn['label'] . ' — Municipal Forms 102 / 97 / 103';
     }
 
-    $widthIn = round($widthMm / 25.4, 2);
-    $heightIn = round($heightMm / 25.4, 2);
+    $presetKey = printPaperPresetKeyForSize($widthMm, $heightMm);
+    $preset = printPaperPresets()[$presetKey] ?? null;
+    if ($preset !== null) {
+        $presetLabel = (string) ($preset['label'] ?? $presetKey);
 
-    return $compact
-        ? ('Custom · ' . $mmLabel)
-        : ('Custom (' . $widthIn . ' × ' . $heightIn . ' in) · ' . $mmLabel);
+        return $compact ? ($presetLabel . ' · ' . $mmLabel) : ($presetLabel . ' · ' . $mmLabel);
+    }
+
+    return $compact ? $mmLabel : ('Long bond · ' . $mmLabel);
 }
 
 /** CSS @page size — inches so browsers map to Legal / long bond instead of ignoring custom mm. */

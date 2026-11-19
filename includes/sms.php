@@ -505,10 +505,43 @@ function notifyRequestSubmittedSms(array $data): bool
     return sendCitizenSms((string) $data['phone'], $message, 'request_submitted', $code);
 }
 
-/** Standalone appointments: SMS is sent when staff confirms, not at booking. */
+/** Standalone (and other) appointments: booking confirmation text when citizen opted in. */
 function notifyAppointmentBookedSms(array $data): bool
 {
-    return false;
+    if (!isSmsConfigured() || !citizenWantsSmsNotify($data)) {
+        return false;
+    }
+
+    require_once __DIR__ . '/appointment_notice_requirements.php';
+
+    $code = (string) ($data['appointment_code'] ?? '');
+    $serviceType = (string) ($data['service_type'] ?? $data['service_label'] ?? '');
+    $serviceLabel = appointmentServiceLabel($serviceType);
+    $visit = smsVisitShort($data['appointment_date'] ?? null, $data['appointment_time'] ?? null);
+
+    $row = [
+        'first_name'      => $data['first_name'] ?? '',
+        'middle_name'     => $data['middle_name'] ?? '',
+        'last_name'       => $data['last_name'] ?? '',
+        'service_type'    => $serviceType,
+        'source'          => (string) ($data['source'] ?? 'standalone'),
+        'tracking_code'   => (string) ($data['tracking_code'] ?? ''),
+        'appointment_code' => $code,
+    ];
+
+    $segments = [
+        smsCitizenGreeting($data),
+        ($serviceLabel !== '' ? $serviceLabel . ' ' : '') . 'appointment booked.',
+        'Code ' . $code . '.',
+        $visit !== '' ? 'Visit ' . $visit . '.' : '',
+        'Awaiting staff confirmation.',
+    ];
+
+    $message = isStandaloneSpecialServiceAppointmentRow($row)
+        ? smsComposeStandaloneAppointmentMessage($row, $segments)
+        : smsComposeCitizenMessage($segments);
+
+    return sendCitizenSms((string) $data['phone'], $message, 'appointment_booked', $code);
 }
 
 /** @return array{attempted: bool, sent: bool} */

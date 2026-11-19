@@ -179,7 +179,6 @@ if (!$formDefaults && !empty($fields[0])) {
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= interFontTags() ?>
     <?= adminLayoutHeadStyles('print-calibration') ?>
-    <?= printPrinterSetupStylesheet() ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>
 <body class="flex min-h-screen print-cal-body--<?= htmlspecialchars($certificateType) ?><?= $isCertification ? ' print-cal-body--certification' : '' ?>">
@@ -457,12 +456,7 @@ if (!$formDefaults && !empty($fields[0])) {
                 </div>
 
                 <div class="print-cal-panel" data-panel="printer" role="tabpanel" hidden>
-                    <p class="print-cal-hint">These settings apply to every certificate. Paper size is fixed to the built-in Legal preset below.</p>
-                    <?php renderPrintBuiltInPrinterSetup([
-                        'variant' => 'panel',
-                        'show_back_hint' => true,
-                        'back_orientation_hint' => $globalCalibration['back_orientation_hint'] ?? '',
-                    ]); ?>
+                    <p class="print-cal-hint">Municipal certificate prints use <strong><?= htmlspecialchars(printBuiltInPaperSpec()['label']) ?></strong> in the browser print dialog (Folio / long bond). Certifications stay on A4.</p>
                     <form id="calGlobalForm" data-no-confirm class="print-cal-global-form">
                         <label>Print mode
                             <select name="print_mode">

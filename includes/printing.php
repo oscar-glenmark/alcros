@@ -7,7 +7,6 @@
 require_once __DIR__ . '/civil_record_schema.php';
 require_once __DIR__ . '/print_field_definitions.php';
 require_once __DIR__ . '/print_form_svgs.php';
-require_once __DIR__ . '/print_printer_setup.php';
 
 function ensurePrintTables(PDO $pdo): void
 {
@@ -30,7 +29,7 @@ function ensurePrintTables(PDO $pdo): void
             page_side ENUM('front','back') NOT NULL,
             form_number VARCHAR(10) NOT NULL,
             paper_width_mm DECIMAL(8,2) NOT NULL DEFAULT 215.90,
-            paper_height_mm DECIMAL(8,2) NOT NULL DEFAULT 358.90,
+            paper_height_mm DECIMAL(8,2) NOT NULL DEFAULT 330.20,
             orientation ENUM('portrait','landscape') NOT NULL DEFAULT 'portrait',
             margin_top_mm DECIMAL(8,2) NOT NULL DEFAULT 0.00,
             margin_left_mm DECIMAL(8,2) NOT NULL DEFAULT 0.00,
@@ -208,17 +207,20 @@ function syncPrintPaperDimensions(PDO $pdo): void
     $width = $paper['paper_width_mm'];
     $height = $paper['paper_height_mm'];
 
-    if (getSetting('print_paper_size_version', '') !== 'official_municipal_v1') {
+    if (getSetting('print_paper_size_version', '') !== 'official_municipal_folio_v1') {
         try {
             $pdo->exec("ALTER TABLE print_templates MODIFY paper_width_mm DECIMAL(8,2) NOT NULL DEFAULT {$width}");
             $pdo->exec("ALTER TABLE print_templates MODIFY paper_height_mm DECIMAL(8,2) NOT NULL DEFAULT {$height}");
         } catch (Throwable $e) {
             // ignore if migration cannot run
         }
-        setSetting('print_paper_size_version', 'official_municipal_v1');
+        setSetting('print_paper_size_version', 'official_municipal_folio_v1');
+        setSetting('print_paper_preset', 'folio');
+        setSetting('print_paper_width_mm', (string) $width);
+        setSetting('print_paper_height_mm', (string) $height);
     }
 
-    // Municipal certificates (Forms 102/97/103) use Legal bond — certifications stay on A4.
+    // Municipal certificates (Forms 102/97/103) use long bond (folio) — certifications stay on A4.
     $check = $pdo->prepare(
         'SELECT COUNT(*) FROM print_templates
          WHERE document_kind = ?
@@ -674,24 +676,20 @@ function printGlobalCalibration(): array
 function printPaperPreferences(): array
 {
     $presets = printPaperPresets();
-    $preset = getSetting('print_paper_preset', 'legal');
-    if (!isset($presets[$preset])) {
-        $preset = 'legal';
+    $preset = getSetting('print_paper_preset', 'folio');
+    if ($preset === 'custom' || !isset($presets[$preset])) {
+        $preset = 'folio';
     }
 
     $widthMm = (float) getSetting('print_paper_width_mm', '0');
     $heightMm = (float) getSetting('print_paper_height_mm', '0');
     if ($widthMm <= 0 || $heightMm <= 0) {
-        $fallback = $presets[$preset];
-        if ($preset !== 'custom' && !empty($fallback['width_mm']) && !empty($fallback['height_mm'])) {
-            $widthMm = (float) $fallback['width_mm'];
-            $heightMm = (float) $fallback['height_mm'];
-        } else {
-            $builtIn = printBuiltInPaperSpec();
-            $widthMm = (float) $builtIn['width_mm'];
-            $heightMm = (float) $builtIn['height_mm'];
-            $preset = printPaperPresetKeyForSize($widthMm, $heightMm);
-        }
+        $widthMm = (float) $presets[$preset]['width_mm'];
+        $heightMm = (float) $presets[$preset]['height_mm'];
+    } else {
+        $preset = printPaperPresetKeyForSize($widthMm, $heightMm);
+        $widthMm = (float) $presets[$preset]['width_mm'];
+        $heightMm = (float) $presets[$preset]['height_mm'];
     }
 
     return [
@@ -703,14 +701,13 @@ function printPaperPreferences(): array
 
 function savePrintPaperPreferences(string $preset, float $widthMm, float $heightMm): void
 {
-    if ($widthMm <= 0 || $heightMm <= 0) {
-        throw new InvalidArgumentException('Paper width and height must be greater than zero.');
-    }
-
     $presets = printPaperPresets();
-    if (!isset($presets[$preset])) {
+    if ($preset === 'custom' || !isset($presets[$preset])) {
         $preset = printPaperPresetKeyForSize($widthMm, $heightMm);
     }
+
+    $widthMm = (float) $presets[$preset]['width_mm'];
+    $heightMm = (float) $presets[$preset]['height_mm'];
 
     setSetting('print_paper_preset', $preset);
     setSetting('print_paper_width_mm', (string) round($widthMm, 2));

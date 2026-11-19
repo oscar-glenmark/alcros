@@ -138,25 +138,6 @@ $printData['values'] = printStripExcludedOptionalSections(
     $pageSide
 );
 
-if (!empty($_GET['log']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    requireStaffPostCsrf();
-    $printModeValue = $testMode ? 'test' : 'production';
-    logPrintJob($pdo, [
-        'request_id'       => $request['id'] ?? null,
-        'civil_record_id'  => $record['id'] ?? null,
-        'template_id'      => (int) $printData['template']['id'],
-        'page_side'        => $pageSide,
-        'certificate_type' => $certificateType,
-        'registry_number'  => $record['registry_number'] ?? null,
-        'print_mode'       => $printModeValue,
-        'copies'           => max(1, (int) ($_POST['copies'] ?? 1)),
-        'notes'            => $_POST['notes'] ?? null,
-    ]);
-    if ($request && !$testMode && !empty($_POST['update_status'])) {
-        advanceRequestAfterPrint($pdo, (int) $request['id'], false);
-    }
-}
-
 $template = $printData['template'];
 $isCertificationDoc = $documentKind === 'certification';
 if ($isCertificationDoc) {
@@ -164,14 +145,11 @@ if ($isCertificationDoc) {
     $paperW = (float) $certPaper['paper_width_mm'];
     $paperH = (float) $certPaper['paper_height_mm'];
 } else {
-    $paperW = (float) $template['paper_width_mm'];
-    $paperH = (float) $template['paper_height_mm'];
+    $paperW = printOfficialPaperWidthMm();
+    $paperH = printOfficialPaperHeightMm();
 }
 $pageCssSize = printPageCssSize($paperW, $paperH);
-$pageSizeFallback = $isCertificationDoc ? 'A4 portrait' : 'legal portrait';
-$printerSetupCss = printPrinterSetupStylesheet();
-$printPaperPrefs = printPaperPreferences();
-$printCsrfToken = csrfToken();
+$pageSizeFallback = $isCertificationDoc ? 'A4 portrait' : '8.5in 13in portrait';
 $isPreview = !empty($_GET['preview']);
 $embeddedPreview = $isPreview && !empty($_GET['embedded']);
 $autoPrint = !empty($_GET['autoprint']);
@@ -204,7 +182,6 @@ $overlayHtml = renderPrintOverlayHtml($printData, array_merge($printOptions, [
     <meta charset="UTF-8">
     <?= faviconLinkTag() ?>
     <title>Print <?= htmlspecialchars(ucfirst($certificateType)) ?> · <?= htmlspecialchars(ucfirst($pageSide)) ?></title>
-    <?= $printerSetupCss ?>
     <style>
         @page {
             <?php if ($isCertificationDoc): ?>
@@ -256,44 +233,6 @@ $overlayHtml = renderPrintOverlayHtml($printData, array_merge($printOptions, [
             background: #fff;
             box-sizing: border-box;
         }
-        .print-setup-notice {
-            position: fixed;
-            inset: 0;
-            z-index: 9999;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 1.5rem;
-            background: rgba(15, 23, 42, 0.72);
-        }
-        body.print-render--autoprint .print-setup-notice {
-            background: rgba(15, 23, 42, 0.28);
-            pointer-events: none;
-        }
-        .print-setup-notice__card {
-            max-width: 30rem;
-            background: #fff;
-            border-radius: 1rem;
-            padding: 1.25rem 1.5rem 1.5rem;
-            box-shadow: 0 20px 48px rgba(15, 23, 42, 0.28);
-            font: 14px/1.5 system-ui, sans-serif;
-            color: #0f172a;
-        }
-        body.print-render--autoprint .print-setup-notice__card {
-            pointer-events: auto;
-        }
-        .print-setup-notice__card button {
-            width: 100%;
-            border: 0;
-            border-radius: 0.625rem;
-            padding: 0.75rem 1rem;
-            background: #2563eb;
-            color: #fff;
-            font-size: 0.875rem;
-            font-weight: 700;
-            cursor: pointer;
-            margin-top: 1rem;
-        }
         @media print {
             <?php if ($isCertificationDoc): ?>
             @page {
@@ -301,9 +240,6 @@ $overlayHtml = renderPrintOverlayHtml($printData, array_merge($printOptions, [
                 margin: 0;
             }
             <?php endif; ?>
-            .print-setup-notice {
-                display: none !important;
-            }
             html.print-render-root,
             html.print-render-root body {
                 margin: 0 !important;
@@ -403,199 +339,13 @@ $overlayHtml = renderPrintOverlayHtml($printData, array_merge($printOptions, [
     </style>
 </head>
 <body class="<?= trim(($isPreview ? 'print-render--preview ' : '') . ($showPreviewFieldBoxes ? 'print-render--field-boxes ' : '') . ($autoPrint ? 'print-render--autoprint ' : '') . ($documentKind === 'certification' ? ' print-render--certification' : '') . ($printWithBackground ? ' print-render--with-background' : '')) ?>">
-    <?php if ($autoPrint && $documentKind !== 'certification'): ?>
-    <div class="print-setup-notice" id="printSetupNotice" role="dialog" aria-labelledby="printSetupTitle">
-        <div class="print-setup-notice__card">
-            <?php renderPrintBuiltInPrinterSetup([
-                'variant'           => 'dialog',
-                'default_width_mm'  => $paperW,
-                'default_height_mm' => $paperH,
-            ]); ?>
-            <p style="margin:0;color:#64748b;font-size:12px;">If the print dialog shows “Postcard” or “2 sheets”, set the paper size above and match it in your printer dialog before continuing.</p>
-            <button type="button" id="printSetupContinue">Continue to Print</button>
-        </div>
-    </div>
-    <?php endif; ?>
     <div class="print-render-wrap">
         <?= $overlayHtml ?>
     </div>
     <?php if ($autoPrint): ?>
-    <?php
-    $templatePaperForPrint = [
-        'preset'    => printPaperPresetKeyForSize($paperW, $paperH),
-        'width_mm'  => $paperW,
-        'height_mm' => $paperH,
-    ];
-    ?>
     <script>
         (function () {
-            var templatePaper = <?= json_encode($templatePaperForPrint, JSON_UNESCAPED_UNICODE) ?>;
-            var serverPaper = <?= json_encode($printPaperPrefs, JSON_UNESCAPED_UNICODE) ?>;
-            var lockTemplatePaper = <?= $documentKind === 'certification' ? 'true' : 'false' ?>;
-            var skipSetupDialog = <?= $documentKind === 'certification' ? 'true' : 'false' ?>;
-            var savePaperPrefs = !lockTemplatePaper;
-            var csrfToken = <?= json_encode($printCsrfToken) ?>;
-            var apiPrintUrl = <?= json_encode(buildAuthUrl('api/print.php')) ?>;
-            var notice = document.getElementById('printSetupNotice');
-            var btn = document.getElementById('printSetupContinue');
-            var presetEl = document.querySelector('[data-print-paper-preset]');
-            var widthEl = document.querySelector('[data-print-paper-width]');
-            var heightEl = document.querySelector('[data-print-paper-height]');
-            var hintEl = document.querySelector('[data-print-printer-hint]');
-            var presetsJson = document.querySelector('[data-print-paper-presets]');
-            var presets = {};
-            var dynamicStyle = document.getElementById('printDynamicPaperStyle');
-
-            if (presetsJson) {
-                try {
-                    presets = JSON.parse(presetsJson.textContent || '{}');
-                } catch (err) {
-                    presets = {};
-                }
-            }
-
-            function readMm(input) {
-                var value = parseFloat(input && input.value ? input.value : '');
-                return value > 0 ? value : 0;
-            }
-
-            function mmToIn(mm) {
-                return Math.round((mm / 25.4) * 1000) / 1000;
-            }
-
-            function applyPreset(key) {
-                var preset = presets[key];
-                if (!preset || key === 'custom') {
-                    if (widthEl) widthEl.disabled = false;
-                    if (heightEl) heightEl.disabled = false;
-                    if (hintEl) hintEl.textContent = preset && preset.printer_hint ? preset.printer_hint : 'Custom or User defined';
-                    return;
-                }
-                if (widthEl) {
-                    widthEl.value = String(preset.width_mm);
-                    widthEl.disabled = true;
-                }
-                if (heightEl) {
-                    heightEl.value = String(preset.height_mm);
-                    heightEl.disabled = true;
-                }
-                if (hintEl && preset.printer_hint) {
-                    hintEl.textContent = preset.printer_hint;
-                }
-            }
-
-            function pageSizeCssRule(widthMm, heightMm) {
-                if (lockTemplatePaper && Math.abs(widthMm - 210) < 1 && Math.abs(heightMm - 297) < 1) {
-                    return '@page { size: A4 portrait; margin: 0; }';
-                }
-                var widthIn = mmToIn(widthMm);
-                var heightIn = mmToIn(heightMm);
-                return '@page { size: ' + widthIn + 'in ' + heightIn + 'in portrait; margin: 0; }';
-            }
-
-            function applyPaperSize(persistPrefs) {
-                var widthMm = lockTemplatePaper
-                    ? Number(templatePaper.width_mm || 0)
-                    : readMm(widthEl);
-                var heightMm = lockTemplatePaper
-                    ? Number(templatePaper.height_mm || 0)
-                    : readMm(heightEl);
-                if (!(widthMm > 0 && heightMm > 0)) {
-                    return false;
-                }
-
-                var css = pageSizeCssRule(widthMm, heightMm) +
-                    '@media print { html.print-render-root, html.print-render-root body { margin:0!important;padding:0!important;width:auto!important;height:auto!important;min-height:0!important;overflow:hidden!important; }' +
-                    'html.print-render-root .print-render-wrap { margin:0 auto!important;padding:0!important;width:' + widthMm + 'mm!important;height:auto!important;overflow:visible!important;page-break-after:avoid!important; }' +
-                    'html.print-render-root .print-sheet { width:' + widthMm + 'mm!important;height:' + heightMm + 'mm!important;max-height:' + heightMm + 'mm!important;overflow:hidden!important;page-break-after:avoid!important; } }' +
-                    '@media screen { html.print-render-root .print-render-wrap { width:' + widthMm + 'mm; }' +
-                    'html.print-render-root .print-sheet { width:' + widthMm + 'mm!important;height:' + heightMm + 'mm!important;max-height:' + heightMm + 'mm!important; } }';
-
-                if (!dynamicStyle) {
-                    dynamicStyle = document.createElement('style');
-                    dynamicStyle.id = 'printDynamicPaperStyle';
-                    document.head.appendChild(dynamicStyle);
-                }
-                dynamicStyle.textContent = css;
-
-                if (persistPrefs && savePaperPrefs) {
-                    var form = new FormData();
-                    form.append('action', 'save_paper_preferences');
-                    form.append('csrf_token', csrfToken);
-                    form.append('preset', presetEl ? presetEl.value : 'custom');
-                    form.append('width_mm', String(widthMm));
-                    form.append('height_mm', String(heightMm));
-                    fetch(apiPrintUrl, { method: 'POST', body: form, credentials: 'same-origin' }).catch(function () {});
-                }
-
-                return true;
-            }
-
-            function resolveJobPaper() {
-                if (lockTemplatePaper) {
-                    return templatePaper;
-                }
-                if (serverPaper && serverPaper.width_mm && serverPaper.height_mm) {
-                    var dw = Math.abs(Number(serverPaper.width_mm) - Number(templatePaper.width_mm));
-                    var dh = Math.abs(Number(serverPaper.height_mm) - Number(templatePaper.height_mm));
-                    if (dw <= 1 && dh <= 1) {
-                        return serverPaper;
-                    }
-                }
-                return templatePaper;
-            }
-
-            function initTemplatePaperFields() {
-                if (!presetEl || !templatePaper || !templatePaper.width_mm) {
-                    return;
-                }
-
-                var paper = resolveJobPaper();
-                var presetKey = paper.preset || templatePaper.preset || 'custom';
-                if (presets[presetKey]) {
-                    presetEl.value = presetKey;
-                    applyPreset(presetKey);
-                } else {
-                    presetEl.value = 'custom';
-                    applyPreset('custom');
-                }
-
-                if (widthEl) {
-                    widthEl.value = String(paper.width_mm);
-                    widthEl.disabled = lockTemplatePaper;
-                }
-                if (heightEl) {
-                    heightEl.value = String(paper.height_mm);
-                    heightEl.disabled = lockTemplatePaper;
-                }
-                if (presetEl) {
-                    presetEl.disabled = lockTemplatePaper;
-                }
-                if (hintEl && lockTemplatePaper) {
-                    hintEl.textContent = 'Use these exact certification dimensions in your printer dialog.';
-                }
-
-                applyPaperSize(false);
-            }
-
-            if (presetEl) {
-                presetEl.addEventListener('change', function () {
-                    if (lockTemplatePaper) {
-                        initTemplatePaperFields();
-                        return;
-                    }
-                    applyPreset(presetEl.value);
-                    applyPaperSize(false);
-                });
-                initTemplatePaperFields();
-            }
-
             function startPrint() {
-                if (!applyPaperSize(true)) {
-                    window.alert('Enter a valid paper width and height in millimeters.');
-                    return;
-                }
-                if (notice) notice.style.display = 'none';
                 if (window.AlcrosPrintFitText) {
                     AlcrosPrintFitText.fitAll(document, function () {
                         window.print();
@@ -605,16 +355,9 @@ $overlayHtml = renderPrintOverlayHtml($printData, array_merge($printOptions, [
                 window.print();
             }
 
-            if (skipSetupDialog) {
-                applyPaperSize(false);
-                window.addEventListener('load', function () {
-                    window.setTimeout(startPrint, 600);
-                });
-            } else if (btn) {
-                btn.addEventListener('click', startPrint);
-            } else {
-                window.addEventListener('load', function () { window.setTimeout(startPrint, 600); });
-            }
+            window.addEventListener('load', function () {
+                window.setTimeout(startPrint, 600);
+            });
         })();
     </script>
     <?php endif; ?>

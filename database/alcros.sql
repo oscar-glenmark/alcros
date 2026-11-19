@@ -546,9 +546,9 @@ INSERT INTO system_settings (setting_key, setting_value) VALUES
 ('print_back_orientation_hint', 'flip_long_edge'),
 ('print_province', 'Misamis Occidental'),
 ('print_city_municipality', 'Aloran'),
-('print_paper_preset', 'legal'),
+('print_paper_preset', 'folio'),
 ('print_paper_width_mm', '215.9'),
-('print_paper_height_mm', '358.9')
+('print_paper_height_mm', '330.2')
 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value);
 
 -- ── Printing ────────────────────────────────────────────────────────────────
@@ -559,7 +559,7 @@ CREATE TABLE IF NOT EXISTS print_templates (
     page_side ENUM('front','back') NOT NULL,
     form_number VARCHAR(10) NOT NULL,
     paper_width_mm DECIMAL(8,2) NOT NULL DEFAULT 215.90,
-    paper_height_mm DECIMAL(8,2) NOT NULL DEFAULT 358.90,
+    paper_height_mm DECIMAL(8,2) NOT NULL DEFAULT 330.20,
     orientation ENUM('portrait','landscape') NOT NULL DEFAULT 'portrait',
     margin_top_mm DECIMAL(8,2) NOT NULL DEFAULT 0.00,
     margin_left_mm DECIMAL(8,2) NOT NULL DEFAULT 0.00,

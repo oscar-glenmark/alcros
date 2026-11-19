@@ -2,6 +2,43 @@
 
 require_once __DIR__ . '/xlsx_writer.php';
 
+function alcrosExcelSanitizeFilenameSegment(string $segment): string
+{
+    $segment = trim($segment);
+    if ($segment === '') {
+        return '';
+    }
+
+    return preg_replace('/[^\w\-]+/u', '_', strtolower($segment)) ?? '';
+}
+
+/** @param string|list<string> ...$segments */
+function alcrosExcelDownloadFilename(string ...$segments): string
+{
+    $parts = [];
+    foreach ($segments as $segment) {
+        if (is_array($segment)) {
+            foreach ($segment as $piece) {
+                $clean = alcrosExcelSanitizeFilenameSegment((string) $piece);
+                if ($clean !== '') {
+                    $parts[] = $clean;
+                }
+            }
+            continue;
+        }
+
+        $clean = alcrosExcelSanitizeFilenameSegment($segment);
+        if ($clean !== '') {
+            $parts[] = $clean;
+        }
+    }
+
+    $parts[] = date('Y-m-d');
+    $name = implode('_', $parts);
+
+    return $name !== '' ? $name . '.xlsx' : 'export.xlsx';
+}
+
 function alcrosExcelNewSpreadsheet(string $title = 'ALCROS Export'): AlcrosXlsxWorkbook
 {
     $workbook = new AlcrosXlsxWorkbook($title);
@@ -97,22 +134,21 @@ function alcrosExcelPlaceFaviconLogo(
         return;
     }
 
+    $heightPx = (int) max(1, round($heightPx * 1.28));
     $widthPx = (int) max(1, round($sourceW * ($heightPx / $sourceH)));
 
     $logoCol = 1;
-    $gutterCol = 2;
-    $logoColWidth = max(12.0, min(24.0, ($widthPx / 6.5) + 1));
+    $logoColWidth = max(14.0, min(30.0, ($widthPx / 6.0) + 1.5));
     $sheet->setColumnWidth($logoCol, $logoColWidth);
-    $sheet->setColumnWidth($gutterCol, max(5.0, min(8.0, ($widthPx / 18) + 4)));
     $sheet->addImageFromFile($logoCol, $firstMetaRow, $path, $widthPx, $heightPx);
 }
 
 function alcrosExcelWriteMetaBlock(AlcrosXlsxSheet $sheet, array $lines, int &$row): void
 {
     $metaStartRow = $row;
-    $labelCol = 3;
-    $valueCol = 4;
-    $valueMergeEndCol = 7;
+    $labelCol = 2;
+    $valueCol = 3;
+    $valueMergeEndCol = 6;
     $titleRowPt = 22.0;
     $detailRowPt = 19.0;
     $periodRow = null;
@@ -294,7 +330,6 @@ function alcrosExcelApplyTableStyles(
         }
     }
 
-    $sheet->freezeAbove($headerRow + 1);
     if ($lastRow > $headerRow) {
         $sheet->setAutoFilter(1, $headerRow, $colCount, $lastRow);
     }

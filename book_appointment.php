@@ -16,6 +16,7 @@ $success = null;
 $error = null;
 $appointmentCode = null;
 $emailSent = false;
+$smsSent = false;
 
 $nameParts = personNamePartsFromInput($_POST);
 $firstName = $nameParts['first_name'];
@@ -147,6 +148,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ];
                         if ($notifyEmail) {
                             $emailSent = notifyAppointmentBooked($notifyPayload);
+                        }
+                        if ($notifySms) {
+                            require_once __DIR__ . '/includes/sms.php';
+                            $smsSent = notifyAppointmentBookedSms($notifyPayload);
                         }
                         if ($notifyEmail || $notifySms) {
                             maybeSendVisitSoonEmail($pdo, 'appointments', $appointmentId);
@@ -293,10 +298,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <span>Gmail notifications were not enabled for this booking, so confirmation and visit reminders will not be emailed. Please save your appointment code and use <strong>Track</strong> to follow your status.</span>
                 </p>
                 <?php endif; ?>
-                <?php if ($notifySms && $smsUpdatesAvailable): ?>
+                <?php if ($notifySms && $smsSent): ?>
                 <p class="citizen-request-notice citizen-request-notice--success">
                     <i data-lucide="message-square" class="w-4 h-4 shrink-0 mt-0.5"></i>
-                    <span>SMS updates are enabled. You will receive a text when staff confirms your appointment and a reminder 1 hour before your visit.</span>
+                    <span>A text confirmation was sent to <strong><?= htmlspecialchars($phone) ?></strong>. You will also receive a text when staff confirms your appointment and a reminder 1 hour before your visit.</span>
+                </p>
+                <?php elseif ($notifySms && $smsUpdatesAvailable): ?>
+                <p class="citizen-request-notice citizen-request-notice--warn">
+                    <i data-lucide="message-square" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                    <span>We could not send the text confirmation right now. Please save your appointment code and use <strong>Track</strong>. You can still receive texts when staff confirms and before your visit.</span>
                 </p>
                 <?php elseif ($notifySms): ?>
                 <p class="citizen-request-notice citizen-request-notice--warn">

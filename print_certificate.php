@@ -63,8 +63,8 @@ if (!$context['ok']) {
             $paperW = (float) $certPaper['paper_width_mm'];
             $paperH = (float) $certPaper['paper_height_mm'];
         } else {
-            $paperW = (float) ($frontTemplate['paper_width_mm'] ?? printOfficialPaperWidthMm());
-            $paperH = (float) ($frontTemplate['paper_height_mm'] ?? printOfficialPaperHeightMm());
+            $paperW = printOfficialPaperWidthMm();
+            $paperH = printOfficialPaperHeightMm();
         }
         $paperSizeLabel = printPaperSizeLabel($paperW, $paperH, true);
         $paperSizeTitle = printPaperSizeLabel($paperW, $paperH);
@@ -147,6 +147,18 @@ $printModeSetting = printMode();
                         <span class="print-cert-label">Paper Size</span>
                         <strong title="<?= htmlspecialchars($paperSizeTitle) ?>"><?= htmlspecialchars($paperSizeLabel) ?></strong>
                     </div>
+                    <div class="print-cert-summary__item print-cert-summary__item--copies">
+                        <label class="print-cert-label" for="printCopies">Copies</label>
+                        <input type="number"
+                               id="printCopies"
+                               class="print-cert-copies-input"
+                               name="print_copies"
+                               min="1"
+                               max="99"
+                               step="1"
+                               value="1"
+                               inputmode="numeric">
+                    </div>
                 </div>
             </section>
 
@@ -186,7 +198,7 @@ $printModeSetting = printMode();
                     <div class="print-cert-fill-chrome__top">
                         <h2 class="print-cert-fill-chrome__title">Edit Fill-in Data</h2>
                         <div class="print-cert-fill-chrome__actions">
-                            <a href="<?= htmlspecialchars($request ? buildStaffOperationalUrl('manage_request.php') : buildAuthUrl('records.php')) ?>" class="print-cert-btn print-cert-btn--ghost print-cert-fill-chrome__btn">Cancel</a>
+                            <a href="<?= htmlspecialchars($request ? buildStaffOperationalUrl('manage_request.php') : buildAuthUrl('records.php')) ?>" class="print-cert-btn print-cert-btn--primary print-cert-fill-chrome__btn">Cancel</a>
                             <button type="button" class="print-cert-btn print-cert-btn--ghost print-cert-fill-chrome__btn" id="resetFillData">Reset to record data</button>
                         </div>
                     </div>

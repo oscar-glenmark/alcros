@@ -238,7 +238,7 @@ function exportCivilRecordTemplateXlsx(PDO $pdo, string $type): void
 
     $row = 1;
     alcrosExcelWriteMetaBlock($sheet, [
-        'ALCROS bulk import template â€” ' . civilRecordTypeLabel($type),
+        'ALCROS bulk import template — ' . civilRecordTypeLabel($type),
         ['Instructions', 'Enter one record per row using the column headers below. The sample row is skipped on import.'],
         ['Dates', 'Use YYYY-MM-DD or MM/DD/YYYY, or separate day / month / year columns where provided.'],
         ['Required', $type === 'marriage'
@@ -250,7 +250,10 @@ function exportCivilRecordTemplateXlsx(PDO $pdo, string $type): void
 
     alcrosExcelWriteTable($sheet, $headers, [$sample], $row);
 
-    alcrosExcelSendDownload($spreadsheet, 'alcros_' . $type . '_import_template.xlsx');
+    alcrosExcelSendDownload(
+        $spreadsheet,
+        alcrosExcelDownloadFilename($type . '_records_import_template')
+    );
 }
 
 if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') !== realpath(__FILE__)) {
@@ -395,7 +398,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($imported === 0) {
                 $msg = 'No records were imported.';
                 if ($sampleSkipped > 0) {
-                    $msg .= " $sampleSkipped template sample row(s) skipped â€” add your own data rows below the header.";
+                    $msg .= " $sampleSkipped template sample row(s) skipped — add your own data rows below the header.";
                 }
                 if ($skipped > 0) {
                     $msg .= " $skipped row(s) skipped.";
@@ -784,7 +787,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                     <i data-lucide="download" class="w-3.5 h-3.5 mr-2"></i> Download Excel Template
                 </a>
                 <div id="importProgressWrap" class="hidden space-y-2 pt-1" aria-live="polite">
-                    <p id="importProgressText" class="text-xs font-semibold text-slate-600">Preparing importâ€¦</p>
+                    <p id="importProgressText" class="text-xs font-semibold text-slate-600">Preparing import…</p>
                     <div class="h-2 rounded-full bg-slate-100 overflow-hidden">
                         <div id="importProgressBar" class="h-full bg-blue-600 transition-all duration-200" style="width:0%"></div>
                     </div>

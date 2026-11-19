@@ -65,9 +65,25 @@ function alcrosDocumentIconTags(): string
     return faviconLinkTag();
 }
 
+function alcrosViewportMeta(string $variant = 'default'): string
+{
+    $theme = $variant === 'staff' ? '#1e293b' : '#071428';
+
+    return '<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">' . "\n    "
+        . '<meta name="theme-color" content="' . htmlspecialchars($theme, ENT_QUOTES, 'UTF-8') . '">' . "\n    "
+        . '<meta name="mobile-web-app-capable" content="yes">' . "\n    "
+        . '<meta name="apple-mobile-web-app-capable" content="yes">';
+}
+
+/** Citizen-facing pages: viewport + theme before stylesheets. */
+function alcrosCitizenHeadMeta(): string
+{
+    return alcrosViewportMeta('public');
+}
+
 function adminLayoutHeadStyles(?string $page = null): string
 {
-    $tags = [adminCoreStyles(), actionCoreStyles()];
+    $tags = [alcrosViewportMeta('staff'), adminCoreStyles(), actionCoreStyles()];
     if ($page !== null && $page !== '') {
         $pageStyles = adminPageStyles($page);
         if ($pageStyles !== '') {

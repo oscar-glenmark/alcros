@@ -103,8 +103,10 @@ function handleLogPrint(PDO $pdo): void
         'copies'           => max(1, min(99, (int) ($_POST['copies'] ?? 1))),
     ]);
 
-    if (!$testMode && $requestId > 0) {
-        advanceRequestAfterPrint($pdo, $requestId, false);
+    $linkedRequestId = (int) ($context['request']['id'] ?? 0);
+    $effectiveRequestId = $requestId > 0 ? $requestId : $linkedRequestId;
+    if (!$testMode && $effectiveRequestId > 0) {
+        advanceRequestAfterPrint($pdo, $effectiveRequestId, false);
     }
 
     $fillRaw = $_POST['fill'] ?? '';

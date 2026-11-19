@@ -614,9 +614,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <?= faviconLinkTag() ?>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= $isAdmin ? 'System Settings' : 'My Settings' ?> - ALCROS</title>
+    <?= faviconLinkTag() ?>    <title><?= $isAdmin ? 'System Settings' : 'My Settings' ?> - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= interFontTags() ?>
     <?= publicStylesheet('password-toggle') ?>

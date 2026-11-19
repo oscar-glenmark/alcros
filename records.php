@@ -480,9 +480,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <?= faviconLinkTag() ?>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Civil Records - ALCROS</title>
+    <?= faviconLinkTag() ?>    <title>Civil Records - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= interFontTags() ?>
     <?= adminLayoutHeadStyles('records') ?>

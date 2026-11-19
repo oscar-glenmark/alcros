@@ -21,9 +21,7 @@ $pageHeaderMeta = '<p class="admin-header__meta">' . htmlspecialchars($officeNam
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <?= faviconLinkTag() ?>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Analytics - ALCROS</title>
+    <?= faviconLinkTag() ?>    <title>Analytics - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= interFontTags() ?>
     <?= adminLayoutHeadStyles('report') ?>

@@ -4700,6 +4700,13 @@ function alcrosFaviconImg(int $sizePx = 20, string $extraClass = ''): string
     );
 }
 
+function citizenStaffLoginHeaderLink(string $label = 'Staff Login'): string
+{
+    return '<a href="login.php" class="citizen-btn-login citizen-staff-login-header shrink-0">'
+        . htmlspecialchars($label, ENT_QUOTES, 'UTF-8')
+        . '</a>';
+}
+
 function renderStaffAvatar(?string $photoPath, string $name, string $classes = 'w-8 h-8', string $rounded = 'rounded-full'): string
 {
     $initial = staffInitial($name);

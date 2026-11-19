@@ -11,6 +11,8 @@ if (isMaintenanceMode() || !arePublicRequestsAllowed()) {
     exit;
 }
 
+$citizenMobileTab = 'request';
+
 $validTypes = array_column(getDocumentTypes(), 'slug');
 $purposeOptions = getPurposeOptions();
 
@@ -495,7 +497,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
 <head>
     <meta charset="UTF-8">
     <?= faviconLinkTag() ?>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <?= alcrosCitizenHeadMeta() ?>
     <title>Request Document - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= vendorScriptTag('lucide.min.js') ?>
@@ -528,6 +530,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 </nav>
 
                 <div class="flex items-center gap-2 shrink-0">
+                    <?= citizenStaffLoginHeaderLink() ?>
                     <button type="button" id="citizenMobileNavToggle" class="lg:hidden p-2 text-white" aria-label="Open menu">
                         <i data-lucide="menu" class="w-6 h-6"></i>
                     </button>
@@ -550,10 +553,6 @@ $requestDocumentLabel = !empty($draft['document_type'])
     <main class="citizen-site-main">
         <section class="citizen-page-hero citizen-page-hero--compact">
             <div class="max-w-2xl mx-auto">
-                <a href="index.php" class="back-home back-home--inline is-centered">
-                    <i data-lucide="chevron-left" class="back-home__icon w-3 h-3"></i>
-                    <span>Back to Home</span>
-                </a>
                 <h1>Request a <?= htmlspecialchars($requestDocumentLabel) ?></h1>
                 <p>Complete each step below to submit your document request online.</p>
             </div>
@@ -943,6 +942,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
     <?= actionResultScript($error ? ['error', $error] : null) ?>
     <?= scriptTag('public/citizen-site.js') ?>
     <?= scriptTag('public/forms.js') ?>
+    <?php require __DIR__ . '/includes/citizen_mobile_tabbar.php'; ?>
     <?php require __DIR__ . '/includes/track_floating.php'; ?>
     <?= scriptTag('public/track-floating.js') ?>
     <?php require __DIR__ . '/includes/privacy_agreement.php'; ?>

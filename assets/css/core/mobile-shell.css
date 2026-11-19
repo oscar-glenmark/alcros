@@ -1,0 +1,28 @@
+/**
+ * Shared mobile / PWA-friendly shell (safe areas, touch targets).
+ * Imported by staff shell.css and citizen stylesheets.
+ */
+
+:root {
+    --alcros-safe-top: env(safe-area-inset-top, 0px);
+    --alcros-safe-right: env(safe-area-inset-right, 0px);
+    --alcros-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --alcros-safe-left: env(safe-area-inset-left, 0px);
+    --alcros-touch-min: 2.75rem;
+}
+
+@media (max-width: 639px) {
+  input[type='text'],
+    input[type='email'],
+    input[type='password'],
+    input[type='tel'],
+    input[type='number'],
+    input[type='search'],
+    input[type='url'],
+    input[type='date'],
+    input[type='time'],
+    select,
+    textarea {
+        font-size: 1rem;
+    }
+}

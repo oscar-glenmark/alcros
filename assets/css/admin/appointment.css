@@ -77,28 +77,35 @@
 @media (max-width: 767px) {
     .appointments-page .manage-controls {
         flex-direction: row;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
+        align-items: center;
     }
 
     .appointments-page .manage-controls__context {
-        flex: 1 1 100%;
+        flex: 0 1 auto;
+        min-width: 0;
+        flex-wrap: nowrap;
     }
 
     .appointments-controls__tools {
-        flex: 1 1 100%;
+        flex: 1 1 auto;
+        min-width: 0;
         flex-wrap: nowrap;
-        justify-content: flex-start;
+        justify-content: flex-end;
         gap: 0.375rem;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
     }
 
     .appointments-page .manage-controls__search {
-        flex: 1 1 0;
+        flex: 1 1 auto;
         min-width: 0;
         max-width: none;
     }
 
     .appointments-date-nav {
         width: auto;
+        flex-shrink: 0;
     }
 
     .appointments-date-nav__label {

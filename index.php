@@ -56,7 +56,7 @@ $faqs = [
 <head>
     <meta charset="UTF-8">
     <?= faviconLinkTag() ?>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <?= alcrosCitizenHeadMeta() ?>
     <title>ALCROS -Aloran Local Civil Registry Online System</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= interFontTags() ?>
@@ -87,7 +87,7 @@ $faqs = [
                 </nav>
 
                 <div class="flex items-center gap-2 shrink-0">
-                    <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="btn-login hidden sm:inline-block">
+                    <a href="<?= htmlspecialchars($staffPortalUrl) ?>" class="btn-login inline-block">
                         <?= htmlspecialchars($staffPortalLabel) ?>
                     </a>
                     <button type="button" id="mobileNavToggle" class="lg:hidden p-2 text-white" aria-label="Open menu">
@@ -350,6 +350,10 @@ $faqs = [
         </div>
     </footer>
 
+    <?php
+    $citizenMobileTab = 'home';
+    require __DIR__ . '/includes/citizen_mobile_tabbar.php';
+    ?>
     <?php require __DIR__ . '/includes/track_floating.php'; ?>
     <?= scriptTag('public/track-floating.js') ?>
     <?php require __DIR__ . '/includes/maintenance_announcement.php'; ?>

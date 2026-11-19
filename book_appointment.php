@@ -7,6 +7,7 @@ require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 
 $currentPage = basename($_SERVER['PHP_SELF']);
+$citizenMobileTab = 'book';
 
 $service = $_GET['service'] ?? $_POST['service'] ?? '';
 $serviceLabel = appointmentServiceLabel($service);
@@ -185,7 +186,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <?= faviconLinkTag() ?>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <?= alcrosCitizenHeadMeta() ?>
     <title>Schedule Appointment - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= vendorScriptTag('lucide.min.js') ?>
@@ -218,6 +219,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </nav>
 
                 <div class="flex items-center gap-2 shrink-0">
+                    <?= citizenStaffLoginHeaderLink() ?>
                     <button type="button" id="citizenMobileNavToggle" class="lg:hidden p-2 text-white" aria-label="Open menu">
                         <i data-lucide="menu" class="w-6 h-6"></i>
                     </button>
@@ -240,10 +242,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <main class="citizen-site-main">
         <section class="citizen-page-hero citizen-page-hero--compact">
             <div class="max-w-2xl mx-auto">
-                <a href="services.php" class="back-home back-home--inline is-centered">
-                    <i data-lucide="chevron-left" class="back-home__icon w-3 h-3"></i>
-                    <span>Back to Services</span>
-                </a>
                 <h1>Schedule Appointment</h1>
                 <p>Book a consultation for special civil registry services.</p>
             </div>
@@ -470,6 +468,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <script type="application/json" id="alcrosOfficeHolidayConfig"><?= json_encode(officeHolidayClientConfig(), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?></script>
     <?= scriptTag('public/appointment-slots.js') ?>
     <?= scriptTag('public/forms.js') ?>
+    <?php require __DIR__ . '/includes/citizen_mobile_tabbar.php'; ?>
     <?php require __DIR__ . '/includes/track_floating.php'; ?>
     <?= scriptTag('public/track-floating.js') ?>
     <?php require __DIR__ . '/includes/maintenance_announcement.php'; ?>

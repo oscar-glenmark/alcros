@@ -1,4 +1,6 @@
 @import url('../../vendor/inter/inter.css');
+@import url('../core/mobile-shell.css');
+@import url('citizen-mobile-tabbar.css');
 
 html { scroll-behavior: smooth; }
 body { font-family: 'Inter', sans-serif; color: #1e293b; }
@@ -83,6 +85,15 @@ body { font-family: 'Inter', sans-serif; color: #1e293b; }
     transition: background 0.2s, color 0.2s;
 }
 .btn-login:hover { background: #fff; color: var(--alcros-navy); }
+
+@media (max-width: 639px) {
+    .site-header .btn-login {
+        font-size: 0.5625rem;
+        letter-spacing: 0.06em;
+        padding: 0.35rem 0.65rem;
+        white-space: nowrap;
+    }
+}
 
 .hero-section {
     position: relative;
@@ -277,9 +288,22 @@ body { font-family: 'Inter', sans-serif; color: #1e293b; }
 
 /* ── Mobile responsiveness ── */
 @media (max-width: 639px) {
+    .site-header {
+        padding-top: var(--alcros-safe-top);
+    }
+
     .site-header .max-w-7xl {
-        padding-left: max(1rem, env(safe-area-inset-left));
-        padding-right: max(1rem, env(safe-area-inset-right));
+        padding-left: max(1rem, var(--alcros-safe-left));
+        padding-right: max(1rem, var(--alcros-safe-right));
+    }
+
+    #mobileNavToggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: var(--alcros-touch-min);
+        min-height: var(--alcros-touch-min);
+        border-radius: 0.75rem;
     }
 
     .brand-logo {
@@ -291,8 +315,11 @@ body { font-family: 'Inter', sans-serif; color: #1e293b; }
         gap: 0.625rem;
     }
 
-    #mobileNav .nav-link {
-        display: block;
+    #mobileNav .nav-link,
+    #mobileNav .btn-login {
+        display: flex;
+        align-items: center;
+        min-height: var(--alcros-touch-min);
         padding: 0.65rem 0.5rem;
         font-size: 0.75rem;
     }

@@ -305,9 +305,7 @@ $showVisitLateNoShowColumn = $filterStatus === 'ready';
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <?= faviconLinkTag() ?>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Requests - ALCROS</title>
+    <?= faviconLinkTag() ?>    <title>Manage Requests - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= interFontTags() ?>
     <?= adminLayoutHeadStyles('manage-requests') ?>

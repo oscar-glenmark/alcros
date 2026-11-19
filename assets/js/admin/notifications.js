@@ -188,6 +188,7 @@
         var count = bellBadgeCount(all, counts);
         updateBadgeEl(document.getElementById('notif-badge'), count);
         updateBadgeEl(document.getElementById('sidebar-notif-badge'), count);
+        updateBadgeEl(document.getElementById('mobile-tab-notif-badge'), count);
     }
 
     function sidebarTypeCount(all, counts, type, pendingKey) {
@@ -205,14 +206,12 @@
     }
 
     function updateSidebarBadges(all, counts) {
-        updateBadgeEl(
-            document.getElementById('sidebar-request-badge'),
-            sidebarTypeCount(all, counts, 'pending_request', 'requests')
-        );
-        updateBadgeEl(
-            document.getElementById('sidebar-appt-badge'),
-            sidebarTypeCount(all, counts, 'appointment', 'appointments')
-        );
+        var requests = sidebarTypeCount(all, counts, 'pending_request', 'requests');
+        var appointments = sidebarTypeCount(all, counts, 'appointment', 'appointments');
+        updateBadgeEl(document.getElementById('sidebar-request-badge'), requests);
+        updateBadgeEl(document.getElementById('sidebar-appt-badge'), appointments);
+        updateBadgeEl(document.getElementById('mobile-tab-request-badge'), requests);
+        updateBadgeEl(document.getElementById('mobile-tab-appt-badge'), appointments);
     }
 
     function updateAllBadges(all, counts) {

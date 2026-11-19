@@ -90,10 +90,6 @@
     line-height: 1.2;
 }
 
-.print-cert-summary__item--paper strong {
-    white-space: nowrap;
-}
-
 .print-cert-summary__item--copies {
     align-items: baseline;
     gap: 0.35rem;

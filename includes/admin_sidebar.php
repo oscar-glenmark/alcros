@@ -49,8 +49,72 @@ function sidebarSectionLabel(string $label): string
     return '<p class="sidebar-section-label">' . htmlspecialchars($label) . '</p>';
 }
 
+function mobileTabLink(
+    string $page,
+    string $label,
+    string $icon,
+    string $active,
+    ?string $badgeId = null,
+    array $query = [],
+    ?string $title = null
+): string {
+    $isActive = ($page === $active);
+    $class = 'admin-mobile-tab' . ($isActive ? ' is-active' : '');
+    $href = buildAuthUrl($page, $query);
+    $badge = $badgeId
+        ? '<span id="' . htmlspecialchars($badgeId) . '" class="admin-mobile-tab__badge hidden" aria-hidden="true">0</span>'
+        : '';
+    $iconHtml = lucideSvg($icon, 'pointer-events-none');
+    $titleAttr = $title !== null && $title !== ''
+        ? ' title="' . htmlspecialchars($title) . '" aria-label="' . htmlspecialchars($title) . '"'
+        : '';
+
+    return '<a href="' . htmlspecialchars($href) . '" class="' . $class . '" data-mobile-tab="1"' . $titleAttr . '>'
+        . $iconHtml
+        . '<span>' . htmlspecialchars($label) . '</span>'
+        . $badge
+        . '</a>';
+}
+
+function mobileMoreMenuLink(
+    string $page,
+    string $label,
+    string $icon,
+    string $active,
+    ?string $badgeId = null,
+    bool $liveBadge = false
+): string {
+    $isActive = ($page === $active);
+    $class = 'admin-mobile-more-item' . ($isActive ? ' is-active' : '');
+    $href = buildAuthUrl($page);
+    $badge = $badgeId
+        ? '<span id="' . htmlspecialchars($badgeId) . '" class="admin-mobile-more-item__badge hidden" aria-hidden="true">0</span>'
+        : '';
+    $live = $liveBadge
+        ? '<span class="admin-mobile-more-item__live">LIVE</span>'
+        : '';
+    $iconHtml = lucideSvg($icon, 'admin-mobile-more-item__icon pointer-events-none');
+
+    return '<a href="' . htmlspecialchars($href) . '" class="' . $class . '" role="menuitem">'
+        . $iconHtml
+        . '<span class="admin-mobile-more-item__label">' . htmlspecialchars($label) . '</span>'
+        . $live
+        . $badge
+        . '</a>';
+}
+
+function mobileMoreSectionLabel(string $label): string
+{
+    return '<p class="admin-mobile-more-section">' . htmlspecialchars($label) . '</p>';
+}
+
+$mobilePrimaryPages = isAdmin()
+    ? ['dashboard.php', 'records.php', 'analytics.php', 'report.php', 'notifications.php']
+    : ['dashboard.php', 'manage_request.php', 'appointment.php', 'live-queue.php', 'notifications.php'];
+$mobileMoreActive = !in_array($activePage, $mobilePrimaryPages, true);
+
 ?>
-<script>(function(){try{if(sessionStorage.getItem('admin_sidebar_minimized')==='1'){document.body.classList.add('admin-sidebar-minimized');}}catch(e){}})();</script>
+<script>(function(){try{document.body.classList.add('admin-portal');if(sessionStorage.getItem('admin_sidebar_minimized')==='1'){document.body.classList.add('admin-sidebar-minimized');}}catch(e){}})();</script>
 <aside class="admin-sidebar" aria-label="Admin navigation">
     <div class="admin-sidebar-brand p-4 sm:p-5 flex items-start justify-between gap-3">
         <a href="<?= htmlspecialchars(buildAuthUrl('dashboard.php')) ?>" data-sidebar-tip="Dashboard" class="flex items-center gap-3 min-w-0 flex-1 transition hover:opacity-90">
@@ -91,6 +155,51 @@ function sidebarSectionLabel(string $label): string
         <?php endif; ?>
     </nav>
 </aside>
+
+<div class="admin-mobile-shell no-print">
+    <div id="adminMobileMoreBackdrop" class="admin-mobile-more-backdrop hidden" aria-hidden="true"></div>
+    <div id="adminMobileMoreDropup" class="admin-mobile-more-dropup hidden" role="menu" aria-label="More navigation">
+        <?php if (isAdmin()): ?>
+            <?= mobileMoreSectionLabel('Administration') ?>
+            <?= mobileMoreMenuLink('print_calibration.php', 'Print calibration', 'crosshair', $activePage) ?>
+            <?= mobileMoreMenuLink('activity-log.php', 'Activity log', 'scroll-text', $activePage) ?>
+            <?= mobileMoreMenuLink('system_settings.php', 'Settings', 'settings', $activePage) ?>
+        <?php else: ?>
+            <?= mobileMoreSectionLabel('Operations') ?>
+            <?= mobileMoreMenuLink('records.php', 'Records', 'book-open', $activePage) ?>
+            <?= mobileMoreMenuLink('documents.php', 'Documents', 'files', $activePage) ?>
+            <?= mobileMoreSectionLabel('Account') ?>
+            <?= mobileMoreMenuLink('system_settings.php', 'Settings', 'settings', $activePage) ?>
+        <?php endif; ?>
+    </div>
+    <nav class="admin-mobile-tabbar<?= isAdmin() ? ' admin-mobile-tabbar--admin' : ' admin-mobile-tabbar--staff' ?>" aria-label="Quick navigation">
+        <?php if (isAdmin()): ?>
+            <?= mobileTabLink('dashboard.php', 'Home', 'layout-dashboard', $activePage) ?>
+            <?= mobileTabLink('records.php', 'Records', 'book-open', $activePage) ?>
+            <?= mobileTabLink('analytics.php', 'Analytics', 'trending-up', $activePage) ?>
+            <?= mobileTabLink('report.php', 'Reports', 'bar-chart-2', $activePage) ?>
+            <?= mobileTabLink('notifications.php', 'Alerts', 'bell', $activePage, 'mobile-tab-notif-badge', [], staffPortalInboxLabel()) ?>
+        <?php else: ?>
+            <?= mobileTabLink('dashboard.php', 'Home', 'layout-dashboard', $activePage) ?>
+            <?= mobileTabLink('manage_request.php', 'Requests', 'file-text', $activePage, 'mobile-tab-request-badge') ?>
+            <?= mobileTabLink('appointment.php', 'Appts', 'calendar', $activePage, 'mobile-tab-appt-badge', [], 'Manage Appointments') ?>
+            <?= mobileTabLink('live-queue.php', 'Queue', 'users', $activePage) ?>
+            <?= mobileTabLink('notifications.php', 'Inbox', 'bell', $activePage, 'mobile-tab-notif-badge') ?>
+        <?php endif; ?>
+        <button
+            type="button"
+            class="admin-mobile-tab<?= $mobileMoreActive ? ' is-active' : '' ?>"
+            id="adminMobileMoreTab"
+            aria-label="More pages"
+            aria-expanded="false"
+            aria-controls="adminMobileMoreDropup"
+            aria-haspopup="menu"
+        >
+            <?= lucideSvg('ellipsis', 'pointer-events-none') ?>
+            <span>More</span>
+        </button>
+    </nav>
+</div>
 
 <div id="logoutConfirmModal" class="alcros-confirm-modal alcros-logout-modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="logoutConfirmTitle">
     <div class="alcros-confirm-modal__panel">

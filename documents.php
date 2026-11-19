@@ -66,9 +66,7 @@ $pageSubtitle = 'Blank certificate and certification forms for manual entry';
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <?= faviconLinkTag() ?>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= htmlspecialchars($pageTitle) ?> · ALCROS</title>
+    <?= faviconLinkTag() ?>    <title><?= htmlspecialchars($pageTitle) ?> · ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= interFontTags() ?>
     <?= adminLayoutHeadStyles('print-certificate') ?>

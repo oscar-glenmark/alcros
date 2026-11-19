@@ -1,3 +1,5 @@
+@import url('../core/mobile-shell.css');
+
 :root {
     --alcros-navy: #071428;
     --alcros-navy-mid: #0c2247;
@@ -465,11 +467,13 @@ body.auth-portal {
 @media (max-width: 639px) {
     .auth-portal-hero {
         min-height: 240px;
-        padding: 1.5rem 1.25rem;
+        padding: calc(1.5rem + var(--alcros-safe-top)) max(1.25rem, var(--alcros-safe-right)) 1.5rem
+            max(1.25rem, var(--alcros-safe-left));
     }
 
     .auth-portal-form-wrap {
-        padding: 1.25rem 1rem 1.75rem;
+        padding: 1.25rem max(1rem, var(--alcros-safe-right)) calc(1.75rem + var(--alcros-safe-bottom))
+            max(1rem, var(--alcros-safe-left));
     }
 
     .auth-portal-card-logo {

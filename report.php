@@ -173,9 +173,7 @@ $recordsJumpDesc = sprintf(
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <?= faviconLinkTag() ?>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reports - ALCROS</title>
+    <?= faviconLinkTag() ?>    <title>Reports - ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= interFontTags() ?>
     <?= adminLayoutHeadStyles('report') ?>
@@ -193,7 +191,7 @@ $recordsJumpDesc = sprintf(
             <?php
             ob_start();
             ?>
-                        <form id="reportExportForm" method="GET" action="<?= htmlspecialchars(buildAuthUrl('report.php')) ?>" class="hidden">
+                        <form id="reportExportForm" method="GET" action="<?= htmlspecialchars(buildAuthUrl('report.php')) ?>" class="hidden" data-no-loading>
                             <input type="hidden" name="action" value="export">
                             <input type="hidden" name="sections" id="reportExportSectionsField" value="">
                             <input type="hidden" name="records_type" id="reportExportRecordsTypeField" value="all">

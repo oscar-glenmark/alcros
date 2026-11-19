@@ -66,8 +66,6 @@ if (!$context['ok']) {
             $paperW = printOfficialPaperWidthMm();
             $paperH = printOfficialPaperHeightMm();
         }
-        $paperSizeLabel = printPaperSizeLabel($paperW, $paperH, true);
-        $paperSizeTitle = printPaperSizeLabel($paperW, $paperH);
     }
 }
 
@@ -79,7 +77,6 @@ $printModeSetting = printMode();
 <head>
     <meta charset="UTF-8">
     <?= faviconLinkTag() ?>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($pageTitle) ?> · ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= interFontTags() ?>
@@ -142,10 +139,6 @@ $printModeSetting = printMode();
                     <div class="print-cert-summary__item">
                         <span class="print-cert-label">Print Mode</span>
                         <strong><?= $printModeSetting === 'digital' ? 'Digital Form' : 'Pre-printed Overlay' ?></strong>
-                    </div>
-                    <div class="print-cert-summary__item print-cert-summary__item--paper">
-                        <span class="print-cert-label">Paper Size</span>
-                        <strong title="<?= htmlspecialchars($paperSizeTitle) ?>"><?= htmlspecialchars($paperSizeLabel) ?></strong>
                     </div>
                     <div class="print-cert-summary__item print-cert-summary__item--copies">
                         <label class="print-cert-label" for="printCopies">Copies</label>

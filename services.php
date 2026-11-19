@@ -23,6 +23,7 @@ $appointmentServices = getAppointmentServices();
 $requirementsModalMeta = appointmentServiceRequirementsModalMeta();
 
 $currentPage = basename($_SERVER['PHP_SELF']);
+$citizenMobileTab = 'services';
 
 $year = date('Y');
 
@@ -38,7 +39,7 @@ $year = date('Y');
 
     <?= faviconLinkTag() ?>
 
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <?= alcrosCitizenHeadMeta() ?>
 
     <title>All Services - ALCROS</title>
 
@@ -98,6 +99,8 @@ $year = date('Y');
 
                 <div class="flex items-center gap-2 shrink-0">
 
+                    <?= citizenStaffLoginHeaderLink() ?>
+
                     <button type="button" id="citizenMobileNavToggle" class="lg:hidden p-2 text-white" aria-label="Open menu">
 
                         <i data-lucide="menu" class="w-6 h-6"></i>
@@ -141,14 +144,6 @@ $year = date('Y');
         <section class="citizen-page-hero">
 
             <div class="max-w-6xl mx-auto">
-
-                <a href="index.php" class="back-home back-home--inline is-centered">
-
-                    <i data-lucide="chevron-left" class="back-home__icon w-3 h-3"></i>
-
-                    <span>Back to Home</span>
-
-                </a>
 
                 <h1>All Civil Registry Services</h1>
 
@@ -322,6 +317,7 @@ $year = date('Y');
         </div>
     </div>
 
+    <?php require __DIR__ . '/includes/citizen_mobile_tabbar.php'; ?>
     <?php require __DIR__ . '/includes/track_floating.php'; ?>
 
     <?= scriptTag('public/track-floating.js') ?>

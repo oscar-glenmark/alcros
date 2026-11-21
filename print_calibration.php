@@ -179,7 +179,7 @@ if (!$formDefaults && !empty($fields[0])) {
     <?= adminLayoutHeadStyles('print-calibration') ?>
     <?= vendorScriptTag('lucide.min.js') ?>
 </head>
-<body class="flex min-h-screen print-cal-body--<?= htmlspecialchars($certificateType) ?><?= $isCertification ? ' print-cal-body--certification' : '' ?>">
+<body class="flex min-h-screen admin-portal print-cal-body--<?= htmlspecialchars($certificateType) ?><?= $isCertification ? ' print-cal-body--certification' : '' ?>">
 <?php require __DIR__ . '/includes/admin_sidebar.php'; ?>
 <main class="admin-main">
     <?php require __DIR__ . '/includes/admin_header.php'; ?>

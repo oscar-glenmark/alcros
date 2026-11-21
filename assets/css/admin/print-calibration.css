@@ -1209,3 +1209,62 @@ body.print-cal-leave-open {
     }
 }
 
+/* Phones: page scrolls (desktop uses fixed viewport + inner panes). */
+@media (max-width: 639px) {
+    .admin-main > .admin-content.print-cal-page {
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+        overscroll-behavior-y: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .print-cal-page {
+        flex: 0 1 auto;
+        min-height: auto;
+    }
+
+    .print-cal-layout {
+        flex: 0 1 auto;
+        min-height: auto;
+    }
+
+    .print-cal-sidebar {
+        overflow: visible;
+        max-height: none;
+    }
+
+    .print-cal-sidebar > .print-cal-panel {
+        overflow: visible;
+        max-height: none;
+    }
+
+    .print-cal-sidebar > .print-cal-panel[data-panel="fields"] {
+        overflow: visible;
+        display: block;
+    }
+
+    .print-cal-fields-split {
+        display: flex;
+        flex-direction: column;
+        min-height: auto;
+    }
+
+    .print-cal-fields-list-pane,
+    .print-cal-fields-editor-pane,
+    .print-cal-field-controls {
+        max-height: none;
+        overflow: visible;
+    }
+
+    .print-cal-fields-list-pane .print-cal-field-list {
+        max-height: 14rem;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .print-cal-field-controls-scroll {
+        overflow: visible;
+        max-height: none;
+    }
+}
+

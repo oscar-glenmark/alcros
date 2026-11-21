@@ -63,7 +63,7 @@ $faqs = [
     <?= vendorScriptTag('lucide.min.js') ?>
     <?= publicStylesheet('landing') ?>
 </head>
-<body class="bg-white">
+<body class="bg-white citizen-portal">
 
     <!-- HEADER -->
     <header class="site-header sticky top-0 z-50">
@@ -118,8 +118,6 @@ $faqs = [
                     <p class="text-gold text-4xl md:text-5xl lg:text-6xl font-black tracking-tight mb-4">ALCROS</p>
                     <p class="text-white text-lg md:text-xl font-semibold mb-3">Access Civil Registry Services Easily and Securely Online</p>
                     <p class="text-white/75 text-sm md:text-base leading-relaxed mb-8 max-w-lg">
-                        Request birth, death, and marriage certificates without visiting the office. Track your application status anytime, anywhere.
-                    </p>
                     <div class="flex flex-col sm:flex-row gap-3">
                         <?php if ($publicRequestsAllowed && !$maintenanceMode): ?>
                         <a href="request.php?entry=hero" class="btn-gold inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-sm">

@@ -1,7 +1,9 @@
-@import url('../core/mobile-shell.css');
-
 :root {
     --citizen-mobile-tabbar-height: calc(3.625rem + var(--alcros-safe-bottom));
+    --citizen-tab-orange-hover: var(--alcros-mobile-tab-orange-hover);
+    --citizen-tab-orange-strong: var(--alcros-mobile-tab-orange-strong);
+    --citizen-tab-orange-soft: var(--alcros-mobile-tab-orange-soft);
+    --citizen-tab-orange-active-bg: var(--alcros-mobile-tab-orange-active-bg);
 }
 
 .citizen-mobile-shell {
@@ -100,8 +102,8 @@
 
     .citizen-mobile-more-item:hover,
     .citizen-mobile-more-item:focus-visible {
-        background: #f8fafc;
-        color: #0f172a;
+        background: var(--citizen-tab-orange-soft);
+        color: var(--citizen-tab-orange-hover);
     }
 
     .citizen-mobile-more-item__icon.lucide {
@@ -175,10 +177,32 @@
         flex-shrink: 0;
     }
 
+    body.citizen-portal .citizen-mobile-tab:hover,
+    body.citizen-portal .citizen-mobile-tab:focus-visible {
+        color: var(--citizen-tab-orange-hover);
+        background: var(--citizen-tab-orange-soft);
+    }
+
     body.citizen-portal .citizen-mobile-tab.is-active,
-    body.citizen-portal .citizen-mobile-tab.is-open {
-        color: #1d4ed8;
-        background: #eff6ff;
+    body.citizen-portal .citizen-mobile-tab.is-open,
+    body.citizen-portal .citizen-mobile-tab.is-active:hover,
+    body.citizen-portal .citizen-mobile-tab.is-open:hover {
+        color: var(--citizen-tab-orange-strong);
+        background: var(--citizen-tab-orange-active-bg);
+    }
+
+    body.citizen-portal .citizen-mobile-tab.is-active,
+    body.citizen-portal .citizen-mobile-tab.is-open,
+    body.citizen-portal .citizen-mobile-tab.is-active span,
+    body.citizen-portal .citizen-mobile-tab.is-open span {
+        color: var(--citizen-tab-orange-strong) !important;
+    }
+
+    body.citizen-portal .citizen-mobile-tab.is-active svg.lucide,
+    body.citizen-portal .citizen-mobile-tab.is-open svg.lucide,
+    body.citizen-portal .citizen-mobile-tab:hover svg.lucide,
+    body.citizen-portal .citizen-mobile-tab:focus-visible svg.lucide {
+        stroke: currentColor !important;
     }
 
     body.citizen-portal.citizen-mobile-more-open .citizen-mobile-tabbar {

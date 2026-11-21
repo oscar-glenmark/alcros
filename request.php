@@ -507,7 +507,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
     <?= publicStylesheet('id-upload') ?>
     <?= publicStylesheet('back-home') ?>
 </head>
-<body class="citizen-site">
+<body class="citizen-site citizen-portal">
 
     <header class="citizen-site-header">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

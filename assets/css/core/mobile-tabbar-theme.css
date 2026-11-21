@@ -1,0 +1,47 @@
+/**
+ * Mobile bottom tab bar colors (citizen + staff/admin).
+ * Loaded with ?v=filemtime — do not @import this file from other CSS.
+ */
+@media (max-width: 639px) {
+    .citizen-mobile-tabbar .citizen-mobile-tab:hover,
+    .citizen-mobile-tabbar .citizen-mobile-tab:focus-visible,
+    .citizen-mobile-tabbar .citizen-mobile-tab:active,
+    .citizen-mobile-tabbar .citizen-mobile-tab.is-pressed,
+    .admin-mobile-tabbar .admin-mobile-tab:hover,
+    .admin-mobile-tabbar .admin-mobile-tab:focus-visible,
+    .admin-mobile-tabbar .admin-mobile-tab:active,
+    .admin-mobile-tabbar .admin-mobile-tab.is-pressed {
+        color: #ea580c !important;
+        background: rgba(249, 115, 22, 0.16) !important;
+    }
+
+    .citizen-mobile-tabbar .citizen-mobile-tab.is-active,
+    .citizen-mobile-tabbar .citizen-mobile-tab.is-open,
+    .admin-mobile-tabbar .admin-mobile-tab.is-active,
+    .admin-mobile-tabbar .admin-mobile-tab.is-open {
+        color: #c2410c !important;
+        background: rgba(249, 115, 22, 0.22) !important;
+    }
+
+    .citizen-mobile-tabbar .citizen-mobile-tab svg.lucide,
+    .admin-mobile-tabbar .admin-mobile-tab svg.lucide {
+        stroke: currentColor !important;
+    }
+
+    .citizen-mobile-more-dropup .citizen-mobile-more-item:hover,
+    .citizen-mobile-more-dropup .citizen-mobile-more-item:focus-visible,
+    .citizen-mobile-more-dropup .citizen-mobile-more-item:active,
+    .citizen-mobile-more-dropup .citizen-mobile-more-item.is-pressed,
+    .admin-mobile-more-dropup .admin-mobile-more-item:hover,
+    .admin-mobile-more-dropup .admin-mobile-more-item:focus-visible,
+    .admin-mobile-more-dropup .admin-mobile-more-item:active,
+    .admin-mobile-more-dropup .admin-mobile-more-item.is-pressed {
+        background: rgba(249, 115, 22, 0.16) !important;
+        color: #ea580c !important;
+    }
+
+    .admin-mobile-more-dropup .admin-mobile-more-item.is-active {
+        background: rgba(249, 115, 22, 0.22) !important;
+        color: #c2410c !important;
+    }
+}

@@ -1,5 +1,4 @@
 @import url('../core/action-ui.css');
-@import url('../core/mobile-shell.css');
 
 :root {
     --admin-sidebar-width: 16rem;
@@ -1280,13 +1279,13 @@ body.admin-sidebar-minimized .admin-sidebar button {
 
     .admin-mobile-more-item:hover,
     .admin-mobile-more-item:focus-visible {
-        background: #f8fafc;
-        color: #0f172a;
+        background: var(--alcros-mobile-tab-orange-soft);
+        color: var(--alcros-mobile-tab-orange-hover);
     }
 
     .admin-mobile-more-item.is-active {
-        background: #eff6ff;
-        color: #1d4ed8;
+        background: var(--alcros-mobile-tab-orange-active-bg);
+        color: var(--alcros-mobile-tab-orange-strong);
     }
 
     .admin-mobile-more-item__icon.lucide {
@@ -1398,10 +1397,32 @@ body.admin-sidebar-minimized .admin-sidebar button {
         flex-shrink: 0;
     }
 
+    body.admin-portal .admin-mobile-tab:hover,
+    body.admin-portal .admin-mobile-tab:focus-visible {
+        color: var(--alcros-mobile-tab-orange-hover);
+        background: var(--alcros-mobile-tab-orange-soft);
+    }
+
     body.admin-portal .admin-mobile-tab.is-active,
-    body.admin-portal .admin-mobile-tab.is-open {
-        color: #2563eb;
-        background: #eff6ff;
+    body.admin-portal .admin-mobile-tab.is-open,
+    body.admin-portal .admin-mobile-tab.is-active:hover,
+    body.admin-portal .admin-mobile-tab.is-open:hover {
+        color: var(--alcros-mobile-tab-orange-strong);
+        background: var(--alcros-mobile-tab-orange-active-bg);
+    }
+
+    body.admin-portal .admin-mobile-tab.is-active,
+    body.admin-portal .admin-mobile-tab.is-open,
+    body.admin-portal .admin-mobile-tab.is-active span,
+    body.admin-portal .admin-mobile-tab.is-open span {
+        color: var(--alcros-mobile-tab-orange-strong) !important;
+    }
+
+    body.admin-portal .admin-mobile-tab:hover svg.lucide,
+    body.admin-portal .admin-mobile-tab:focus-visible svg.lucide,
+    body.admin-portal .admin-mobile-tab.is-active svg.lucide,
+    body.admin-portal .admin-mobile-tab.is-open svg.lucide {
+        stroke: currentColor !important;
     }
 
     body.admin-portal .admin-mobile-tab__badge {

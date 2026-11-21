@@ -25,8 +25,6 @@ $requirementsModalMeta = appointmentServiceRequirementsModalMeta();
 $currentPage = basename($_SERVER['PHP_SELF']);
 $citizenMobileTab = 'services';
 
-$year = date('Y');
-
 ?>
 
 <!DOCTYPE html>
@@ -55,7 +53,7 @@ $year = date('Y');
 
 </head>
 
-<body class="citizen-site">
+<body class="citizen-site citizen-portal">
 
 
 
@@ -242,38 +240,6 @@ $year = date('Y');
             </div>
 
         </section>
-
-        <footer class="citizen-footer py-6 px-6 sm:px-12 text-[10px]">
-
-            <div class="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
-
-                <div class="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 text-center sm:text-left">
-
-                    <div class="flex items-center justify-center gap-2">
-
-                        <?= alcrosFaviconImg(20, 'citizen-brand-logo w-5 h-5') ?>
-
-                        <span class="font-bold text-white text-[11px]"><?= htmlspecialchars($site['name']) ?></span>
-
-                    </div>
-
-                    <span class="text-white/50">&copy; <?= htmlspecialchars($year) ?> Aloran Civil Registry Office. All rights reserved.</span>
-
-                </div>
-
-                <div class="flex gap-4">
-
-                    <a href="index.php">Home</a>
-
-                    <button type="button" data-open-track class="bg-transparent border-0 p-0 cursor-pointer">Track</button>
-
-                    <a href="privacy.php">Privacy & Safety</a>
-
-                </div>
-
-            </div>
-
-        </footer>
 
     </main>
 

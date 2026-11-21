@@ -30,6 +30,8 @@ function stylesheetTag(string $path): string
 function adminCoreStyles(): string
 {
     return stylesheetTag('admin/shell.css') . "\n    "
+        . stylesheetTag('core/mobile-shell.css') . "\n    "
+        . stylesheetTag('core/mobile-tabbar-theme.css') . "\n    "
         . stylesheetTag('admin/notifications.css') . "\n    "
         . stylesheetTag('admin/print-layout.css') . "\n    "
         . stylesheetTag('admin/date-picker.css');
@@ -96,7 +98,14 @@ function adminLayoutHeadStyles(?string $page = null): string
 
 function publicStylesheet(string $name): string
 {
-    return stylesheetTag('public/' . $name . '.css');
+    $out = stylesheetTag('public/' . $name . '.css');
+    if ($name === 'landing' || $name === 'citizen-site') {
+        $out .= "\n    " . stylesheetTag('core/mobile-shell.css');
+        $out .= "\n    " . stylesheetTag('public/citizen-mobile-tabbar.css');
+        $out .= "\n    " . stylesheetTag('core/mobile-tabbar-theme.css');
+    }
+
+    return $out;
 }
 
 function jsAsset(string $path): string
@@ -239,6 +248,7 @@ function adminCoreScripts(): string
 {
     $scripts = [
         'admin/sidebar.js',
+        'core/mobile-tab-press.js',
         'core/date-display.js',
         'core/print-fill-dates.js',
         'core/admin-auth.js',

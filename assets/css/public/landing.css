@@ -1,6 +1,4 @@
 @import url('../../vendor/inter/inter.css');
-@import url('../core/mobile-shell.css');
-@import url('citizen-mobile-tabbar.css');
 
 html { scroll-behavior: smooth; }
 body { font-family: 'Inter', sans-serif; color: #1e293b; }

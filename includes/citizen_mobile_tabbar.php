@@ -78,4 +78,5 @@ function citizenMobileMoreLink(string $href, string $label, string $icon): strin
     </nav>
 </div>
 <script>(function(){try{document.body.classList.add('citizen-portal');}catch(e){}})();</script>
+<?= scriptTag('core/mobile-tab-press.js') ?>
 <?= scriptTag('public/citizen-mobile-tabbar.js') ?>

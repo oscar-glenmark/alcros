@@ -9,10 +9,14 @@
     --alcros-safe-bottom: env(safe-area-inset-bottom, 0px);
     --alcros-safe-left: env(safe-area-inset-left, 0px);
     --alcros-touch-min: 2.75rem;
+    --alcros-mobile-tab-orange-hover: #ea580c;
+    --alcros-mobile-tab-orange-strong: #c2410c;
+    --alcros-mobile-tab-orange-soft: rgba(249, 115, 22, 0.14);
+    --alcros-mobile-tab-orange-active-bg: rgba(249, 115, 22, 0.18);
 }
 
 @media (max-width: 639px) {
-  input[type='text'],
+    input[type='text'],
     input[type='email'],
     input[type='password'],
     input[type='tel'],
@@ -24,5 +28,78 @@
     select,
     textarea {
         font-size: 1rem;
+    }
+
+    /* Bottom tab bars: phones have no :hover — use :active + .is-pressed for orange feedback */
+    body.citizen-portal .citizen-mobile-tab,
+    body.admin-portal .admin-mobile-tab {
+        touch-action: manipulation;
+    }
+
+    body.citizen-portal .citizen-mobile-tab:hover,
+    body.citizen-portal .citizen-mobile-tab:focus-visible,
+    body.citizen-portal .citizen-mobile-tab:active,
+    body.citizen-portal .citizen-mobile-tab.is-pressed,
+    body.admin-portal .admin-mobile-tab:hover,
+    body.admin-portal .admin-mobile-tab:focus-visible,
+    body.admin-portal .admin-mobile-tab:active,
+    body.admin-portal .admin-mobile-tab.is-pressed {
+        color: var(--alcros-mobile-tab-orange-hover);
+        background: var(--alcros-mobile-tab-orange-soft);
+    }
+
+    body.citizen-portal .citizen-mobile-tab.is-active,
+    body.citizen-portal .citizen-mobile-tab.is-open,
+    body.citizen-portal .citizen-mobile-tab.is-active:hover,
+    body.citizen-portal .citizen-mobile-tab.is-open:hover,
+    body.citizen-portal .citizen-mobile-tab.is-active:active,
+    body.citizen-portal .citizen-mobile-tab.is-open:active,
+    body.citizen-portal .citizen-mobile-tab.is-active.is-pressed,
+    body.citizen-portal .citizen-mobile-tab.is-open.is-pressed,
+    body.admin-portal .admin-mobile-tab.is-active,
+    body.admin-portal .admin-mobile-tab.is-open,
+    body.admin-portal .admin-mobile-tab.is-active:hover,
+    body.admin-portal .admin-mobile-tab.is-open:hover,
+    body.admin-portal .admin-mobile-tab.is-active:active,
+    body.admin-portal .admin-mobile-tab.is-open:active,
+    body.admin-portal .admin-mobile-tab.is-active.is-pressed,
+    body.admin-portal .admin-mobile-tab.is-open.is-pressed {
+        color: var(--alcros-mobile-tab-orange-strong);
+        background: var(--alcros-mobile-tab-orange-active-bg);
+    }
+
+    body.citizen-portal .citizen-mobile-tab:hover svg.lucide,
+    body.citizen-portal .citizen-mobile-tab:focus-visible svg.lucide,
+    body.citizen-portal .citizen-mobile-tab:active svg.lucide,
+    body.citizen-portal .citizen-mobile-tab.is-pressed svg.lucide,
+    body.citizen-portal .citizen-mobile-tab.is-active svg.lucide,
+    body.citizen-portal .citizen-mobile-tab.is-open svg.lucide,
+    body.admin-portal .admin-mobile-tab:hover svg.lucide,
+    body.admin-portal .admin-mobile-tab:focus-visible svg.lucide,
+    body.admin-portal .admin-mobile-tab:active svg.lucide,
+    body.admin-portal .admin-mobile-tab.is-pressed svg.lucide,
+    body.admin-portal .admin-mobile-tab.is-active svg.lucide,
+    body.admin-portal .admin-mobile-tab.is-open svg.lucide {
+        stroke: currentColor;
+    }
+
+    .citizen-mobile-more-item:hover,
+    .citizen-mobile-more-item:focus-visible,
+    .citizen-mobile-more-item:active,
+    .citizen-mobile-more-item.is-pressed,
+    .admin-mobile-more-item:hover,
+    .admin-mobile-more-item:focus-visible,
+    .admin-mobile-more-item:active,
+    .admin-mobile-more-item.is-pressed {
+        background: var(--alcros-mobile-tab-orange-soft);
+        color: var(--alcros-mobile-tab-orange-hover);
+    }
+
+    .admin-mobile-more-item.is-active,
+    .admin-mobile-more-item.is-active:hover,
+    .admin-mobile-more-item.is-active:active,
+    .admin-mobile-more-item.is-active.is-pressed {
+        background: var(--alcros-mobile-tab-orange-active-bg);
+        color: var(--alcros-mobile-tab-orange-strong);
     }
 }

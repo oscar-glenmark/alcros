@@ -67,7 +67,7 @@ $sections = [
     <?= publicStylesheet('back-home') ?>
     <?= publicStylesheet('privacy') ?>
 </head>
-<body class="bg-white">
+<body class="bg-white citizen-portal">
 
     <header class="site-header sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -88,23 +88,6 @@ $sections = [
                     <a href="index.php#faqs" class="nav-link">FAQs</a>
                     <a href="index.php#contact" class="nav-link">Contact Us</a>
                 </nav>
-
-                <div class="flex items-center gap-2 shrink-0">
-                    <button type="button" id="mobileNavToggle" class="lg:hidden p-2 text-white" aria-label="Open menu">
-                        <i data-lucide="menu" class="w-6 h-6"></i>
-                    </button>
-                </div>
-            </div>
-
-            <div id="mobileNav" class="hidden lg:hidden pb-4 border-t border-white/10 pt-3">
-                <div class="flex flex-col gap-1">
-                    <a href="index.php" class="nav-link">Home</a>
-                    <a href="index.php#services" class="nav-link">Services</a>
-                    <button type="button" data-open-track class="nav-link text-left cursor-pointer bg-transparent border-0">Track Request</button>
-                    <a href="index.php#about" class="nav-link">About</a>
-                    <a href="index.php#faqs" class="nav-link">FAQs</a>
-                    <a href="index.php#contact" class="nav-link">Contact Us</a>
-                </div>
             </div>
         </div>
     </header>
@@ -232,6 +215,10 @@ $sections = [
         </div>
     </footer>
 
+    <?php
+    $citizenMobileTab = 'privacy';
+    require __DIR__ . '/includes/citizen_mobile_tabbar.php';
+    ?>
     <?php require __DIR__ . '/includes/track_floating.php'; ?>
     <?= scriptTag('public/track-floating.js') ?>
     <?php require __DIR__ . '/includes/maintenance_announcement.php'; ?>

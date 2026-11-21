@@ -1279,13 +1279,13 @@ body.admin-sidebar-minimized .admin-sidebar button {
 
     .admin-mobile-more-item:hover,
     .admin-mobile-more-item:focus-visible {
-        background: var(--alcros-mobile-tab-orange-soft);
-        color: var(--alcros-mobile-tab-orange-hover);
+        background: var(--alcros-mobile-tab-gold-soft);
+        color: var(--alcros-mobile-tab-gold-hover);
     }
 
     .admin-mobile-more-item.is-active {
-        background: var(--alcros-mobile-tab-orange-active-bg);
-        color: var(--alcros-mobile-tab-orange-strong);
+        background: var(--alcros-mobile-tab-gold-active-bg);
+        color: var(--alcros-mobile-tab-gold-strong);
     }
 
     .admin-mobile-more-item__icon.lucide {
@@ -1399,23 +1399,23 @@ body.admin-sidebar-minimized .admin-sidebar button {
 
     body.admin-portal .admin-mobile-tab:hover,
     body.admin-portal .admin-mobile-tab:focus-visible {
-        color: var(--alcros-mobile-tab-orange-hover);
-        background: var(--alcros-mobile-tab-orange-soft);
+        color: var(--alcros-mobile-tab-gold-hover);
+        background: var(--alcros-mobile-tab-gold-soft);
     }
 
     body.admin-portal .admin-mobile-tab.is-active,
     body.admin-portal .admin-mobile-tab.is-open,
     body.admin-portal .admin-mobile-tab.is-active:hover,
     body.admin-portal .admin-mobile-tab.is-open:hover {
-        color: var(--alcros-mobile-tab-orange-strong);
-        background: var(--alcros-mobile-tab-orange-active-bg);
+        color: var(--alcros-mobile-tab-gold-strong);
+        background: var(--alcros-mobile-tab-gold-active-bg);
     }
 
     body.admin-portal .admin-mobile-tab.is-active,
     body.admin-portal .admin-mobile-tab.is-open,
     body.admin-portal .admin-mobile-tab.is-active span,
     body.admin-portal .admin-mobile-tab.is-open span {
-        color: var(--alcros-mobile-tab-orange-strong) !important;
+        color: var(--alcros-mobile-tab-gold-strong) !important;
     }
 
     body.admin-portal .admin-mobile-tab:hover svg.lucide,

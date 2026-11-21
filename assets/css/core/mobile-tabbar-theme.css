@@ -11,16 +11,16 @@
     .admin-mobile-tabbar .admin-mobile-tab:focus-visible,
     .admin-mobile-tabbar .admin-mobile-tab:active,
     .admin-mobile-tabbar .admin-mobile-tab.is-pressed {
-        color: #ea580c !important;
-        background: rgba(249, 115, 22, 0.16) !important;
+        color: #b45309 !important;
+        background: rgba(244, 180, 0, 0.22) !important;
     }
 
     .citizen-mobile-tabbar .citizen-mobile-tab.is-active,
     .citizen-mobile-tabbar .citizen-mobile-tab.is-open,
     .admin-mobile-tabbar .admin-mobile-tab.is-active,
     .admin-mobile-tabbar .admin-mobile-tab.is-open {
-        color: #c2410c !important;
-        background: rgba(249, 115, 22, 0.22) !important;
+        color: #92400e !important;
+        background: rgba(244, 180, 0, 0.38) !important;
     }
 
     .citizen-mobile-tabbar .citizen-mobile-tab svg.lucide,
@@ -36,12 +36,12 @@
     .admin-mobile-more-dropup .admin-mobile-more-item:focus-visible,
     .admin-mobile-more-dropup .admin-mobile-more-item:active,
     .admin-mobile-more-dropup .admin-mobile-more-item.is-pressed {
-        background: rgba(249, 115, 22, 0.16) !important;
-        color: #ea580c !important;
+        background: rgba(244, 180, 0, 0.22) !important;
+        color: #b45309 !important;
     }
 
     .admin-mobile-more-dropup .admin-mobile-more-item.is-active {
-        background: rgba(249, 115, 22, 0.22) !important;
-        color: #c2410c !important;
+        background: rgba(244, 180, 0, 0.38) !important;
+        color: #92400e !important;
     }
 }

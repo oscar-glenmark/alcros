@@ -1,9 +1,9 @@
 :root {
     --citizen-mobile-tabbar-height: calc(3.625rem + var(--alcros-safe-bottom));
-    --citizen-tab-orange-hover: var(--alcros-mobile-tab-orange-hover);
-    --citizen-tab-orange-strong: var(--alcros-mobile-tab-orange-strong);
-    --citizen-tab-orange-soft: var(--alcros-mobile-tab-orange-soft);
-    --citizen-tab-orange-active-bg: var(--alcros-mobile-tab-orange-active-bg);
+    --citizen-tab-gold-hover: var(--alcros-mobile-tab-gold-hover);
+    --citizen-tab-gold-strong: var(--alcros-mobile-tab-gold-strong);
+    --citizen-tab-gold-soft: var(--alcros-mobile-tab-gold-soft);
+    --citizen-tab-gold-active-bg: var(--alcros-mobile-tab-gold-active-bg);
 }
 
 .citizen-mobile-shell {
@@ -102,8 +102,8 @@
 
     .citizen-mobile-more-item:hover,
     .citizen-mobile-more-item:focus-visible {
-        background: var(--citizen-tab-orange-soft);
-        color: var(--citizen-tab-orange-hover);
+        background: var(--citizen-tab-gold-soft);
+        color: var(--citizen-tab-gold-hover);
     }
 
     .citizen-mobile-more-item__icon.lucide {
@@ -179,23 +179,23 @@
 
     body.citizen-portal .citizen-mobile-tab:hover,
     body.citizen-portal .citizen-mobile-tab:focus-visible {
-        color: var(--citizen-tab-orange-hover);
-        background: var(--citizen-tab-orange-soft);
+        color: var(--citizen-tab-gold-hover);
+        background: var(--citizen-tab-gold-soft);
     }
 
     body.citizen-portal .citizen-mobile-tab.is-active,
     body.citizen-portal .citizen-mobile-tab.is-open,
     body.citizen-portal .citizen-mobile-tab.is-active:hover,
     body.citizen-portal .citizen-mobile-tab.is-open:hover {
-        color: var(--citizen-tab-orange-strong);
-        background: var(--citizen-tab-orange-active-bg);
+        color: var(--citizen-tab-gold-strong);
+        background: var(--citizen-tab-gold-active-bg);
     }
 
     body.citizen-portal .citizen-mobile-tab.is-active,
     body.citizen-portal .citizen-mobile-tab.is-open,
     body.citizen-portal .citizen-mobile-tab.is-active span,
     body.citizen-portal .citizen-mobile-tab.is-open span {
-        color: var(--citizen-tab-orange-strong) !important;
+        color: var(--citizen-tab-gold-strong) !important;
     }
 
     body.citizen-portal .citizen-mobile-tab.is-active svg.lucide,

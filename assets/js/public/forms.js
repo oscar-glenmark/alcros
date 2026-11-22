@@ -599,6 +599,27 @@
         return ok;
     }
 
+    function initAppointmentServicePicker() {
+        var main = document.getElementById('appointmentServiceSelect');
+        var psaWrap = document.getElementById('psaDocumentTypeWrap');
+        var psaSelect = document.getElementById('psaDocumentTypeSelect');
+        if (!main || !psaWrap) return;
+
+        function syncPsaFields() {
+            var isPsa = main.value === 'request-psa-documents';
+            psaWrap.classList.toggle('hidden', !isPsa);
+            if (psaSelect) {
+                psaSelect.required = isPsa;
+                if (!isPsa) {
+                    psaSelect.value = '';
+                }
+            }
+        }
+
+        main.addEventListener('change', syncPsaFields);
+        syncPsaFields();
+    }
+
     function initScheduleSubmitGate() {
         var scheduleForm = document.getElementById('requestScheduleForm');
         if (!scheduleForm) return;
@@ -693,7 +714,8 @@
         initCivilRecordCheck: initCivilRecordCheck,
         initScheduleSubmitGate: initScheduleSubmitGate,
         initFileInputLabels: initFileInputLabels,
-        initIdUploadPreview: initIdUploadPreview
+        initIdUploadPreview: initIdUploadPreview,
+        initAppointmentServicePicker: initAppointmentServicePicker
     };
 
     document.addEventListener('DOMContentLoaded', function () {
@@ -708,7 +730,8 @@
                     id_back: 'Back side of your valid ID',
                     first_name: 'First name',
                     last_name: 'Last name',
-                    service_type: 'Service type',
+                    service: 'Service type',
+                    service_type: 'PSA document type',
                     appointment_date: 'Preferred date',
                     appointment_time: 'Preferred time'
                 }
@@ -719,6 +742,9 @@
         }
         if (document.getElementById('idFront') || document.getElementById('idBack')) {
             initFileInputLabels((document.body.dataset.fileInputLabels || 'idFront,idBack').split(','));
+        }
+        if (document.getElementById('appointmentServiceSelect')) {
+            initAppointmentServicePicker();
         }
     });
 })();

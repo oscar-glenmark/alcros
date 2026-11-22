@@ -9,10 +9,13 @@ require_once __DIR__ . '/includes/scripts.php';
 $currentPage = basename($_SERVER['PHP_SELF']);
 $citizenMobileTab = 'book';
 
-$service = $_GET['service'] ?? $_POST['service'] ?? '';
+$service = trim((string) ($_GET['service'] ?? $_POST['service'] ?? ''));
 $serviceLabel = appointmentServiceLabel($service);
 $isPsaDocumentsBooking = isPsaDocumentsAppointmentService($service);
 $psaDocumentTypes = getPsaDocumentAppointmentTypes();
+$appointmentServices = getAppointmentServices();
+$servicePreselectedFromServices = trim((string) ($_GET['service'] ?? '')) !== '';
+$showAppointmentServicePicker = !$servicePreselectedFromServices;
 $success = null;
 $error = null;
 $appointmentCode = null;
@@ -30,8 +33,10 @@ if ($isPsaDocumentsBooking) {
     $serviceType = $_SERVER['REQUEST_METHOD'] === 'POST'
         ? normalizePsaAppointmentServiceType(trim($_POST['service_type'] ?? ''))
         : '';
+} elseif ($service !== '') {
+    $serviceType = appointmentServiceLabel($service);
 } else {
-    $serviceType = appointmentServiceLabel(trim($_POST['service_type'] ?? $service));
+    $serviceType = '';
 }
 $postedPsaTypeKey = $isPsaDocumentsBooking && $_SERVER['REQUEST_METHOD'] === 'POST'
     ? trim($_POST['service_type'] ?? '')
@@ -44,8 +49,12 @@ $gmailVerified = isGmailVerifiedInSession($email);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     requirePublicPostCsrf();
-    if (($nameError = validatePersonNameParts($nameParts)) !== null || $serviceType === '' || $date === '' || $time === '') {
+    if (($nameError = validatePersonNameParts($nameParts)) !== null || $date === '' || $time === '') {
         $error = $nameError ?? 'Please complete all required fields.';
+    } elseif ($service === '' || !isAllowedAppointmentServiceSlug($service)) {
+        $error = 'Please select a service type.';
+    } elseif ($serviceType === '') {
+        $error = 'Please select a service type.';
     } elseif ($isPsaDocumentsBooking && !isAllowedPsaAppointmentServiceType($serviceType)) {
         $error = 'Please select a PSA document type (birth, death, or marriage certificates).';
     } elseif (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
@@ -338,7 +347,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php $idUploadErrors = citizenIdUploadInlineErrors($error); ?>
         <form method="POST" enctype="multipart/form-data" class="citizen-request-card p-4 sm:p-6 md:p-8 space-y-4" id="bookAppointmentForm" data-slot-type="standalone">
             <?= publicCsrfField() ?>
+            <?php if ($service !== ''): ?>
             <input type="hidden" name="service" value="<?= htmlspecialchars($service) ?>">
+            <?php endif; ?>
             <input type="hidden" name="email_verified" id="emailVerified" value="<?= $gmailVerified ? '1' : '0' ?>">
             <input type="hidden" name="notify_email" id="notifyEmailHidden" value="<?= $notifyEmail ? '1' : '0' ?>">
             <input type="hidden" name="notify_sms" id="notifySmsHidden" value="<?= $notifySms ? '1' : '0' ?>">
@@ -358,7 +369,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <div>
                 <label class="block text-[11px] font-bold mb-1">Service Type *</label>
-                <?php if ($isPsaDocumentsBooking): ?>
+                <?php if ($showAppointmentServicePicker): ?>
+                <select name="service" id="appointmentServiceSelect" required class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
+                    <option value="" disabled <?= $service === '' ? 'selected' : '' ?>>Select a service</option>
+                    <?php foreach ($appointmentServices as $svc): ?>
+                    <option value="<?= htmlspecialchars($svc['slug']) ?>" <?= $service === $svc['slug'] ? 'selected' : '' ?>><?= htmlspecialchars($svc['label']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <p class="text-[10px] text-gray-500 mt-1">Choose the special civil registry service you need to book.</p>
+                <div id="psaDocumentTypeWrap" class="hidden mt-3">
+                    <label class="block text-[11px] font-bold mb-1">PSA document *</label>
+                    <select name="service_type" id="psaDocumentTypeSelect" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
+                        <option value="" disabled <?= $serviceType === '' && $postedPsaTypeKey === '' ? 'selected' : '' ?>>Select PSA document</option>
+                        <?php foreach ($psaDocumentTypes as $typeKey => $typeLabel): ?>
+                        <?php
+                        $typeSelected = $postedPsaTypeKey === $typeKey
+                            || ($postedPsaTypeKey === '' && $serviceType === $typeLabel);
+                        ?>
+                        <option value="<?= htmlspecialchars($typeKey) ?>" <?= $typeSelected ? 'selected' : '' ?>><?= htmlspecialchars($typeLabel) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <p class="text-[10px] text-gray-500 mt-1">Request PSA Documents — choose birth, death, or marriage certificates.</p>
+                </div>
+                <?php elseif ($isPsaDocumentsBooking): ?>
                 <select name="service_type" required class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
                     <option value="" disabled <?= $serviceType === '' && $postedPsaTypeKey === '' ? 'selected' : '' ?>>Select PSA document</option>
                     <?php foreach ($psaDocumentTypes as $typeKey => $typeLabel): ?>
@@ -371,7 +404,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </select>
                 <p class="text-[10px] text-gray-500 mt-1">Request PSA Documents — choose birth, death, or marriage certificates.</p>
                 <?php else: ?>
-                <input type="text" name="service_type" value="<?= htmlspecialchars($serviceType !== '' ? $serviceType : $serviceLabel) ?>" required placeholder="Service type" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
+                <p class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 font-semibold"><?= htmlspecialchars($serviceLabel !== '' ? $serviceLabel : $serviceType) ?></p>
                 <?php endif; ?>
             </div>
             <div class="grid grid-cols-2 gap-4">

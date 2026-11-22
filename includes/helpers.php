@@ -1544,6 +1544,21 @@ function getAppointmentServices(): array
     ];
 }
 
+function isAllowedAppointmentServiceSlug(string $slug): bool
+{
+    $slug = trim($slug);
+    if ($slug === '') {
+        return false;
+    }
+    foreach (getAppointmentServices() as $svc) {
+        if (($svc['slug'] ?? '') === $slug) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 /** @return array<string, string> option value => label stored on appointments.service_type */
 function getPsaDocumentAppointmentTypes(): array
 {

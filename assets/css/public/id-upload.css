@@ -89,6 +89,11 @@
     text-overflow: ellipsis;
 }
 
+.citizen-id-upload .citizen-field-error {
+    padding: 0.35rem 0.5rem 0.5rem;
+    text-align: center;
+}
+
 .citizen-id-upload__side {
     position: absolute;
     top: 0.5rem;

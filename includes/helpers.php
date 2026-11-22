@@ -3952,6 +3952,25 @@ function verifyCitizenCivilRecordFromInput(PDO $pdo, array $input): array
     );
 }
 
+/** @return array{front: ?string, back: ?string} Map citizen valid-ID errors to upload fields for inline display. */
+function citizenIdUploadInlineErrors(?string $error): array
+{
+    $out = ['front' => null, 'back' => null];
+    if ($error === null || $error === '') {
+        return $out;
+    }
+    if (!preg_match('/valid ID|ID (front|back)/i', $error)) {
+        return $out;
+    }
+    if (preg_match('/\bback\b/i', $error)) {
+        $out['back'] = $error;
+    } elseif (preg_match('/\bfront\b/i', $error)) {
+        $out['front'] = $error;
+    }
+
+    return $out;
+}
+
 function saveIdUpload(array $file, string $prefix): ?string
 {
     if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {

@@ -1,10 +1,24 @@
 (function () {
     'use strict';
 
+    function idUploadSideName(el) {
+        if (!el) return 'this';
+        if (el.name === 'id_back' || el.id === 'idBack') return 'back';
+        return 'front';
+    }
+
+    function idUploadErrorMessage(el, detail) {
+        var side = idUploadSideName(el);
+        if (detail) {
+            return 'An error occurred. ' + detail;
+        }
+        return 'An error occurred. Please upload the required valid ID (' + side + ' side).';
+    }
+
     function fieldContainer(el) {
         if (!el) return null;
         if (el.closest('[data-id-upload]')) {
-            return el.closest('[data-id-upload]').parentElement;
+            return el.closest('[data-id-upload]');
         }
         if (el.closest('.grid')) {
             return el.closest('.grid').parentElement;
@@ -118,8 +132,10 @@
 
             ok = false;
             var label = labels[el.name] || labels[el.id] || 'This field';
-            if (el.type === 'file') {
-                setFieldError(el, label + ' is required.');
+            if (el.type === 'file' && (el.name === 'id_front' || el.name === 'id_back')) {
+                setFieldError(el, idUploadErrorMessage(el));
+            } else if (el.type === 'file') {
+                setFieldError(el, 'An error occurred. ' + label + ' is required.');
             } else if (el.tagName === 'SELECT') {
                 setFieldError(el, 'Select ' + label.toLowerCase() + '.');
             } else if (el.pattern && String(el.value || '').trim() !== '') {
@@ -648,9 +664,19 @@
                 reader.readAsDataURL(file);
             }
 
+            input.addEventListener('invalid', function () {
+                setFieldError(input, idUploadErrorMessage(input));
+            });
+
             input.addEventListener('change', function () {
                 if (input.files && input.files[0]) {
                     showPreview(input.files[0]);
+                    input.setCustomValidity('');
+                    var err = label.querySelector('.citizen-field-error');
+                    if (err) {
+                        err.textContent = '';
+                        err.classList.add('hidden');
+                    }
                 } else {
                     showEmpty();
                 }

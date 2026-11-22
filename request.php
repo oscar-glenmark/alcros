@@ -266,17 +266,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
         } elseif (!isValidPhilippineMobile($phone)) {
             $error = 'Please enter a valid cellphone number (09XXXXXXXXX).';
         } elseif (empty($_FILES['id_front']['name']) && empty($draft['id_front_path'])) {
-            $error = 'Please upload the front side of your valid ID.';
+            $error = 'An error occurred. Please upload the required valid ID (front side).';
         } elseif (empty($_FILES['id_back']['name']) && empty($draft['id_back_path'])) {
-            $error = 'Please upload the back side of your valid ID.';
+            $error = 'An error occurred. Please upload the required valid ID (back side).';
         } else {
             $frontPath = saveIdUpload($_FILES['id_front'] ?? [], 'front');
             if (!empty($_FILES['id_front']['name']) && $frontPath === null) {
-                $error = 'Invalid ID front upload. Use JPG, PNG, WEBP, or PDF.';
+                $error = 'An error occurred. Invalid valid ID (front). Use JPG, PNG, WEBP, or PDF.';
             } else {
                 $backPath = saveIdUpload($_FILES['id_back'] ?? [], 'back');
                 if (!empty($_FILES['id_back']['name']) && $backPath === null) {
-                    $error = 'Invalid ID back upload. Use JPG, PNG, WEBP, or PDF.';
+                    $error = 'An error occurred. Invalid valid ID (back). Use JPG, PNG, WEBP, or PDF.';
                 } else {
                     $draft['email']           = $email;
                     $draft['email_verified']  = 1;
@@ -309,9 +309,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
         } elseif ($appointmentTime === '') {
             $error = 'Please select a preferred appointment time.';
         } elseif (empty($draft['id_front_path'])) {
-            $error = 'Please upload the front side of your valid ID (go back to Requirements).';
+            $error = 'An error occurred. Please upload the required valid ID (front side). Go back to Requirements.';
         } elseif (empty($draft['id_back_path'])) {
-            $error = 'Please upload the back side of your valid ID (go back to Requirements).';
+            $error = 'An error occurred. Please upload the required valid ID (back side). Go back to Requirements.';
         } else {
             $draft['appointment_date'] = $appointmentDate;
             $draft['appointment_time'] = $appointmentTime;
@@ -498,6 +498,7 @@ $showHeroIdentification = $isHeroFlow && $step === 2;
 $showCardIdentification = !$isHeroFlow && $step === 1;
 $showRequirements = ($step === $requirementsStep);
 $showAppointment = ($step === $appointmentStep);
+$idUploadErrors = $showRequirements ? citizenIdUploadInlineErrors($error) : ['front' => null, 'back' => null];
 $identBackStep = $isHeroFlow ? 2 : 1;
 
 $requestDocumentLabel = !empty($draft['document_type'])
@@ -867,7 +868,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
                     <label class="text-[11px] font-bold text-gray-700 mb-2 block">Upload Valid IDs (National ID / Driver's License) *</label>
                     <div class="grid grid-cols-2 gap-4">
                         <label class="citizen-id-upload" data-id-upload>
-                            <input type="file" name="id_front" accept="image/*,.pdf" class="hidden" id="idFront" <?= empty($draft['id_front_path']) ? 'required' : '' ?>>
+                            <input type="file" name="id_front" accept="image/*,.pdf" class="hidden<?= !empty($idUploadErrors['front']) ? ' is-invalid' : '' ?>" id="idFront" <?= empty($draft['id_front_path']) ? 'required' : '' ?><?= !empty($idUploadErrors['front']) ? ' aria-invalid="true"' : '' ?>>
                             <div class="citizen-id-upload__empty" data-id-upload-empty>
                                 <i data-lucide="upload" class="w-6 h-6 text-gray-300 mx-auto mb-2"></i>
                                 <p class="text-xs font-bold text-gray-600">Front Side</p>
@@ -882,9 +883,12 @@ $requestDocumentLabel = !empty($draft['document_type'])
                                 </div>
                                 <p class="citizen-id-upload__caption" data-id-upload-caption></p>
                             </div>
+                            <?php if (!empty($idUploadErrors['front'])): ?>
+                            <p class="citizen-field-error" role="alert"><?= htmlspecialchars($idUploadErrors['front']) ?></p>
+                            <?php endif; ?>
                         </label>
                         <label class="citizen-id-upload" data-id-upload>
-                            <input type="file" name="id_back" accept="image/*,.pdf" class="hidden" id="idBack" <?= empty($draft['id_back_path']) ? 'required' : '' ?>>
+                            <input type="file" name="id_back" accept="image/*,.pdf" class="hidden<?= !empty($idUploadErrors['back']) ? ' is-invalid' : '' ?>" id="idBack" <?= empty($draft['id_back_path']) ? 'required' : '' ?><?= !empty($idUploadErrors['back']) ? ' aria-invalid="true"' : '' ?>>
                             <div class="citizen-id-upload__empty" data-id-upload-empty>
                                 <i data-lucide="upload" class="w-6 h-6 text-gray-300 mx-auto mb-2"></i>
                                 <p class="text-xs font-bold text-gray-600">Back Side</p>
@@ -899,6 +903,9 @@ $requestDocumentLabel = !empty($draft['document_type'])
                                 </div>
                                 <p class="citizen-id-upload__caption" data-id-upload-caption></p>
                             </div>
+                            <?php if (!empty($idUploadErrors['back'])): ?>
+                            <p class="citizen-field-error" role="alert"><?= htmlspecialchars($idUploadErrors['back']) ?></p>
+                            <?php endif; ?>
                         </label>
                     </div>
                 </div>

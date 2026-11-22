@@ -60,18 +60,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!isValidPhilippineMobile($phone)) {
         $error = 'Please enter a valid cellphone number (09XXXXXXXXX).';
     } elseif (empty($_FILES['id_front']['name'])) {
-        $error = 'Please upload the front side of your valid ID.';
+        $error = 'An error occurred. Please upload the required valid ID (front side).';
     } elseif (empty($_FILES['id_back']['name'])) {
-        $error = 'Please upload the back side of your valid ID.';
+        $error = 'An error occurred. Please upload the required valid ID (back side).';
     } else {
         $frontPath = saveIdUpload($_FILES['id_front'] ?? [], 'front');
         $backPath = null;
         if ($frontPath === null) {
-            $error = 'Invalid ID front upload. Use JPG, PNG, WEBP, or PDF.';
+            $error = 'An error occurred. Invalid valid ID (front). Use JPG, PNG, WEBP, or PDF.';
         } else {
             $backPath = saveIdUpload($_FILES['id_back'] ?? [], 'back');
             if ($backPath === null) {
-                $error = 'Invalid ID back upload. Use JPG, PNG, WEBP, or PDF.';
+                $error = 'An error occurred. Invalid valid ID (back). Use JPG, PNG, WEBP, or PDF.';
                 deleteIdUploadFiles($frontPath);
             }
         }
@@ -335,6 +335,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?= scriptTag('core/page-config.js') ?>
         <?= scriptTag('public/request-success.js') ?>
         <?php else: ?>
+        <?php $idUploadErrors = citizenIdUploadInlineErrors($error); ?>
         <form method="POST" enctype="multipart/form-data" class="citizen-request-card p-4 sm:p-6 md:p-8 space-y-4" id="bookAppointmentForm" data-slot-type="standalone">
             <?= publicCsrfField() ?>
             <input type="hidden" name="service" value="<?= htmlspecialchars($service) ?>">
@@ -416,7 +417,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <label class="text-[11px] font-bold mb-2 block">Upload Valid IDs (National ID / Driver's License) *</label>
                 <div class="grid grid-cols-2 gap-4">
                     <label class="citizen-id-upload" data-id-upload>
-                        <input type="file" name="id_front" accept="image/*,.pdf" class="hidden" id="idFront" required>
+                        <input type="file" name="id_front" accept="image/*,.pdf" class="hidden<?= !empty($idUploadErrors['front']) ? ' is-invalid' : '' ?>" id="idFront" required<?= !empty($idUploadErrors['front']) ? ' aria-invalid="true"' : '' ?>>
                         <div class="citizen-id-upload__empty" data-id-upload-empty>
                             <i data-lucide="upload" class="w-6 h-6 text-gray-300 mx-auto mb-2"></i>
                             <p class="text-xs font-bold text-gray-600">Front Side</p>
@@ -431,9 +432,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </div>
                             <p class="citizen-id-upload__caption" data-id-upload-caption></p>
                         </div>
+                        <?php if (!empty($idUploadErrors['front'])): ?>
+                        <p class="citizen-field-error" role="alert"><?= htmlspecialchars($idUploadErrors['front']) ?></p>
+                        <?php endif; ?>
                     </label>
                     <label class="citizen-id-upload" data-id-upload>
-                        <input type="file" name="id_back" accept="image/*,.pdf" class="hidden" id="idBack" required>
+                        <input type="file" name="id_back" accept="image/*,.pdf" class="hidden<?= !empty($idUploadErrors['back']) ? ' is-invalid' : '' ?>" id="idBack" required<?= !empty($idUploadErrors['back']) ? ' aria-invalid="true"' : '' ?>>
                         <div class="citizen-id-upload__empty" data-id-upload-empty>
                             <i data-lucide="upload" class="w-6 h-6 text-gray-300 mx-auto mb-2"></i>
                             <p class="text-xs font-bold text-gray-600">Back Side</p>
@@ -448,6 +452,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </div>
                             <p class="citizen-id-upload__caption" data-id-upload-caption></p>
                         </div>
+                        <?php if (!empty($idUploadErrors['back'])): ?>
+                        <p class="citizen-field-error" role="alert"><?= htmlspecialchars($idUploadErrors['back']) ?></p>
+                        <?php endif; ?>
                     </label>
                 </div>
             </div>

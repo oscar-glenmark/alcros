@@ -409,8 +409,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                             'notify_sms'       => (int) ($draft['notify_sms'] ?? 0),
                         ]);
                         $emailSent = notifyRequestSubmitted($notifyPayload);
-                        require_once __DIR__ . '/includes/sms.php';
-                        notifyRequestSubmittedSms($notifyPayload);
+                        $smsSent = false;
+                        if (!empty($draft['notify_sms'])) {
+                            require_once __DIR__ . '/includes/sms.php';
+                            $smsSent = notifyRequestSubmittedSms($notifyPayload);
+                        }
                         maybeSendVisitSoonEmail($pdo, 'document_requests', $requestId);
 
                         runReminderSchedulerIfDue($pdo, 60);
@@ -428,6 +431,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                             'appointment_time' => $draft['appointment_time'],
                             'email_sent'       => $emailSent,
                             'notify_email'     => (int) ($draft['notify_email'] ?? 0),
+                            'notify_sms'       => (int) ($draft['notify_sms'] ?? 0),
+                            'sms_sent'         => $smsSent,
+                            'phone'            => $draft['phone'],
                         ];
                         unset($_SESSION['request_draft']);
                         header('Location: request.php?step=' . $successStep . '&success=1');
@@ -560,6 +566,13 @@ $requestDocumentLabel = !empty($draft['document_type'])
 
         <section class="max-w-2xl mx-auto px-4 pb-12">
         <?php if ($success && $step === $successStep && $successData): ?>
+        <?php
+        require_once __DIR__ . '/includes/sms.php';
+        $successNotifySms = !empty($successData['notify_sms']);
+        $successSmsSent = !empty($successData['sms_sent']);
+        $successPhone = trim((string) ($successData['phone'] ?? ''));
+        $smsUpdatesAvailable = isSmsEnabled() && isSmsConfigured();
+        ?>
         <div class="flex justify-center mb-10">
             <?php foreach ($stepLabels as $i => $s): ?>
             <div class="flex items-center <?= $i < $successStep ? 'flex-1' : '' ?>">
@@ -612,6 +625,22 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 <p class="citizen-request-notice citizen-request-notice--warn">
                     <i data-lucide="alert-circle" class="w-4 h-4 shrink-0 mt-0.5"></i>
                     <span>Gmail notifications were not enabled for this request, so confirmation and visit reminders will not be emailed. Please save your tracking code and use <strong>Track</strong> to follow your status.</span>
+                </p>
+                <?php endif; ?>
+                <?php if ($successNotifySms && $successSmsSent): ?>
+                <p class="citizen-request-notice citizen-request-notice--success">
+                    <i data-lucide="message-square" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                    <span>A text confirmation was sent to <strong><?= htmlspecialchars($successPhone) ?></strong>. You will also receive a text when staff verifies your request, when your status changes, and a reminder 1 hour before your visit.</span>
+                </p>
+                <?php elseif ($successNotifySms && $smsUpdatesAvailable): ?>
+                <p class="citizen-request-notice citizen-request-notice--warn">
+                    <i data-lucide="message-square" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                    <span>We could not send the text confirmation right now. Please save your tracking code and use <strong>Track</strong>. You can still receive texts when staff updates your request and before your visit.</span>
+                </p>
+                <?php elseif ($successNotifySms): ?>
+                <p class="citizen-request-notice citizen-request-notice--warn">
+                    <i data-lucide="message-square" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                    <span>You opted in to SMS updates, but text messaging is not fully set up for this office yet. Please save your tracking code and use <strong>Track</strong> for updates.</span>
                 </p>
                 <?php endif; ?>
             </div>

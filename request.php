@@ -267,6 +267,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
             $error = 'Please enter a valid cellphone number (09XXXXXXXXX).';
         } elseif (empty($_FILES['id_front']['name']) && empty($draft['id_front_path'])) {
             $error = 'Please upload the front side of your valid ID.';
+        } elseif (empty($_FILES['id_back']['name']) && empty($draft['id_back_path'])) {
+            $error = 'Please upload the back side of your valid ID.';
         } else {
             $frontPath = saveIdUpload($_FILES['id_front'] ?? [], 'front');
             if (!empty($_FILES['id_front']['name']) && $frontPath === null) {
@@ -306,6 +308,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
             $error = 'Appointment date cannot be in the past.';
         } elseif ($appointmentTime === '') {
             $error = 'Please select a preferred appointment time.';
+        } elseif (empty($draft['id_front_path'])) {
+            $error = 'Please upload the front side of your valid ID (go back to Requirements).';
+        } elseif (empty($draft['id_back_path'])) {
+            $error = 'Please upload the back side of your valid ID (go back to Requirements).';
         } else {
             $draft['appointment_date'] = $appointmentDate;
             $draft['appointment_time'] = $appointmentTime;
@@ -878,10 +884,10 @@ $requestDocumentLabel = !empty($draft['document_type'])
                             </div>
                         </label>
                         <label class="citizen-id-upload" data-id-upload>
-                            <input type="file" name="id_back" accept="image/*,.pdf" class="hidden" id="idBack">
+                            <input type="file" name="id_back" accept="image/*,.pdf" class="hidden" id="idBack" <?= empty($draft['id_back_path']) ? 'required' : '' ?>>
                             <div class="citizen-id-upload__empty" data-id-upload-empty>
                                 <i data-lucide="upload" class="w-6 h-6 text-gray-300 mx-auto mb-2"></i>
-                                <p class="text-xs font-bold text-gray-600">Back Side (Optional)</p>
+                                <p class="text-xs font-bold text-gray-600">Back Side</p>
                                 <p class="text-[10px] text-gray-400 mt-1" id="idBackLabel"><?= !empty($draft['id_back_path']) ? 'Previously uploaded' : 'Click to upload ID' ?></p>
                             </div>
                             <div class="citizen-id-upload__preview hidden" data-id-upload-preview>

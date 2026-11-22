@@ -61,12 +61,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Please enter a valid cellphone number (09XXXXXXXXX).';
     } elseif (empty($_FILES['id_front']['name'])) {
         $error = 'Please upload the front side of your valid ID.';
+    } elseif (empty($_FILES['id_back']['name'])) {
+        $error = 'Please upload the back side of your valid ID.';
     } else {
         $frontPath = saveIdUpload($_FILES['id_front'] ?? [], 'front');
         $backPath = null;
         if ($frontPath === null) {
             $error = 'Invalid ID front upload. Use JPG, PNG, WEBP, or PDF.';
-        } elseif (!empty($_FILES['id_back']['name'])) {
+        } else {
             $backPath = saveIdUpload($_FILES['id_back'] ?? [], 'back');
             if ($backPath === null) {
                 $error = 'Invalid ID back upload. Use JPG, PNG, WEBP, or PDF.';
@@ -263,7 +265,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <h1 class="text-2xl font-black text-slate-900 mb-2">Appointment Booked Successfully</h1>
                 <p class="text-gray-500 text-sm">
                     Thank you, <strong><?= htmlspecialchars($successCitizenName) ?></strong>.
-                    Your <?= htmlspecialchars($successServiceLabel) ?> appointment is now in our system.
+                    Your <?= htmlspecialchars($successServiceLabel) ?> appointment was booked successfully and is <strong>awaiting confirmation</strong> from our office.
                 </p>
             </div>
 
@@ -283,7 +285,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php if ($notifyEmail && $emailSent): ?>
                 <p class="citizen-request-notice citizen-request-notice--success">
                     <i data-lucide="mail" class="w-4 h-4 shrink-0 mt-0.5"></i>
-                    <span>A Gmail confirmation was sent to <strong><?= htmlspecialchars($email) ?></strong>. After our office confirms your appointment, you will receive email reminders 5 hours, 3 hours, and 1 hour before your visit.</span>
+                    <span>A Gmail confirmation was sent to <strong><?= htmlspecialchars($email) ?></strong>. Your visit is awaiting confirmation. After our office confirms your appointment, you will receive email reminders 5 hours, 3 hours, and 1 hour before your visit.</span>
                 </p>
                 <?php elseif ($notifyEmail): ?>
                 <p class="citizen-request-notice citizen-request-notice--warn">
@@ -299,7 +301,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php if ($notifySms && $smsSent): ?>
                 <p class="citizen-request-notice citizen-request-notice--success">
                     <i data-lucide="message-square" class="w-4 h-4 shrink-0 mt-0.5"></i>
-                    <span>A text confirmation was sent to <strong><?= htmlspecialchars($phone) ?></strong>. You will also receive a text when staff confirms your appointment and a reminder 1 hour before your visit.</span>
+                    <span>A text confirmation was sent to <strong><?= htmlspecialchars($phone) ?></strong> (awaiting confirmation). You will also receive a text when staff confirm your appointment and a reminder 1 hour before your visit.</span>
                 </p>
                 <?php elseif ($notifySms && $smsUpdatesAvailable): ?>
                 <p class="citizen-request-notice citizen-request-notice--warn">
@@ -431,10 +433,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </div>
                     </label>
                     <label class="citizen-id-upload" data-id-upload>
-                        <input type="file" name="id_back" accept="image/*,.pdf" class="hidden" id="idBack">
+                        <input type="file" name="id_back" accept="image/*,.pdf" class="hidden" id="idBack" required>
                         <div class="citizen-id-upload__empty" data-id-upload-empty>
                             <i data-lucide="upload" class="w-6 h-6 text-gray-300 mx-auto mb-2"></i>
-                            <p class="text-xs font-bold text-gray-600">Back Side (Optional)</p>
+                            <p class="text-xs font-bold text-gray-600">Back Side</p>
                             <p class="text-[10px] text-gray-400 mt-1" id="idBackLabel">Click to upload ID</p>
                         </div>
                         <div class="citizen-id-upload__preview hidden" data-id-upload-preview>

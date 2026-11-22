@@ -679,6 +679,7 @@
                     purpose: 'Purpose of request',
                     phone: 'Cellphone number',
                     id_front: 'Front side of your valid ID',
+                    id_back: 'Back side of your valid ID',
                     first_name: 'First name',
                     last_name: 'Last name',
                     service_type: 'Service type',

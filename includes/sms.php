@@ -534,7 +534,7 @@ function notifyAppointmentBookedSms(array $data): bool
         ($serviceLabel !== '' ? $serviceLabel . ' ' : '') . 'appointment booked.',
         'Code ' . $code . '.',
         $visit !== '' ? 'Visit ' . $visit . '.' : '',
-        'Awaiting staff confirmation.',
+        'Awaiting confirmation.',
     ];
 
     $message = isStandaloneSpecialServiceAppointmentRow($row)

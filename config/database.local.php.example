@@ -1,7 +1,7 @@
 <?php
 /**
- * SmarterASP / remote MySQL — copy to database.local.php on the server only.
- * Return this array (no define() calls — avoids “Constant already defined” warnings).
+ * SmarterASP / remote MySQL - copy to database.local.php on the server only.
+ * Return this array (no define() calls - avoids “Constant already defined” warnings).
  * XAMPP: do not create database.local.php (database.php defaults apply).
  */
 return [

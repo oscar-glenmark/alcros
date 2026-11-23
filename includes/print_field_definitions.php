@@ -110,25 +110,25 @@ function printFieldCatalog(): array
                 'lcro_box_19' => 'LCRO Footer Box 19',
             ],
             'back' => [
-                'paternity_father_first_name' => 'Paternity Affidavit — Father First Name',
-                'paternity_father_middle_name' => 'Paternity Affidavit — Father Middle Name',
-                'paternity_father_last_name' => 'Paternity Affidavit — Father Last Name',
-                'paternity_mother_first_name' => 'Paternity Affidavit — Mother First Name',
-                'paternity_mother_middle_name' => 'Paternity Affidavit — Mother Middle Name',
-                'paternity_mother_last_name' => 'Paternity Affidavit — Mother Last Name',
-                'paternity_child_name' => 'Paternity Affidavit — Child Name',
-                'paternity_birth_date' => 'Paternity Affidavit — Birth Date',
-                'paternity_birth_place' => 'Paternity Affidavit — Birth Place',
-                'delayed_birth_affiant_name' => 'Delayed Birth — Affiant Name',
-                'delayed_birth_affiant_address' => 'Delayed Birth — Affiant Address',
-                'delayed_birth_place' => 'Delayed Birth — Place of Birth',
-                'delayed_birth_date' => 'Delayed Birth — Date of Birth',
-                'delayed_birth_child_name' => 'Delayed Birth — Child Name',
-                'delayed_birth_attendant' => 'Delayed Birth — Attendant',
-                'delayed_birth_citizenship' => 'Delayed Birth — Citizenship',
-                'delayed_birth_parents_marriage_date' => 'Delayed Birth — Parents Marriage Date',
-                'delayed_birth_parents_marriage_place' => 'Delayed Birth — Parents Marriage Place',
-                'delayed_birth_reason' => 'Delayed Birth — Reason for Delay',
+                'paternity_father_first_name' => 'Paternity Affidavit - Father First Name',
+                'paternity_father_middle_name' => 'Paternity Affidavit - Father Middle Name',
+                'paternity_father_last_name' => 'Paternity Affidavit - Father Last Name',
+                'paternity_mother_first_name' => 'Paternity Affidavit - Mother First Name',
+                'paternity_mother_middle_name' => 'Paternity Affidavit - Mother Middle Name',
+                'paternity_mother_last_name' => 'Paternity Affidavit - Mother Last Name',
+                'paternity_child_name' => 'Paternity Affidavit - Child Name',
+                'paternity_birth_date' => 'Paternity Affidavit - Birth Date',
+                'paternity_birth_place' => 'Paternity Affidavit - Birth Place',
+                'delayed_birth_affiant_name' => 'Delayed Birth - Affiant Name',
+                'delayed_birth_affiant_address' => 'Delayed Birth - Affiant Address',
+                'delayed_birth_place' => 'Delayed Birth - Place of Birth',
+                'delayed_birth_date' => 'Delayed Birth - Date of Birth',
+                'delayed_birth_child_name' => 'Delayed Birth - Child Name',
+                'delayed_birth_attendant' => 'Delayed Birth - Attendant',
+                'delayed_birth_citizenship' => 'Delayed Birth - Citizenship',
+                'delayed_birth_parents_marriage_date' => 'Delayed Birth - Parents Marriage Date',
+                'delayed_birth_parents_marriage_place' => 'Delayed Birth - Parents Marriage Place',
+                'delayed_birth_reason' => 'Delayed Birth - Reason for Delay',
             ],
         ],
         'marriage' => [
@@ -215,17 +215,17 @@ function printFieldCatalog(): array
                 'witness_1' => 'Witness 1',
                 'witness_2' => 'Witness 2',
                 'witness_3' => 'Witness 3',
-                'affidavit_officer_name' => 'Affidavit Solemnizing Officer — Name',
-                'affidavit_officer_address' => 'Affidavit Solemnizing Officer — Address',
-                'affidavit_husband_name' => 'Affidavit — Husband Name',
-                'affidavit_wife_name' => 'Affidavit — Wife Name',
-                'affidavit_marriage_date' => 'Affidavit — Marriage Date',
-                'delayed_marriage_affiant_name' => 'Delayed Marriage — Affiant Name',
-                'delayed_marriage_affiant_address' => 'Delayed Marriage — Affiant Address',
-                'delayed_marriage_spouse_name' => 'Delayed Marriage — Spouse Name',
-                'delayed_marriage_place' => 'Delayed Marriage — Place',
-                'delayed_marriage_date' => 'Delayed Marriage — Date',
-                'delayed_marriage_reason' => 'Delayed Marriage — Reason',
+                'affidavit_officer_name' => 'Affidavit Solemnizing Officer - Name',
+                'affidavit_officer_address' => 'Affidavit Solemnizing Officer - Address',
+                'affidavit_husband_name' => 'Affidavit - Husband Name',
+                'affidavit_wife_name' => 'Affidavit - Wife Name',
+                'affidavit_marriage_date' => 'Affidavit - Marriage Date',
+                'delayed_marriage_affiant_name' => 'Delayed Marriage - Affiant Name',
+                'delayed_marriage_affiant_address' => 'Delayed Marriage - Affiant Address',
+                'delayed_marriage_spouse_name' => 'Delayed Marriage - Spouse Name',
+                'delayed_marriage_place' => 'Delayed Marriage - Place',
+                'delayed_marriage_date' => 'Delayed Marriage - Date',
+                'delayed_marriage_reason' => 'Delayed Marriage - Reason',
             ],
         ],
         'death' => [
@@ -334,16 +334,16 @@ function printFieldCatalog(): array
                 'infant_cause_d' => 'Infant Cause D',
                 'infant_cause_e' => 'Infant Cause E',
                 'postmortem_cause' => 'Postmortem Cause of Death',
-                'embalmer_deceased_name' => 'Embalmer — Deceased Name',
-                'delayed_death_affiant_name' => 'Delayed Death — Affiant Name',
-                'delayed_death_affiant_address' => 'Delayed Death — Affiant Address',
-                'delayed_death_deceased_name' => 'Delayed Death — Deceased Name',
-                'delayed_death_date' => 'Delayed Death — Date of Death',
-                'delayed_death_place' => 'Delayed Death — Place of Death',
-                'delayed_death_burial_place' => 'Delayed Death — Burial Place',
-                'delayed_death_attendant' => 'Delayed Death — Attendant',
-                'delayed_death_cause' => 'Delayed Death — Cause',
-                'delayed_death_reason' => 'Delayed Death — Reason for Delay',
+                'embalmer_deceased_name' => 'Embalmer - Deceased Name',
+                'delayed_death_affiant_name' => 'Delayed Death - Affiant Name',
+                'delayed_death_affiant_address' => 'Delayed Death - Affiant Address',
+                'delayed_death_deceased_name' => 'Delayed Death - Deceased Name',
+                'delayed_death_date' => 'Delayed Death - Date of Death',
+                'delayed_death_place' => 'Delayed Death - Place of Death',
+                'delayed_death_burial_place' => 'Delayed Death - Burial Place',
+                'delayed_death_attendant' => 'Delayed Death - Attendant',
+                'delayed_death_cause' => 'Delayed Death - Cause',
+                'delayed_death_reason' => 'Delayed Death - Reason for Delay',
             ],
         ],
     ];
@@ -396,13 +396,13 @@ function printDefaultPaperSize(): array
     ];
 }
 
-/** Official Municipal Forms 102, 97, 103 width — 8.5 inches. */
+/** Official Municipal Forms 102, 97, 103 width - 8.5 inches. */
 function printOfficialPaperWidthMm(): float
 {
     return 215.9;
 }
 
-/** Official Municipal Forms 102, 97, 103 height — long bond (8.5 × 13 in). */
+/** Official Municipal Forms 102, 97, 103 height - long bond (8.5 × 13 in). */
 function printOfficialPaperHeightMm(): float
 {
     return 330.2;
@@ -453,7 +453,7 @@ function printPaperPresets(): array
     ];
 }
 
-/** CSS @page size from millimeters — inches map better in browser print dialogs. */
+/** CSS @page size from millimeters - inches map better in browser print dialogs. */
 function printPaperCssSizeFromMm(float $widthMm, float $heightMm): string
 {
     $widthIn = round($widthMm / 25.4, 3);
@@ -486,7 +486,7 @@ function printPaperSizeLabel(?float $widthMm = null, ?float $heightMm = null, bo
         && abs($heightMm - (float) $builtIn['height_mm']) < 0.5) {
         return $compact
             ? $builtIn['label_short']
-            : $builtIn['label'] . ' — Municipal Forms 102 / 97 / 103';
+            : $builtIn['label'] . ' - Municipal Forms 102 / 97 / 103';
     }
 
     $presetKey = printPaperPresetKeyForSize($widthMm, $heightMm);
@@ -500,7 +500,7 @@ function printPaperSizeLabel(?float $widthMm = null, ?float $heightMm = null, bo
     return $compact ? $mmLabel : ('Long bond · ' . $mmLabel);
 }
 
-/** CSS @page size — inches so browsers map to Legal / long bond instead of ignoring custom mm. */
+/** CSS @page size - inches so browsers map to Legal / long bond instead of ignoring custom mm. */
 function printPageCssSize(?float $widthMm = null, ?float $heightMm = null): string
 {
     $widthMm = $widthMm ?? printOfficialPaperWidthMm();

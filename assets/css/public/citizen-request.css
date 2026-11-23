@@ -93,6 +93,44 @@
     background: #fef2f2;
 }
 
+.citizen-request-rel-req {
+    border: 1px solid #bfdbfe;
+    background: #f0f9ff;
+    border-radius: 0.75rem;
+    padding: 0.85rem 1rem;
+}
+
+.citizen-request-rel-req__title {
+    font-size: 0.6875rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #1e40af;
+    margin-bottom: 0.5rem;
+}
+
+.citizen-request-rel-req__list {
+    font-size: 0.75rem;
+    color: #334155;
+    line-height: 1.45;
+    list-style: disc;
+    padding-left: 1.15rem;
+    margin: 0;
+}
+
+.citizen-request-rel-req__sublist {
+    list-style: circle;
+    margin: 0.25rem 0 0;
+    padding-left: 1rem;
+}
+
+.citizen-request-rel-req__note {
+    font-size: 0.6875rem;
+    color: #64748b;
+    margin-top: 0.5rem;
+    margin-bottom: 0;
+}
+
 .citizen-form-actions {
     display: flex;
     justify-content: space-between;

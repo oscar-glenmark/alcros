@@ -1,7 +1,7 @@
 <?php
 /**
  * One-time database setup for ALCROS.
- * Creates empty tables with default administrator — no other sample records.
+ * Creates empty tables with default administrator - no other sample records.
  */
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $sql = file_get_contents($sqlFile);
             if (alcrosIsHostedEnvironment()) {
-                // Shared hosts (SmarterASP): one pre-created DB — no CREATE DATABASE / USE alcros_db.
+                // Shared hosts (SmarterASP): one pre-created DB - no CREATE DATABASE / USE alcros_db.
                 $sql = preg_replace('/^\s*CREATE\s+DATABASE\b.*?;\s*\r?\n/im', '', $sql);
                 $sql = preg_replace('/^\s*USE\s+\S+?\s*;\s*\r?\n/im', '', $sql);
                 $dsn = 'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=' . DB_CHARSET;
@@ -99,7 +99,7 @@ $dbLabel = htmlspecialchars(DB_NAME, ENT_QUOTES, 'UTF-8');
         <?php if ($alreadyInstalled && $_SERVER['REQUEST_METHOD'] !== 'POST'): ?>
         <div class="mb-4 p-4 bg-green-50 border border-green-100 rounded-xl">
             <p class="text-sm font-bold text-green-800 mb-1">Already installed</p>
-            <p class="text-xs text-green-700">Database <code class="bg-white px-1 rounded"><?= $dbLabel ?></code> is ready.<?= alcrosIsLocalOfficeInstall() ? ' You do <strong>not</strong> need to install again when restarting XAMPP — just start MySQL.' : ' On production, block public access to <code class="bg-white px-1 rounded">install.php</code> after setup.' ?></p>
+            <p class="text-xs text-green-700">Database <code class="bg-white px-1 rounded"><?= $dbLabel ?></code> is ready.<?= alcrosIsLocalOfficeInstall() ? ' You do <strong>not</strong> need to install again when restarting XAMPP - just start MySQL.' : ' On production, block public access to <code class="bg-white px-1 rounded">install.php</code> after setup.' ?></p>
         </div>
         <a href="index.php" class="back-home back-home--primary block mb-3">Go to ALCROS Home</a>
         <a href="login.php" class="block w-full text-center border border-gray-200 text-gray-600 rounded-xl py-3 text-sm font-bold">Staff Login</a>

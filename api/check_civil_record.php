@@ -1,6 +1,6 @@
 <?php
 /**
- * Civil record lookup — checks if the citizen is registered in LCRO records.
+ * Civil record lookup - checks if the citizen is registered in LCRO records.
  */
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/helpers.php';

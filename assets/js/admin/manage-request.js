@@ -47,9 +47,9 @@
     function setText(id, value) {
         var el = document.getElementById(id);
         if (!el) return;
-        var display = value || '—';
+        var display = value || '-';
         el.textContent = display;
-        el.classList.toggle('manage-detail-value--empty', !value || value === '—');
+        el.classList.toggle('manage-detail-value--empty', !value || value === '-');
     }
 
     function setHtml(id, html) {
@@ -59,7 +59,7 @@
             el.innerHTML = html;
             el.classList.remove('manage-detail-value--empty');
         } else {
-            el.textContent = '—';
+            el.textContent = '-';
             el.classList.add('manage-detail-value--empty');
         }
     }
@@ -68,7 +68,7 @@
         var wrap = document.getElementById(prefix + 'view-dom-wrap');
         if (!wrap) return;
         var isMarriage = data.document_type_key === 'marriage';
-        var hasDom = data.date_of_marriage && data.date_of_marriage !== '—';
+        var hasDom = data.date_of_marriage && data.date_of_marriage !== '-';
         if (isMarriage || hasDom) {
             setText(prefix + 'view-dom', data.date_of_marriage);
             wrap.classList.remove('hidden');
@@ -658,19 +658,20 @@
     function populateDetailView(view, data) {
         var prefix = view.prefix;
 
-        var headerName = (data.requester_name && data.requester_name !== '—')
+        var headerName = (data.requester_name && data.requester_name !== '-')
             ? data.requester_name
             : (data.citizen_name || 'Request');
         setText(view.title, headerName);
         setText(view.code, data.tracking_code || '');
-        setText(prefix + 'view-citizen-name', data.citizen_name || '—');
+        setText(prefix + 'view-citizen-name', data.citizen_name || '-');
         setText(prefix + 'view-dob', data.date_of_birth);
         toggleDomRow(prefix, data);
         setText(prefix + 'view-sex', data.sex);
         setText(prefix + 'view-phone', data.phone);
         setText(prefix + 'view-email', data.email);
         setText(prefix + 'view-email-verified', data.email_verified);
-        setText(prefix + 'view-requester', data.requester_name || '—');
+        setText(prefix + 'view-requester', data.requester_name || '-');
+        setText(prefix + 'view-requester-relationship', data.requester_relationship_label || '-');
         setText(prefix + 'view-document-type', data.document_type);
         setText(prefix + 'view-purpose', data.purpose);
         setText(prefix + 'view-appointment', data.appointment);

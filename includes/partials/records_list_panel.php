@@ -54,7 +54,7 @@ $canOpenRecordView = $canOpenRecordView ?? true;
                         $nameInner .= '<span class="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 font-bold">#' . htmlspecialchars($displayRegistry) . '</span>';
                     }
                     if (!empty($r['book_number']) || !empty($r['page_number'])) {
-                        $nameInner .= '<span class="text-[9px] bg-amber-50 px-1.5 py-0.5 rounded text-amber-700 font-bold">Bk ' . htmlspecialchars((string) ($r['book_number'] ?? '—')) . ' · Pg ' . htmlspecialchars((string) ($r['page_number'] ?? '—')) . '</span>';
+                        $nameInner .= '<span class="text-[9px] bg-amber-50 px-1.5 py-0.5 rounded text-amber-700 font-bold">Bk ' . htmlspecialchars((string) ($r['book_number'] ?? '-')) . ' · Pg ' . htmlspecialchars((string) ($r['page_number'] ?? '-')) . '</span>';
                     }
                     $nameInner .= '</div><p class="text-[10px] text-gray-400 font-medium">ID: ' . (int) $r['id'] . ' · Added ' . formatRecordDate(substr($r['created_at'], 0, 10)) . '</p></div></div>';
                     if ($canOpenRecordView): ?>
@@ -66,7 +66,7 @@ $canOpenRecordView = $canOpenRecordView ?? true;
                 <td class="p-4"><span class="text-[9px] font-black <?= $badge ?> px-2 py-0.5 rounded uppercase"><?= htmlspecialchars($r['record_type']) ?></span></td>
                 <td class="p-4 text-[10px] text-gray-500 font-medium"><?= formatRecordDate($keyDate) ?></td>
                 <td class="p-4 text-[10px] text-gray-400 font-medium max-w-[180px] truncate" title="<?= htmlspecialchars(implode(' · ', $parents) ?: ($r['place'] ?? '')) ?>">
-                    <?= htmlspecialchars(implode(' · ', $parents) ?: ($r['place'] ?? '—')) ?>
+                    <?= htmlspecialchars(implode(' · ', $parents) ?: ($r['place'] ?? '-')) ?>
                 </td>
                 <td class="p-4 text-right">
                     <div class="manage-row-actions">

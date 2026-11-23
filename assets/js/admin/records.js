@@ -214,19 +214,19 @@
     }
 
     function formatDate(val) {
-        if (val === null || val === undefined || val === '') return '—';
+        if (val === null || val === undefined || val === '') return '-';
         var raw = String(val).substring(0, 10);
         var d = new Date(raw + 'T00:00:00');
         return Number.isNaN(d.getTime()) ? raw : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
 
     function displayValue(val) {
-        if (val === null || val === undefined || String(val).trim() === '') return '—';
+        if (val === null || val === undefined || String(val).trim() === '') return '-';
         return String(val);
     }
 
     function formatPersonName(r) {
-        if (!r) return '—';
+        if (!r) return '-';
         if (r.record_type === 'marriage') {
             var husband = (r.husband_name || '').trim();
             var wife = (r.wife_name || '').trim();
@@ -236,7 +236,7 @@
             (r.first_name || '').trim(),
             (r.middle_name || '').trim(),
             (r.last_name || '').trim()
-        ].filter(Boolean).join(' ') || (r.person_name || '—');
+        ].filter(Boolean).join(' ') || (r.person_name || '-');
     }
 
     function recordRegistryNumber(r) {
@@ -568,7 +568,7 @@
                 ? 'deceased first and last name, date of death, and registry number'
                 : 'child first and last name');
         var optionalHint = type === 'death'
-            ? ' Other death certificate fields are optional—you can complete them later in the record editor.'
+            ? ' Other death certificate fields are optional-you can complete them later in the record editor.'
             : '';
         importColumnsHelp.textContent =
             'Download the Excel template below, enter one record per row, then upload the file. Required: ' + requiredHint + '.' + optionalHint + ' The sample row is skipped automatically.';
@@ -1376,8 +1376,8 @@
             .map(function (entry) {
                 return r[entry[0]] + entry[1];
             });
-        var text = parts.length ? parts.join(' ') : '—';
-        if (r.stillbirth == 1) text += (text === '—' ? '' : ' ') + '(Still-birth)';
+        var text = parts.length ? parts.join(' ') : '-';
+        if (r.stillbirth == 1) text += (text === '-' ? '' : ' ') + '(Still-birth)';
         return text;
     }
 
@@ -1390,10 +1390,10 @@
     }
 
     function detailRow(label, value, full) {
-        var text = value === null || value === undefined ? '—' : String(value);
-        var empty = text.trim() === '' || text === '—';
+        var text = value === null || value === undefined ? '-' : String(value);
+        var empty = text.trim() === '' || text === '-';
         if (empty) {
-            text = '—';
+            text = '-';
         }
         var rowClass = 'records-detail-row' + (full ? ' records-detail-row--full' : '');
         var valueClass = empty ? ' records-detail-value--empty' : '';
@@ -1426,8 +1426,8 @@
         }
         if (key === '_death_time') {
             var time = displayValue(r.death_time);
-            if (time === '—') {
-                return '—';
+            if (time === '-') {
+                return '-';
             }
             return time + (r.death_time_period ? ' ' + r.death_time_period : '');
         }
@@ -1461,10 +1461,10 @@
         var subtitleParts = [];
         var viewSections = (cfg.recordViewSections && cfg.recordViewSections[type]) || [];
 
-        if (registry !== '—') {
+        if (registry !== '-') {
             subtitleParts.push('Registry #' + registry);
         }
-        if (eventDate !== '—') {
+        if (eventDate !== '-') {
             subtitleParts.push(type === 'birth' ? 'Born ' + eventDate : type === 'death' ? 'Died ' + eventDate : 'Married ' + eventDate);
         }
 
@@ -2187,7 +2187,7 @@
 
         initCascadingLocations();
 
-        // Do not release edit locks on beforeunload — that raced with Update Record and
+        // Do not release edit locks on beforeunload - that raced with Update Record and
         // falsely blocked the same staff member as "another staff" on submit.
     }
 

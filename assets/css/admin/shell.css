@@ -983,7 +983,7 @@ body.admin-sidebar-minimized .admin-sidebar button {
     min-width: 0;
 }
 
-/* ── Prevent content blowout (exclude Lucide UI icons — they use fixed w/h utilities) ── */
+/* ── Prevent content blowout (exclude Lucide UI icons - they use fixed w/h utilities) ── */
 .admin-main img,
 .admin-main video {
     max-width: 100%;

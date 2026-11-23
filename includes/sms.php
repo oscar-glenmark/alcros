@@ -134,7 +134,7 @@ function smsProviderSendBlockReason(): ?string
 
     try {
         ensureExtendedSchema(getDB());
-        // Only warn when the most recent attempt failed — not when an older failure precedes a later success.
+        // Only warn when the most recent attempt failed - not when an older failure precedes a later success.
         $stmt = getDB()->query(
             'SELECT success, error_message FROM delivery_logs WHERE channel = \'sms\' ORDER BY sent_at DESC, id DESC LIMIT 1'
         );
@@ -373,7 +373,7 @@ function sendCitizenSms(string $phone, string $message, string $smsType = 'gener
     return !empty($result['ok']);
 }
 
-/** IPROG template header already includes the site name — body must stay ≤150 chars. */
+/** IPROG template header already includes the site name - body must stay ≤150 chars. */
 const SMS_BODY_MAX_LENGTH = 150;
 
 function smsCitizenGreeting(array $row): string
@@ -427,8 +427,8 @@ function smsVisitShort(?string $date, ?string $time): string
 }
 
 /**
- * Single-paragraph SMS — capped at SMS_BODY_MAX_LENGTH (IPROG header is separate).
- * Pass $pinnedTail to always keep it and trim earlier segments (no URLs — IPROG rejects many links).
+ * Single-paragraph SMS - capped at SMS_BODY_MAX_LENGTH (IPROG header is separate).
+ * Pass $pinnedTail to always keep it and trim earlier segments (no URLs - IPROG rejects many links).
  *
  * @param list<string|null> $segments
  */
@@ -755,7 +755,7 @@ function notifyAppointmentVisitSoonSms(array $row): bool
 }
 
 /**
- * Follow-up SMS body (≤ SMS_BODY_MAX_LENGTH — IPROG header is separate).
+ * Follow-up SMS body (≤ SMS_BODY_MAX_LENGTH - IPROG header is separate).
  *
  * @param array<string, mixed> $row
  */

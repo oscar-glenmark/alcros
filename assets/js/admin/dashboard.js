@@ -49,7 +49,7 @@
     }
 
     function formatDateDisplay(iso) {
-        if (!iso) return '—';
+        if (!iso) return '-';
         var parts = iso.split('-');
         if (parts.length !== 3) return iso;
         return parts[1] + '/' + parts[2] + '/' + parts[0];

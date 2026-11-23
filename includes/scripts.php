@@ -3,11 +3,11 @@
  * Central helpers for loading organized JavaScript and CSS assets.
  *
  * Layout:
- *   assets/js/core/   — shared (poll, loading, auth, …)
- *   assets/js/admin/  — staff portal pages
- *   assets/js/public/ — citizen-facing pages
- *   assets/css/admin/ — staff portal styles
- *   assets/css/public/ — citizen-facing styles
+ *   assets/js/core/   - shared (poll, loading, auth, …)
+ *   assets/js/admin/  - staff portal pages
+ *   assets/js/public/ - citizen-facing pages
+ *   assets/css/admin/ - staff portal styles
+ *   assets/css/public/ - citizen-facing styles
  */
 
 function cssAsset(string $path): string
@@ -179,7 +179,7 @@ function interFontTags(): string
         . vendorStylesheetTag('inter/inter.css');
 }
 
-/** Local Tailwind + Inter + Lucide — works on LAN without internet. */
+/** Local Tailwind + Inter + Lucide - works on LAN without internet. */
 function alcrosUiHead(): string
 {
     return vendorScriptTag('tailwindcss.js') . "\n    "

@@ -196,7 +196,7 @@ body.kiosk-body {
 }
 
 .kiosk-choice-btn__label {
-    /* Scale to fit "Appointment" in each equal column — same size on all three tiles */
+    /* Scale to fit "Appointment" in each equal column - same size on all three tiles */
     font-size: clamp(1.65rem, 12.5cqi, 3.65rem);
     font-weight: 900;
     line-height: 1.12;

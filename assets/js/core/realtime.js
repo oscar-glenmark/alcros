@@ -50,7 +50,7 @@
                 var name = serving.citizen_name ? '<p class="text-sm text-slate-500 mt-2">' + escapeHtml(serving.citizen_name) + '</p>' : '';
                 slot.innerHTML = '<p class="queue-serving-number text-5xl font-black text-slate-900 leading-none">' + escapeHtml(serving.ticket_number) + '</p>' + name;
             } else {
-                slot.innerHTML = '<p class="queue-serving-number text-4xl font-black text-slate-200">—</p>';
+                slot.innerHTML = '<p class="queue-serving-number text-4xl font-black text-slate-200">-</p>';
             }
         }
 
@@ -65,7 +65,7 @@
             if (waitCount === 0) {
                 badge.textContent = 'No one in line';
             } else {
-                badge.innerHTML = '<span class="font-bold text-slate-800">' + waitCount + '</span> waiting — next: <span class="queue-next-preview font-mono font-bold text-base text-slate-900">' + escapeHtml(waiting[0].ticket_number) + '</span>';
+                badge.innerHTML = '<span class="font-bold text-slate-800">' + waitCount + '</span> waiting - next: <span class="queue-next-preview font-mono font-bold text-base text-slate-900">' + escapeHtml(waiting[0].ticket_number) + '</span>';
             }
         }
 
@@ -182,7 +182,7 @@
             var numEl = slot.querySelector('.display-table-number');
             var waitEl = slot.querySelector('.display-table-wait');
             if (numEl) {
-                numEl.textContent = info.serving || '—';
+                numEl.textContent = info.serving || '-';
                 numEl.className = 'display-table-number' + (info.serving ? '' : ' is-empty');
             }
             if (waitEl) waitEl.textContent = (info.waiting ? info.waiting.length : 0) + ' waiting';

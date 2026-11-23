@@ -554,7 +554,7 @@ function notifyFollowUpReminderEmail(array $row): bool
 
     return sendCitizenNotice(
         (string) $row['email'],
-        'ALCROS — Reminder: your next visit',
+        'ALCROS - Reminder: your next visit',
         [
             'heading' => 'Next visit reminder',
             'name'    => personNameFromRow($nameRow),
@@ -599,7 +599,7 @@ function notifyFollowUpDayOfReminderEmail(array $row): bool
 
     return sendCitizenNotice(
         (string) $row['email'],
-        'ALCROS — Reminder: your follow-up visit is today',
+        'ALCROS - Reminder: your follow-up visit is today',
         [
             'heading' => 'Visit today',
             'name'    => personNameFromRow($nameRow),

@@ -21,7 +21,7 @@ if (preg_match('#(^|/)privacy\.php(\?|$)#i', $privacyPolicyUrl)) {
                     </div>
                     <div class="min-w-0">
                         <h2 id="alcros-privacy-title" class="text-lg font-extrabold text-slate-900">Privacy &amp; Safety Notice</h2>
-                        <p class="text-[11px] text-gray-500 truncate"><?= htmlspecialchars($privacySite['name']) ?> — <?= htmlspecialchars($privacySite['office']) ?></p>
+                        <p class="text-[11px] text-gray-500 truncate"><?= htmlspecialchars($privacySite['name']) ?> - <?= htmlspecialchars($privacySite['office']) ?></p>
                     </div>
                 </div>
                 <button type="button" id="alcros-privacy-close" class="hidden shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition" aria-label="Close">

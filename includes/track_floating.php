@@ -1,5 +1,5 @@
 <?php
-/** Floating track panel — include on public citizen pages. */
+/** Floating track panel - include on public citizen pages. */
 require_once __DIR__ . '/security.php';
 $trackSite = $trackSite ?? getSiteSettings();
 $initialTrackCode = strtoupper(trim($_GET['track'] ?? $_GET['code'] ?? ''));

@@ -130,7 +130,7 @@
     border-color: #bfdbfe;
 }
 
-/* Civil records — view details modal */
+/* Civil records - view details modal */
 .records-view-modal {
     position: fixed;
     inset: 0;
@@ -275,7 +275,7 @@
     opacity: 0.72;
 }
 
-/* Entry modal — fixed height dialog with scrollable body */
+/* Entry modal - fixed height dialog with scrollable body */
 .records-entry-modal {
     position: fixed;
     inset: 0;
@@ -586,7 +586,7 @@ body.records-view-modal-open {
     }
 }
 
-/* Civil records — entry modal print fill fields */
+/* Civil records - entry modal print fill fields */
 .records-entry-print-fill {
     margin-top: 0.5rem;
     padding: 1rem;

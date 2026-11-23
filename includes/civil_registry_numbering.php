@@ -47,7 +47,7 @@ function ensureCivilRegistryNumberingSchema(PDO $pdo): void
         );
     } catch (PDOException $e) {
         if (str_contains($e->getMessage(), 'Duplicate entry')) {
-            error_log('ALCROS: Could not add uniq_civil_registry_per_type — duplicate registry numbers exist. Resolve duplicates and reload Records.');
+            error_log('ALCROS: Could not add uniq_civil_registry_per_type - duplicate registry numbers exist. Resolve duplicates and reload Records.');
         }
     }
 }
@@ -216,7 +216,7 @@ function civilRegistryNumberExists(PDO $pdo, string $recordType, string $registr
 }
 
 /**
- * Next registry number for a new record (manual create only — not imports).
+ * Next registry number for a new record (manual create only - not imports).
  *
  * @param array{event_year?: int|null} $options
  */
@@ -318,7 +318,7 @@ function civilRegistryImportDuplicateMessage(string $recordType, string $registr
 {
     return 'Duplicate registry number "' . $registryNumber . '" for '
         . civilRecordTypeLabel($recordType)
-        . ' (already used by record #' . $existingId . '). Row skipped — source data unchanged.';
+        . ' (already used by record #' . $existingId . '). Row skipped - source data unchanged.';
 }
 
 /** @param array<string, true> $seenInFile */
@@ -326,7 +326,7 @@ function civilRegistryCsvImportRowError(PDO $pdo, array $parsed, string $importT
 {
     $registry = civilRegistryNormalizeRegistryNumber($parsed['registry_number'] ?? null);
     if ($registry === null) {
-        return 'registry number is missing — add the original register number from the source file (imports are not auto-numbered).';
+        return 'registry number is missing - add the original register number from the source file (imports are not auto-numbered).';
     }
 
     $key = $importType . "\0" . $registry;

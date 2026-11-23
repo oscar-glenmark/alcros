@@ -108,7 +108,7 @@ $sections = [
                         Privacy &amp; <span class="text-gold-accent">Safety Policy</span>
                     </h1>
                     <p class="text-white/75 text-sm md:text-base leading-relaxed">
-                        <?= htmlspecialchars($site['office']) ?> — how we collect, protect, and use your personal information.
+                        <?= htmlspecialchars($site['office']) ?> - how we collect, protect, and use your personal information.
                     </p>
                 </div>
                 <div class="flex flex-wrap gap-2">

@@ -22,7 +22,7 @@ $maintenanceSite = $site ?? getSiteSettings();
                 </div>
                 <div class="min-w-0">
                     <h2 id="alcros-maintenance-title" class="text-lg font-extrabold text-slate-900">System Maintenance</h2>
-                    <p class="text-[11px] text-amber-800/80 truncate"><?= htmlspecialchars($maintenanceSite['name']) ?> — <?= htmlspecialchars($maintenanceSite['office']) ?></p>
+                    <p class="text-[11px] text-amber-800/80 truncate"><?= htmlspecialchars($maintenanceSite['name']) ?> - <?= htmlspecialchars($maintenanceSite['office']) ?></p>
                 </div>
             </div>
         </div>

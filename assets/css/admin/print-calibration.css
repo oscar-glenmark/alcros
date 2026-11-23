@@ -415,7 +415,7 @@ body.print-cal-leave-open {
     padding-bottom: 0.25rem;
 }
 
-/* Field editor: stack inputs vertically — no sideways scroll in the 40% panel */
+/* Field editor: stack inputs vertically - no sideways scroll in the 40% panel */
 .print-cal-fields-editor-pane .print-cal-editor {
     min-width: 0;
     max-width: 100%;

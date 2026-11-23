@@ -24,8 +24,8 @@
 -- staff
 --   [none] Root account table. Business key: staff.staff_id (UNIQUE), not staff.id.
 -- staff (embedded auth)
---   [none] remember_token_* — at most one “Remember me” session per staff_id.
---   [none] password_reset_otp_* — at most one active forgot-password OTP per staff_id.
+--   [none] remember_token_* - at most one “Remember me” session per staff_id.
+--   [none] password_reset_otp_* - at most one active forgot-password OTP per staff_id.
 -- staff_resource_locks
 --   [FK]    staff_id → staff.staff_id ON DELETE CASCADE
 --   [logic] (resource_type, resource_id) polymorphic parent (cannot be one FK in MySQL):
@@ -36,7 +36,7 @@
 -- ── Citizen document pipeline ───────────────────────────────────────────────
 -- document_requests
 --   [FK]    civil_record_id → civil_records.id ON DELETE SET NULL (optional link)
---   [none]  deleted_at — soft delete; row kept for restore/history
+--   [none]  deleted_at - soft delete; row kept for restore/history
 -- request_status_history
 --   [FK]    request_id → document_requests.id ON DELETE CASCADE
 --   [logic] tracking_code copies document_requests.tracking_code (lookup without JOIN)
@@ -45,7 +45,7 @@
 -- ── Appointments ────────────────────────────────────────────────────────────
 -- appointments
 --   [FK]    tracking_code → document_requests.tracking_code ON DELETE SET NULL
---   [none]  deleted_at — soft delete
+--   [none]  deleted_at - soft delete
 -- appointment_follow_ups
 --   [FK]    appointment_id → appointments.id ON DELETE CASCADE
 --   [FK]    cancelled_appointment_id → appointments.id ON DELETE SET NULL
@@ -53,15 +53,15 @@
 --
 -- ── Queue (front desk) ────────────────────────────────────────────────────
 -- queue_tickets
---   [logic] reference_code — may match appointment_code or tracking_code (hint only)
+--   [logic] reference_code - may match appointment_code or tracking_code (hint only)
 --   [none]  No FK to appointments/document_requests (ticket can outlive or omit link)
 -- queue_announcements
---   [logic] ticket_number + purpose — pairs with queue_tickets for speaker queue (no FK)
+--   [logic] ticket_number + purpose - pairs with queue_tickets for speaker queue (no FK)
 --
 -- ── Civil registry ──────────────────────────────────────────────────────────
 -- civil_records
 --   [none]  record_type determines which detail table applies (birth/death/marriage)
---   [none]  deleted_at — soft delete
+--   [none]  deleted_at - soft delete
 -- birth_record_details | death_record_details | marriage_record_details
 --   [FK]    civil_record_id → civil_records.id ON DELETE CASCADE (1:1 extension rows)
 -- civil_record_updates
@@ -70,7 +70,7 @@
 --
 -- ── Printing ────────────────────────────────────────────────────────────────
 -- print_templates
---   [none]  cal_* columns — per-template calibration (formerly print_calibrations)
+--   [none]  cal_* columns - per-template calibration (formerly print_calibrations)
 --   [FK]    cal_updated_by → staff.staff_id ON DELETE SET NULL
 -- print_fields
 --   [FK]    template_id → print_templates.id ON DELETE CASCADE
@@ -82,8 +82,8 @@
 --
 -- ── Notifications & audit (mostly standalone) ───────────────────────────────
 -- delivery_logs
---   [logic] reference_code — often tracking_code, appointment_code, or staff_id (free text)
---   [none]  No FK — log rows must survive if a request is purged
+--   [logic] reference_code - often tracking_code, appointment_code, or staff_id (free text)
+--   [none]  No FK - log rows must survive if a request is purged
 -- activity_logs
 --   [FK]    staff_id → staff.staff_id ON DELETE SET NULL
 -- system_settings
@@ -95,7 +95,7 @@
 --   document_requests.tracking_code ←→ appointments.tracking_code (optional 1:1 style link)
 --   document_requests.civil_record_id → civil_records.id (optional N:1)
 --   Notifications UI reads live from document_requests, appointments, queue_tickets,
---   and system_errors — not from a separate notifications table.
+--   and system_errors - not from a separate notifications table.
 --
 -- ═══════════════════════════════════════════════════════════════════════════
 
@@ -149,6 +149,7 @@ CREATE TABLE IF NOT EXISTS document_requests (
     requester_first_name VARCHAR(80) DEFAULT NULL,
     requester_middle_name VARCHAR(80) DEFAULT NULL,
     requester_last_name VARCHAR(80) DEFAULT NULL,
+    requester_relationship VARCHAR(40) DEFAULT NULL,
     date_of_birth DATE DEFAULT NULL,
     date_of_marriage DATE DEFAULT NULL,
     date_of_death DATE DEFAULT NULL,
@@ -532,6 +533,8 @@ INSERT INTO system_settings (setting_key, setting_value) VALUES
 ('office_email', 'aloranlcr@gmail.com'),
 ('office_hours', '8:00 AM - 5:00 PM (Monday to Friday)'),
 ('office_head', 'ATTY. Euri Buladaco'),
+('social_facebook_url', 'https://www.facebook.com/aloranmisamis.occidental.9'),
+('social_instagram_url', ''),
 ('overview_text', 'This guide covers the requirements, steps, and fees for all core civil registration services handled by the <strong>{office}</strong>.'),
 ('portal_title', 'ALCROS Online Request Portal'),
 ('portal_description', 'Request document submissions or track application statuses online.'),

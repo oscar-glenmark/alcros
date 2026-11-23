@@ -199,7 +199,7 @@ function exportOperationalReportXlsx(
 
         $summaryTitle = 'Civil records monthly summary (' . $reportYear . ')';
         if ($recordsType !== 'all') {
-            $summaryTitle .= ' — ' . civilRecordTypeLabel($recordsType);
+            $summaryTitle .= ' - ' . civilRecordTypeLabel($recordsType);
         }
 
         alcrosExcelWriteTable(

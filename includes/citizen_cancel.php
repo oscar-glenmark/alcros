@@ -129,10 +129,10 @@ function citizenCancelDocumentRequest(PDO $pdo, string $trackingCode): array
     $reason = citizenCancellationReason();
     $updated = updateDocumentRequestStatus($pdo, (int) $row['id'], 'rejected', false, $reason);
     if (!$updated) {
-        return ['ok' => false, 'error' => 'Unable to cancel this request. Its status may have changed — refresh and try again.'];
+        return ['ok' => false, 'error' => 'Unable to cancel this request. Its status may have changed - refresh and try again.'];
     }
 
-    logActivity('citizen', 'Request Cancelled', $trackingCode . ' — applicant cancelled online');
+    logActivity('citizen', 'Request Cancelled', $trackingCode . ' - applicant cancelled online');
 
     return ['ok' => true];
 }
@@ -166,10 +166,10 @@ function citizenCancelAppointment(PDO $pdo, string $appointmentCode): array
     $reason = citizenCancellationReason();
     $updated = updateAppointmentStatus($pdo, (int) $row['id'], 'cancelled', $reason);
     if (!$updated) {
-        return ['ok' => false, 'error' => 'Unable to cancel this appointment. Its status may have changed — refresh and try again.'];
+        return ['ok' => false, 'error' => 'Unable to cancel this appointment. Its status may have changed - refresh and try again.'];
     }
 
-    logActivity('citizen', 'Appointment Cancelled', $appointmentCode . ' — applicant cancelled online');
+    logActivity('citizen', 'Appointment Cancelled', $appointmentCode . ' - applicant cancelled online');
 
     return ['ok' => true];
 }

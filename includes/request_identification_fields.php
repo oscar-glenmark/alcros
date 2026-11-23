@@ -102,5 +102,5 @@
         </button>
     </div>
     <p id="recordCheckHint" class="text-[10px] text-gray-500 mt-2">We verify that your details match LCRO civil records before you can continue.</p>
-    <p id="recordStatus" class="text-xs mt-2 <?= $recordVerified ? 'font-semibold text-green-600' : 'hidden' ?>"><?= $recordVerified ? 'Record found — you are registered with the Local Civil Registry Office.' : '' ?></p>
+    <p id="recordStatus" class="text-xs mt-2 <?= $recordVerified ? 'font-semibold text-green-600' : 'hidden' ?>"><?= $recordVerified ? 'Record found - you are registered with the Local Civil Registry Office.' : '' ?></p>
 </div>

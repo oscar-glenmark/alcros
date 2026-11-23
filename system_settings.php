@@ -7,6 +7,7 @@ require_once __DIR__ . '/includes/duplicati_backup.php';
 require_once __DIR__ . '/includes/registry_backup.php';
 require_once __DIR__ . '/includes/hosting.php';
 require_once __DIR__ . '/includes/office_fees.php';
+require_once __DIR__ . '/includes/document_request_relationship_requirements.php';
 require_once __DIR__ . '/includes/scripts.php';
 requireStaffLogin();
 requirePageAccess('system_settings.php');
@@ -19,7 +20,7 @@ $currentStaffId = staffId();
 
 $adminSettingKeys = [
     'site_name', 'office_name', 'office_address', 'office_phone', 'office_email',
-    'office_hours', 'office_head',
+    'office_hours', 'office_head', 'social_facebook_url', 'social_instagram_url',
     'maintenance_mode', 'allow_public_requests', 'notification_email',
     'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass',
     'sms_enabled', 'iprog_api_token', 'iprog_sender_name',
@@ -33,6 +34,8 @@ $defaults = [
     'office_email'            => 'aloran@gov.ph',
     'office_hours'            => '8:00 AM - 5:00 PM (Monday to Friday)',
     'office_head'             => 'ATTY. LOCAL CIVIL REGISTRAR',
+    'social_facebook_url'     => 'https://www.facebook.com/aloranmisamis.occidental.9',
+    'social_instagram_url'    => '',
     'maintenance_mode'        => '0',
     'allow_public_requests'   => '1',
     'notification_email'      => 'aloran@gov.ph',
@@ -135,6 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $settingsChanged = false;
             $feesBefore = getSetting(officeFeesSettingKey(), '');
             $requirementsBefore = getSetting(officeRequirementsSettingKey(), '');
+            $docRelReqBefore = getSetting(documentRequestRelationshipSettingKey(), '');
 
             foreach ($adminSettingKeys as $key) {
                 $default = $defaults[$key] ?? '';
@@ -190,6 +194,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $settingsChanged = true;
                 }
             }
+            if (isset($_POST['document_request_relationship_req']) && is_array($_POST['document_request_relationship_req'])) {
+                saveDocumentRequestRelationshipRequirementsFromPost($_POST['document_request_relationship_req']);
+                if (getSetting(documentRequestRelationshipSettingKey(), '') !== $docRelReqBefore) {
+                    $settingsChanged = true;
+                }
+            }
             if ($settingsChanged) {
                 logActivity($currentStaffId, 'Settings Updated', 'System configuration saved');
             }
@@ -203,7 +213,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'success',
                 $settingsChanged
                     ? 'System settings saved successfully.'
-                    : 'No setting changes were detected — activity log was not updated.'
+                    : 'No setting changes were detected - activity log was not updated.'
             );
             $handled = true;
         } elseif ($action === 'add_staff' && $isAdmin) {
@@ -517,6 +527,8 @@ $smtpPassSaved = trim($settings['smtp_pass']) !== '';
 $iprogTokenSaved = trim($settings['iprog_api_token']) !== '';
 $officeFeesForm = $isAdmin ? officeFeesFormValues() : [];
 $officeRequirementsForm = $isAdmin ? officeRequirementsFormValues() : [];
+$documentRequestRelationshipForm = $isAdmin ? documentRequestRelationshipRequirementsFormValues() : [];
+$documentRequestRelationshipCatalog = documentRequestRelationshipCatalog();
 
 $currentStaff = currentStaffRow($pdo, $currentStaffId);
 $profileNeeds2svConfirmation = staffRecoveryGmailNeeds2svConfirmation($currentStaff, (string) ($currentStaff['email'] ?? ''));
@@ -691,7 +703,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                 <p class="text-sm font-semibold text-slate-800 truncate"><?= htmlspecialchars($currentStaff['email'] ?? 'Not set') ?></p>
                                 <?php if (!empty($currentStaff['email'])): ?>
                                 <p class="text-[10px] mt-1 <?= !empty($currentStaff['recovery_gmail_2sv_confirmed']) ? 'text-emerald-600' : 'text-amber-600' ?> font-semibold">
-                                    <?= !empty($currentStaff['recovery_gmail_2sv_confirmed']) ? '2-Step Verification confirmed' : '2-Step Verification not confirmed — password reset disabled' ?>
+                                    <?= !empty($currentStaff['recovery_gmail_2sv_confirmed']) ? '2-Step Verification confirmed' : '2-Step Verification not confirmed - password reset disabled' ?>
                                 </p>
                                 <?php endif; ?>
                             </div>
@@ -905,10 +917,10 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                             <?= htmlspecialchars(personNameFromRow($member)) ?>
                                             <?php if ($member['staff_id'] === $currentStaffId): ?><span class="text-[9px] text-blue-500 font-normal"> (You)</span><?php endif; ?>
                                         </td>
-                                        <td class="px-4 py-3 text-xs text-slate-600 whitespace-nowrap"><?= htmlspecialchars($member['email'] ?? '—') ?></td>
+                                        <td class="px-4 py-3 text-xs text-slate-600 whitespace-nowrap"><?= htmlspecialchars($member['email'] ?? '-') ?></td>
                                         <td class="px-4 py-3 whitespace-nowrap">
                                             <?php if (empty($member['email'])): ?>
-                                            <span class="text-[10px] text-slate-400">—</span>
+                                            <span class="text-[10px] text-slate-400">-</span>
                                             <?php elseif (!empty($member['recovery_gmail_2sv_confirmed'])): ?>
                                             <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">Confirmed</span>
                                             <?php else: ?>
@@ -953,7 +965,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                     <div id="tab-system-configuration" class="tab-content bg-white border border-slate-100 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-sm <?= $activeTab !== 'system-configuration' ? 'hidden' : '' ?>">
                         <div class="mb-6">
                             <h2 class="text-lg font-bold text-slate-900">System Configuration</h2>
-                            <p class="text-xs text-slate-500 mt-1">Expand each section to edit. Save once at the bottom — all changes apply together.</p>
+                            <p class="text-xs text-slate-500 mt-1">Expand each section to edit. Save once at the bottom - all changes apply together.</p>
                         </div>
                         <form method="POST" class="space-y-4">
                             <?= authFormField() ?>
@@ -973,6 +985,8 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Email</label><input type="email" name="office_email" value="<?= htmlspecialchars($settings['office_email']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Office Hours</label><input type="text" name="office_hours" value="<?= htmlspecialchars($settings['office_hours']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Office Head / Signatory</label><input type="text" name="office_head" value="<?= htmlspecialchars($settings['office_head']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
+                                    <div class="sm:col-span-2"><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Facebook Page URL</label><input type="url" name="social_facebook_url" value="<?= htmlspecialchars($settings['social_facebook_url']) ?>" placeholder="https://www.facebook.com/..." class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
+                                    <div class="sm:col-span-2"><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Instagram Profile URL</label><input type="url" name="social_instagram_url" value="<?= htmlspecialchars($settings['social_instagram_url']) ?>" placeholder="https://www.instagram.com/..." class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                 </div>
                             </details>
 
@@ -983,8 +997,8 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                 </summary>
                                 <div class="p-4 space-y-4 border-t border-slate-100">
                                     <p class="text-xs text-slate-600 leading-relaxed">
-                                        <strong>Fees:</strong> one line per row — shown on All Services, requirement modals, and citizen emails. Leave blank to hide fees for that service.<br>
-                                        <strong>Requirements:</strong> special-service appointments only (not fast-track certificate cards). Checklist items: one per line; sub-items use two spaces and a dash (<code class="bg-slate-100 px-1 rounded text-[10px]">  - </code>). Notes are for legal or other non-fee text (fees are edited above).
+                                        <strong>Fees:</strong> one line per row - shown on All Services, requirement modals, and citizen emails. Leave blank to hide fees for that service.<br>
+                                        <strong>Requirements:</strong> special-service appointments (per service below). Fast-track certificates include <strong>requester relationship</strong> checklists (birth, death, marriage). One line per item; sub-items use two spaces and a dash (<code class="bg-slate-100 px-1 rounded text-[10px]">  - </code>). Notes are for legal or other non-fee text (fees are edited above).
                                     </p>
                                     <div class="space-y-4">
                                         <?php foreach (officeFeesCatalog() as $feeKey => $feeMeta):
@@ -1006,6 +1020,48 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                                     class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-mono leading-relaxed bg-white"
                                                     placeholder="Example:&#10;Processing fee: PHP 100.00"><?= htmlspecialchars($officeFeesForm[$feeKey] ?? '') ?></textarea>
                                     </div>
+
+                                            <?php if ($feeKey === 'document_certificate'): ?>
+                                            <div class="pt-3 border-t border-slate-200/80 space-y-4">
+                                                <p class="text-[10px] text-slate-500 leading-relaxed">Required documents by requester relationship - shown on the certificate request wizard and in request emails.</p>
+                                                <?php
+                                                $docTypeLabels = [
+                                                    'birth'    => 'Birth Certificate',
+                                                    'death'    => 'Death Certificate',
+                                                    'marriage' => 'Marriage Certificate',
+                                                ];
+                                                foreach ($documentRequestRelationshipCatalog as $docType => $relationships):
+                                                ?>
+                                                <div class="rounded-lg border border-slate-200/80 bg-white p-3 space-y-3">
+                                                    <h4 class="text-xs font-bold text-slate-800"><?= htmlspecialchars($docTypeLabels[$docType] ?? ucfirst($docType)) ?></h4>
+                                                    <?php foreach ($relationships as $relSlug => $relLabel):
+                                                        $relForm = $documentRequestRelationshipForm[$docType][$relSlug] ?? ['items' => '', 'notes' => ''];
+                                                    ?>
+                                                    <div class="rounded-lg border border-slate-100 bg-slate-50/80 p-3 space-y-2">
+                                                        <p class="text-xs font-bold text-slate-700"><?= htmlspecialchars($relLabel) ?></p>
+                                                        <div>
+                                                            <label class="block text-[10px] font-bold text-slate-600 uppercase mb-1" for="doc-rel-items-<?= htmlspecialchars($docType) ?>-<?= htmlspecialchars($relSlug) ?>">Required documents</label>
+                                                            <textarea
+                                                                id="doc-rel-items-<?= htmlspecialchars($docType) ?>-<?= htmlspecialchars($relSlug) ?>"
+                                                                name="document_request_relationship_req[<?= htmlspecialchars($docType) ?>][<?= htmlspecialchars($relSlug) ?>][items]"
+                                                                rows="3"
+                                                                class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-mono leading-relaxed bg-white"
+                                                                placeholder="One requirement per line"><?= htmlspecialchars($relForm['items'] ?? '') ?></textarea>
+                                                        </div>
+                                                        <div>
+                                                            <label class="block text-[10px] font-bold text-slate-600 uppercase mb-1" for="doc-rel-notes-<?= htmlspecialchars($docType) ?>-<?= htmlspecialchars($relSlug) ?>">Other notes (optional)</label>
+                                                            <textarea
+                                                                id="doc-rel-notes-<?= htmlspecialchars($docType) ?>-<?= htmlspecialchars($relSlug) ?>"
+                                                                name="document_request_relationship_req[<?= htmlspecialchars($docType) ?>][<?= htmlspecialchars($relSlug) ?>][notes]"
+                                                                rows="2"
+                                                                class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm leading-relaxed bg-white"><?= htmlspecialchars($relForm['notes'] ?? '') ?></textarea>
+                                                        </div>
+                                                    </div>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                                <?php endforeach; ?>
+                                            </div>
+                                            <?php endif; ?>
 
                                             <?php if ($hasRequirements && is_array($reqForm)): ?>
                                             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-2 border-t border-slate-200/80">
@@ -1078,7 +1134,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                         <?php elseif ($smsSummary['configured'] && !empty($smsSummary['sender_hint'])): ?>
                                         <p class="font-semibold text-amber-700"><?= htmlspecialchars($smsSummary['sender_hint']) ?></p>
                                         <?php elseif ($smsSummary['has_api_key'] && !$smsSummary['enabled']): ?>
-                                        <p class="font-semibold text-amber-700">API token is saved but <strong>Enable SMS notifications</strong> is off — no texts will be sent until you check that box and save.</p>
+                                        <p class="font-semibold text-amber-700">API token is saved but <strong>Enable SMS notifications</strong> is off - no texts will be sent until you check that box and save.</p>
                                         <?php elseif ($smsSummary['enabled'] && !$smsSummary['has_api_key']): ?>
                                         <p class="font-semibold text-amber-700">SMS is enabled but no API token is saved yet.</p>
                                         <?php elseif (!$smsSummary['has_api_key']): ?>
@@ -1131,7 +1187,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     </label>
                                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">IPROG API Token</label><input type="password" name="iprog_api_token" id="iprogApiTokenInput" value="<?= $iprogTokenSaved ? htmlspecialchars($smtpPassMask) : '' ?>" autocomplete="new-password" data-saved-mask="<?= $iprogTokenSaved ? htmlspecialchars($smtpPassMask) : '' ?>" data-saved-value="<?= $iprogTokenSaved ? htmlspecialchars($settings['iprog_api_token']) : '' ?>" placeholder="<?= $iprogTokenSaved ? '' : 'API token from IPROG dashboard' ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Found in your IPROG SMS dashboard.<?= $iprogTokenSaved ? ' Click the field, then the eye icon, to view the saved token.' : '' ?></p></div>
-                                        <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Sender Name (optional)</label><input type="text" name="iprog_sender_name" value="<?= htmlspecialchars($settings['iprog_sender_name']) ?>" maxlength="11" placeholder="AlCROS" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Required for many <strong>Smart/TNT</strong> numbers — register at <a href="https://www.iprogsms.com/sender-names/new" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">IPROG sender names</a>.</p></div>
+                                        <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Sender Name (optional)</label><input type="text" name="iprog_sender_name" value="<?= htmlspecialchars($settings['iprog_sender_name']) ?>" maxlength="11" placeholder="AlCROS" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><p class="text-[10px] text-slate-400 mt-1">Required for many <strong>Smart/TNT</strong> numbers - register at <a href="https://www.iprogsms.com/sender-names/new" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">IPROG sender names</a>.</p></div>
                                     </div>
                                 </div>
                             </details>
@@ -1172,7 +1228,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                         <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden mb-5">
                             <div class="px-5 py-4 border-b border-slate-100">
                                 <h2 class="text-base font-black text-slate-900">Admin Tools</h2>
-                                <p class="text-xs text-slate-500 mt-0.5">System health, audit trail, and maintenance — one section at a time.</p>
+                                <p class="text-xs text-slate-500 mt-0.5">System health, audit trail, and maintenance - one section at a time.</p>
                             </div>
                             <nav class="flex gap-1 p-2 overflow-x-auto bg-slate-50/80 border-b border-slate-100" aria-label="Admin tools sections">
                                 <?php
@@ -1236,7 +1292,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                 <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
                                     <div>
                                         <h3 class="text-sm font-bold text-slate-900">Recent staff actions</h3>
-                                        <p class="text-xs text-slate-500">Latest 8 entries — open the full log to search and filter.</p>
+                                        <p class="text-xs text-slate-500">Latest 8 entries - open the full log to search and filter.</p>
                                     </div>
                                     <a href="<?= htmlspecialchars(buildAuthUrl('activity-log.php')) ?>" class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline">
                                         Open full log <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
@@ -1312,16 +1368,16 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                                 <div><span class="text-slate-400">Records</span><strong><?= number_format($backupRecordCount) ?></strong></div>
                                                 <div><span class="text-slate-400">Staff</span><strong><?= number_format($backupStaffCount) ?></strong></div>
                                                 <div><span class="text-slate-400">Bundle</span><strong><?= htmlspecialchars(alcrosFormatBytes($backupDirSize)) ?></strong></div>
-                                                <div><span class="text-slate-400">Last export</span><strong><?= $backupLastRun !== '' ? htmlspecialchars(formatReportDateTime($backupLastRun)) : '—' ?></strong></div>
+                                                <div><span class="text-slate-400">Last export</span><strong><?= $backupLastRun !== '' ? htmlspecialchars(formatReportDateTime($backupLastRun)) : '-' ?></strong></div>
                                             </div>
                                         </div>
                                         <div class="backup-glance__block">
                                             <p class="backup-glance__label">Latest zip archive</p>
                                             <div class="backup-glance__metrics">
                                                 <div><span class="text-slate-400">Last run</span><strong><?= $registryBackupLastRun !== '' ? htmlspecialchars(formatReportDateTime($registryBackupLastRun)) : 'Not yet' ?></strong></div>
-                                                <div><span class="text-slate-400">Status</span><strong><?= $registryBackupLastStatus !== '' ? htmlspecialchars(ucfirst($registryBackupLastStatus)) : '—' ?></strong></div>
+                                                <div><span class="text-slate-400">Status</span><strong><?= $registryBackupLastStatus !== '' ? htmlspecialchars(ucfirst($registryBackupLastStatus)) : '-' ?></strong></div>
                                                 <div><span class="text-slate-400">Schedule</span><strong><span class="backup-badge <?= $registryBackupEnabled ? 'backup-badge--on' : 'backup-badge--off' ?>"><?= $registryBackupEnabled ? 'On' : 'Off' ?></span></strong></div>
-                                                <div class="min-w-0 flex-1"><span class="text-slate-400">File</span><strong class="truncate"><?= $registryBackupLastFilename !== '' ? htmlspecialchars($registryBackupLastFilename) : '—' ?></strong></div>
+                                                <div class="min-w-0 flex-1"><span class="text-slate-400">File</span><strong class="truncate"><?= $registryBackupLastFilename !== '' ? htmlspecialchars($registryBackupLastFilename) : '-' ?></strong></div>
                                             </div>
                                         </div>
                                     </div>
@@ -1357,7 +1413,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                                     <div class="backup-field">
                                                         <label for="registry_backup_public_url">Public site URL</label>
                                                         <input type="url" id="registry_backup_public_url" name="registry_backup_public_url" value="<?= htmlspecialchars($registryBackupPublicUrl) ?>" placeholder="https://alcros.publicvm.com">
-                                                        <p class="backup-field__hint">Optional — fixes cron/OAuth URLs if the host guess is wrong.</p>
+                                                        <p class="backup-field__hint">Optional - fixes cron/OAuth URLs if the host guess is wrong.</p>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1395,7 +1451,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                                     <?php if ($registryBackupGdriveOAuthConnected): ?>
                                                     <p class="backup-status-line backup-status-line--ok">Connected as <?= htmlspecialchars($registryBackupGdriveOAuthEmail !== '' ? $registryBackupGdriveOAuthEmail : 'Google account') ?></p>
                                                     <?php else: ?>
-                                                    <p class="backup-status-line backup-status-line--bad">Not connected — save Client ID/Secret, then connect.</p>
+                                                    <p class="backup-status-line backup-status-line--bad">Not connected - save Client ID/Secret, then connect.</p>
                                                     <?php endif; ?>
                                                     <a href="<?= htmlspecialchars($registryBackupGdriveConnectUrl) ?>" class="backup-btn backup-btn--ghost">
                                                         <i data-lucide="log-in" class="w-4 h-4"></i> Connect
@@ -1472,7 +1528,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                             <div class="backup-field">
                                                 <label>Registry backup (daily, e.g. 2:00 AM)</label>
                                                 <div class="font-mono text-[11px] break-all bg-slate-50 border border-slate-200 rounded-md p-2"><?= htmlspecialchars($registryBackupCronUrl) ?></div>
-                                                <p class="backup-field__hint">Enable scheduled backup above first. Test in browser — expect JSON <code>{"ok":true,...}</code>.</p>
+                                                <p class="backup-field__hint">Enable scheduled backup above first. Test in browser - expect JSON <code>{"ok":true,...}</code>.</p>
                                             </div>
                                         </div>
                                     </details>
@@ -1480,7 +1536,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     <details class="backup-details">
                                         <summary>Stored backup zips on server (<?= count($registryBackupArchives) ?>) <i data-lucide="chevron-down" class="backup-details__chevron"></i></summary>
                                         <div class="backup-details__body">
-                                            <p class="backup-field__hint m-0">Folder <code class="bg-slate-50 px-1 rounded text-[11px]">storage/backups/registry/</code> — download here or via FTP.</p>
+                                            <p class="backup-field__hint m-0">Folder <code class="bg-slate-50 px-1 rounded text-[11px]">storage/backups/registry/</code> - download here or via FTP.</p>
                                             <?php if ($registryBackupArchives === []): ?>
                                             <p class="text-slate-500 mt-3 mb-0">No zip archives yet. Run a backup to create the first file.</p>
                                             <?php else: ?>
@@ -1511,7 +1567,7 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                             <h3 class="text-sm font-bold text-red-900 flex items-center gap-2">
                                                 <i data-lucide="alert-triangle" class="w-4 h-4"></i> System errors
                                             </h3>
-                                            <p class="text-xs text-red-800/80 mt-1">Includes Gmail delivery, SMS (IPROG), and reminder scheduler issues. Each item is fixed separately—Gmail errors need Gmail SMTP under Configuration, not SMS settings.</p>
+                                            <p class="text-xs text-red-800/80 mt-1">Includes Gmail delivery, SMS (IPROG), and reminder scheduler issues. Each item is fixed separately-Gmail errors need Gmail SMTP under Configuration, not SMS settings.</p>
                                         </div>
                                         <?php if (!empty($activeSystemErrors)): ?>
                                         <span class="inline-flex items-center min-w-[1.5rem] h-6 px-2 rounded-full bg-red-600 text-white text-[10px] font-black"><?= count($activeSystemErrors) ?></span>

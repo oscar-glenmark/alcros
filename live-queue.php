@@ -74,7 +74,7 @@ $grouped = fetchQueueTicketsGrouped($pdo);
 $totalWaiting = array_sum(array_map(fn ($g) => count($g['waiting']), $grouped));
 
 $pageTitle = 'Live Queue';
-$pageSubtitle = 'One button per table — tap when you are ready for the next citizen.';
+$pageSubtitle = 'One button per table - tap when you are ready for the next citizen.';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -92,7 +92,7 @@ $pageSubtitle = 'One button per table — tap when you are ready for the next ci
             <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3">
                 <div class="min-w-0">
                     <p class="text-xs font-bold text-slate-800">Public display &amp; voice</p>
-                    <p class="text-[11px] text-slate-600">Keep queue display open in another tab (can stay in the background). Enable voice there once — calls announce even while you work here.</p>
+                    <p class="text-[11px] text-slate-600">Keep queue display open in another tab (can stay in the background). Enable voice there once - calls announce even while you work here.</p>
                 </div>
                 <a href="queue_display.php" target="_blank" rel="noopener noreferrer" class="shrink-0 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-bold">
                     <i data-lucide="monitor" class="w-4 h-4"></i> Open queue display
@@ -136,7 +136,7 @@ $pageSubtitle = 'One button per table — tap when you are ready for the next ci
                             <p class="text-sm text-slate-500 mt-2"><?= htmlspecialchars($servingName) ?></p>
                             <?php endif; ?>
                             <?php else: ?>
-                            <p class="queue-serving-number text-4xl font-black text-slate-200">—</p>
+                            <p class="queue-serving-number text-4xl font-black text-slate-200">-</p>
                             <?php endif; ?>
                         </div>
 
@@ -187,7 +187,7 @@ $pageSubtitle = 'One button per table — tap when you are ready for the next ci
                                 <?php if ($waitCount === 0): ?>
                                 No one in line
                                 <?php else: ?>
-                                <span class="font-bold text-slate-800"><?= $waitCount ?></span> waiting —
+                                <span class="font-bold text-slate-800"><?= $waitCount ?></span> waiting -
                                 next: <span class="queue-next-preview font-mono font-bold text-base text-slate-900"><?= htmlspecialchars($waiting[0]['ticket_number']) ?></span>
                                 <?php endif; ?>
                             </p>

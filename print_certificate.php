@@ -104,7 +104,7 @@ $printModeSetting = printMode();
                 <i data-lucide="info"></i>
                 <div>
                     <strong>Using request data</strong>
-                    <p>No matching civil record was found in the registry. Fields are pre-filled from the document request — review and edit the fill-in data below before printing.</p>
+                    <p>No matching civil record was found in the registry. Fields are pre-filled from the document request - review and edit the fill-in data below before printing.</p>
                 </div>
             </div>
             <?php endif; ?>
@@ -130,11 +130,11 @@ $printModeSetting = printMode();
                     <?php endif; ?>
                     <div class="print-cert-summary__item">
                         <span class="print-cert-label">Registry No.</span>
-                        <strong><?= htmlspecialchars($record['registry_number'] ?: '—') ?></strong>
+                        <strong><?= htmlspecialchars($record['registry_number'] ?: '-') ?></strong>
                     </div>
                     <div class="print-cert-summary__item">
                         <span class="print-cert-label">Book / Page</span>
-                        <strong><?= htmlspecialchars(certificationBookPageReference($record) ?: '—') ?></strong>
+                        <strong><?= htmlspecialchars(certificationBookPageReference($record) ?: '-') ?></strong>
                     </div>
                     <div class="print-cert-summary__item">
                         <span class="print-cert-label">Print Mode</span>
@@ -182,7 +182,7 @@ $printModeSetting = printMode();
                         <label><input type="checkbox" id="optShowBackground" checked> Show background</label>
                     </div>
                 </div>
-                <p class="print-cert-hint print-cert-hint--compact">When checked, the form background is included in the preview and print. When unchecked, only the filled-in data is printed — load blank A4 certification paper.</p>
+                <p class="print-cert-hint print-cert-hint--compact">When checked, the form background is included in the preview and print. When unchecked, only the filled-in data is printed - load blank A4 certification paper.</p>
             </section>
             <?php endif; ?>
             <div class="print-cert-workspace">

@@ -1,6 +1,6 @@
 <?php
 /**
- * ALCROS security helpers — headers, CSRF, rate limits, session hardening.
+ * ALCROS security helpers - headers, CSRF, rate limits, session hardening.
  */
 
 function securityStoragePath(string $file): string
@@ -160,7 +160,7 @@ function iniParseSize(string $value): int
     };
 }
 
-/** POST body exceeded post_max_size — PHP empties $_POST so CSRF appears to fail. */
+/** POST body exceeded post_max_size - PHP empties $_POST so CSRF appears to fail. */
 function requestBodyExceededPostLimit(): bool
 {
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {

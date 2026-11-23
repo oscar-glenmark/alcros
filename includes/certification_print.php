@@ -1,6 +1,6 @@
 <?php
 /**
- * LCRO Certification documents — authenticated copies from existing civil records.
+ * LCRO Certification documents - authenticated copies from existing civil records.
  * Uses Civil Registry Forms 1A (birth), 2A (death), 3A (marriage).
  */
 
@@ -105,7 +105,7 @@ function certificationVerticalCoordScale(?string $certificateType = null): float
     return $paper['paper_height_mm'] / certificationLegacyPaperHeightMm();
 }
 
-/** Y positions for amount / O.R. / date lines — kept inside A4 certification paper. */
+/** Y positions for amount / O.R. / date lines - kept inside A4 certification paper. */
 function certificationFooterPaymentLinePositions(?string $certificateType = null): array
 {
     $paperH = (float) certificationPaperSize($certificateType)['paper_height_mm'];
@@ -182,7 +182,7 @@ function ensureCertificationPaperAspect(PDO $pdo): void
         $templateId = (int) $template['id'];
         $storedHeight = (float) ($template['paper_height_mm'] ?? $legacyHeight);
         if (abs($storedHeight - $legacyHeight) > 0.01) {
-            // Already migrated or manually adjusted — only sync template height.
+            // Already migrated or manually adjusted - only sync template height.
             $pdo->prepare(
                 'UPDATE print_templates SET paper_width_mm = ?, paper_height_mm = ?, updated_at = NOW() WHERE id = ?'
             )->execute([$paper['paper_width_mm'], $newHeight, $templateId]);

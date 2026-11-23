@@ -991,7 +991,7 @@ function renderPrintFillWorkspaceClassicList(array $fillEditorFields, string $fi
 }
 
 /**
- * Grouped section panels (Child's Information, etc.) — shared by records entry and print/documents workspace.
+ * Grouped section panels (Child's Information, etc.) - shared by records entry and print/documents workspace.
  *
  * @param array<string, list<array<string, mixed>>> $grouped from groupPrintFillFieldsForEntryForm()
  */

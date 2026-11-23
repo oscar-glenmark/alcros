@@ -88,7 +88,7 @@ function parseCivilRecordEditReasonFromPost(array $post): ?string
     }
 
     if ($detail !== '') {
-        return $presets[$category] . ' — ' . $detail;
+        return $presets[$category] . ' - ' . $detail;
     }
 
     return $presets[$category];
@@ -98,7 +98,7 @@ function renderCivilRecordEditReasonNoticeMarkup(bool $compact = false): string
 {
     if ($compact) {
         return '<p class="records-edit-reason-modal__hint" role="note">'
-            . 'Pick a reason below—it is saved in the audit log with your changes.'
+            . 'Pick a reason below-it is saved in the audit log with your changes.'
             . '</p>';
     }
 

@@ -1,6 +1,6 @@
 <?php
 /**
- * Citizen portal — mobile bottom navigation (phones only).
+ * Citizen portal - mobile bottom navigation (phones only).
  *
  * Set $citizenMobileTab before including: home | services | request | book | (empty = More highlights via overflow pages)
  */

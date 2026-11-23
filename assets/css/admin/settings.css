@@ -106,7 +106,7 @@ details.sms-recent-details[open] > summary .sms-recent-details__chevron {
     transition: transform 0.2s ease;
 }
 
-/* Registry backup — compact info popover */
+/* Registry backup - compact info popover */
 .backup-scope-info {
     position: relative;
     flex-shrink: 0;

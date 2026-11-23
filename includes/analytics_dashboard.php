@@ -311,7 +311,7 @@ function analyticsTrendBucketsForRange(PDO $pdo, string $from, string $to, strin
     return ['labels' => $labels, 'counts' => $counts];
 }
 
-/** Last 6 months — analytics tab preview. */
+/** Last 6 months - analytics tab preview. */
 function buildAnalyticsRequestsChartSummary(PDO $pdo): array
 {
     $monthSeries = analyticsMonthSeries(
@@ -351,7 +351,7 @@ function buildAnalyticsRequestsChartSummary(PDO $pdo): array
     ];
 }
 
-/** Last 6 months — analytics tab preview. */
+/** Last 6 months - analytics tab preview. */
 function buildAnalyticsPrintsChartSummary(PDO $pdo): array
 {
     $empty = [
@@ -403,7 +403,7 @@ function buildAnalyticsPrintsChartSummary(PDO $pdo): array
     ];
 }
 
-/** Last 6 months — analytics tab preview. */
+/** Last 6 months - analytics tab preview. */
 function buildAnalyticsAppointmentsChartSummary(PDO $pdo): array
 {
     $monthSeries = analyticsMonthSeries(
@@ -434,7 +434,7 @@ function buildAnalyticsAppointmentsChartSummary(PDO $pdo): array
     ];
 }
 
-/** Report detail section — selected date range. */
+/** Report detail section - selected date range. */
 function buildRequestsReportChartPayload(PDO $pdo, string $from, string $to, array $byStatus, array $byType): array
 {
     $period = analyticsTrendBucketsForRange($pdo, $from, $to, 'document_requests', 'submitted_at');
@@ -458,7 +458,7 @@ function buildRequestsReportChartPayload(PDO $pdo, string $from, string $to, arr
     ];
 }
 
-/** Report detail section — selected date range. */
+/** Report detail section - selected date range. */
 function buildAppointmentsReportChartPayload(PDO $pdo, string $from, string $to, array $byStatus): array
 {
     $period = analyticsTrendBucketsForRange($pdo, $from, $to, 'appointments', 'appointment_date');
@@ -579,7 +579,7 @@ function analyticsPrintPeriodSeries(PDO $pdo, string $from, string $to): array
     return compact('labels', 'certification', 'certificate', 'total');
 }
 
-/** Report detail section — selected date range. */
+/** Report detail section - selected date range. */
 function buildPrintsReportChartPayload(PDO $pdo, string $from, string $to, array $byKind, array $byType): array
 {
     $period = analyticsPrintPeriodSeries($pdo, $from, $to);

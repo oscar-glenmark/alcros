@@ -130,9 +130,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             clearStaffResourceLock($pdo, STAFF_LOCK_TYPE_REQUEST, $id);
             $responseOk = true;
             if ($status === 'verified') {
-                $responseMessage = 'Request accepted — moved to Ready for Pickup. Print the certificate when ready.';
+                $responseMessage = 'Request accepted - moved to Ready for Pickup. Print the certificate when ready.';
             } elseif ($status === 'completed') {
-                $responseMessage = 'Request marked completed — document claimed by citizen.';
+                $responseMessage = 'Request marked completed - document claimed by citizen.';
             } elseif ($status === 'rejected') {
                 $responseMessage = 'Request rejected.';
             } else {
@@ -511,7 +511,7 @@ $showVisitLateNoShowColumn = $filterStatus === 'ready';
                             </td>
                             <td class="manage-col-requester">
                                 <?php $requesterDisplay = personRequesterNameFromRow($req); ?>
-                                <p class="manage-citizen-name"><?= htmlspecialchars($requesterDisplay !== '' ? $requesterDisplay : '—') ?></p>
+                                <p class="manage-citizen-name"><?= htmlspecialchars($requesterDisplay !== '' ? $requesterDisplay : '-') ?></p>
                                 <p class="manage-citizen-meta"><?= htmlspecialchars($req['phone'] ?: 'No phone on file') ?></p>
                             </td>
                             <td class="manage-col-record-name">
@@ -629,7 +629,7 @@ $showVisitLateNoShowColumn = $filterStatus === 'ready';
                     <div id="requestDetailContent" class="manage-request-detail__content hidden">
                         <div class="manage-request-detail__header">
                             <div class="min-w-0 flex-1">
-                                <h2 id="requestViewTitle" class="manage-detail-title truncate">—</h2>
+                                <h2 id="requestViewTitle" class="manage-detail-title truncate">-</h2>
                                 <p id="requestViewCode" class="manage-detail-code"></p>
                                 <p id="view-submitted" class="manage-detail-meta"></p>
                             </div>
@@ -653,6 +653,7 @@ $showVisitLateNoShowColumn = $filterStatus === 'ready';
                                 <h3>Request</h3>
                                 <dl class="manage-detail-rows">
                                     <div class="manage-detail-row manage-detail-row--full"><dt>Requester</dt><dd id="view-requester"></dd></div>
+                                    <div class="manage-detail-row manage-detail-row--full"><dt>Relationship</dt><dd id="view-requester-relationship"></dd></div>
                                     <div class="manage-detail-row"><dt>Phone</dt><dd id="view-phone"></dd></div>
                                     <div class="manage-detail-row manage-detail-row--full"><dt>Email</dt><dd id="view-email"></dd></div>
                                     <div class="manage-detail-row"><dt>Email OK</dt><dd id="view-email-verified"></dd></div>
@@ -695,7 +696,7 @@ $showVisitLateNoShowColumn = $filterStatus === 'ready';
         <div class="manage-request-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="modalRequestViewTitle">
             <div class="manage-request-modal__header">
                 <div class="min-w-0 flex-1">
-                    <h2 id="modalRequestViewTitle" class="manage-detail-title truncate">—</h2>
+                    <h2 id="modalRequestViewTitle" class="manage-detail-title truncate">-</h2>
                     <p id="modalRequestViewCode" class="manage-detail-code"></p>
                     <p id="modal-view-submitted" class="manage-detail-meta"></p>
                 </div>
@@ -720,6 +721,7 @@ $showVisitLateNoShowColumn = $filterStatus === 'ready';
                     <h3>Request</h3>
                     <dl class="manage-detail-rows">
                         <div class="manage-detail-row manage-detail-row--full"><dt>Requester</dt><dd id="modal-view-requester"></dd></div>
+                        <div class="manage-detail-row manage-detail-row--full"><dt>Relationship</dt><dd id="modal-view-requester-relationship"></dd></div>
                         <div class="manage-detail-row"><dt>Phone</dt><dd id="modal-view-phone"></dd></div>
                         <div class="manage-detail-row manage-detail-row--full"><dt>Email</dt><dd id="modal-view-email"></dd></div>
                         <div class="manage-detail-row"><dt>Email OK</dt><dd id="modal-view-email-verified"></dd></div>

@@ -65,7 +65,7 @@ $purposeLabels = queuePurposeLabels();
             <?php if (!empty($slot['serving'])): ?>
             <p class="display-table-number"><?= htmlspecialchars($slot['serving']) ?></p>
             <?php else: ?>
-            <p class="display-table-number is-empty">—</p>
+            <p class="display-table-number is-empty">-</p>
             <?php endif; ?>
             <p class="display-table-wait"><?= count($slot['waiting'] ?? []) ?> waiting</p>
         </div>
@@ -102,7 +102,7 @@ $purposeLabels = queuePurposeLabels();
 
     <footer class="mt-4 bg-blue-600 h-10 flex items-center overflow-hidden rounded-xl">
         <div class="marquee w-full text-[10px] font-black uppercase tracking-wider px-4">
-            Table 1 Walk-in · Table 2 Appointment · Table 3 Claim — Secure your queue number at the kiosk · Keep tracking codes for appointments and claims · Mabuhay!
+            Table 1 Walk-in · Table 2 Appointment · Table 3 Claim - Secure your queue number at the kiosk · Keep tracking codes for appointments and claims · Mabuhay!
         </div>
     </footer>
 
@@ -113,7 +113,7 @@ $purposeLabels = queuePurposeLabels();
             </div>
             <h3 class="text-2xl font-black mb-2">Enable Voice Announcements</h3>
             <p class="text-gray-400 text-sm mb-4">Browsers require one click before the display can announce queue numbers aloud.</p>
-            <p class="text-gray-500 text-xs mb-8 leading-relaxed">Leave this page open, enable voice once, then switch to <strong class="text-gray-400">Live Queue</strong> or any other tab. When staff tap Call next, this page still announces — chime, voice, and a desktop notification if the tab is in the background. Allow notifications when asked.</p>
+            <p class="text-gray-500 text-xs mb-8 leading-relaxed">Leave this page open, enable voice once, then switch to <strong class="text-gray-400">Live Queue</strong> or any other tab. When staff tap Call next, this page still announces - chime, voice, and a desktop notification if the tab is in the background. Allow notifications when asked.</p>
             <button type="button" id="voice-enable-btn" class="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl text-sm font-black uppercase tracking-wider transition-colors">
                 Enable voice
             </button>

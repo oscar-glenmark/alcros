@@ -96,12 +96,12 @@
 
     function slotUnavailableLabel(slot) {
         if (slot && slot.status === 'past') {
-            return slot.label + ' — Not available';
+            return slot.label + ' - Not available';
         }
         if (slot && slot.status === 'booked') {
-            return slot.label + ' — Booked';
+            return slot.label + ' - Booked';
         }
-        return slot.label + ' — Not available';
+        return slot.label + ' - Not available';
     }
 
     function blockMessage(reason) {

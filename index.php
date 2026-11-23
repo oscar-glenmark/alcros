@@ -15,7 +15,7 @@ try {
 $maintenanceMode = isMaintenanceMode();
 $publicRequestsAllowed = arePublicRequestsAllowed();
 
-// Staff login in header on desktop; mobile uses More menu / footer — never auto-route to the staff dashboard.
+// Staff login in header on desktop; mobile uses More menu / footer - never auto-route to the staff dashboard.
 $staffPortalUrl   = 'login.php';
 $staffPortalLabel = 'Staff Login';
 $currentPage = basename($_SERVER['PHP_SELF']);
@@ -324,14 +324,51 @@ $faqs = [
                             <i data-lucide="mail" class="w-4 h-4 text-gold shrink-0"></i>
                             <a href="mailto:<?= htmlspecialchars($site['email']) ?>" class="hover:text-gold transition break-all"><?= htmlspecialchars($site['email']) ?></a>
                         </li>
+                        <?php if (trim((string) ($site['head'] ?? '')) !== ''): ?>
+                        <li class="flex items-start gap-2 pt-1">
+                            <i data-lucide="user-check" class="w-4 h-4 text-gold shrink-0 mt-0.5"></i>
+                            <span>
+                                <span class="block text-[10px] font-bold uppercase tracking-wide text-white/40 mb-0.5">Office Head / Signatory</span>
+                                <?= htmlspecialchars($site['head']) ?>
+                            </span>
+                        </li>
+                        <?php endif; ?>
                     </ul>
                 </div>
                 <div>
                     <h4 class="text-white font-bold text-xs uppercase tracking-wider mb-4">Follow Us</h4>
-                    <div class="flex gap-3">
-                        <a href="https://www.facebook.com/aloranmisamis.occidental.9" class="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition" aria-label="Facebook">
-                            <i data-lucide="facebook" class="w-4 h-4"></i>
+                    <div class="flex gap-3 items-center">
+                        <?php
+                        $facebookUrl = trim((string) ($site['facebook_url'] ?? ''));
+                        $instagramUrl = trim((string) ($site['instagram_url'] ?? ''));
+                        ?>
+                        <?php if ($facebookUrl !== ''): ?>
+                        <a href="<?= htmlspecialchars($facebookUrl) ?>" target="_blank" rel="noopener noreferrer" class="footer-social-link footer-facebook-link" aria-label="Facebook">
+                            <svg class="footer-social-link__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                <circle class="footer-facebook-link__bg" cx="12" cy="12" r="12"/>
+                                <path class="footer-facebook-link__f" d="M13.397 20.997v-8.196h2.765l.411-3.209h-3.176V7.548c0-.926.258-1.56 1.587-1.56h1.684V3.127A22.336 22.336 0 0 0 14.201 3c-2.444 0-4.122 1.492-4.122 4.203v2.343H7.62v3.209h2.459v8.197h3.318z"/>
+                            </svg>
                         </a>
+                        <?php endif; ?>
+                        <?php if ($instagramUrl !== ''): ?>
+                        <a href="<?= htmlspecialchars($instagramUrl) ?>" target="_blank" rel="noopener noreferrer" class="footer-social-link footer-instagram-link" aria-label="Instagram">
+                            <svg class="footer-social-link__icon footer-instagram-link__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                <defs>
+                                    <linearGradient id="footerInstagramGradient" gradientUnits="userSpaceOnUse" x1="0" y1="24" x2="24" y2="0">
+                                        <stop offset="0%" stop-color="#feda75"/>
+                                        <stop offset="15%" stop-color="#fa7e1e"/>
+                                        <stop offset="40%" stop-color="#d62976"/>
+                                        <stop offset="70%" stop-color="#962fbf"/>
+                                        <stop offset="100%" stop-color="#4f5bd5"/>
+                                    </linearGradient>
+                                </defs>
+                                <rect class="footer-instagram-link__bg" width="24" height="24" rx="6.5"/>
+                                <rect class="footer-instagram-link__frame" x="5.25" y="5.25" width="13.5" height="13.5" rx="4"/>
+                                <circle class="footer-instagram-link__lens" cx="12" cy="12" r="3.2"/>
+                                <circle class="footer-instagram-link__flash" cx="16.85" cy="7.15" r="1"/>
+                            </svg>
+                        </a>
+                        <?php endif; ?>
                     </div>
                     <p class="text-[11px] text-white/50 mt-4"><?= htmlspecialchars($site['hours']) ?></p>
                 </div>  

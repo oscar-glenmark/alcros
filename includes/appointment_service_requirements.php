@@ -37,7 +37,7 @@ function appointmentServiceRequirementsBuiltinSpecs(): array
                         "Authenticated copies of the applicant's siblings (birth record)",
                     ],
                 ],
-                ['text' => 'Unedited front-facing photo of the registrant attached to the application — 2×2, white background'],
+                ['text' => 'Unedited front-facing photo of the registrant attached to the application - 2×2, white background'],
                 ['text' => 'Negative certification of birth record from PSA'],
                 ['text' => 'Affidavit of two (2) disinterested persons who witnessed the birth of the child'],
                 ['text' => 'PSA negative certification'],
@@ -103,7 +103,7 @@ function appointmentServiceRequirementsBuiltinSpecs(): array
             'items'    => [
                 ['text' => 'Certificate of Marriage (PSA Copy)'],
                 ['text' => 'Certificate of No Marriage of both parents'],
-                ['text' => 'Certificate of Live Birth of the Child (PSA Copy) — 6 copies'],
+                ['text' => 'Certificate of Live Birth of the Child (PSA Copy) - 6 copies'],
                 ['text' => 'Acknowledgment (not required for illegitimate children born on or after August 3, 1988)'],
                 ['text' => 'Affidavit of Legitimation (executed by both parents)'],
             ],

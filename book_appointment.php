@@ -1,6 +1,6 @@
 <?php
 /**
- * Citizen appointment booking — saves to MySQL appointments table.
+ * Citizen appointment booking - saves to MySQL appointments table.
  */
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
@@ -290,7 +290,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php if ($date !== ''): ?>
                 <p><span class="font-bold text-slate-500">Scheduled visit:</span> <?= htmlspecialchars(formatAppointmentDisplay($date, $time)) ?></p>
                 <?php endif; ?>
-                <p><span class="font-bold text-slate-500">Status:</span> Awaiting confirmation — you can follow every update online.</p>
+                <p><span class="font-bold text-slate-500">Status:</span> Awaiting confirmation - you can follow every update online.</p>
                 <?php if ($notifyEmail && $emailSent): ?>
                 <p class="citizen-request-notice citizen-request-notice--success">
                     <i data-lucide="mail" class="w-4 h-4 shrink-0 mt-0.5"></i>
@@ -389,7 +389,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <option value="<?= htmlspecialchars($typeKey) ?>" <?= $typeSelected ? 'selected' : '' ?>><?= htmlspecialchars($typeLabel) ?></option>
                         <?php endforeach; ?>
                     </select>
-                    <p class="text-[10px] text-gray-500 mt-1">Request PSA Documents — choose birth, death, or marriage certificates.</p>
+                    <p class="text-[10px] text-gray-500 mt-1">Request PSA Documents - choose birth, death, or marriage certificates.</p>
                 </div>
                 <?php elseif ($isPsaDocumentsBooking): ?>
                 <select name="service_type" required class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
@@ -402,7 +402,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <option value="<?= htmlspecialchars($typeKey) ?>" <?= $typeSelected ? 'selected' : '' ?>><?= htmlspecialchars($typeLabel) ?></option>
                     <?php endforeach; ?>
                 </select>
-                <p class="text-[10px] text-gray-500 mt-1">Request PSA Documents — choose birth, death, or marriage certificates.</p>
+                <p class="text-[10px] text-gray-500 mt-1">Request PSA Documents - choose birth, death, or marriage certificates.</p>
                 <?php else: ?>
                 <p class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 font-semibold"><?= htmlspecialchars($serviceLabel !== '' ? $serviceLabel : $serviceType) ?></p>
                 <?php endif; ?>
@@ -440,7 +440,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </button>
                 </div>
                 <p class="text-[10px] text-gray-500 mt-1">We check that your @gmail.com account is active. If you agree to notifications, status updates are sent to this Gmail.</p>
-                <p id="gmailStatus" class="text-xs mt-2 <?= $gmailVerified ? 'font-semibold text-green-600' : 'hidden' ?>"><?= $gmailVerified ? 'Gmail verified — this is an active Google account.' : '' ?></p>
+                <p id="gmailStatus" class="text-xs mt-2 <?= $gmailVerified ? 'font-semibold text-green-600' : 'hidden' ?>"><?= $gmailVerified ? 'Gmail verified - this is an active Google account.' : '' ?></p>
             </div>
             <div>
                 <label class="block text-[11px] font-bold mb-1">Phone *</label>

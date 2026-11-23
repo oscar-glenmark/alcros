@@ -15,7 +15,7 @@ $notifySite = $site ?? getSiteSettings();
                 </div>
                 <div>
                     <h2 id="alcros-notify-title" class="text-lg font-extrabold text-slate-900">Notification preferences</h2>
-                    <p class="text-[11px] text-gray-500"><?= htmlspecialchars($notifySite['name']) ?> — <?= htmlspecialchars($notifySite['office']) ?></p>
+                    <p class="text-[11px] text-gray-500"><?= htmlspecialchars($notifySite['name']) ?> - <?= htmlspecialchars($notifySite['office']) ?></p>
                 </div>
             </div>
         </div>

@@ -273,6 +273,58 @@ body { font-family: 'Inter', sans-serif; color: #1e293b; }
     color: rgba(255,255,255,0.75);
 }
 
+.footer-social-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 9999px;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.footer-social-link:hover {
+    opacity: 0.92;
+}
+
+.footer-social-link:active {
+    transform: scale(0.96);
+}
+
+.footer-social-link__icon {
+    width: 2.25rem;
+    height: 2.25rem;
+    display: block;
+}
+
+.footer-facebook-link__bg {
+    fill: #1877f2;
+}
+
+.footer-facebook-link__f {
+    fill: #fff;
+}
+
+.footer-facebook-link:hover .footer-facebook-link__bg {
+    fill: #166fe5;
+}
+
+.footer-instagram-link__bg {
+    fill: url(#footerInstagramGradient);
+}
+
+.footer-instagram-link__frame,
+.footer-instagram-link__lens {
+    fill: none;
+    stroke: #fff;
+    stroke-width: 1.65;
+}
+
+.footer-instagram-link__flash {
+    fill: #fff;
+    stroke: none;
+}
+
 #mobileNav.is-open { display: block; }
 
 /* ── Mobile responsiveness ── */

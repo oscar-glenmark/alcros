@@ -431,10 +431,10 @@ function queueWaitSecondsBeforeFirstCall(?string $createdAt, ?string $firstCalle
 function formatQueueWaitDuration(?int $seconds): string
 {
     if ($seconds === null) {
-        return '—';
+        return '-';
     }
     if ($seconds < 0) {
-        return '—';
+        return '-';
     }
     if ($seconds < 60) {
         return $seconds . ' sec';
@@ -805,6 +805,8 @@ function getSiteSettings(): array
         'email'              => getSetting('office_email', 'aloran@gov.ph'),
         'head'               => getSetting('office_head', 'ATTY. LOCAL CIVIL REGISTRAR'),
         'hours'              => getSetting('office_hours', '8:00 AM - 5:00 PM (Monday to Friday)'),
+        'facebook_url'       => getSetting('social_facebook_url', 'https://www.facebook.com/aloranmisamis.occidental.9'),
+        'instagram_url'      => getSetting('social_instagram_url', ''),
         'overview'           => getSetting('overview_text', 'This guide covers the requirements, steps, and fees for all core civil registration services handled by the <strong>{office}</strong>.'),
     ];
 }
@@ -859,7 +861,7 @@ function requestStatusActionLabel(string $action): string
         'printed'       => 'Mark Printed',
         'quality_check' => 'Pass Quality Check',
         'ready'         => 'Ready for Pickup',
-        'completed'     => 'Completed — claimed',
+        'completed'     => 'Completed - claimed',
         default         => requestStatusLabel($action),
     };
 }
@@ -1539,7 +1541,7 @@ function getAppointmentServices(): array
         ['slug' => 'legitimation',        'label' => 'Legitimation',        'desc' => 'Update child status to legitimate after parents marry.',     'icon' => 'users',          'iconBg' => 'bg-blue-100 text-blue-500'],
         ['slug' => 'acknowledgement',     'label' => 'Acknowledgement',     'desc' => 'Official parent acknowledgement of a child.',                'icon' => 'shield-check',   'iconBg' => 'bg-teal-100 text-teal-500'],
         ['slug' => 'delayed-registration-birth', 'label' => 'Delayed Registration of Birth', 'desc' => 'Register a birth beyond the standard reporting period with required affidavit and documents.', 'icon' => 'baby', 'iconBg' => 'bg-sky-100 text-sky-600'],
-        ['slug' => 'cenomar',             'label' => 'CENOMAR',             'desc' => 'Certificate of No Marriage — schedule an appointment.',        'icon' => 'file-text',      'iconBg' => 'bg-green-100 text-green-600'],
+        ['slug' => 'cenomar',             'label' => 'CENOMAR',             'desc' => 'Certificate of No Marriage - schedule an appointment.',        'icon' => 'file-text',      'iconBg' => 'bg-green-100 text-green-600'],
         ['slug' => 'request-psa-documents', 'label' => 'Request PSA Documents', 'desc' => 'Schedule an appointment to request PSA birth, death, or marriage certificates.', 'icon' => 'file-badge', 'iconBg' => 'bg-indigo-100 text-indigo-600'],
     ];
 }
@@ -1815,13 +1817,13 @@ function scheduleVisitAppointmentSql(string $alias = 'a'): string
         )";
 }
 
-/** Calendar day markers — any non-cancelled visit (includes completed; matches Manage Appointments day view). */
+/** Calendar day markers - any non-cancelled visit (includes completed; matches Manage Appointments day view). */
 function scheduleCalendarAppointmentSql(string $alias = 'a'): string
 {
     return "{$alias}.status NOT IN ('cancelled', 'no_show')";
 }
 
-/** Dashboard “Incoming appointments” (tomorrow) — confirmed visits only, not awaiting confirmation. */
+/** Dashboard “Incoming appointments” (tomorrow) - confirmed visits only, not awaiting confirmation. */
 function scheduleIncomingAppointmentSql(string $alias = 'a'): string
 {
     return "{$alias}.status = 'confirmed'";
@@ -2002,7 +2004,7 @@ function appointmentStatusLabel(string $status, ?string $rejectionReason = null)
 function appointmentStatusMessage(string $status, ?string $rejectionReason = null): string
 {
     $message = match ($status) {
-        'scheduled' => 'Your appointment request was received. Our office will confirm your visit — this is not yet a confirmed schedule.',
+        'scheduled' => 'Your appointment request was received. Our office will confirm your visit - this is not yet a confirmed schedule.',
         'confirmed' => 'Your appointment has been confirmed by our office. Please arrive on time with a valid ID.',
         'completed' => 'This appointment has been completed. Thank you for visiting ALCROS.',
         'cancelled' => 'This appointment was rejected. Contact the office to reschedule.',
@@ -2243,7 +2245,7 @@ function normalizeVisitSlotTimeList(array $times): array
     return $times;
 }
 
-/** Certificate pickup visits (document requests) — separate from standalone appointments. */
+/** Certificate pickup visits (document requests) - separate from standalone appointments. */
 function getBookedVisitTimesForCalendar(PDO $pdo, string $date, string $bookingType): array
 {
     $bookingType = normalizeAppointmentBookingType($bookingType);
@@ -2305,7 +2307,7 @@ function appointmentSlotTimeMatchesSql(string $column): string
 
 /**
  * Linked appointment on the same visit date/time as the request (any resolved visit row).
- * When true, the document_requests row must not hold the slot — active visits use appointments;
+ * When true, the document_requests row must not hold the slot - active visits use appointments;
  * cancelled / no_show / completed rows release the slot.
  */
 function documentRequestVisitSlotCoveredByLinkedAppointmentSql(string $drAlias = 'dr', string $aAlias = 'a'): string
@@ -2710,7 +2712,7 @@ function getFirebaseWebApiKey(): string
     return defined('FIREBASE_WEB_API_KEY') ? trim((string) FIREBASE_WEB_API_KEY) : '';
 }
 
-/** Same check Google uses on the signup form — username taken means Gmail is active. */
+/** Same check Google uses on the signup form - username taken means Gmail is active. */
 function gmailExistsViaSignupValidator(string $email): ?bool
 {
     if (!function_exists('curl_init')) {
@@ -2879,7 +2881,7 @@ function gmailExistsViaSmtp(string $email): ?bool
     return null;
 }
 
-/** HTTPS check — works on localhost where port 25 is often blocked. */
+/** HTTPS check - works on localhost where port 25 is often blocked. */
 function gmailExistsViaHttp(string $email): ?bool
 {
     if (!function_exists('curl_init')) {
@@ -2908,7 +2910,7 @@ function gmailExistsViaHttp(string $email): ?bool
         return true;
     }
 
-    // Google no longer sends Set-Cookie on this endpoint — result is inconclusive, not "not found".
+    // Google no longer sends Set-Cookie on this endpoint - result is inconclusive, not "not found".
     if (preg_match('/^HTTP\/[\d.]+ 204/m', $response)) {
         return null;
     }
@@ -2923,7 +2925,7 @@ function gmailExistsViaHttp(string $email): ?bool
     return null;
 }
 
-/** Firebase Identity Toolkit — reliable HTTPS check (works on XAMPP). */
+/** Firebase Identity Toolkit - reliable HTTPS check (works on XAMPP). */
 function gmailExistsViaFirebase(string $email): ?bool
 {
     $apiKey = getFirebaseWebApiKey();
@@ -2986,7 +2988,7 @@ function gmailAccountIsActive(string $email): ?bool
     return null;
 }
 
-/** Verify typed Gmail for the request form — no Google Sign-In required. */
+/** Verify typed Gmail for the request form - no Google Sign-In required. */
 function verifyActiveGmailAccount(string $email): array
 {
     if (session_status() === PHP_SESSION_NONE) {
@@ -3005,7 +3007,7 @@ function verifyActiveGmailAccount(string $email): array
         return [
             'ok'      => true,
             'email'   => $email,
-            'message' => 'Gmail verified — this is an active Google account.',
+            'message' => 'Gmail verified - this is an active Google account.',
         ];
     }
 
@@ -3150,7 +3152,7 @@ function documentRequestNameOnRecord(array $row, ?PDO $pdo = null): string
         try {
             $pdo = getDB();
         } catch (Throwable $e) {
-            return '—';
+            return '-';
         }
     }
 
@@ -3160,12 +3162,12 @@ function documentRequestNameOnRecord(array $row, ?PDO $pdo = null): string
 
     $record = resolveCivilRecordForRequest($pdo, $row);
     if ($record === null || empty($record['id']) || (($record['_print_source'] ?? '') === 'request')) {
-        return '—';
+        return '-';
     }
 
     $display = civilRecordDisplayName($record);
 
-    return ($display !== '' && $display !== '—') ? $display : '—';
+    return ($display !== '' && $display !== '-') ? $display : '-';
 }
 
 /** Person who submitted the certificate request (distinct from name on the certificate). */
@@ -3216,6 +3218,18 @@ function ensureDocumentRequestRequesterColumns(PDO $pdo): void
         } catch (Throwable $ignored) {
         }
     }
+
+    try {
+        $pdo->query('SELECT requester_relationship FROM document_requests LIMIT 1');
+    } catch (Throwable $e) {
+        try {
+            $pdo->exec(
+                'ALTER TABLE document_requests
+                 ADD COLUMN requester_relationship VARCHAR(40) DEFAULT NULL AFTER requester_last_name'
+            );
+        } catch (Throwable $ignored) {
+        }
+    }
 }
 
 function civilRecordDisplayName(array $row): string
@@ -3230,7 +3244,7 @@ function civilRecordDisplayName(array $row): string
 
     $name = personNameFromRow($row);
 
-    return $name !== '' ? $name : '—';
+    return $name !== '' ? $name : '-';
 }
 
 function parsePersonNameToParts(string $full): array
@@ -3873,7 +3887,7 @@ function verifyCitizenCivilRecord(PDO $pdo, array $nameParts, string $dateOfBirt
         );
         return [
             'ok'          => true,
-            'message'     => 'Record found — you are registered with the Local Civil Registry Office.',
+            'message'     => 'Record found - you are registered with the Local Civil Registry Office.',
             'record_type' => civilRecordTypeLabel((string) ($row['record_type'] ?? $documentType)),
         ];
     }
@@ -3916,7 +3930,7 @@ function verifyCitizenCivilRecordFromInput(PDO $pdo, array $input): array
 
             return [
                 'ok'          => true,
-                'message'     => 'Record found — you are registered with the Local Civil Registry Office.',
+                'message'     => 'Record found - you are registered with the Local Civil Registry Office.',
                 'record_type' => civilRecordTypeLabel('marriage'),
             ];
         }
@@ -3944,7 +3958,7 @@ function verifyCitizenCivilRecordFromInput(PDO $pdo, array $input): array
 
             return [
                 'ok'          => true,
-                'message'     => 'Record found — you are registered with the Local Civil Registry Office.',
+                'message'     => 'Record found - you are registered with the Local Civil Registry Office.',
                 'record_type' => civilRecordTypeLabel('death'),
             ];
         }
@@ -4309,7 +4323,7 @@ function sendStaffPasswordOtp(PDO $pdo, string $staffId): array
     )->execute([password_hash($otp, PASSWORD_DEFAULT), $staff['staff_id']]);
 
     $site = getSiteSettings()['name'];
-    $subject = $site . ' — Staff password reset code';
+    $subject = $site . ' - Staff password reset code';
     $displayName = personNameFromRow($staff);
     $plain = "Hello {$displayName},\n\n"
         . "Your ALCROS staff portal password reset code is: {$otp}\n\n"
@@ -4369,7 +4383,7 @@ function sendStaffLoginLockoutAlert(PDO $pdo, string $staffId, int $windowSecond
     $resetUrl = appBaseUrl() . '/forgot_password.php';
     $windowMinutes = (int) max(1, round($windowSeconds / 60));
 
-    $subject = $site . ' — Sign-in attempts on your staff account';
+    $subject = $site . ' - Sign-in attempts on your staff account';
     $plain = "Hello {$displayName},\n\n"
         . "Someone tried to sign in to the ALCROS staff portal using your Staff ID ({$staffIdDisplay}) "
         . "with an incorrect password 3 times.\n\n"
@@ -4438,7 +4452,7 @@ function notifyAdminLoginLockoutInAppIfNeeded(
         logActivity($staffId, 'Login lockout alert', $logDetail);
         rateLimitMarkAdminInboxLockoutSent($rateLimitKey, $windowSeconds);
     } catch (Throwable $e) {
-        // Non-fatal — email lockout paths remain unchanged.
+        // Non-fatal - email lockout paths remain unchanged.
     }
 }
 
@@ -4505,7 +4519,7 @@ function sendUnknownStaffLoginLockoutAlertToAdmin(
     $ip = formatClientIpAddress($sourceIp);
     $windowMinutes = (int) max(1, round($windowSeconds / 60));
 
-    $subject = $site . ' — Staff portal lockout (unrecognized Staff ID)';
+    $subject = $site . ' - Staff portal lockout (unrecognized Staff ID)';
     $plain = "ALCROS staff portal security notice\n\n"
         . "Someone attempted to sign in 3 times using the Staff ID \"{$staffIdDisplay}\", which is not registered in the system.\n\n"
         . "When: {$when}\n"
@@ -4695,7 +4709,7 @@ function alcrosFaviconVersionQuery(): string
 }
 
 /**
- * URL for images/favicon.png — root-relative from the ALCROS folder (/alcros/images/… under XAMPP).
+ * URL for images/favicon.png - root-relative from the ALCROS folder (/alcros/images/… under XAMPP).
  * Avoids plain "images/…" (breaks on some URLs) and "/images/…" (hits htdocs root → XAMPP icon).
  */
 function alcrosFaviconAssetUrl(): string
@@ -4734,7 +4748,7 @@ function alcrosFaviconImg(int $sizePx = 20, string $extraClass = ''): string
     );
 }
 
-/** Staff login in citizen header — desktop (lg+) only; mobile uses More menu / footer. */
+/** Staff login in citizen header - desktop (lg+) only; mobile uses More menu / footer. */
 function citizenStaffLoginHeaderLink(string $label = 'Staff Login'): string
 {
     return '<a href="login.php" class="citizen-btn-login hidden lg:inline-block shrink-0">'
@@ -4855,7 +4869,7 @@ function civilRecordTypeLabel(string $type): string
 function formatRecordDate(?string $date): string
 {
     if ($date === null || $date === '') {
-        return '—';
+        return '-';
     }
     $ts = strtotime($date);
     return $ts ? date('M j, Y', $ts) : $date;
@@ -5255,7 +5269,7 @@ function adminSearchDateBlobVariants(?string $date): array
 
     return array_values(array_unique(array_filter(
         $variants,
-        static fn ($value) => trim((string) $value) !== '' && $value !== '—'
+        static fn ($value) => trim((string) $value) !== '' && $value !== '-'
     )));
 }
 
@@ -5664,6 +5678,9 @@ function documentRequestViewData(array $row): array
     if (!function_exists('canPrintRequestStatus')) {
         require_once __DIR__ . '/printing.php';
     }
+    if (!function_exists('documentRequestRelationshipLabel')) {
+        require_once __DIR__ . '/document_request_relationship_requirements.php';
+    }
 
     $appointment = formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null);
     $statusKey = normalizeRequestStatus((string) ($row['status'] ?? 'pending'));
@@ -5680,22 +5697,27 @@ function documentRequestViewData(array $row): array
         'id'             => (int) ($row['id'] ?? 0),
         'tracking_code'  => (string) ($row['tracking_code'] ?? ''),
         'citizen_name'   => documentRequestNameOnRecord($row),
-        'requester_name' => ($rn = personRequesterNameFromRow($row)) !== '' ? $rn : '—',
+        'requester_name' => ($rn = personRequesterNameFromRow($row)) !== '' ? $rn : '-',
+        'requester_relationship'      => (string) ($row['requester_relationship'] ?? ''),
+        'requester_relationship_label' => ($rr = documentRequestRelationshipLabel(
+            (string) ($row['document_type'] ?? ''),
+            (string) ($row['requester_relationship'] ?? '')
+        )) !== '' ? $rr : '-',
         'first_name'     => (string) ($row['first_name'] ?? ''),
         'middle_name'    => (string) ($row['middle_name'] ?? ''),
         'last_name'      => (string) ($row['last_name'] ?? ''),
-        'date_of_birth'      => !empty($row['date_of_birth']) ? formatDateDisplay($row['date_of_birth']) : '—',
-        'date_of_marriage'   => !empty($row['date_of_marriage']) ? formatDateDisplay($row['date_of_marriage']) : '—',
+        'date_of_birth'      => !empty($row['date_of_birth']) ? formatDateDisplay($row['date_of_birth']) : '-',
+        'date_of_marriage'   => !empty($row['date_of_marriage']) ? formatDateDisplay($row['date_of_marriage']) : '-',
         'document_type_key'  => (string) ($row['document_type'] ?? ''),
-        'sex'                => !empty($row['sex']) ? ucfirst((string) $row['sex']) : '—',
-        'email'          => !empty($row['email']) ? (string) $row['email'] : '—',
+        'sex'                => !empty($row['sex']) ? ucfirst((string) $row['sex']) : '-',
+        'email'          => !empty($row['email']) ? (string) $row['email'] : '-',
         'email_verified' => !empty($row['email_verified']) ? 'Yes' : 'No',
-        'phone'          => !empty($row['phone']) ? (string) $row['phone'] : '—',
+        'phone'          => !empty($row['phone']) ? (string) $row['phone'] : '-',
         'document_type'  => documentTypeLabel((string) ($row['document_type'] ?? '')),
-        'purpose'        => !empty($row['purpose']) ? (string) $row['purpose'] : '—',
+        'purpose'        => !empty($row['purpose']) ? (string) $row['purpose'] : '-',
         'id_front_path'  => protectedUploadUrl(!empty($row['id_front_path']) ? (string) $row['id_front_path'] : null),
         'id_back_path'   => protectedUploadUrl(!empty($row['id_back_path']) ? (string) $row['id_back_path'] : null),
-        'appointment'    => $appointment !== '' ? $appointment : '—',
+        'appointment'    => $appointment !== '' ? $appointment : '-',
         'status'         => requestStatusLabel($statusKey, $row['rejection_reason'] ?? null),
         'status_key'     => $statusKey,
         'status_badge_html' => requestStatusBadge($statusKey, $row['rejection_reason'] ?? null),
@@ -5709,8 +5731,8 @@ function documentRequestViewData(array $row): array
         ]),
         'actions'        => $actionOptions,
         'privacy_agreed' => !empty($row['privacy_agreed']) ? 'Yes' : 'No',
-        'submitted_at'   => !empty($row['submitted_at']) ? formatDateDisplay($row['submitted_at']) : '—',
-        'updated_at'     => !empty($row['updated_at']) ? formatDateDisplay($row['updated_at']) : '—',
+        'submitted_at'   => !empty($row['submitted_at']) ? formatDateDisplay($row['submitted_at']) : '-',
+        'updated_at'     => !empty($row['updated_at']) ? formatDateDisplay($row['updated_at']) : '-',
         'updated_at_iso' => (string) ($row['updated_at'] ?? ''),
         'revision'         => documentRequestRevision($row),
         'notes'            => !empty($row['notes']) ? (string) $row['notes'] : null,
@@ -5738,14 +5760,14 @@ function appointmentViewData(array $row, ?PDO $pdo = null): array
         'first_name'       => (string) ($row['first_name'] ?? ''),
         'middle_name'      => (string) ($row['middle_name'] ?? ''),
         'last_name'          => (string) ($row['last_name'] ?? ''),
-        'date_of_birth'      => !empty($row['date_of_birth']) ? formatDateDisplay($row['date_of_birth']) : '—',
-        'date_of_marriage'   => !empty($row['date_of_marriage']) ? formatDateDisplay($row['date_of_marriage']) : '—',
-        'sex'                => !empty($row['sex']) ? ucfirst((string) $row['sex']) : '—',
+        'date_of_birth'      => !empty($row['date_of_birth']) ? formatDateDisplay($row['date_of_birth']) : '-',
+        'date_of_marriage'   => !empty($row['date_of_marriage']) ? formatDateDisplay($row['date_of_marriage']) : '-',
+        'sex'                => !empty($row['sex']) ? ucfirst((string) $row['sex']) : '-',
         'document_type_key'  => (string) ($row['request_document_type'] ?? ''),
-        'email'              => !empty($row['email']) ? (string) $row['email'] : '—',
-        'phone'              => !empty($row['phone']) ? (string) $row['phone'] : '—',
+        'email'              => !empty($row['email']) ? (string) $row['email'] : '-',
+        'phone'              => !empty($row['phone']) ? (string) $row['phone'] : '-',
         'service_type'       => appointmentServiceLabel((string) ($row['service_type'] ?? '')),
-        'schedule'         => formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null) ?: '—',
+        'schedule'         => formatAppointmentDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null) ?: '-',
         'status'           => appointmentDisplayStatusLabel($row),
         'status_key'       => $statusKey,
         'status_badge_html' => appointmentStatusBadge($statusKey, $row['rejection_reason'] ?? null),
@@ -5754,7 +5776,7 @@ function appointmentViewData(array $row, ?PDO $pdo = null): array
         'notify_email'     => !empty($row['notify_email']) ? 'Yes' : 'No',
         'id_front_path'    => protectedUploadUrl(!empty($row['id_front_path']) ? (string) $row['id_front_path'] : null),
         'id_back_path'     => protectedUploadUrl(!empty($row['id_back_path']) ? (string) $row['id_back_path'] : null),
-        'created_at'       => !empty($row['created_at']) ? formatReportDateTime($row['created_at']) : '—',
+        'created_at'       => !empty($row['created_at']) ? formatReportDateTime($row['created_at']) : '-',
         'can_delete'       => (string) ($row['status'] ?? '') === 'completed',
         'actions'          => $actionOptions,
         'notes'              => !empty($row['notes']) ? (string) $row['notes'] : null,
@@ -6116,7 +6138,7 @@ function citizenEmailPlain(array $mail): string
     }
     $office = getSetting('office_name', 'Local Civil Registrar Office');
     $lines[] = 'DO NOT REPLY. This is an automated message from ALCROS.';
-    $lines[] = '— ALCROS, ' . $office;
+    $lines[] = '- ALCROS, ' . $office;
 
     return implode("\n", $lines);
 }
@@ -6429,21 +6451,28 @@ function notifyRequestSubmitted(array $data): bool
         );
     }
 
+    if (!function_exists('appendDocumentRequestRelationshipToCitizenMail')) {
+        require_once __DIR__ . '/document_request_relationship_requirements.php';
+    }
+
+    $mail = citizenMailWithCertificateFees([
+        'heading'      => 'Request received',
+        'name'         => citizenNotifyPersonName($data),
+        'intro'        => 'Thank you for submitting your document request through ALCROS.',
+        'code_label'   => 'Tracking code',
+        'code'         => $data['tracking_code'],
+        'details'      => $details,
+        'note'         => "We will email this Gmail address when staff verifies your request, when the status changes, and at 5 hours, 3 hours, and 1 hour before your preferred visit.\n\nKeep this code safe - you will need it to check your status.",
+        'button_label' => 'Track your request',
+        'button_url'   => trackRequestUrl($data['tracking_code']),
+        'accent'       => '#2563eb',
+    ]);
+    $mail = appendDocumentRequestRelationshipToCitizenMail($mail, $data);
+
     return sendCitizenNotice(
         $data['email'],
-        'ALCROS — Request received (' . $data['tracking_code'] . ')',
-        citizenMailWithCertificateFees([
-            'heading'      => 'Request received',
-            'name'         => citizenNotifyPersonName($data),
-            'intro'        => 'Thank you for submitting your document request through ALCROS.',
-            'code_label'   => 'Tracking code',
-            'code'         => $data['tracking_code'],
-            'details'      => $details,
-            'note'         => "We will email this Gmail address when staff verifies your request, when the status changes, and at 5 hours, 3 hours, and 1 hour before your preferred visit.\n\nKeep this code safe — you will need it to check your status.",
-            'button_label' => 'Track your request',
-            'button_url'   => trackRequestUrl($data['tracking_code']),
-            'accent'       => '#2563eb',
-        ]),
+        'ALCROS - Request received (' . $data['tracking_code'] . ')',
+        $mail,
         'request_submitted'
     );
 }
@@ -6988,7 +7017,7 @@ function notifyRequestStatusChange(
     $stmt = $pdo->prepare(
         'SELECT tracking_code, first_name, middle_name, last_name,
                 requester_first_name, requester_middle_name, requester_last_name,
-                email, document_type, status, appointment_date, appointment_time, notify_email, rejection_reason
+                requester_relationship, email, document_type, status, appointment_date, appointment_time, notify_email, rejection_reason
          FROM document_requests WHERE id = ? LIMIT 1'
     );
     $stmt->execute([$requestId]);
@@ -7006,14 +7035,14 @@ function notifyRequestStatusChange(
 
     $intro = match ($status) {
         'verified'  => 'Your request has been verified, your pickup visit is confirmed, and your document is ready for pickup.',
-        'ready'     => 'Good news — your document is ready for pickup and your visit remains confirmed.',
+        'ready'     => 'Good news - your document is ready for pickup and your visit remains confirmed.',
         'completed' => 'Your request has been completed.',
         'rejected'  => 'There is an update on your document request.',
         default     => 'There is an update on your document request.',
     };
     $subject = match ($status) {
-        'verified', 'ready' => 'ALCROS — Ready for pickup (' . $row['tracking_code'] . ')',
-        default             => 'ALCROS — Request update (' . $row['tracking_code'] . ')',
+        'verified', 'ready' => 'ALCROS - Ready for pickup (' . $row['tracking_code'] . ')',
+        default             => 'ALCROS - Request update (' . $row['tracking_code'] . ')',
     };
     $accent = match ($status) {
         'verified', 'ready' => '#16a34a',
@@ -7037,7 +7066,7 @@ function notifyRequestStatusChange(
     ];
     if ($status === 'verified' || $status === 'ready') {
         $details['Visit status'] = 'Confirmed';
-        if ($visitSchedule !== '—') {
+        if ($visitSchedule !== '-') {
             $details['Scheduled visit'] = $visitSchedule;
         }
     }
@@ -7045,7 +7074,11 @@ function notifyRequestStatusChange(
         $details['Reason'] = $effectiveReason;
     }
 
-    $sent = sendCitizenNotice($row['email'], $subject, citizenMailWithCertificateFees([
+    if (!function_exists('appendDocumentRequestRelationshipToCitizenMail')) {
+        require_once __DIR__ . '/document_request_relationship_requirements.php';
+    }
+
+    $mail = citizenMailWithCertificateFees([
         'heading'      => $heading,
         'name'         => citizenNotifyPersonName($row),
         'intro'        => $intro,
@@ -7056,7 +7089,10 @@ function notifyRequestStatusChange(
         'button_label' => 'View full details',
         'button_url'   => trackRequestUrl($row['tracking_code']),
         'accent'       => $accent,
-    ]), 'request_' . $status);
+    ]);
+    $mail = appendDocumentRequestRelationshipToCitizenMail($mail, $row);
+
+    $sent = sendCitizenNotice($row['email'], $subject, $mail, 'request_' . $status);
 
     return citizenEmailNotifyResult($sent);
 }
@@ -7098,7 +7134,7 @@ function notifyAppointmentBooked(array $data): bool
 
     return sendCitizenNotice(
         $data['email'],
-        'ALCROS — Appointment booked (' . $data['appointment_code'] . ')',
+        'ALCROS - Appointment booked (' . $data['appointment_code'] . ')',
         $mail,
         'appointment_booked'
     );
@@ -7161,7 +7197,7 @@ function notifyAppointmentStatusChange(PDO $pdo, int $appointmentId, string $new
 
     $sent = sendCitizenNotice(
         $row['email'],
-        'ALCROS — Appointment update (' . $row['appointment_code'] . ')',
+        'ALCROS - Appointment update (' . $row['appointment_code'] . ')',
         $mail,
         'appointment_' . $newStatus
     );
@@ -7293,7 +7329,7 @@ function notifyAppointmentReminder(array $row, int $hoursBefore): bool
 
     return sendCitizenNotice(
         (string) $row['email'],
-        'ALCROS — Appointment in ' . $hoursLabel . ' (' . $row['appointment_code'] . ')',
+        'ALCROS - Appointment in ' . $hoursLabel . ' (' . $row['appointment_code'] . ')',
         $mail,
         'appointment_reminder_' . $hoursBefore . 'h'
     );
@@ -7307,25 +7343,32 @@ function notifyRequestVisitReminder(array $row, int $hoursBefore): bool
 
     $hoursLabel = reminderHoursLabel($hoursBefore);
 
+    if (!function_exists('appendDocumentRequestRelationshipToCitizenMail')) {
+        require_once __DIR__ . '/document_request_relationship_requirements.php';
+    }
+
+    $mail = citizenMailWithCertificateFees([
+        'heading'            => 'Visit reminder',
+        'name'               => citizenNotifyPersonName($row),
+        'intro'              => 'This is a reminder that your preferred visit for document pickup is in about ' . $hoursLabel . '.',
+        'code_label'   => 'Tracking code',
+        'code'         => $row['tracking_code'],
+        'details'      => [
+            'Document'        => documentTypeLabel((string) ($row['document_type'] ?? '')),
+            'Current status'  => requestStatusLabel((string) ($row['status'] ?? 'pending')),
+            'Preferred visit' => formatAppointmentEmailDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
+        ],
+        'note'         => 'Please arrive on time and bring your tracking code and a valid ID.',
+        'button_label' => 'Track your request',
+        'button_url'   => trackRequestUrl((string) $row['tracking_code']),
+        'accent'       => '#d97706',
+    ]);
+    $mail = appendDocumentRequestRelationshipToCitizenMail($mail, $row);
+
     return sendCitizenNotice(
         (string) $row['email'],
-        'ALCROS — Visit in ' . $hoursLabel . ' (' . $row['tracking_code'] . ')',
-        citizenMailWithCertificateFees([
-            'heading'            => 'Visit reminder',
-            'name'               => citizenNotifyPersonName($row),
-            'intro'              => 'This is a reminder that your preferred visit for document pickup is in about ' . $hoursLabel . '.',
-            'code_label'   => 'Tracking code',
-            'code'         => $row['tracking_code'],
-            'details'      => [
-                'Document'        => documentTypeLabel((string) ($row['document_type'] ?? '')),
-                'Current status'  => requestStatusLabel((string) ($row['status'] ?? 'pending')),
-                'Preferred visit' => formatAppointmentEmailDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
-            ],
-            'note'         => 'Please arrive on time and bring your tracking code and a valid ID.',
-            'button_label' => 'Track your request',
-            'button_url'   => trackRequestUrl((string) $row['tracking_code']),
-            'accent'       => '#d97706',
-        ]),
+        'ALCROS - Visit in ' . $hoursLabel . ' (' . $row['tracking_code'] . ')',
+        $mail,
         'appointment_reminder_' . $hoursBefore . 'h'
     );
 }
@@ -7626,7 +7669,7 @@ function renderManageVisitLateNoShowCell(
     } elseif ($minutesLate !== null) {
         $html .= '<span class="manage-visit-late">' . (int) $minutesLate . ' min late</span>';
     } else {
-        $html .= '<span class="manage-visit-late manage-visit-late--muted">—</span>';
+        $html .= '<span class="manage-visit-late manage-visit-late--muted">-</span>';
     }
 
     if ($canMark && $entityId > 0) {
@@ -7685,25 +7728,32 @@ function notifyRequestVisitSoon(array $row): bool
 
     $soonLabel = formatVisitSoonLabel($minutesUntil);
 
+    if (!function_exists('appendDocumentRequestRelationshipToCitizenMail')) {
+        require_once __DIR__ . '/document_request_relationship_requirements.php';
+    }
+
+    $mail = citizenMailWithCertificateFees([
+        'heading'      => 'Your visit is coming up soon',
+        'name'         => citizenNotifyPersonName($row),
+        'intro'        => 'Your preferred LCRO visit is in about ' . $soonLabel . '. Please head to the office if you are not already on your way.',
+        'code_label'   => 'Tracking code',
+        'code'         => $row['tracking_code'],
+        'details'      => [
+            'Document'        => documentTypeLabel((string) ($row['document_type'] ?? '')),
+            'Current status'  => requestStatusLabel((string) ($row['status'] ?? 'pending')),
+            'Preferred visit' => formatAppointmentEmailDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
+        ],
+        'note'         => 'Bring your tracking code and a valid ID. Staff may still need a short time to review your request when you arrive.',
+        'button_label' => 'Track your request',
+        'button_url'   => trackRequestUrl((string) $row['tracking_code']),
+        'accent'       => '#d97706',
+    ]);
+    $mail = appendDocumentRequestRelationshipToCitizenMail($mail, $row);
+
     return sendCitizenNotice(
         (string) $row['email'],
-        'ALCROS — Visit today in ' . $soonLabel . ' (' . $row['tracking_code'] . ')',
-        citizenMailWithCertificateFees([
-            'heading'      => 'Your visit is coming up soon',
-            'name'         => citizenNotifyPersonName($row),
-            'intro'        => 'Your preferred LCRO visit is in about ' . $soonLabel . '. Please head to the office if you are not already on your way.',
-            'code_label'   => 'Tracking code',
-            'code'         => $row['tracking_code'],
-            'details'      => [
-                'Document'        => documentTypeLabel((string) ($row['document_type'] ?? '')),
-                'Current status'  => requestStatusLabel((string) ($row['status'] ?? 'pending')),
-                'Preferred visit' => formatAppointmentEmailDisplay($row['appointment_date'] ?? null, $row['appointment_time'] ?? null),
-            ],
-            'note'         => 'Bring your tracking code and a valid ID. Staff may still need a short time to review your request when you arrive.',
-            'button_label' => 'Track your request',
-            'button_url'   => trackRequestUrl((string) $row['tracking_code']),
-            'accent'       => '#d97706',
-        ]),
+        'ALCROS - Visit today in ' . $soonLabel . ' (' . $row['tracking_code'] . ')',
+        $mail,
         'visit_soon'
     );
 }
@@ -7745,7 +7795,7 @@ function notifyAppointmentVisitSoon(array $row): bool
 
     return sendCitizenNotice(
         (string) $row['email'],
-        'ALCROS — Appointment today in ' . $soonLabel . ' (' . $row['appointment_code'] . ')',
+        'ALCROS - Appointment today in ' . $soonLabel . ' (' . $row['appointment_code'] . ')',
         $mail,
         'visit_soon'
     );
@@ -7759,7 +7809,7 @@ function maybeSendVisitSoonEmail(PDO $pdo, string $table, int $id): bool
         $stmt = $pdo->prepare(
             'SELECT id, tracking_code, first_name, middle_name, last_name,
                     requester_first_name, requester_middle_name, requester_last_name,
-                    email, phone, document_type, status,
+                    requester_relationship, email, phone, document_type, status,
                     appointment_date, appointment_time, notify_email, notify_sms, reminder_1h_sent_at
              FROM document_requests WHERE id = ? LIMIT 1'
         );
@@ -7889,7 +7939,7 @@ function sendDueDocumentRequestEmailReminders(PDO $pdo): int
     $stmt = $pdo->query(
         "SELECT id, tracking_code, first_name, middle_name, last_name,
                 requester_first_name, requester_middle_name, requester_last_name,
-                email, document_type, status,
+                requester_relationship, email, document_type, status,
                 appointment_date, appointment_time, notify_email,
                 reminder_5h_sent_at, reminder_3h_sent_at, reminder_1h_sent_at
          FROM document_requests
@@ -8106,7 +8156,7 @@ function formatAppointmentDisplay(?string $date, ?string $time): string
 /**
  * Stack date over time in manage-request / appointment tables so columns do not overlap.
  */
-function manageTableDateTimeHtml(?string $dateOrDatetime, ?string $time = null, string $empty = '—'): string
+function manageTableDateTimeHtml(?string $dateOrDatetime, ?string $time = null, string $empty = '-'): string
 {
     $dateOrDatetime = $dateOrDatetime !== null ? trim($dateOrDatetime) : '';
     $time = $time !== null ? trim($time) : '';
@@ -8646,7 +8696,7 @@ function printJobSourceSummary(array $row): string
         return 'Request #' . (int) $row['request_id'];
     }
 
-    return '—';
+    return '-';
 }
 
 /**

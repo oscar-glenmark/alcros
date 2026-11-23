@@ -47,7 +47,7 @@
         }
         if (whenEl) {
             var whenParts = [payload.whenDate, payload.whenTime].filter(Boolean);
-            whenEl.textContent = whenParts.length ? whenParts.join(' · ') : (payload.whenFull || '—');
+            whenEl.textContent = whenParts.length ? whenParts.join(' · ') : (payload.whenFull || '-');
         }
         if (staffEl) {
             staffEl.textContent = payload.staffName || 'System';
@@ -62,7 +62,7 @@
             }
         }
         if (actionEl) {
-            actionEl.textContent = payload.action || '—';
+            actionEl.textContent = payload.action || '-';
         }
         if (detailsEl) {
             var details = String(payload.details || '').trim();

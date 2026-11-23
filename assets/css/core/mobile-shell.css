@@ -9,7 +9,7 @@
     --alcros-safe-bottom: env(safe-area-inset-bottom, 0px);
     --alcros-safe-left: env(safe-area-inset-left, 0px);
     --alcros-touch-min: 2.75rem;
-  /* Bottom tab bar — matches portal gold buttons (--alcros-gold) */
+  /* Bottom tab bar - matches portal gold buttons (--alcros-gold) */
     --alcros-mobile-tab-gold-hover: #b45309;
     --alcros-mobile-tab-gold-strong: #92400e;
     --alcros-mobile-tab-gold-soft: rgba(244, 180, 0, 0.22);
@@ -31,7 +31,7 @@
         font-size: 1rem;
     }
 
-    /* Bottom tab bars: phones have no :hover — use :active + .is-pressed for gold feedback */
+    /* Bottom tab bars: phones have no :hover - use :active + .is-pressed for gold feedback */
     body.citizen-portal .citizen-mobile-tab,
     body.admin-portal .admin-mobile-tab {
         touch-action: manipulation;

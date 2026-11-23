@@ -238,7 +238,7 @@ function exportCivilRecordTemplateXlsx(PDO $pdo, string $type): void
 
     $row = 1;
     alcrosExcelWriteMetaBlock($sheet, [
-        'ALCROS bulk import template — ' . civilRecordTypeLabel($type),
+        'ALCROS bulk import template - ' . civilRecordTypeLabel($type),
         ['Instructions', 'Enter one record per row using the column headers below. The sample row is skipped on import.'],
         ['Dates', 'Use YYYY-MM-DD or MM/DD/YYYY, or separate day / month / year columns where provided.'],
         ['Required', $type === 'marriage'
@@ -260,7 +260,7 @@ if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') !== realpath(__FILE__)) {
     return;
 }
 
-// JSON — recent update history (view modal info button)
+// JSON - recent update history (view modal info button)
 if (isset($_GET['action']) && $_GET['action'] === 'record_update_history') {
     header('Content-Type: application/json; charset=UTF-8');
     $recordId = (int) ($_GET['id'] ?? 0);
@@ -371,7 +371,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 logActivity(staffId(), 'Record Updated', "Updated record #$id: " . civilRecordDisplayName($data));
                 recordsFlashSet('success', 'Record updated successfully.');
             } else {
-                recordsFlashSet('success', 'No field changes were detected — nothing was logged.');
+                recordsFlashSet('success', 'No field changes were detected - nothing was logged.');
             }
         } elseif ($action === 'import_csv') {
             @set_time_limit(600);
@@ -398,7 +398,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($imported === 0) {
                 $msg = 'No records were imported.';
                 if ($sampleSkipped > 0) {
-                    $msg .= " $sampleSkipped template sample row(s) skipped — add your own data rows below the header.";
+                    $msg .= " $sampleSkipped template sample row(s) skipped - add your own data rows below the header.";
                 }
                 if ($skipped > 0) {
                     $msg .= " $skipped row(s) skipped.";
@@ -629,8 +629,8 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                     <button type="button"
                             id="recordUpdatesInfoBtn"
                             class="records-updates-info-btn"
-                            aria-label="Information — edit policy and recent updates"
-                            title="Information — edit policy and recent updates">
+                            aria-label="Information - edit policy and recent updates"
+                            title="Information - edit policy and recent updates">
                         <?= lucideSvg('info', 'w-4 h-4') ?>
                     </button>
                     <?php endif; ?>
@@ -738,8 +738,8 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                     <button type="button"
                             id="viewRecordUpdatesInfoBtn"
                             class="records-updates-info-btn records-view-modal__info-btn"
-                            aria-label="Information — recent updates to this record"
-                            title="Information — recent updates">
+                            aria-label="Information - recent updates to this record"
+                            title="Information - recent updates">
                         <?= lucideSvg('info', 'w-4 h-4') ?>
                     </button>
                     <button type="button" class="records-view-modal__close close-modal" aria-label="Close record details">

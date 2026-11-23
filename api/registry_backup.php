@@ -1,6 +1,6 @@
 <?php
 /**
- * Scheduled registry backup (SmarterASP.NET Schedule Task — HTTP GET).
+ * Scheduled registry backup (SmarterASP.NET Schedule Task - HTTP GET).
  *
  * Scope: civil records, staff, print calibration, related files (registry export bundle).
  * Output: storage/backups/registry/alcros-registry-YYYY-mm-dd-His.zip (not web-accessible).

@@ -45,9 +45,9 @@
         function setText(id, value) {
             var el = document.getElementById(id);
         if (!el) return;
-        var display = value || '—';
+        var display = value || '-';
         el.textContent = display;
-        el.classList.toggle('manage-detail-value--empty', !value || value === '—');
+        el.classList.toggle('manage-detail-value--empty', !value || value === '-');
     }
 
     function setHtml(id, html) {
@@ -57,7 +57,7 @@
             el.innerHTML = html;
             el.classList.remove('manage-detail-value--empty');
         } else {
-            el.textContent = '—';
+            el.textContent = '-';
             el.classList.add('manage-detail-value--empty');
         }
     }
@@ -66,7 +66,7 @@
         var wrap = document.getElementById(prefix + 'appt-view-dom-wrap');
         if (!wrap) return;
         var isMarriage = data.document_type_key === 'marriage';
-        var hasDom = data.date_of_marriage && data.date_of_marriage !== '—';
+        var hasDom = data.date_of_marriage && data.date_of_marriage !== '-';
         if (isMarriage || hasDom) {
             setText(prefix + 'appt-view-dom', data.date_of_marriage);
             wrap.classList.remove('hidden');
@@ -673,8 +673,8 @@
             var statusClass = 'is-' + String(entry.status || 'pending');
             html += '<li class="manage-follow-up-log__item ' + statusClass + '">' +
                 '<div class="manage-follow-up-log__item-head">' +
-                '<span class="manage-follow-up-log__status">' + escapeHtml(entry.status_label || entry.status || '—') + '</span>' +
-                '<span class="manage-follow-up-log__date">' + escapeHtml(entry.follow_up_date || '—') + '</span>' +
+                '<span class="manage-follow-up-log__status">' + escapeHtml(entry.status_label || entry.status || '-') + '</span>' +
+                '<span class="manage-follow-up-log__date">' + escapeHtml(entry.follow_up_date || '-') + '</span>' +
                 '</div>';
             if (entry.staff_note) {
                 html += '<p class="manage-follow-up-log__note">' + escapeHtml(entry.staff_note) + '</p>';
@@ -723,7 +723,7 @@
         if (hasPending) {
             html += '<div class="manage-follow-up-current">' +
                 '<p class="manage-follow-up-current__eyebrow">Scheduled follow-up</p>' +
-                '<p class="manage-follow-up-current__date">' + escapeHtml(followUp.follow_up_date || '—') + '</p>';
+                '<p class="manage-follow-up-current__date">' + escapeHtml(followUp.follow_up_date || '-') + '</p>';
             if (followUp.staff_note) {
                 html += '<p class="manage-follow-up-current__note"><span>Note:</span> ' + escapeHtml(followUp.staff_note) + '</p>';
             }
@@ -1154,7 +1154,7 @@
         }
     }
 
-    /** Table rows only — buttons also carry data-appointment-row and must not be counted twice. */
+    /** Table rows only - buttons also carry data-appointment-row and must not be counted twice. */
     function appointmentTableRows() {
         return document.querySelectorAll('tr.manage-requests-row[data-appointment-row]');
     }

@@ -12,7 +12,7 @@ function alcrosSchemaReorganizationApplied(PDO $pdo): bool
 
         return false;
     } catch (Throwable) {
-        // Table gone — assume migration ran (locks live in staff_resource_locks).
+        // Table gone - assume migration ran (locks live in staff_resource_locks).
     }
 
     foreach (['staff_notifications', 'staff_push_events'] as $legacy) {
@@ -79,7 +79,7 @@ function alcrosAddForeignKey(PDO $pdo, string $table, string $constraintName, st
     try {
         $pdo->exec($alterSql);
     } catch (Throwable) {
-        // Orphan rows or hosting limits — app still uses logical links in PHP.
+        // Orphan rows or hosting limits - app still uses logical links in PHP.
     }
 }
 

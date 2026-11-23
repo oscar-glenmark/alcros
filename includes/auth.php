@@ -518,7 +518,7 @@ function releaseSessionLock(): void
     }
 }
 
-/** Authenticated file/stream delivery — no DB hydrate per image, plain 401 on failure. */
+/** Authenticated file/stream delivery - no DB hydrate per image, plain 401 on failure. */
 function requireStaffLoginForMedia(): void
 {
     if (getAuthenticatedStaff(true)) {
@@ -657,7 +657,7 @@ function staffPortalInboxLabel(): string
     return isAdmin() ? 'Alerts' : 'Notifications';
 }
 
-/** Day-to-day counter pages — Staff only (Administrators use Reports for oversight). */
+/** Day-to-day counter pages - Staff only (Administrators use Reports for oversight). */
 function staffOperationalPages(): array
 {
     return [

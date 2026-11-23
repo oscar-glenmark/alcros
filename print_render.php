@@ -173,7 +173,7 @@ $overlayHtml = renderPrintOverlayHtml($printData, array_merge($printOptions, [
     'prefer_scan_background'       => $showBackground,
     'calibration_preview'          => $calibrationPreview,
     'use_effective_positions'      => !empty($printData['use_effective_positions']),
-    // Certificates: book/page live on the civil record only — never overlay them on print/preview (certification unchanged).
+    // Certificates: book/page live on the civil record only - never overlay them on print/preview (certification unchanged).
     'hide_record_registry_fields'  => !$isCertificationDoc && !$calibrationPreview,
 ]));
 ?><!DOCTYPE html>

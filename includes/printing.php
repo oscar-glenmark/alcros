@@ -107,7 +107,7 @@ function ensurePrintTables(PDO $pdo): void
         try {
             $step($pdo);
         } catch (Throwable $e) {
-            // Non-fatal — keep print pages usable if one migration step fails.
+            // Non-fatal - keep print pages usable if one migration step fails.
         }
     }
 }
@@ -220,7 +220,7 @@ function syncPrintPaperDimensions(PDO $pdo): void
         setSetting('print_paper_height_mm', (string) $height);
     }
 
-    // Municipal certificates (Forms 102/97/103) use long bond (folio) — certifications stay on A4.
+    // Municipal certificates (Forms 102/97/103) use long bond (folio) - certifications stay on A4.
     $check = $pdo->prepare(
         'SELECT COUNT(*) FROM print_templates
          WHERE document_kind = ?
@@ -1257,7 +1257,7 @@ function printAgeAtDeathText(array $record): string
     return $text;
 }
 
-/** Field names derived from civil record columns — not stored as manual print_fill overrides. */
+/** Field names derived from civil record columns - not stored as manual print_fill overrides. */
 function printRecordSyncedFieldNames(string $certificateType): array
 {
     static $cache = [];
@@ -2068,7 +2068,7 @@ function printFillCsvColumnsForType(PDO $pdo, string $type): array
     return $columns;
 }
 
-/** @return list<string> Template column headers — custom fields use their calibration display name. */
+/** @return list<string> Template column headers - custom fields use their calibration display name. */
 function printFillCsvTemplateHeadersForType(PDO $pdo, string $type): array
 {
     $columns = printFillCsvColumnsForType($pdo, $type);
@@ -2547,7 +2547,7 @@ function logPrintJob(PDO $pdo, array $data): int
         $kindLabel,
         strtoupper((string) $data['certificate_type']),
         strtoupper((string) $data['page_side']),
-        (string) ($data['registry_number'] ?? '—'),
+        (string) ($data['registry_number'] ?? '-'),
         $jobId,
         (string) ($data['print_mode'] ?? 'production')
     );
@@ -2847,7 +2847,7 @@ function removeFieldFromStoredPrintFill(PDO $pdo, string $fieldName, string $cer
             $updateRequest->execute([$json, (int) $row['id']]);
         }
     } catch (Throwable $e) {
-        // Non-fatal — field rows are already removed from print_fields.
+        // Non-fatal - field rows are already removed from print_fields.
     }
 }
 

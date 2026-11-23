@@ -1,9 +1,10 @@
 <?php
 /**
- * Citizen document request — multi-step wizard.
+ * Citizen document request - multi-step wizard.
  */
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
+require_once __DIR__ . '/includes/document_request_relationship_requirements.php';
 require_once __DIR__ . '/includes/scripts.php';
 
 if (isMaintenanceMode() || !arePublicRequestsAllowed()) {
@@ -62,7 +63,8 @@ $recordVerified = isRequestDraftIdentificationVerified($draft);
 
 if ($step > 1 && $step < $requestWizardMaxStep
     && (trim((string) ($draft['requester_first_name'] ?? '')) === ''
-        || trim((string) ($draft['requester_last_name'] ?? '')) === '')) {
+        || trim((string) ($draft['requester_last_name'] ?? '')) === ''
+        || trim((string) ($draft['requester_relationship'] ?? '')) === '')) {
     header('Location: request.php?step=1');
     exit;
 }
@@ -102,10 +104,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
         $documentType   = $_POST['document_type'] ?? '';
         $requesterParts = personNamePartsFromInput($_POST, 'requester_');
 
+        $requesterRelationship = trim((string) ($_POST['requester_relationship'] ?? ''));
         if (($requesterNameError = validatePersonNameParts($requesterParts)) !== null) {
             $error = 'Please enter your first and last name as the person requesting this certificate.';
         } elseif (!in_array($documentType, $validTypes, true)) {
             $error = 'Please select a service type.';
+        } elseif (($relError = validateDocumentRequestRelationshipInput($documentType, $requesterRelationship)) !== null) {
+            $error = $relError;
         } else {
             $previousType = (string) ($draft['document_type'] ?? '');
             if ($previousType !== $documentType) {
@@ -123,7 +128,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                     $draft['date_of_marriage'],
                     $draft['date_of_death'],
                     $draft['sex'],
-                    $draft['citizen_name']
+                    $draft['citizen_name'],
+                    $draft['requester_relationship']
                 );
                 unset($_SESSION['alcros_civil_record_verified']);
             }
@@ -131,6 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
             $draft['requester_first_name']  = $requesterParts['first_name'];
             $draft['requester_middle_name'] = $requesterParts['middle_name'];
             $draft['requester_last_name']   = $requesterParts['last_name'];
+            $draft['requester_relationship'] = $requesterRelationship;
             header('Location: request.php?step=2');
             exit;
         }
@@ -142,10 +149,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
         $documentType   = $_POST['document_type'] ?? ($draft['document_type'] ?? '');
         $sex            = verifiedCivilRecordSexFromSession();
 
+        $requesterRelationship = trim((string) ($_POST['requester_relationship'] ?? ($draft['requester_relationship'] ?? '')));
+        if (!$isHeroFlow) {
+            $previousDocType = (string) ($draft['document_type'] ?? '');
+            if ($previousDocType !== '' && $previousDocType !== $documentType) {
+                unset($draft['requester_relationship']);
+            }
+        }
         if (!$isHeroFlow && ($requesterNameError = validatePersonNameParts($requesterParts)) !== null) {
             $error = 'Please enter your first and last name as the person requesting this certificate.';
         } elseif (!in_array($documentType, $validTypes, true)) {
             $error = 'Please select a service type.';
+        } elseif (!$isHeroFlow && ($relError = validateDocumentRequestRelationshipInput($documentType, $requesterRelationship)) !== null) {
+            $error = $relError;
+        } elseif ($isHeroFlow && ($relError = validateDocumentRequestRelationshipInput($documentType, (string) ($draft['requester_relationship'] ?? ''))) !== null) {
+            $error = $relError;
         } elseif ($documentType === 'marriage') {
             $husbandParts   = personNamePartsFromInput($_POST, 'husband_');
             $wifeParts      = personNamePartsFromInput($_POST, 'wife_');
@@ -179,6 +197,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                     $draft['requester_first_name']  = $requesterParts['first_name'];
                     $draft['requester_middle_name'] = $requesterParts['middle_name'];
                     $draft['requester_last_name']   = $requesterParts['last_name'];
+                    $draft['requester_relationship'] = $requesterRelationship;
                 }
                 unset($draft['citizen_name']);
                 header('Location: request.php?step=' . $requirementsStep);
@@ -210,6 +229,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                     $draft['requester_first_name']  = $requesterParts['first_name'];
                     $draft['requester_middle_name'] = $requesterParts['middle_name'];
                     $draft['requester_last_name']   = $requesterParts['last_name'];
+                    $draft['requester_relationship'] = $requesterRelationship;
                 }
                 unset($draft['citizen_name']);
                 header('Location: request.php?step=' . $requirementsStep);
@@ -242,6 +262,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                     $draft['requester_first_name']  = $requesterParts['first_name'];
                     $draft['requester_middle_name'] = $requesterParts['middle_name'];
                     $draft['requester_last_name']   = $requesterParts['last_name'];
+                    $draft['requester_relationship'] = $requesterRelationship;
                 }
                 unset($draft['citizen_name']);
                 header('Location: request.php?step=' . $requirementsStep);
@@ -269,6 +290,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
             $error = 'An error occurred. Please upload the required valid ID (front side).';
         } elseif (empty($_FILES['id_back']['name']) && empty($draft['id_back_path'])) {
             $error = 'An error occurred. Please upload the required valid ID (back side).';
+        } elseif (($relError = validateDocumentRequestRelationshipInput(
+            (string) ($draft['document_type'] ?? ''),
+            (string) ($draft['requester_relationship'] ?? '')
+        )) !== null) {
+            $error = $relError;
+        } elseif (trim((string) ($draft['requester_first_name'] ?? '')) === ''
+            || trim((string) ($draft['requester_last_name'] ?? '')) === '') {
+            $error = 'Please enter your first and last name as the person requesting this certificate.';
         } else {
             $frontPath = saveIdUpload($_FILES['id_front'] ?? [], 'front');
             if (!empty($_FILES['id_front']['name']) && $frontPath === null) {
@@ -312,6 +341,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
             $error = 'An error occurred. Please upload the required valid ID (front side). Go back to Requirements.';
         } elseif (empty($draft['id_back_path'])) {
             $error = 'An error occurred. Please upload the required valid ID (back side). Go back to Requirements.';
+        } elseif (($relError = validateDocumentRequestRelationshipInput(
+            (string) ($draft['document_type'] ?? ''),
+            (string) ($draft['requester_relationship'] ?? '')
+        )) !== null) {
+            $error = $relError;
         } else {
             $draft['appointment_date'] = $appointmentDate;
             $draft['appointment_time'] = $appointmentTime;
@@ -369,11 +403,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                         $stmt = $pdo->prepare(
                             'INSERT INTO document_requests
                              (tracking_code, first_name, middle_name, last_name,
-                              requester_first_name, requester_middle_name, requester_last_name,
+                              requester_first_name, requester_middle_name, requester_last_name, requester_relationship,
                               date_of_birth, date_of_marriage, date_of_death, sex, email, email_verified, phone,
                               document_type, purpose, id_front_path, id_back_path, privacy_agreed, notify_email, notify_sms,
                               appointment_date, appointment_time, status, print_fill_data)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
                         );
                         $stmt->execute([
                             $trackingCode,
@@ -383,6 +417,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$success) {
                             $draft['requester_first_name'],
                             $draft['requester_middle_name'] ?? null,
                             $draft['requester_last_name'],
+                            $draft['requester_relationship'] ?? null,
                             !empty($draft['date_of_birth']) ? $draft['date_of_birth'] : null,
                             !empty($draft['date_of_marriage']) ? $draft['date_of_marriage'] : null,
                             !empty($draft['date_of_death']) ? $draft['date_of_death'] : null,
@@ -617,7 +652,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 <?php if (!empty($successData['appointment_date'])): ?>
                 <p><span class="font-bold text-slate-500">Preferred visit:</span> <?= htmlspecialchars(formatAppointmentDisplay($successData['appointment_date'], $successData['appointment_time'])) ?></p>
                 <?php endif; ?>
-                <p><span class="font-bold text-slate-500">Status:</span> Pending review — you can follow every update online.</p>
+                <p><span class="font-bold text-slate-500">Status:</span> Pending review - you can follow every update online.</p>
                 <?php if (!empty($successData['email_sent'])): ?>
                 <p class="citizen-request-notice citizen-request-notice--success">
                     <i data-lucide="mail" class="w-4 h-4 shrink-0 mt-0.5"></i>
@@ -674,7 +709,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
         <?php else: ?>
         <?php $identDocType = (string) ($draft['document_type'] ?? ''); ?>
         <p class="citizen-request-step-mobile sm:hidden text-center text-[10px] font-bold uppercase tracking-wide mb-3 citizen-request-step-active">
-            Step <?= min($step, $wizardProgressSteps) ?> of <?= $wizardProgressSteps ?> — <?= htmlspecialchars($stepLabels[$step]['label'] ?? '') ?>
+            Step <?= min($step, $wizardProgressSteps) ?> of <?= $wizardProgressSteps ?> - <?= htmlspecialchars($stepLabels[$step]['label'] ?? '') ?>
         </p>
         <div class="flex justify-center mb-6 sm:mb-10 px-2 sm:px-4 overflow-x-auto">
             <?php foreach ($stepLabels as $i => $s): ?>
@@ -710,35 +745,16 @@ $requestDocumentLabel = !empty($draft['document_type'])
             <form method="POST" class="space-y-5" id="requestStartForm" data-no-loading>
                 <?= publicCsrfField() ?>
                 <input type="hidden" name="step" value="1">
-                <div>
-                    <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                        <i data-lucide="user-check" class="w-3.5 h-3.5 text-blue-500"></i> Your Name (Requester) *
-                    </label>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3" id="requesterNameGrid">
-                        <input type="text" id="requesterFirstNameInput" name="requester_first_name" required placeholder="First name"
-                               value="<?= htmlspecialchars($draft['requester_first_name'] ?? '') ?>"
-                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                        <input type="text" id="requesterMiddleNameInput" name="requester_middle_name" placeholder="Middle name(Optional)"
-                               value="<?= htmlspecialchars($draft['requester_middle_name'] ?? '') ?>"
-                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                        <input type="text" id="requesterLastNameInput" name="requester_last_name" required placeholder="Last name"
-                               value="<?= htmlspecialchars($draft['requester_last_name'] ?? '') ?>"
-                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                    </div>
-                    <p class="text-[10px] text-gray-500 mt-1">Full name of the person submitting this request. This may differ from the name on the certificate.</p>
-                </div>
-                <div>
-                    <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                        <i data-lucide="file-text" class="w-3.5 h-3.5 text-blue-500"></i> Select Certificate Type *
-                    </label>
-                    <?php $heroStartDocType = (string) ($draft['document_type'] ?? ''); ?>
-                    <select name="document_type" required class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                        <option value="" disabled hidden <?= $heroStartDocType === '' ? 'selected' : '' ?>>Select Certificate Type</option>
-                        <?php foreach ($validTypes as $t): ?>
-                        <option value="<?= $t ?>" <?= $heroStartDocType === $t ? 'selected' : '' ?>><?= documentTypeLabel($t) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+                <?php
+                $heroStartDocType = (string) ($draft['document_type'] ?? '');
+                $relationshipDocumentType = $heroStartDocType;
+                $relationshipSelectId = 'requesterRelationshipStartSelect';
+                $embedDocumentTypeSelect = true;
+                $documentTypeSelectId = 'requestStartDocumentType';
+                $documentTypeFieldLabel = 'Select Certificate Type *';
+                $documentTypePlaceholder = 'Select Certificate Type';
+                require __DIR__ . '/includes/request_requester_relationship_fields.php';
+                ?>
                 <div class="citizen-form-actions">
                     <a href="index.php" class="back-home back-home--step">
                         <i data-lucide="chevron-left" class="back-home__icon w-4 h-4"></i>
@@ -756,34 +772,15 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 <?= publicCsrfField() ?>
                 <input type="hidden" name="step" value="1">
                 <input type="hidden" name="record_verified" id="recordVerified" value="<?= $recordVerified ? '1' : '0' ?>">
-                <div>
-                    <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                        <i data-lucide="user-check" class="w-3.5 h-3.5 text-blue-500"></i> Your Name (Requester) *
-                    </label>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3" id="requesterNameGrid">
-                        <input type="text" id="requesterFirstNameInput" name="requester_first_name" required placeholder="First name"
-                               value="<?= htmlspecialchars($draft['requester_first_name'] ?? '') ?>"
-                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                        <input type="text" id="requesterMiddleNameInput" name="requester_middle_name" placeholder="Middle name(Optional)"
-                               value="<?= htmlspecialchars($draft['requester_middle_name'] ?? '') ?>"
-                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                        <input type="text" id="requesterLastNameInput" name="requester_last_name" required placeholder="Last name"
-                               value="<?= htmlspecialchars($draft['requester_last_name'] ?? '') ?>"
-                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                    </div>
-                    <p class="text-[10px] text-gray-500 mt-1">Full name of the person submitting this request. This may differ from the name on the certificate.</p>
-                </div>
-                <div>
-                    <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
-                        <i data-lucide="file-text" class="w-3.5 h-3.5 text-blue-500"></i> Current Service Type *
-                    </label>
-                    <select name="document_type" required class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                        <option value="" disabled <?= empty($draft['document_type']) ? 'selected' : '' ?>>Select document</option>
-                        <?php foreach ($validTypes as $t): ?>
-                        <option value="<?= $t ?>" <?= ($draft['document_type'] ?? '') === $t ? 'selected' : '' ?>><?= documentTypeLabel($t) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+                <?php
+                $relationshipDocumentType = $identDocType;
+                $relationshipSelectId = 'requesterRelationshipIdentSelect';
+                $embedDocumentTypeSelect = true;
+                $documentTypeSelectId = 'identificationDocumentType';
+                $documentTypeFieldLabel = 'Current Service Type *';
+                $documentTypePlaceholder = 'Select document';
+                require __DIR__ . '/includes/request_requester_relationship_fields.php';
+                ?>
                 <?php require __DIR__ . '/includes/request_identification_fields.php'; ?>
                 <div class="citizen-form-actions">
                     <a href="index.php" class="back-home back-home--step">
@@ -806,6 +803,19 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-1">
                     <p class="text-[10px] font-bold text-blue-600 uppercase tracking-wide mb-1">Requester</p>
                     <p class="text-sm font-bold text-blue-900"><?= htmlspecialchars(personRequesterNameFromRow($draft)) ?></p>
+                    <?php if (!empty($draft['requester_relationship'])): ?>
+                    <p class="text-[10px] font-bold text-blue-600 uppercase tracking-wide mt-3 mb-1">Relationship</p>
+                    <p class="text-sm font-semibold text-blue-900"><?= htmlspecialchars(documentRequestRelationshipLabel($identDocType, (string) $draft['requester_relationship'])) ?></p>
+                    <?php
+                    $heroRelPanel = renderDocumentRequestRelationshipRequirementsPanel(
+                        $identDocType,
+                        (string) $draft['requester_relationship']
+                    );
+                    if ($heroRelPanel !== ''):
+                    ?>
+                    <div class="mt-3 text-left"><?= $heroRelPanel ?></div>
+                    <?php endif; ?>
+                    <?php endif; ?>
                     <p class="text-[10px] font-bold text-blue-600 uppercase tracking-wide mt-3 mb-1">Service</p>
                     <p class="text-sm font-semibold text-blue-900"><?= htmlspecialchars(documentTypeLabel($identDocType)) ?></p>
                 </div>
@@ -843,7 +853,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
                         </button>
                     </div>
                     <p class="text-[10px] text-gray-500 mt-1">We check that your @gmail.com account is active. If you agree to notifications, status updates are sent to this Gmail.</p>
-                    <p id="gmailStatus" class="text-xs mt-2 <?= $draftGmailVerified ? 'font-semibold text-green-600' : 'hidden' ?>"><?= $draftGmailVerified ? 'Gmail verified — this is an active Google account.' : '' ?></p>
+                    <p id="gmailStatus" class="text-xs mt-2 <?= $draftGmailVerified ? 'font-semibold text-green-600' : 'hidden' ?>"><?= $draftGmailVerified ? 'Gmail verified - this is an active Google account.' : '' ?></p>
                 </div>
                 <div>
                     <label class="flex items-center gap-2 text-[11px] font-bold text-gray-700 mb-1.5">
@@ -930,12 +940,12 @@ $requestDocumentLabel = !empty($draft['document_type'])
                         <strong><?= htmlspecialchars(formatPersonName($draft['husband_first_name'] ?? '', $draft['husband_middle_name'] ?? null, $draft['husband_last_name'] ?? '')) ?></strong>
                         &amp;
                         <strong><?= htmlspecialchars(formatPersonName($draft['wife_first_name'] ?? '', $draft['wife_middle_name'] ?? null, $draft['wife_last_name'] ?? '')) ?></strong>
-                        — <?= htmlspecialchars(documentTypeLabel($draft['document_type'] ?? '')) ?>
+                        - <?= htmlspecialchars(documentTypeLabel($draft['document_type'] ?? '')) ?>
                     </p>
                     <?php elseif (($draft['document_type'] ?? '') === 'death'): ?>
-                    <p class="text-xs text-blue-800"><strong><?= htmlspecialchars($draftCitizenName) ?></strong> — <?= htmlspecialchars(documentTypeLabel($draft['document_type'] ?? '')) ?><?php if (!empty($draft['date_of_death'])): ?> · <?= htmlspecialchars(formatDateDisplay($draft['date_of_death'])) ?><?php endif; ?></p>
+                    <p class="text-xs text-blue-800"><strong><?= htmlspecialchars($draftCitizenName) ?></strong> - <?= htmlspecialchars(documentTypeLabel($draft['document_type'] ?? '')) ?><?php if (!empty($draft['date_of_death'])): ?> · <?= htmlspecialchars(formatDateDisplay($draft['date_of_death'])) ?><?php endif; ?></p>
                     <?php else: ?>
-                    <p class="text-xs text-blue-800"><strong><?= htmlspecialchars($draftCitizenName) ?></strong> — <?= htmlspecialchars(documentTypeLabel($draft['document_type'] ?? '')) ?></p>
+                    <p class="text-xs text-blue-800"><strong><?= htmlspecialchars($draftCitizenName) ?></strong> - <?= htmlspecialchars(documentTypeLabel($draft['document_type'] ?? '')) ?></p>
                     <?php endif; ?>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
@@ -984,6 +994,14 @@ $requestDocumentLabel = !empty($draft['document_type'])
     <?= actionResultScript($error ? ['error', $error] : null) ?>
     <?= scriptTag('public/citizen-site.js') ?>
     <?= scriptTag('public/forms.js') ?>
+    <?php if (!$success): ?>
+    <?= pageConfigJson([
+        'catalog'      => documentRequestRelationshipCatalog(),
+        'requirements' => documentRequestRelationshipRequirementsClientMap(),
+    ], 'request-relationship-config') ?>
+    <?= scriptTag('core/page-config.js') ?>
+    <?= scriptTag('public/request-relationship.js') ?>
+    <?php endif; ?>
     <?php require __DIR__ . '/includes/citizen_mobile_tabbar.php'; ?>
     <?php require __DIR__ . '/includes/track_floating.php'; ?>
     <?= scriptTag('public/track-floating.js') ?>

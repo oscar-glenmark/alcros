@@ -134,7 +134,7 @@ $pageSubtitle = 'Blank certificate and certification forms for manual entry';
                         <label><input type="checkbox" id="optShowBackground" checked> Show background</label>
                     </div>
                 </div>
-                <p class="print-cert-hint print-cert-hint--compact">When checked, the form background is included in the preview and print. When unchecked, only the filled-in data is printed — load blank A4 certification paper.</p>
+                <p class="print-cert-hint print-cert-hint--compact">When checked, the form background is included in the preview and print. When unchecked, only the filled-in data is printed - load blank A4 certification paper.</p>
             </section>
             <?php endif; ?>
             <div class="print-cert-workspace">

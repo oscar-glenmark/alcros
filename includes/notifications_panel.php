@@ -3,11 +3,11 @@
  * Shared notification list UI (header dropdown + notifications page).
  *
  * Set $notifPanel before including:
- *   context       — 'dropdown' | 'page'
- *   listId        — DOM id for the list container
- *   listClass     — extra Tailwind classes for the list
- *   showFooter    — show "View all" footer (dropdown only)
- *   toolbarPrefix — id prefix for toolbar buttons ('' or 'page-')
+ *   context       - 'dropdown' | 'page'
+ *   listId        - DOM id for the list container
+ *   listClass     - extra Tailwind classes for the list
+ *   showFooter    - show "View all" footer (dropdown only)
+ *   toolbarPrefix - id prefix for toolbar buttons ('' or 'page-')
  */
 $notifPanel = array_merge([
     'context'       => 'dropdown',
@@ -26,7 +26,7 @@ $notifHelpText = $notifIsAdmin
     ? 'System and maintenance alerts only (email/SMS, cron, configuration). Citizen queue and requests are notified to Staff accounts.'
     : 'Citizen operations: pending requests, queue, and appointments. Tap an item to open the page where you can take action.';
 $notifInboxLabel = function_exists('staffPortalInboxLabel') ? staffPortalInboxLabel() : 'Notifications';
-$notifPageHeading = $notifIsAdmin ? 'Inbox — system alerts' : 'Inbox — citizen alerts';
+$notifPageHeading = $notifIsAdmin ? 'Inbox - system alerts' : 'Inbox - citizen alerts';
 $notifEmptyLoading = $notifIsAdmin ? 'Loading alerts…' : 'Loading notifications…';
 $notifViewAllLabel = $notifIsAdmin ? 'Open alerts page' : 'Open notifications page';
 $notifEmptyIdle = $notifIsAdmin ? 'No alerts right now' : 'No notifications right now';

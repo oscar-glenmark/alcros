@@ -440,7 +440,7 @@ function staffOperationalNotificationHref(string $href): string
     return $href;
 }
 
-/** Staff bell links — open the filtered Manage Requests / Appointments view for each alert type. */
+/** Staff bell links - open the filtered Manage Requests / Appointments view for each alert type. */
 function staffPortalNotificationHref(string $type, array $context = []): string
 {
     $page = 'dashboard.php';
@@ -541,9 +541,9 @@ function enrichStaffPortalNotification(array $item): array
             default           => 'View in Reports',
         };
         $item['role_note'] = match ($type) {
-            'pending_request' => 'Not processed yet — Staff must review this in Manage Requests.',
-            'ready_pickup'    => 'Ready for pickup — Staff completes handoff in Manage Requests.',
-            'queue'           => 'Still waiting — Staff call the next ticket in Live queue.',
+            'pending_request' => 'Not processed yet - Staff must review this in Manage Requests.',
+            'ready_pickup'    => 'Ready for pickup - Staff completes handoff in Manage Requests.',
+            'queue'           => 'Still waiting - Staff call the next ticket in Live queue.',
             'appointment'     => 'Staff update appointment status when the citizen arrives.',
             'system'          => 'Administrator action may be required in Settings.',
             default           => 'Staff handle day-to-day processing; you can monitor in Reports.',
@@ -731,7 +731,7 @@ function documentTypeLabelsMap(): array
     ];
 }
 
-/** Citizen operations — Staff inbox only (not email/SMS/cron system alerts). */
+/** Citizen operations - Staff inbox only (not email/SMS/cron system alerts). */
 function staffPortalOperationalNotificationTypes(): array
 {
     return ['pending_request', 'ready_pickup', 'queue', 'appointment'];

@@ -124,7 +124,7 @@ $inputClass = 'w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 tex
                     <?= alcrosFaviconImg(88, 'auth-portal-card-logo') ?>
                     <p class="auth-portal-form-eyebrow"><?= $step === 1 ? 'Account recovery' : 'Almost done' ?></p>
                     <h2 class="auth-portal-form-title"><?= $step === 1 ? 'Reset your password' : 'Set a new password' ?></h2>
-                    <p class="auth-portal-form-subtitle">Staff portal — verification via your registered Gmail</p>
+                    <p class="auth-portal-form-subtitle">Staff portal - verification via your registered Gmail</p>
                 </header>
 
                 <div class="auth-portal-form-body">

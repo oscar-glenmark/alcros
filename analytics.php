@@ -14,7 +14,7 @@ $adminAnalytics = fetchAnalyticsDashboard($pdo);
 $officeName = getSetting('office_name', 'Local Civil Registrar Office (LCRO) of Aloran');
 
 $pageTitle = 'Analytics';
-$pageSubtitle = 'Same live office analytics as Reports — civil records, print volume, intake, and queue.';
+$pageSubtitle = 'Same live office analytics as Reports - civil records, print volume, intake, and queue.';
 $pageHeaderMeta = '<p class="admin-header__meta">' . htmlspecialchars($officeName) . ' · Live office analytics</p>';
 ?>
 <!DOCTYPE html>

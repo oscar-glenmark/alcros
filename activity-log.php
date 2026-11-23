@@ -312,7 +312,7 @@ $showingTo = min($offset + $perPage, $totalCount);
                                     <?php endif; ?>
                                 </td>
                                 <td class="px-4 sm:px-5 py-3.5 text-xs text-slate-500 hidden md:table-cell align-top max-w-md">
-                                    <span class="line-clamp-2"><?= htmlspecialchars($log['details'] ?? '—') ?></span>
+                                    <span class="line-clamp-2"><?= htmlspecialchars($log['details'] ?? '-') ?></span>
                                 </td>
                                 <td class="px-3 py-3.5 hidden lg:table-cell align-top text-right">
                                     <span class="activity-log-row__hint">

@@ -40,7 +40,7 @@ In **Hosting Control Panel → PHP**, set (match `.user.ini` in the project root
 
 Confirm extensions: **PDO MySQL**, **curl**, **openssl**, **zip** (ZipArchive).
 
-**Desktop staff notifications:** **Settings → Notifications** (Staff accounts only) — enable browser pop-ups (Chrome/Edge, no extra PHP libraries). Keep the browser open while on duty.
+**Desktop staff notifications:** **Settings → Notifications** (Staff accounts only) - enable browser pop-ups (Chrome/Edge, no extra PHP libraries). Keep the browser open while on duty.
 
 Set the site to **PHP 8.x**.
 
@@ -48,7 +48,7 @@ Set the site to **PHP 8.x**.
 
 On the server only:
 
-1. Copy `config/database.local.php.example` → `config/database.local.php` and fill the **return array** (exact DB name from MySQL manager, e.g. `db_acfa0a_alcros` — not `alcros_db`)
+1. Copy `config/database.local.php.example` → `config/database.local.php` and fill the **return array** (exact DB name from MySQL manager, e.g. `db_acfa0a_alcros` - not `alcros_db`)
 2. Copy `config/hosting.local.php.example` → `config/hosting.local.php` (`ALCROS_TRUST_PROXY_HTTPS` for free SSL)
 
 Import schema:
@@ -89,20 +89,20 @@ This backs up **only registry data** (same scope as the green “What gets backe
 1. Sign in as **Administrator** → **System Settings** → **Admin Tools** → **Backup**.
 2. Under **Automatic registry backup (hosted / SmarterASP)**:
    - Check **Enable scheduled registry backup**.
-   - Set **Keep zip files on server** (default 14 — older zips are deleted automatically).
+   - Set **Keep zip files on server** (default 14 - older zips are deleted automatically).
    - If the cron URL shows the wrong domain, set **Public site URL** to `https://yourdomain.com` (no trailing slash) and save.
 3. Click **Run registry backup now** once. Confirm **Status** is success and a file appears under **Stored archives**.
 4. Optional test: paste the **Registry backup** URL into a browser (you do not need to be logged in). Expect JSON like `{"ok":true,"filename":"alcros-registry-....zip",...}`.
 5. In SmarterASP **Schedule Tasks**:
    - **Task type:** Call URL  
-   - **URL:** copy **Registry backup — once daily** from the Backup page  
+   - **URL:** copy **Registry backup - once daily** from the Backup page  
    - **Interval:** daily at off-peak time (backup can take up to 5 minutes; `max_execution_time` should be 300 in PHP settings)  
    - Save the task.
 6. **Download copies off the server** (do not rely on zips staying on hosting forever):
    - **File Manager / FTP:** `storage/backups/registry/` → download `alcros-registry-*.zip` files, or  
    - **Admin UI:** **Download** link next to each archive on the Backup page (requires staff login).
 
-Zips are **not** served publicly (`storage/` is denied in `web.config`). Treat the backup URL token like a password — use **Regenerate URL token** if it is exposed.
+Zips are **not** served publicly (`storage/` is denied in `web.config`). Treat the backup URL token like a password - use **Regenerate URL token** if it is exposed.
 
 Inside each zip: `alcros-backup.sql`, `manifest.json`, and `files/` (uploaded assets from the bundle step).
 
@@ -115,7 +115,7 @@ Inside each zip: `alcros-backup.sql`, `manifest.json`, and `files/` (uploaded as
 5. Confirm SmarterASP **Schedule Task** for reminders is saved (15-minute interval)
 6. Enable registry backup, run once manually, then confirm the daily **Schedule Task** for `api/registry_backup.php` is saved
 
-## 8. Security — restrict `install.php` after setup
+## 8. Security - restrict `install.php` after setup
 
 ALCROS already **disables re-install via POST** when the database exists. On a **live host** (not localhost/XAMPP), it also **returns 404** for `install.php` once `databaseIsInstalled()` is true.
 
@@ -133,7 +133,7 @@ To run the web installer again on production (emergency only):
 Pick one or more:
 
 1. **Delete or rename** `install.php` on the server (e.g. `install.php.disabled`) after setup.
-2. **IIS** — add inside root `web.config` before `</configuration>`:
+2. **IIS** - add inside root `web.config` before `</configuration>`:
 
 ```xml
   <location path="install.php">
@@ -148,7 +148,7 @@ Pick one or more:
   </location>
 ```
 
-3. **Apache (XAMPP)** — in `.htaccess` or a rule only on production:
+3. **Apache (XAMPP)** - in `.htaccess` or a rule only on production:
 
 ```apache
 <Files "install.php">
@@ -156,11 +156,11 @@ Pick one or more:
 </Files>
 ```
 
-4. **SmarterASP File Manager** — remove `install.php` from the site root after you confirm login works.
+4. **SmarterASP File Manager** - remove `install.php` from the site root after you confirm login works.
 
 - Do not commit `config/database.local.php` or `config/hosting.local.php`
 - Treat cron URLs and registry backup `token=` as passwords
 
 ## 9. Local XAMPP unchanged
 
-Without `database.local.php` / `hosting.local.php`, defaults remain `localhost` / XAMPP — local development is unchanged.
+Without `database.local.php` / `hosting.local.php`, defaults remain `localhost` / XAMPP - local development is unchanged.

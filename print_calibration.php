@@ -16,7 +16,7 @@ $pdo = getDB();
 try {
     ensurePrintTables($pdo);
 } catch (Throwable $e) {
-    // Continue — template data may still load if tables already exist.
+    // Continue - template data may still load if tables already exist.
 }
 
 $certificateType = $_GET['type'] ?? 'birth';
@@ -218,8 +218,8 @@ if (!$formDefaults && !empty($fields[0])) {
                     <p class="print-cal-help-title">Quick guide</p>
                     <ol class="print-cal-help-steps">
                         <li>Move as many fields as you need, then click <strong>Save all changes</strong> once.</li>
-                        <li><strong>Shift form</strong> — move every box together if your printer is slightly off.</li>
-                        <li><strong>Printer</strong> — set your LGU name and print mode once.</li>
+                        <li><strong>Shift form</strong> - move every box together if your printer is slightly off.</li>
+                        <li><strong>Printer</strong> - set your LGU name and print mode once.</li>
                     </ol>
                 </div>
 
@@ -458,8 +458,8 @@ if (!$formDefaults && !empty($fields[0])) {
                     <form id="calGlobalForm" data-no-confirm class="print-cal-global-form">
                         <label>Print mode
                             <select name="print_mode">
-                                <option value="preprinted" <?= printMode() === 'preprinted' ? 'selected' : '' ?>>Pre-printed forms — print data only on blank forms</option>
-                                <option value="digital" <?= printMode() === 'digital' ? 'selected' : '' ?>>Digital forms — print full form + data</option>
+                                <option value="preprinted" <?= printMode() === 'preprinted' ? 'selected' : '' ?>>Pre-printed forms - print data only on blank forms</option>
+                                <option value="digital" <?= printMode() === 'digital' ? 'selected' : '' ?>>Digital forms - print full form + data</option>
                             </select>
                         </label>
                         <label>Province printed on forms
@@ -480,7 +480,7 @@ if (!$formDefaults && !empty($fields[0])) {
                                 </div>
                                 <label>Back page when printing double-sided
                                     <select name="back_orientation_hint">
-                                        <?php foreach (['flip_long_edge' => 'Flip on long edge (most printers)', 'flip_short_edge' => 'Flip on short edge', 'manual' => 'Manual — I will orient myself'] as $hint => $hintLabel): ?>
+                                        <?php foreach (['flip_long_edge' => 'Flip on long edge (most printers)', 'flip_short_edge' => 'Flip on short edge', 'manual' => 'Manual - I will orient myself'] as $hint => $hintLabel): ?>
                                             <option value="<?= $hint ?>" <?= ($globalCalibration['back_orientation_hint'] ?? '') === $hint ? 'selected' : '' ?>><?= htmlspecialchars($hintLabel) ?></option>
                                         <?php endforeach; ?>
                                     </select>

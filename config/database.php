@@ -1,6 +1,6 @@
 <?php
 /**
- * ALCROS MySQL connection (loader v3 — local credentials via return array in database.local.php).
+ * ALCROS MySQL connection (loader v3 - local credentials via return array in database.local.php).
  */
 require_once __DIR__ . '/environment.php';
 

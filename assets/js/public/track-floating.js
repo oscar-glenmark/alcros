@@ -29,7 +29,7 @@
     }
 
     function formatDateDisplay(value) {
-        if (!value) return '—';
+        if (!value) return '-';
         var raw = String(value).substring(0, 10);
         var parts = raw.split('-');
         if (parts.length !== 3) return raw;
@@ -37,7 +37,7 @@
     }
 
     function formatDateTimeDisplay(value) {
-        if (!value) return '—';
+        if (!value) return '-';
         var d = new Date(String(value).replace(' ', 'T'));
         if (isNaN(d.getTime())) return value;
         return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) +

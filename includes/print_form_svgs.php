@@ -1,6 +1,6 @@
 <?php
 /**
- * Municipal Forms 102, 97, 103 — HTML/SVG on white bond paper.
+ * Municipal Forms 102, 97, 103 - HTML/SVG on white bond paper.
  * Front pages embed the straightened reference scan for exact layout match.
  */
 
@@ -14,7 +14,7 @@ function printFormAccent(string $certificateType): string
     };
 }
 
-/** Light fill/border for preview textboxes (screen only — matches municipal form accent). */
+/** Light fill/border for preview textboxes (screen only - matches municipal form accent). */
 function printFormFieldPreviewColors(string $certificateType): array
 {
     return match ($certificateType) {
@@ -249,7 +249,7 @@ function printFormSvgBirthBack(): string
     }
 
     $g = printFormAccent('birth');
-    $body = '<text class="title" x="108" y="14" text-anchor="middle">Municipal Form No. 102 — Back</text>';
+    $body = '<text class="title" x="108" y="14" text-anchor="middle">Municipal Form No. 102 - Back</text>';
     $body .= printSvgRuledSection('AFFIDAVIT OF ACKNOWLEDGMENT/ADMISSION OF PATERNITY', 22, 6, 6.0, '(For births before 3 August 1988 / on or after 3 August 1988)');
     $body .= printSvgRuledSection('AFFIDAVIT FOR DELAYED REGISTRATION OF BIRTH', 92, 8, 6.0, '(Hospital/clinic administrator, father, mother, guardian, or person if 18+)');
 
@@ -277,7 +277,7 @@ function printFormSvgMarriageBack(): string
     }
 
     $r = printFormAccent('marriage');
-    $body = '<text class="title" x="108" y="14" text-anchor="middle">Municipal Form No. 97 — Back</text>';
+    $body = '<text class="title" x="108" y="14" text-anchor="middle">Municipal Form No. 97 - Back</text>';
     $body .= printSvgRuledSection('20b. WITNESSES (Print Name and Sign)', 22, 3);
     $body .= printSvgRuledSection('AFFIDAVIT FOR DELAYED REGISTRATION OF MARRIAGE', 96, 8);
 
@@ -305,7 +305,7 @@ function printFormSvgDeathBack(): string
     }
 
     $b = printFormAccent('death');
-    $body = '<text class="title" x="108" y="14" text-anchor="middle">Municipal Form No. 103 — Back</text>';
+    $body = '<text class="title" x="108" y="14" text-anchor="middle">Municipal Form No. 103 - Back</text>';
     $body .= printSvgRuledSection('AFFIDAVIT FOR DELAYED REGISTRATION OF DEATH', 104, 8);
 
     return printFormSvgWrap($b, $body);

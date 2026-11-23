@@ -303,7 +303,7 @@ if (!$isAdminUser) {
                     <?php endif; ?>
                 </div>
 
-                <!-- Incoming appointments (60%) — same row as schedule -->
+                <!-- Incoming appointments (60%) - same row as schedule -->
                 <div class="xl:col-span-6 bg-white rounded-2xl border border-gray-100 dash-card overflow-hidden dash-panel-pair">
                     <div class="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
                         <div>

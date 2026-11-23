@@ -256,9 +256,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             clearStaffResourceLock($pdo, STAFF_LOCK_TYPE_APPOINTMENT, $id);
             $responseOk = true;
             $responseMessage = match ($status) {
-                'confirmed' => 'Appointment confirmed — citizen will be notified.',
+                'confirmed' => 'Appointment confirmed - citizen will be notified.',
                 'completed' => 'Appointment marked completed.',
-                'cancelled' => 'Appointment rejected — citizen will be notified.',
+                'cancelled' => 'Appointment rejected - citizen will be notified.',
                 'no_show'   => 'Appointment marked as no-show.',
                 default     => 'Appointment status saved as ' . appointmentStatusLabel($status) . '.',
             };
@@ -921,7 +921,7 @@ $pageHeaderMeta = $awaitingAllDates
                     <div id="appointmentDetailContent" class="manage-request-detail__content hidden">
                         <div class="manage-request-detail__header">
                             <div class="min-w-0 flex-1">
-                                <h2 id="appointmentViewTitle" class="manage-detail-title truncate">—</h2>
+                                <h2 id="appointmentViewTitle" class="manage-detail-title truncate">-</h2>
                                 <p id="appointmentViewCode" class="manage-detail-code"></p>
                                 <p id="appt-view-created" class="manage-detail-meta"></p>
                             </div>
@@ -1007,7 +1007,7 @@ $pageHeaderMeta = $awaitingAllDates
         <div class="manage-request-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="modalAppointmentViewTitle">
             <div class="manage-request-modal__header">
                 <div class="min-w-0 flex-1">
-                    <h2 id="modalAppointmentViewTitle" class="manage-detail-title truncate">—</h2>
+                    <h2 id="modalAppointmentViewTitle" class="manage-detail-title truncate">-</h2>
                     <p id="modalAppointmentViewCode" class="manage-detail-code"></p>
                     <p id="modal-appt-view-created" class="manage-detail-meta"></p>
                 </div>

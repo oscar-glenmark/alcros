@@ -4,7 +4,7 @@
  *
  * Expects $adminAnalytics from fetchAnalyticsDashboard().
  * Optional: $activities (array) for system activity on dashboard.
- * Optional: $adminAnalyticsContext — 'dashboard' (default) or 'report'.
+ * Optional: $adminAnalyticsContext - 'dashboard' (default) or 'report'.
  */
 if (!isset($adminAnalytics) || !is_array($adminAnalytics)) {
     return;
@@ -44,7 +44,7 @@ $activities = $activities ?? [];
     <?php if ($showDashboardAnalyticsHeader && ($a['pendingCount'] > 0 || $a['readyCount'] > 0 || $a['queueWaiting'] > 0)): ?>
     <div class="dash-admin-attention" role="status">
         <span class="dash-admin-attention__label">Needs attention</span>
-        <span class="dash-admin-attention__hint">Staff handle requests, queue, and appointments — view counts in Reports.</span>
+        <span class="dash-admin-attention__hint">Staff handle requests, queue, and appointments - view counts in Reports.</span>
         <?php if ($a['pendingCount'] > 0): ?>
         <span class="dash-admin-attention__pill dash-admin-attention__pill--static"><?= (int) $a['pendingCount'] ?> pending</span>
         <?php endif; ?>

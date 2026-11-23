@@ -232,7 +232,7 @@ $recordsJumpDesc = sprintf(
                                 </div>
                                 <div id="reportExportRecordsFilter" class="mb-3 pt-3 border-t border-gray-100 hidden">
                                     <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Civil records year</p>
-                                    <p class="text-[10px] text-gray-500 mb-2 leading-snug">Registration calendar year — separate from the report date range above.</p>
+                                    <p class="text-[10px] text-gray-500 mb-2 leading-snug">Registration calendar year - separate from the report date range above.</p>
                                     <select id="reportExportYearSelect"
                                             class="w-full border border-slate-200 rounded-lg px-2.5 py-2 text-xs font-semibold text-slate-700 bg-white mb-3">
                                         <?php foreach ($yearOptions as $yearOption): ?>
@@ -611,7 +611,7 @@ $recordsJumpDesc = sprintf(
                     </div>
                     <div class="no-print px-5 py-4 border-b border-gray-100">
                         <?php if (empty($queueReportCharts['hasData'])): ?>
-                        <p class="text-sm text-gray-400 text-center py-8 rounded-xl bg-slate-50 border border-slate-100">No called queue tickets in this period — wait-time charts need at least one ticket that was called.</p>
+                        <p class="text-sm text-gray-400 text-center py-8 rounded-xl bg-slate-50 border border-slate-100">No called queue tickets in this period - wait-time charts need at least one ticket that was called.</p>
                         <?php else: ?>
                         <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
                             <div class="analytics-chart-card">
@@ -694,9 +694,9 @@ $recordsJumpDesc = sprintf(
                                     <td class="px-5 py-3 font-mono text-xs font-bold text-slate-800"><?= htmlspecialchars($row['ticket_number']) ?></td>
                                     <td class="px-5 py-3 text-slate-600"><?= htmlspecialchars($purposeLabels[$row['purpose']] ?? $row['purpose']) ?></td>
                                     <td class="px-5 py-3 text-slate-600"><?= htmlspecialchars(queueTicketStatusLabel((string) ($row['status'] ?? ''))) ?></td>
-                                    <td class="px-5 py-3 text-center text-xs font-bold <?= $isNoShow ? 'text-rose-600' : 'text-gray-300' ?>"><?= $isNoShow ? 'Yes' : '—' ?></td>
+                                    <td class="px-5 py-3 text-center text-xs font-bold <?= $isNoShow ? 'text-rose-600' : 'text-gray-300' ?>"><?= $isNoShow ? 'Yes' : '-' ?></td>
                                     <td class="px-5 py-3 text-gray-400 text-xs hidden md:table-cell whitespace-nowrap"><?= htmlspecialchars(formatReportDateTime($row['created_at'] ?? null)) ?></td>
-                                    <td class="px-5 py-3 text-gray-400 text-xs hidden lg:table-cell whitespace-nowrap"><?= $firstCalled ? htmlspecialchars(formatReportDateTime($firstCalled)) : '—' ?></td>
+                                    <td class="px-5 py-3 text-gray-400 text-xs hidden lg:table-cell whitespace-nowrap"><?= $firstCalled ? htmlspecialchars(formatReportDateTime($firstCalled)) : '-' ?></td>
                                     <td class="px-5 py-3 text-right font-semibold text-slate-800 text-xs whitespace-nowrap"><?= htmlspecialchars($row['wait_label'] ?? formatQueueWaitDuration($row['wait_seconds'] ?? null)) ?></td>
                                 </tr>
                                 <?php endforeach; endif; ?>
@@ -769,7 +769,7 @@ $recordsJumpDesc = sprintf(
                                     <td class="px-5 py-3 text-gray-500 hidden md:table-cell"><?= htmlspecialchars(civilRecordTypeLabel((string) ($row['certificate_type'] ?? ''))) ?></td>
                                     <td class="px-5 py-3 text-right font-bold text-slate-800 tabular-nums"><?= number_format(max(1, (int) ($row['copies'] ?? 1))) ?></td>
                                     <td class="px-5 py-3 text-xs text-slate-600"><?= htmlspecialchars(printJobSourceSummary($row)) ?></td>
-                                    <td class="px-5 py-3 font-mono text-[11px] text-gray-400 hidden lg:table-cell"><?= htmlspecialchars((string) ($row['printed_by'] ?? '—')) ?></td>
+                                    <td class="px-5 py-3 font-mono text-[11px] text-gray-400 hidden lg:table-cell"><?= htmlspecialchars((string) ($row['printed_by'] ?? '-')) ?></td>
                                 </tr>
                                 <?php endforeach; endif; ?>
                             </tbody>
@@ -787,7 +787,7 @@ $recordsJumpDesc = sprintf(
                     <div class="px-5 py-4 border-b border-gray-100">
                         <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                             <div>
-                                <h2 class="text-base font-black text-slate-900">Civil Records — Monthly Registration</h2>
+                                <h2 class="text-base font-black text-slate-900">Civil Records - Monthly Registration</h2>
                                 <p class="text-xs text-gray-400 mt-0.5">Registrations in <?= (int) $reportYear ?> by month and type · compared to <?= (int) ($recordsReport['prior_year'] ?? $reportYear - 1) ?>.</p>
                             </div>
                             <a href="<?= htmlspecialchars($recordsRegistryUrl) ?>" class="no-print inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline shrink-0">
@@ -862,7 +862,7 @@ $recordsJumpDesc = sprintf(
 
                     <div class="no-print px-5 py-4 border-b border-gray-100">
                         <?php if (empty($recordsReport['chart_payload']['hasData'])): ?>
-                        <p class="text-sm text-gray-400 text-center py-8 rounded-xl bg-slate-50 border border-slate-100">No registrations in <?= (int) $reportYear ?> yet — charts appear when records are registered.</p>
+                        <p class="text-sm text-gray-400 text-center py-8 rounded-xl bg-slate-50 border border-slate-100">No registrations in <?= (int) $reportYear ?> yet - charts appear when records are registered.</p>
                         <?php else: ?>
                         <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
                             <div class="analytics-chart-card xl:col-span-2">

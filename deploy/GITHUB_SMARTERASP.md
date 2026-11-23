@@ -24,7 +24,7 @@ SmarterASP’s own article: [Publish with GitHub Actions](https://www.smarterasp
 
 ---
 
-# STEP 1 — Set up SmarterASP (do this once)
+# STEP 1 - Set up SmarterASP (do this once)
 
 Skip if your site **already works** (you ran `install.php` and can log in).
 
@@ -86,7 +86,7 @@ More (SSL, domain, cron): **`deploy/SMARTERASP.md`**.
 
 ---
 
-# STEP 2 — Put your code on GitHub (do this once)
+# STEP 2 - Put your code on GitHub (do this once)
 
 ### 2.1 Create a GitHub repository
 
@@ -108,11 +108,11 @@ git branch -M main
 git push -u origin main
 ```
 
-**Important:** Git must **not** upload `config/database.local.php` or `config/hosting.local.php` — they are in `.gitignore`. Passwords stay on SmarterASP only.
+**Important:** Git must **not** upload `config/database.local.php` or `config/hosting.local.php` - they are in `.gitignore`. Passwords stay on SmarterASP only.
 
 ---
 
-# STEP 3 — Get FTP login from SmarterASP (do this once)
+# STEP 3 - Get FTP login from SmarterASP (do this once)
 
 GitHub needs FTP details to send files.
 
@@ -122,13 +122,13 @@ GitHub needs FTP details to send files.
    - **FTP server** (hostname)
    - **Username**
    - **Password** (use **Reset** in panel if you forgot it)
-   - **Path / remote directory** — usually **`/alcros/`** (must end with `/`)
+   - **Path / remote directory** - usually **`/alcros/`** (must end with `/`)
 
 This path must be the **same folder** as File Manager where `index.php` lives.
 
 ---
 
-# STEP 4 — Add secrets on GitHub (do this once)
+# STEP 4 - Add secrets on GitHub (do this once)
 
 Secrets = passwords stored safely for the automatic deploy.
 
@@ -143,13 +143,13 @@ Secrets = passwords stored safely for the automatic deploy.
 | `SMARTERASP_FTP_PASSWORD` | FTP password |
 | `SMARTERASP_FTP_REMOTE_DIR` | `/alcros/` (or path from FTP Access) |
 
-No spaces before/after names. Values are only the host/user/pass/path — not URLs like `https://`.
+No spaces before/after names. Values are only the host/user/pass/path - not URLs like `https://`.
 
 ---
 
-# STEP 5 — First automatic deploy
+# STEP 5 - First automatic deploy
 
-### Option A — Push code (normal way)
+### Option A - Push code (normal way)
 
 In Cursor terminal:
 
@@ -159,7 +159,7 @@ git commit -m "Enable SmarterASP deploy"
 git push
 ```
 
-### Option B — Run by hand (test)
+### Option B - Run by hand (test)
 
 1. GitHub → your repo → **Actions** tab.
 2. Left list → **Deploy to SmarterASP.NET**.
@@ -169,7 +169,7 @@ git push
 
 ---
 
-# STEP 6 — Check the live site
+# STEP 6 - Check the live site
 
 1. Open your site URL (e.g. `https://capstone2026-001-site1.itempurl.com/`).
 2. Home page loads.
@@ -208,7 +208,7 @@ git push
 | GitHub Action: login failed | Wrong FTP secret → fix in **Settings → Secrets**; reset FTP password in SmarterASP |
 | Website 404 or empty | Wrong **`SMARTERASP_FTP_REMOTE_DIR`** → use `/alcros/` (site root) |
 | Files in `alcros/alcros/` folder | Remote path too high → set secret to **`/alcros/`** not `/` |
-| Database error after deploy | Recreate **`database.local.php`** on server (Step 1.4) — deploy does not delete it, but if missing, add it back |
+| Database error after deploy | Recreate **`database.local.php`** on server (Step 1.4) - deploy does not delete it, but if missing, add it back |
 | White screen / 500 | **PHP 8.x**; check **`hosting.local.php`** exists on server |
 | Action never starts | Push to branch **`main`** or **`master`**, or use **Run workflow** in Actions |
 

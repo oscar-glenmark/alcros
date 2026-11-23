@@ -47,7 +47,7 @@ if ($action === 'start') {
 }
 
 if ($action === 'callback') {
-    // Google redirects here without ALCROS session cookies — do not require login (state token validates the flow).
+    // Google redirects here without ALCROS session cookies - do not require login (state token validates the flow).
     $loggedIn = (bool) getAuthenticatedStaff(true);
 
     try {

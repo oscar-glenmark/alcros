@@ -12,7 +12,7 @@ function civilRecordIntDetailFields(): array
     ];
 }
 
-/** @return list<string> CSV import/export columns — same field names as print certificate fill-in boxes. */
+/** @return list<string> CSV import/export columns - same field names as print certificate fill-in boxes. */
 function civilRecordCsvColumns(string $type): array
 {
     if (!function_exists('printFillCsvColumns')) {
@@ -298,7 +298,7 @@ function civilRecordPrintFillFieldEmpty(array $input, string $fieldName): bool
     return civilRecordInputFieldEmpty($input, $fieldName);
 }
 
-/** Manual add/edit — Child / Deceased / Husband & Wife sections on the certificate form. */
+/** Manual add/edit - Child / Deceased / Husband & Wife sections on the certificate form. */
 function assertCivilRecordManualEntryComplete(array $input, string $type): void
 {
     $keys = match ($type) {
@@ -743,7 +743,7 @@ function ensureCivilRecordLookupSchema(PDO $pdo): void
 }
 
 /**
- * Marriage rows for citizen lookup — uses detail table when flat columns were migrated off civil_records.
+ * Marriage rows for citizen lookup - uses detail table when flat columns were migrated off civil_records.
  *
  * @return list<array<string, mixed>>
  */

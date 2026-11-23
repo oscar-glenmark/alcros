@@ -5,11 +5,11 @@
 
 require_once __DIR__ . '/duplicati_backup.php';
 
-/** Shared backup folders are not created by the app — drive.file cannot see them (404). */
+/** Shared backup folders are not created by the app - drive.file cannot see them (404). */
 const ALCROS_GDRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
 const ALCROS_GDRIVE_REGISTRY_PREFIX = 'alcros-registry-';
 
-/** Multipart upload (single request) — reliable on shared hosts; resumable above this size. */
+/** Multipart upload (single request) - reliable on shared hosts; resumable above this size. */
 const ALCROS_GDRIVE_MULTIPART_MAX_BYTES = 80 * 1024 * 1024;
 
 function alcrosGoogleDriveBackupEnabled(): bool

@@ -13,6 +13,7 @@ if (isMaintenanceMode() || !arePublicRequestsAllowed()) {
 }
 
 $citizenMobileTab = 'request';
+$citizenMobileTabbarCompact = true;
 
 $validTypes = array_column(getDocumentTypes(), 'slug');
 $purposeOptions = getPurposeOptions();
@@ -555,7 +556,7 @@ $requestDocumentLabel = !empty($draft['document_type'])
     <?= publicStylesheet('id-upload') ?>
     <?= publicStylesheet('back-home') ?>
 </head>
-<body class="citizen-site citizen-portal">
+<body class="citizen-site citizen-portal citizen-mobile-tabbar-compact">
 
     <header class="citizen-site-header">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -800,12 +801,16 @@ $requestDocumentLabel = !empty($draft['document_type'])
                 <input type="hidden" name="step" value="2">
                 <input type="hidden" name="document_type" value="<?= htmlspecialchars($identDocType) ?>">
                 <input type="hidden" name="record_verified" id="recordVerified" value="<?= $recordVerified ? '1' : '0' ?>">
-                <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-1">
-                    <p class="text-[10px] font-bold text-blue-600 uppercase tracking-wide mb-1">Requester</p>
-                    <p class="text-sm font-bold text-blue-900"><?= htmlspecialchars(personRequesterNameFromRow($draft)) ?></p>
+                <div class="citizen-request-summary">
+                    <div class="citizen-request-summary__row">
+                        <p class="citizen-request-summary__label">Requester</p>
+                        <p class="citizen-request-summary__value"><?= htmlspecialchars(personRequesterNameFromRow($draft)) ?></p>
+                    </div>
                     <?php if (!empty($draft['requester_relationship'])): ?>
-                    <p class="text-[10px] font-bold text-blue-600 uppercase tracking-wide mt-3 mb-1">Relationship</p>
-                    <p class="text-sm font-semibold text-blue-900"><?= htmlspecialchars(documentRequestRelationshipLabel($identDocType, (string) $draft['requester_relationship'])) ?></p>
+                    <div class="citizen-request-summary__row">
+                        <p class="citizen-request-summary__label">Relationship</p>
+                        <p class="citizen-request-summary__value"><?= htmlspecialchars(documentRequestRelationshipLabel($identDocType, (string) $draft['requester_relationship'])) ?></p>
+                    </div>
                     <?php
                     $heroRelPanel = renderDocumentRequestRelationshipRequirementsPanel(
                         $identDocType,
@@ -813,11 +818,13 @@ $requestDocumentLabel = !empty($draft['document_type'])
                     );
                     if ($heroRelPanel !== ''):
                     ?>
-                    <div class="mt-3 text-left"><?= $heroRelPanel ?></div>
+                    <div class="citizen-request-summary__req"><?= $heroRelPanel ?></div>
                     <?php endif; ?>
                     <?php endif; ?>
-                    <p class="text-[10px] font-bold text-blue-600 uppercase tracking-wide mt-3 mb-1">Service</p>
-                    <p class="text-sm font-semibold text-blue-900"><?= htmlspecialchars(documentTypeLabel($identDocType)) ?></p>
+                    <div class="citizen-request-summary__row">
+                        <p class="citizen-request-summary__label">Service</p>
+                        <p class="citizen-request-summary__value"><?= htmlspecialchars(documentTypeLabel($identDocType)) ?></p>
+                    </div>
                 </div>
                 <?php require __DIR__ . '/includes/request_identification_fields.php'; ?>
                 <div class="citizen-form-actions">

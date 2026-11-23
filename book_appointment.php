@@ -8,6 +8,7 @@ require_once __DIR__ . '/includes/scripts.php';
 
 $currentPage = basename($_SERVER['PHP_SELF']);
 $citizenMobileTab = 'book';
+$citizenMobileTabbarCompact = true;
 
 $service = trim((string) ($_GET['service'] ?? $_POST['service'] ?? ''));
 $serviceLabel = appointmentServiceLabel($service);
@@ -207,7 +208,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?= publicStylesheet('id-upload') ?>
     <?= publicStylesheet('back-home') ?>
 </head>
-<body class="citizen-site citizen-portal" data-gmail-form="bookAppointmentForm">
+<body class="citizen-site citizen-portal citizen-mobile-tabbar-compact" data-gmail-form="bookAppointmentForm">
 
     <header class="citizen-site-header">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

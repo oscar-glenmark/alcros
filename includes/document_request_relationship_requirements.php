@@ -484,7 +484,7 @@ function renderDocumentRequestRelationshipRequirementsPanel(string $documentType
 
     $req = getDocumentRequestRelationshipRequirements($documentType, $relationshipSlug);
     $label = documentRequestRelationshipLabel($documentType, $relationshipSlug);
-    $html = '<div class="citizen-request-rel-req mt-3" data-rel-req-panel>';
+    $html = '<div class="citizen-request-rel-req" data-rel-req-panel>';
     $html .= '<p class="citizen-request-rel-req__title">Required documents: <strong>' . htmlspecialchars($label) . '</strong></p>';
     $html .= '<ul class="citizen-request-rel-req__list">';
     $hasItem = false;

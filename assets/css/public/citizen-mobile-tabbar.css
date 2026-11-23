@@ -1,5 +1,7 @@
 :root {
     --citizen-mobile-tabbar-height: calc(3.625rem + var(--alcros-safe-bottom));
+    --citizen-mobile-tabbar-compact-float: calc(2.85rem + var(--alcros-safe-bottom));
+    --citizen-mobile-tabbar-oval-float: calc(4.35rem + var(--alcros-safe-bottom));
     --citizen-tab-gold-hover: var(--alcros-mobile-tab-gold-hover);
     --citizen-tab-gold-strong: var(--alcros-mobile-tab-gold-strong);
     --citizen-tab-gold-soft: var(--alcros-mobile-tab-gold-soft);
@@ -22,16 +24,35 @@
     }
 
     body.citizen-site .citizen-site-main {
-        padding-bottom: var(--citizen-mobile-tabbar-height);
-        scroll-padding-bottom: var(--citizen-mobile-tabbar-height);
+        padding-bottom: var(--citizen-mobile-tabbar-oval-float);
+        scroll-padding-bottom: var(--citizen-mobile-tabbar-oval-float);
     }
 
     body.citizen-portal:not(.citizen-site) {
-        padding-bottom: var(--citizen-mobile-tabbar-height);
+        padding-bottom: var(--citizen-mobile-tabbar-oval-float);
+        scroll-padding-bottom: var(--citizen-mobile-tabbar-oval-float);
+    }
+
+    body.citizen-portal.citizen-mobile-tabbar-compact:not(.citizen-site) {
+        padding-bottom: var(--citizen-mobile-tabbar-compact-float);
+        scroll-padding-bottom: var(--citizen-mobile-tabbar-compact-float);
+    }
+
+    body.citizen-portal.citizen-mobile-tabbar-compact.citizen-site .citizen-site-main {
+        padding-bottom: var(--citizen-mobile-tabbar-compact-float);
+        scroll-padding-bottom: var(--citizen-mobile-tabbar-compact-float);
     }
 
     body.citizen-portal .citizen-mobile-shell {
         display: block;
+    }
+
+    body.citizen-portal .citizen-mobile-shell--compact {
+        pointer-events: none;
+    }
+
+    body.citizen-portal .citizen-mobile-shell--compact .citizen-mobile-tabbar--compact {
+        pointer-events: auto;
     }
 
     body.citizen-portal .citizen-mobile-more-backdrop:not(.hidden) {
@@ -57,7 +78,7 @@
         position: fixed;
         left: max(0.75rem, var(--alcros-safe-left));
         right: max(0.75rem, var(--alcros-safe-right));
-        bottom: calc(var(--citizen-mobile-tabbar-height) + 0.35rem);
+        bottom: calc(var(--citizen-mobile-tabbar-oval-float) + 0.35rem);
         z-index: 56;
         max-height: min(70dvh, 20rem);
         overflow-y: auto;
@@ -120,28 +141,31 @@
     body.citizen-portal .citizen-mobile-tabbar {
         display: flex;
         position: fixed;
-        left: 0;
-        right: 0;
-        bottom: 0;
         z-index: 54;
-        align-items: stretch;
+        align-items: center;
         justify-content: space-around;
         gap: 0.125rem;
-        min-height: var(--citizen-mobile-tabbar-height);
-        padding: 0.35rem max(0.35rem, var(--alcros-safe-right)) calc(0.35rem + var(--alcros-safe-bottom))
-            max(0.35rem, var(--alcros-safe-left));
-        background: rgba(255, 255, 255, 0.96);
-        border-top: 1px solid #e2e8f0;
-        box-shadow: 0 -8px 24px rgba(7, 20, 40, 0.12);
+        background: rgba(255, 255, 255, 0.97);
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 8px 28px rgba(7, 20, 40, 0.14);
         backdrop-filter: blur(12px);
         -webkit-backdrop-filter: blur(12px);
+    }
+
+    body.citizen-portal .citizen-mobile-tabbar:not(.citizen-mobile-tabbar--compact) {
+        left: max(0.75rem, var(--alcros-safe-left));
+        right: max(0.75rem, var(--alcros-safe-right));
+        bottom: max(0.55rem, var(--alcros-safe-bottom));
+        min-height: 0;
+        padding: 0.28rem 0.35rem;
+        border-radius: 9999px;
     }
 
     .citizen-mobile-tabbar--public .citizen-mobile-tab {
         max-width: none;
         font-size: 0.5rem;
         gap: 0.15rem;
-        padding: 0.2rem 0.05rem;
+        padding: 0.3rem 0.35rem;
     }
 
     .citizen-mobile-tabbar--public .citizen-mobile-tab svg.lucide {
@@ -156,9 +180,9 @@
         align-items: center;
         justify-content: center;
         min-width: 0;
-        min-height: 3rem;
+        min-height: 2.75rem;
         border: 0;
-        border-radius: 0.75rem;
+        border-radius: 9999px;
         background: transparent;
         color: #64748b;
         font-size: 0.5625rem;
@@ -207,6 +231,42 @@
 
     body.citizen-portal.citizen-mobile-more-open .citizen-mobile-tabbar {
         pointer-events: auto;
+    }
+
+    body.citizen-portal .citizen-mobile-tabbar.citizen-mobile-tabbar--compact {
+        left: auto;
+        right: max(0.65rem, var(--alcros-safe-right));
+        bottom: max(0.55rem, var(--alcros-safe-bottom));
+        width: auto;
+        min-height: 0;
+        padding: 0.2rem;
+        gap: 0.125rem;
+        border: 1px solid #e2e8f0;
+        border-top: 1px solid #e2e8f0;
+        border-radius: 9999px;
+        box-shadow: 0 8px 28px rgba(7, 20, 40, 0.16);
+        justify-content: flex-end;
+        background: rgba(255, 255, 255, 0.97);
+    }
+
+    body.citizen-portal .citizen-mobile-tabbar--compact .citizen-mobile-tab {
+        flex: 0 0 auto;
+        flex-direction: row;
+        gap: 0.35rem;
+        min-height: 2.5rem;
+        padding: 0.4rem 0.7rem;
+        font-size: 0.625rem;
+        border-radius: 9999px;
+        white-space: nowrap;
+    }
+
+    body.citizen-portal .citizen-mobile-tabbar--compact .citizen-mobile-tab svg.lucide {
+        width: 1.1rem;
+        height: 1.1rem;
+    }
+
+    body.citizen-portal .citizen-mobile-tabbar--compact .citizen-mobile-tab span {
+        line-height: 1;
     }
 }
 

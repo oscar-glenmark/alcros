@@ -23,7 +23,7 @@
             return '';
         }
 
-        var html = '<div class="citizen-request-rel-req mt-3" data-rel-req-panel>';
+        var html = '<div class="citizen-request-rel-req" data-rel-req-panel>';
         html += '<p class="citizen-request-rel-req__title">Required documents: <strong>' + escapeHtml(entry.label || '') + '</strong></p>';
         html += '<ul class="citizen-request-rel-req__list">';
         var lines = entry.lines || [];

@@ -3,6 +3,7 @@
  * Citizen portal - mobile bottom navigation (phones only).
  *
  * Set $citizenMobileTab before including: home | services | request | book | (empty = More highlights via overflow pages)
+ * Optional $citizenMobileTabbarCompact: on request/book pages, show a bottom-left pill (Home + active tab only).
  */
 
 require_once __DIR__ . '/helpers.php';
@@ -10,6 +11,8 @@ require_once __DIR__ . '/scripts.php';
 require_once __DIR__ . '/lucide_icons.php';
 
 $citizenMobileTab = $citizenMobileTab ?? '';
+$citizenMobileTabbarCompact = !empty($citizenMobileTabbarCompact)
+    && in_array($citizenMobileTab, ['request', 'book'], true);
 $publicRequestsAllowed = function_exists('arePublicRequestsAllowed') && arePublicRequestsAllowed();
 $maintenanceMode = function_exists('isMaintenanceMode') && isMaintenanceMode();
 $showRequestTab = $publicRequestsAllowed && !$maintenanceMode;
@@ -43,7 +46,8 @@ function citizenMobileMoreLink(string $href, string $label, string $icon): strin
 }
 
 ?>
-<div class="citizen-mobile-shell no-print" id="citizenMobileShell">
+<div class="citizen-mobile-shell no-print<?= $citizenMobileTabbarCompact ? ' citizen-mobile-shell--compact' : '' ?>" id="citizenMobileShell">
+    <?php if (!$citizenMobileTabbarCompact): ?>
     <div id="citizenMobileMoreBackdrop" class="citizen-mobile-more-backdrop hidden" aria-hidden="true"></div>
     <nav id="citizenMobileMoreDropup" class="citizen-mobile-more-dropup hidden" role="menu" aria-label="More navigation">
         <button type="button" class="citizen-mobile-more-item" role="menuitem" data-open-track>
@@ -56,7 +60,16 @@ function citizenMobileMoreLink(string $href, string $label, string $icon): strin
         <?= citizenMobileMoreLink('privacy.php', 'Privacy & safety', 'shield') ?>
         <?= citizenMobileMoreLink('login.php', 'Staff login', 'log-out') ?>
     </nav>
-    <nav class="citizen-mobile-tabbar citizen-mobile-tabbar--public" aria-label="Citizen portal">
+    <?php endif; ?>
+    <nav class="citizen-mobile-tabbar citizen-mobile-tabbar--public<?= $citizenMobileTabbarCompact ? ' citizen-mobile-tabbar--compact' : '' ?>" aria-label="Citizen portal">
+        <?php if ($citizenMobileTabbarCompact): ?>
+        <?php if ($citizenMobileTab === 'request' && $showRequestTab): ?>
+        <?= citizenMobileTabLink('request.php?entry=hero', 'Request', 'file-text', true) ?>
+        <?php elseif ($citizenMobileTab === 'book'): ?>
+        <?= citizenMobileTabLink('book_appointment.php', 'Book', 'calendar', true) ?>
+        <?php endif; ?>
+        <?= citizenMobileTabLink('index.php', 'Home', 'home', false) ?>
+        <?php else: ?>
         <?= citizenMobileTabLink('index.php', 'Home', 'home', $citizenMobileTab === 'home') ?>
         <?= citizenMobileTabLink('services.php', 'Services', 'layers', $citizenMobileTab === 'services') ?>
         <?php if ($showRequestTab): ?>
@@ -75,6 +88,7 @@ function citizenMobileMoreLink(string $href, string $label, string $icon): strin
             <?= lucideSvg('ellipsis', 'pointer-events-none') ?>
             <span>More</span>
         </button>
+        <?php endif; ?>
     </nav>
 </div>
 <script>(function(){try{document.body.classList.add('citizen-portal');}catch(e){}})();</script>

@@ -26,7 +26,7 @@ $serviceCards = [
     ['slug' => 'birth', 'label' => 'Birth Certificate', 'desc' => 'Request an official copy of a birth certificate.', 'icon' => 'users', 'color' => 'bg-blue-600', 'link' => 'request.php?type=birth'],
     ['slug' => 'death', 'label' => 'Death Certificate', 'desc' => 'Request an official copy of a death certificate.', 'icon' => 'activity', 'color' => 'bg-emerald-600', 'link' => 'request.php?type=death'],
     ['slug' => 'marriage', 'label' => 'Marriage Certificate', 'desc' => 'Request an official copy of a marriage certificate.', 'icon' => 'heart', 'color' => 'bg-amber-500', 'link' => 'request.php?type=marriage'],
-    ['slug' => 'other', 'label' => 'Other Services', 'desc' => 'CENOMAR, corrections, appointments, and more.', 'icon' => 'file-text', 'color' => 'bg-violet-600', 'link' => 'services.php'],
+    ['slug' => 'other', 'label' => 'Other Services', 'desc' => 'CENOMAR, corrections, appointments, and more.', 'icon' => 'file-text', 'color' => 'bg-orange-600', 'link' => 'services.php'],
 ];
 
 $howSteps = [

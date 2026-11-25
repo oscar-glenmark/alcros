@@ -3,7 +3,7 @@
  * Citizen portal - mobile bottom navigation (phones only).
  *
  * Set $citizenMobileTab before including: home | services | request | book | (empty = More highlights via overflow pages)
- * Optional $citizenMobileTabbarCompact: on request/book pages, show a bottom-left pill (Home + active tab only).
+ * Optional $citizenMobileTabbarCompact: on services/request/book pages, show a bottom-right pill (active tab + Home).
  */
 
 require_once __DIR__ . '/helpers.php';
@@ -12,16 +12,19 @@ require_once __DIR__ . '/lucide_icons.php';
 
 $citizenMobileTab = $citizenMobileTab ?? '';
 $citizenMobileTabbarCompact = !empty($citizenMobileTabbarCompact)
-    && in_array($citizenMobileTab, ['request', 'book'], true);
+    && in_array($citizenMobileTab, ['services', 'request', 'book'], true);
 $publicRequestsAllowed = function_exists('arePublicRequestsAllowed') && arePublicRequestsAllowed();
 $maintenanceMode = function_exists('isMaintenanceMode') && isMaintenanceMode();
 $showRequestTab = $publicRequestsAllowed && !$maintenanceMode;
+$showBookTab = !$maintenanceMode;
 
 $citizenPrimaryTabs = ['home', 'services'];
 if ($showRequestTab) {
     $citizenPrimaryTabs[] = 'request';
 }
-$citizenPrimaryTabs[] = 'book';
+if ($showBookTab) {
+    $citizenPrimaryTabs[] = 'book';
+}
 $citizenMoreActive = $citizenMobileTab !== '' && !in_array($citizenMobileTab, $citizenPrimaryTabs, true);
 
 function citizenMobileTabLink(string $href, string $label, string $icon, bool $isActive): string
@@ -63,9 +66,11 @@ function citizenMobileMoreLink(string $href, string $label, string $icon): strin
     <?php endif; ?>
     <nav class="citizen-mobile-tabbar citizen-mobile-tabbar--public<?= $citizenMobileTabbarCompact ? ' citizen-mobile-tabbar--compact' : '' ?>" aria-label="Citizen portal">
         <?php if ($citizenMobileTabbarCompact): ?>
-        <?php if ($citizenMobileTab === 'request' && $showRequestTab): ?>
+        <?php if ($citizenMobileTab === 'services'): ?>
+        <?= citizenMobileTabLink('services.php', 'Services', 'layers', true) ?>
+        <?php elseif ($citizenMobileTab === 'request' && $showRequestTab): ?>
         <?= citizenMobileTabLink('request.php?entry=hero', 'Request', 'file-text', true) ?>
-        <?php elseif ($citizenMobileTab === 'book'): ?>
+        <?php elseif ($citizenMobileTab === 'book' && $showBookTab): ?>
         <?= citizenMobileTabLink('book_appointment.php', 'Book', 'calendar', true) ?>
         <?php endif; ?>
         <?= citizenMobileTabLink('index.php', 'Home', 'home', false) ?>
@@ -75,7 +80,9 @@ function citizenMobileMoreLink(string $href, string $label, string $icon): strin
         <?php if ($showRequestTab): ?>
         <?= citizenMobileTabLink('request.php?entry=hero', 'Request', 'file-text', $citizenMobileTab === 'request') ?>
         <?php endif; ?>
+        <?php if ($showBookTab): ?>
         <?= citizenMobileTabLink('book_appointment.php', 'Book', 'calendar', $citizenMobileTab === 'book') ?>
+        <?php endif; ?>
         <button
             type="button"
             class="citizen-mobile-tab<?= $citizenMoreActive ? ' is-active' : '' ?>"

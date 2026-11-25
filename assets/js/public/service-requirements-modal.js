@@ -50,7 +50,10 @@
         bodyEl.appendChild(template.content.cloneNode(true));
 
         if (scheduleLink) {
-            scheduleLink.setAttribute('href', scheduleUrl || 'book_appointment.php');
+            if (scheduleLink.tagName === 'A') {
+                scheduleLink.setAttribute('href', scheduleUrl || 'book_appointment.php');
+                scheduleLink.classList.remove('hidden');
+            }
         }
 
         modal.classList.remove('hidden');
@@ -63,11 +66,14 @@
     }
 
     function openRequirements(btn) {
+        var scheduleUrl = btn.getAttribute('data-maintenance-mode') === '1'
+            ? ''
+            : (btn.getAttribute('data-schedule-url') || 'book_appointment.php');
         openRequirementsWithSlug(
             btn.getAttribute('data-open-service-requirements') || '',
             btn.getAttribute('data-req-title') || '',
             btn.getAttribute('data-req-subtitle') || '',
-            btn.getAttribute('data-schedule-url') || 'book_appointment.php'
+            scheduleUrl
         );
     }
 

@@ -24,6 +24,8 @@ $requirementsModalMeta = appointmentServiceRequirementsModalMeta();
 
 $currentPage = basename($_SERVER['PHP_SELF']);
 $citizenMobileTab = 'services';
+$citizenMobileTabbarCompact = true;
+$maintenanceMode = isMaintenanceMode();
 
 ?>
 
@@ -53,7 +55,7 @@ $citizenMobileTab = 'services';
 
 </head>
 
-<body class="citizen-site citizen-portal">
+<body class="citizen-site citizen-portal citizen-mobile-tabbar-compact">
 
 
 
@@ -167,7 +169,7 @@ $citizenMobileTab = 'services';
 
                     </div>
 
-                    <h3 class="font-bold text-sm mb-2 text-slate-900"><?= htmlspecialchars($doc['label']) ?></h3>
+                    <h3 class="font-bold text-sm mb-2 text-slate-900 uppercase tracking-wide"><?= htmlspecialchars($doc['label']) ?></h3>
 
                     <p class="text-gray-500 text-[11px] leading-relaxed mb-3"><?= htmlspecialchars($doc['desc']) ?></p>
 
@@ -202,32 +204,41 @@ $citizenMobileTab = 'services';
 
                     <span class="absolute top-4 right-4 text-[9px] font-bold text-amber-700 border border-amber-200 bg-amber-50 px-2 py-0.5 rounded uppercase">Appointment</span>
 
-                    <div class="w-8 h-8 <?= $svc['iconBg'] ?> rounded flex items-center justify-center mb-4">
+                    <div class="citizen-service-card__body w-full min-w-0">
+                        <div class="w-8 h-8 <?= $svc['iconBg'] ?> rounded flex items-center justify-center mb-4">
 
-                        <i data-lucide="<?= htmlspecialchars($svc['icon']) ?>" class="w-4 h-4"></i>
+                            <i data-lucide="<?= htmlspecialchars($svc['icon']) ?>" class="w-4 h-4"></i>
 
+                        </div>
+
+                        <h4 class="font-bold text-xs mb-1 uppercase text-slate-900"><?= htmlspecialchars($svc['label']) ?></h4>
+
+                        <p class="text-gray-500 text-[10px] mb-3 flex-1"><?= htmlspecialchars($svc['desc']) ?></p>
+
+                        <?= renderAppointmentServiceFeesCardHtml($svc['slug'], $svc['label']) ?>
                     </div>
-
-                    <h4 class="font-bold text-xs mb-1 uppercase text-slate-900"><?= htmlspecialchars($svc['label']) ?></h4>
-
-                    <p class="text-gray-500 text-[10px] mb-3 flex-1"><?= htmlspecialchars($svc['desc']) ?></p>
-
-                    <?= renderAppointmentServiceFeesCardHtml($svc['slug'], $svc['label']) ?>
 
                     <div class="citizen-service-card__actions w-full pt-3 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
 
+                        <?php if (!$maintenanceMode): ?>
                         <a href="<?= htmlspecialchars($scheduleUrl) ?>" class="citizen-service-card__btn citizen-service-card__btn--primary">
-
-                            Schedule Appointment <i data-lucide="calendar-plus" class="w-3.5 h-3.5"></i>
-
+                            Schedule Appointment
+                            <i data-lucide="calendar-plus" class="w-3.5 h-3.5"></i>
                         </a>
+                        <?php else: ?>
+                        <span class="citizen-service-card__btn citizen-service-card__btn--primary opacity-50 cursor-not-allowed" aria-disabled="true" title="Unavailable during maintenance">
+                            Schedule Appointment
+                            <i data-lucide="calendar-plus" class="w-3.5 h-3.5"></i>
+                        </span>
+                        <?php endif; ?>
 
                         <button type="button"
                                 class="citizen-service-card__btn citizen-service-card__btn--secondary"
                                 data-open-service-requirements="<?= htmlspecialchars($svc['slug'], ENT_QUOTES) ?>"
                                 data-req-title="<?= htmlspecialchars($reqMeta['title'], ENT_QUOTES) ?>"
                                 data-req-subtitle="<?= htmlspecialchars($reqMeta['subtitle'], ENT_QUOTES) ?>"
-                                data-schedule-url="<?= htmlspecialchars($scheduleUrl, ENT_QUOTES) ?>">
+                                <?php if (!$maintenanceMode): ?>data-schedule-url="<?= htmlspecialchars($scheduleUrl, ENT_QUOTES) ?>"<?php endif ?>
+                                data-maintenance-mode="<?= $maintenanceMode ? '1' : '0' ?>">
                             Requirements <i data-lucide="clipboard-list" class="w-3.5 h-3.5"></i>
                         </button>
 
@@ -273,9 +284,13 @@ $citizenMobileTab = 'services';
                 <p class="svc-req-modal__hint">Prepare these documents before your visit. Originals may be requested for verification.</p>
                 <div class="svc-req-modal__footer-actions">
                     <button type="button" id="serviceRequirementsDismiss" class="svc-req-modal__btn svc-req-modal__btn--ghost">Close</button>
+                    <?php if (!$maintenanceMode): ?>
                     <a id="serviceRequirementsSchedule" href="book_appointment.php" class="svc-req-modal__btn svc-req-modal__btn--primary">
-                        Schedule Appointment <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                        SCHEDULE APPOINTMENT <i data-lucide="arrow-right" class="w-4 h-4"></i>
                     </a>
+                    <?php else: ?>
+                    <span id="serviceRequirementsSchedule" class="svc-req-modal__btn svc-req-modal__btn--primary opacity-50 cursor-not-allowed" aria-disabled="true">SCHEDULE APPOINTMENT UNAVAILABLE</span>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>

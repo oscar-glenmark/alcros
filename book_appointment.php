@@ -6,6 +6,11 @@ require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 
+if (isMaintenanceMode()) {
+    header('Location: index.php');
+    exit;
+}
+
 $currentPage = basename($_SERVER['PHP_SELF']);
 $citizenMobileTab = 'book';
 $citizenMobileTabbarCompact = true;
@@ -50,7 +55,9 @@ $gmailVerified = isGmailVerifiedInSession($email);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     requirePublicPostCsrf();
-    if (($nameError = validatePersonNameParts($nameParts)) !== null || $date === '' || $time === '') {
+    if (isMaintenanceMode()) {
+        $error = 'Online appointment booking is temporarily unavailable while the portal is under maintenance. Use Track on the home page to check an existing appointment.';
+    } elseif (($nameError = validatePersonNameParts($nameParts)) !== null || $date === '' || $time === '') {
         $error = $nameError ?? 'Please complete all required fields.';
     } elseif ($service === '' || !isAllowedAppointmentServiceSlug($service)) {
         $error = 'Please select a service type.';
@@ -369,7 +376,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
             </div>
             <div>
-                <label class="block text-[11px] font-bold mb-1">Service Type *</label>
+                <?php
+                $serviceFieldLabel = ($isPsaDocumentsBooking && !$showAppointmentServicePicker)
+                    ? 'Select Certificate Type *'
+                    : 'Service Type *';
+                ?>
+                <label class="block text-[11px] font-bold mb-1"><?= htmlspecialchars($serviceFieldLabel) ?></label>
                 <?php if ($showAppointmentServicePicker): ?>
                 <select name="service" id="appointmentServiceSelect" required class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
                     <option value="" disabled <?= $service === '' ? 'selected' : '' ?>>Select a service</option>
@@ -379,7 +391,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </select>
                 <p class="text-[10px] text-gray-500 mt-1">Choose the special civil registry service you need to book.</p>
                 <div id="psaDocumentTypeWrap" class="hidden mt-3">
-                    <label class="block text-[11px] font-bold mb-1">PSA document *</label>
+                    <label class="block text-[11px] font-bold mb-1">Select Certificate Type *</label>
                     <select name="service_type" id="psaDocumentTypeSelect" class="w-full bg-gray-50 border rounded-xl px-4 py-2.5 text-sm">
                         <option value="" disabled <?= $serviceType === '' && $postedPsaTypeKey === '' ? 'selected' : '' ?>>Select PSA document</option>
                         <?php foreach ($psaDocumentTypes as $typeKey => $typeLabel): ?>

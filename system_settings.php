@@ -1201,14 +1201,14 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     <label class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 cursor-pointer">
                                         <div>
                                             <p class="text-sm font-semibold text-slate-800">Maintenance Mode</p>
-                                            <p class="text-xs text-slate-500">Show the maintenance announcement and temporarily block new online requests.</p>
+                                            <p class="text-xs text-slate-500">Show the maintenance announcement and temporarily block new online transactions.</p>
                                         </div>
                                         <input type="checkbox" name="maintenance_mode" id="maintenanceModeToggle" value="1" <?= $settings['maintenance_mode'] === '1' ? 'checked' : '' ?> class="rounded text-blue-600 w-5 h-5">
                                     </label>
                                     <label class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 cursor-pointer">
                                         <div>
                                             <p class="text-sm font-semibold text-slate-800">Allow Public Requests</p>
-                                            <p class="text-xs text-slate-500">Citizens can submit new document requests online.</p>
+                                            <p class="text-xs text-slate-500">Citizens can submit new online transactions.</p>
                                         </div>
                                         <input type="checkbox" name="allow_public_requests" id="allowPublicRequestsToggle" value="1" <?= $settings['allow_public_requests'] === '1' ? 'checked' : '' ?> class="rounded text-blue-600 w-5 h-5">
                                     </label>

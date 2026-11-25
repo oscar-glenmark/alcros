@@ -1,0 +1,14 @@
+<?php
+/**
+ * Optional production hosting overrides.
+ * Copy to config/hosting.local.php (gitignored) on SmarterASP or other shared hosts.
+ */
+
+/** Trust X-Forwarded-Proto from the host edge so HTTPS URLs and cookies work behind free SSL. */
+define('ALCROS_TRUST_PROXY_HTTPS', true);
+
+/** Optional: set false on a live server if the host forwards client IPs safely. */
+// define('ALCROS_TRUST_PROXY_CLIENT_IP', true);
+
+/** Optional: force local vs hosted behavior when auto-detection is wrong. */
+// define('ALCROS_LOCAL_OFFICE', false);

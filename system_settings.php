@@ -21,6 +21,7 @@ $currentStaffId = staffId();
 $adminSettingKeys = [
     'site_name', 'office_name', 'office_address', 'office_phone', 'office_email',
     'office_hours', 'office_head', 'social_facebook_url', 'social_instagram_url',
+    'home_announcement_date', 'home_announcement_title', 'home_announcement_note',
     'maintenance_mode', 'allow_public_requests', 'notification_email',
     'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass',
     'sms_enabled', 'iprog_api_token', 'iprog_sender_name',
@@ -34,6 +35,9 @@ $defaults = [
     'office_email'            => 'aloran@gov.ph',
     'office_hours'            => '8:00 AM - 5:00 PM (Monday to Friday)',
     'office_head'             => 'ATTY. LOCAL CIVIL REGISTRAR',
+    'home_announcement_date'  => '',
+    'home_announcement_title' => 'Office Schedule',
+    'home_announcement_note'  => 'Walk-in clients and online request claimants are served during these hours.',
     'social_facebook_url'     => 'https://www.facebook.com/aloranmisamis.occidental.9',
     'social_instagram_url'    => '',
     'maintenance_mode'        => '0',
@@ -985,6 +989,32 @@ $pageSubtitle = 'Manage your account, security' . ($isAdmin ? ', staff accounts,
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Email</label><input type="email" name="office_email" value="<?= htmlspecialchars($settings['office_email']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Office Hours</label><input type="text" name="office_hours" value="<?= htmlspecialchars($settings['office_hours']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                     <div><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Office Head / Signatory</label><input type="text" name="office_head" value="<?= htmlspecialchars($settings['office_head']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
+                                    <div class="sm:col-span-2 pt-3 mt-1 border-t border-slate-100 space-y-4">
+                                        <div>
+                                            <p class="text-xs font-bold text-slate-800">Home page — Latest Announcements</p>
+                                            <p class="text-[10px] text-slate-500 mt-0.5">The schedule line uses <strong>Office Hours</strong> above and is not edited here.</p>
+                                        </div>
+                                        <div class="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-xs text-slate-600 leading-relaxed">
+                                            <span class="font-semibold text-slate-800"><?= htmlspecialchars($settings['office_hours'] !== '' ? $settings['office_hours'] : ($defaults['office_hours'] ?? '')) ?>.</span>
+                                            <span class="text-slate-400"> (from Office Hours)</span>
+                                        </div>
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div>
+                                                <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1" for="homeAnnouncementDate">Announcement date</label>
+                                                <input type="date" id="homeAnnouncementDate" name="home_announcement_date" value="<?= htmlspecialchars($settings['home_announcement_date']) ?>" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
+                                                <p class="text-[10px] text-slate-400 mt-1">Leave blank to show today&rsquo;s date.</p>
+                                            </div>
+                                            <div>
+                                                <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1" for="homeAnnouncementTitle">Announcement title</label>
+                                                <input type="text" id="homeAnnouncementTitle" name="home_announcement_title" value="<?= htmlspecialchars($settings['home_announcement_title']) ?>" placeholder="Office Schedule" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
+                                            </div>
+                                            <div class="sm:col-span-2">
+                                                <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1" for="homeAnnouncementNote">Announcement note</label>
+                                                <textarea id="homeAnnouncementNote" name="home_announcement_note" rows="2" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm leading-relaxed" placeholder="Walk-in clients and online request claimants are served during these hours."><?= htmlspecialchars($settings['home_announcement_note']) ?></textarea>
+                                                <p class="text-[10px] text-slate-400 mt-1">Shown after the office hours line on the home page.</p>
+                                            </div>
+                                        </div>
+                                    </div>
                                     <div class="sm:col-span-2"><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Facebook Page URL</label><input type="url" name="social_facebook_url" value="<?= htmlspecialchars($settings['social_facebook_url']) ?>" placeholder="https://www.facebook.com/..." class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                     <div class="sm:col-span-2"><label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Instagram Profile URL</label><input type="url" name="social_instagram_url" value="<?= htmlspecialchars($settings['social_instagram_url']) ?>" placeholder="https://www.instagram.com/..." class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm"></div>
                                 </div>

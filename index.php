@@ -7,6 +7,7 @@ require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/scripts.php';
 
 $site = getSiteSettings();
+$homeAnnouncement = getHomeLatestAnnouncement();
 try {
     runReminderSchedulerIfDue(getDB());
 } catch (Throwable $e) {
@@ -240,9 +241,9 @@ $faqs = [
                     <div class="bg-[#071428] text-white px-5 py-3 font-bold text-sm uppercase tracking-wider">Latest Announcements</div>
                     <div class="p-5">
                         <article class="border-l-4 border-amber-400 pl-4">
-                            <time class="text-[11px] font-bold text-slate-400 uppercase"><?= date('F j, Y') ?></time>
-                            <h3 class="font-bold text-slate-900 text-sm mt-1 mb-2">Office Schedule</h3>
-                            <p class="text-slate-600 text-xs leading-relaxed"><?= htmlspecialchars($site['hours']) ?>. Walk-in clients and online request claimants are served during these hours.</p>
+                            <time class="text-[11px] font-bold text-slate-400 uppercase"><?= htmlspecialchars($homeAnnouncement['date']) ?></time>
+                            <h3 class="font-bold text-slate-900 text-sm mt-1 mb-2"><?= htmlspecialchars($homeAnnouncement['title']) ?></h3>
+                            <p class="text-slate-600 text-xs leading-relaxed"><?= htmlspecialchars($homeAnnouncement['body']) ?></p>
                         </article>
                     </div>
                 </div>

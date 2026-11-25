@@ -811,6 +811,39 @@ function getSiteSettings(): array
     ];
 }
 
+/** Latest announcement card on the citizen home page (About section). */
+function getHomeLatestAnnouncement(): array
+{
+    ensureSettingsLoaded();
+
+    $hours = getSetting('office_hours', '8:00 AM - 5:00 PM (Monday to Friday)');
+    $note = trim(getSetting('home_announcement_note', ''));
+    if ($note === '') {
+        $note = 'Walk-in clients and online request claimants are served during these hours.';
+    }
+    $body = rtrim($hours, '. ') . '. ' . $note;
+
+    $title = trim(getSetting('home_announcement_title', ''));
+    if ($title === '') {
+        $title = 'Office Schedule';
+    }
+
+    $dateStored = trim(getSetting('home_announcement_date', ''));
+    if ($dateStored !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateStored)) {
+        $dateLabel = formatDateEmailDisplay($dateStored);
+    } elseif ($dateStored !== '') {
+        $dateLabel = $dateStored;
+    } else {
+        $dateLabel = formatDateEmailDisplay(date('Y-m-d'));
+    }
+
+    return [
+        'date'  => $dateLabel,
+        'title' => $title,
+        'body'  => $body,
+    ];
+}
+
 function renderOverviewText(string $template, string $officeName): string
 {
     $text = str_replace('{office}', htmlspecialchars($officeName), $template);

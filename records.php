@@ -507,7 +507,7 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                     <div class="relative" id="recordsExportMenu">
                         <button type="button" id="recordsExportBtn"
                                 class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-[11px] font-bold uppercase flex items-center shadow-sm">
-                            <i data-lucide="download" class="w-4 h-4 mr-2"></i> Export
+                            <i data-lucide="upload" class="w-4 h-4 mr-2"></i> Export
                             <i data-lucide="chevron-down" class="w-3.5 h-3.5 ml-1.5 opacity-80"></i>
                         </button>
                         <div id="recordsExportPanel" class="hidden absolute right-0 mt-2 w-64 bg-white border border-gray-100 rounded-xl shadow-lg z-50 py-1 text-xs">
@@ -529,6 +529,23 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                         </div>
                     </div>
                     <?php if ($canManageCivilRecords): ?>
+                    <div class="relative" id="recordsImportMenu">
+                        <button type="button" id="recordsImportBtn"
+                                class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-[11px] font-bold uppercase flex items-center shadow-sm">
+                            <i data-lucide="download" class="w-4 h-4 mr-2"></i> Import
+                            <i data-lucide="chevron-down" class="w-3.5 h-3.5 ml-1.5 opacity-80"></i>
+                        </button>
+                        <div id="recordsImportPanel" class="hidden absolute right-0 mt-2 w-64 bg-white border border-gray-100 rounded-xl shadow-lg z-50 py-1 text-xs">
+                            <p class="px-4 py-2 text-[9px] font-bold text-gray-400 uppercase tracking-widest">Bulk import (CSV)</p>
+                            <?php foreach ($validTypes as $t): ?>
+                            <button type="button" data-import-type="<?= htmlspecialchars($t) ?>" class="w-full px-3 py-2.5 text-left font-semibold text-slate-700 hover:bg-gray-50 flex items-center gap-2">
+                                <?= lucideSvg('file-text', 'w-4 h-4 text-gray-400 shrink-0') ?>
+                                Import <?= htmlspecialchars(civilRecordTypeLabel($t)) ?> Records
+                            </button>
+                            <?php endforeach; ?>
+                            <p class="px-3 py-2 border-t border-gray-100 text-[10px] text-gray-400 leading-snug">Download a template from the import dialog. Upload one CSV at a time.</p>
+                        </div>
+                    </div>
                     <div class="relative" id="newEntryWrapper">
                         <button type="button" id="newEntryBtn"
                             class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-[11px] font-bold uppercase flex items-center shadow-md transition">
@@ -541,13 +558,6 @@ $pageSubtitle = 'Manage birth, death, and marriage registry entries with search,
                                 <span class="text-blue-600 text-base leading-none">+</span>
                                 <i data-lucide="<?= $entryMeta['icon'] ?>" class="w-4 h-4 text-gray-400"></i>
                                 Add <?= $entryMeta['label'] ?> Record
-                            </button>
-                            <?php endforeach; ?>
-                            <div class="my-2 border-t border-gray-100"></div>
-                            <p class="px-4 py-2 text-[9px] font-bold text-gray-400 uppercase tracking-widest">Bulk Import (CSV)</p>
-                            <?php foreach ($validTypes as $t): ?>
-                            <button type="button" data-import-type="<?= $t ?>" class="entry-menu-item w-full px-4 py-2.5 text-left text-sm font-bold text-slate-800 flex items-center gap-3">
-                                <?= lucideSvg('file-text', 'w-4 h-4 text-gray-400 shrink-0') ?> Import <?= civilRecordTypeLabel($t) ?> Records
                             </button>
                             <?php endforeach; ?>
                         </div>

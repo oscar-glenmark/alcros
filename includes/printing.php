@@ -880,6 +880,22 @@ function printFormReferenceAsset(string $certificateType, string $pageSide): arr
     ];
 }
 
+/** Viewport size for calibration: match scan aspect so the form footer is not cropped. */
+function printCalibrationDisplayPaperSize(float $paperW, float $paperH, ?string $imageFullPath): array
+{
+    $width = round(max(1.0, $paperW), 2);
+    $height = round(max(1.0, $paperH), 2);
+    if ($imageFullPath !== null && is_file($imageFullPath)) {
+        $size = @getimagesize($imageFullPath);
+        if ($size !== false && (int) $size[0] > 0 && (int) $size[1] > 0) {
+            $impliedH = $width * ((float) $size[1] / (float) $size[0]);
+            $height = round(max($height, $impliedH), 2);
+        }
+    }
+
+    return ['width_mm' => $width, 'height_mm' => $height];
+}
+
 function splitFullName(?string $fullName): array
 {
     $fullName = trim((string) $fullName);

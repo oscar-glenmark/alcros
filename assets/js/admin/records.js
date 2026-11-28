@@ -584,6 +584,13 @@
         }
     }
 
+    function closeRecordsImportPanel() {
+        var panel = document.getElementById('recordsImportPanel');
+        if (panel) {
+            panel.classList.add('hidden');
+        }
+    }
+
     function closeNewEntryMenu() {
         var newEntryMenu = document.getElementById('newEntryMenu');
         if (newEntryMenu) {
@@ -600,7 +607,37 @@
         btn.addEventListener('click', function (e) {
             e.stopPropagation();
             closeNewEntryMenu();
+            closeRecordsImportPanel();
             panel.classList.toggle('hidden');
+        });
+
+        document.addEventListener('click', function (e) {
+            if (!menu.contains(e.target)) {
+                panel.classList.add('hidden');
+            }
+        });
+    }
+
+    function bindRecordsImportMenu() {
+        var menu = document.getElementById('recordsImportMenu');
+        var btn = document.getElementById('recordsImportBtn');
+        var panel = document.getElementById('recordsImportPanel');
+        if (!menu || !btn || !panel) return;
+
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            closeNewEntryMenu();
+            closeRecordsExportPanel();
+            panel.classList.toggle('hidden');
+        });
+
+        panel.addEventListener('click', function (e) {
+            var importBtn = e.target.closest('[data-import-type]');
+            if (!importBtn) return;
+            e.preventDefault();
+            e.stopPropagation();
+            panel.classList.add('hidden');
+            openImportModal(importBtn.getAttribute('data-import-type'));
         });
 
         document.addEventListener('click', function (e) {
@@ -620,18 +657,11 @@
             e.preventDefault();
             e.stopPropagation();
             closeRecordsExportPanel();
+            closeRecordsImportPanel();
             newEntryMenu.classList.toggle('hidden');
         });
 
         newEntryWrapper.addEventListener('click', function (e) {
-            var importBtn = e.target.closest('[data-import-type]');
-            if (importBtn) {
-                e.preventDefault();
-                e.stopPropagation();
-                newEntryMenu.classList.add('hidden');
-                openImportModal(importBtn.getAttribute('data-import-type'));
-                return;
-            }
             if (e.target.closest('[data-single-entry-type]')) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1079,7 +1109,7 @@
         };
 
         if (!importType) {
-            alert('Please choose an import type from New Entry → Import.');
+            alert('Please choose an import type from the Import menu.');
             return Promise.resolve();
         }
         if (!fileInput || !fileInput.files || !fileInput.files[0]) {
@@ -2138,6 +2168,7 @@
             refreshIcons();
         }
         bindRecordsExportMenu();
+        bindRecordsImportMenu();
         bindNewEntryMenu();
         bindRecordTypeTabs();
         bindEntryForm();

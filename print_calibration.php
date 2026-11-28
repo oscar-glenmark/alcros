@@ -58,6 +58,24 @@ if ($isCertification) {
     $displayPng = is_file($pngFull);
     $displayPngSrc = $displayPng ? ($pngRelative . '?v=' . filemtime($pngFull)) : '';
 }
+$calibrationScanPath = null;
+if ($displayPng && isset($pngFull) && is_file($pngFull)) {
+    $calibrationScanPath = $pngFull;
+} elseif (!$isCertification) {
+    $probePng = __DIR__ . '/assets/print/forms/' . $certificateType . '-' . $pageSide . '.png';
+    if (is_file($probePng)) {
+        $calibrationScanPath = $probePng;
+    }
+} elseif ($isCertification && !empty($displayPngSrc)) {
+    $certRelative = (string) preg_replace('/\?.*$/', '', (string) $displayPngSrc);
+    $certPath = __DIR__ . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $certRelative);
+    if (is_file($certPath)) {
+        $calibrationScanPath = $certPath;
+    }
+}
+$calDisplaySize = printCalibrationDisplayPaperSize($paperW, $paperH, $calibrationScanPath);
+$canvasW = (float) $calDisplaySize['width_mm'];
+$canvasH = (float) $calDisplaySize['height_mm'];
 $calQueryParams = static function (array $extra = []) use ($certificateType, $pageSide, $isCertification): array {
     $params = array_merge(['type' => $certificateType, 'page' => $pageSide], $extra);
     if ($isCertification) {
@@ -510,19 +528,22 @@ if (!$formDefaults && !empty($fields[0])) {
                 </label>
                 <div class="print-cal-zoom-controls">
                     <button type="button" class="print-cal-tool-btn" id="calZoomOut" aria-label="Zoom out">−</button>
-                    <input type="range" id="calZoom" min="0.75" max="1.5" step="0.05" value="0.84" aria-label="Zoom">
+                    <input type="range" id="calZoom" min="0.5" max="2" step="0.05" value="1" aria-label="Zoom">
                     <button type="button" class="print-cal-tool-btn" id="calZoomIn" aria-label="Zoom in">+</button>
-                    <span id="calZoomLabel">84%</span>
+                    <span id="calZoomLabel">100%</span>
                 </div>
                 <button type="button" id="calPreviewPrintLink" class="print-cal-tool-link">Test print preview ↗</button>
             </div>
             <div class="print-cal-canvas-wrap" id="calCanvasWrap">
+                <div class="print-cal-canvas-outer" id="calCanvasOuter">
                 <div class="print-cal-canvas-scaler" id="calCanvasScaler">
                 <div class="print-cal-canvas" id="calCanvas"
-                     style="width:<?= $paperW ?>mm;height:<?= $paperH ?>mm;"
+                     style="width:<?= $canvasW ?>mm;height:<?= $canvasH ?>mm;"
                      data-template-id="<?= (int) $template['id'] ?>"
-                     data-paper-w="<?= $paperW ?>"
-                     data-paper-h="<?= $paperH ?>">
+                     data-paper-w="<?= $canvasW ?>"
+                     data-paper-h="<?= $canvasH ?>"
+                     data-sheet-w="<?= $paperW ?>"
+                     data-sheet-h="<?= $paperH ?>">
                     <?php if ($displayPng): ?>
                     <img src="<?= htmlspecialchars($displayPngSrc) ?>" alt="" class="print-cal-bg">
                     <?php elseif ($isCertification && !empty($template['reference_image'])): ?>
@@ -556,6 +577,7 @@ if (!$formDefaults && !empty($fields[0])) {
                         <span class="print-cal-resize-handle" aria-hidden="true"></span>
                     </div>
                     <?php endforeach; ?>
+                </div>
                 </div>
                 </div>
             </div>

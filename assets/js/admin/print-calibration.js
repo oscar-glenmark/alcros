@@ -5,7 +5,8 @@
     var csrfToken = '';
     var activeFieldId = null;
     var dragState = null;
-    var zoomLevel = 0.84;
+    var baseFitScale = 1;
+    var zoomLevel = 1;
     var showSampleText = false;
     var showAllBoxes = true;
     var placedFieldIds = new Set();
@@ -133,6 +134,19 @@
         };
     }
 
+    function sheetSize() {
+        var canvas = canvasEl();
+        if (!canvas) {
+            return { w: 1, h: 1 };
+        }
+        var w = parseFloat(canvas.getAttribute('data-sheet-w') || '0');
+        var h = parseFloat(canvas.getAttribute('data-sheet-h') || '0');
+        if (w > 0 && h > 0) {
+            return { w: w, h: h };
+        }
+        return paperSize();
+    }
+
     function templateCal() {
         return cfg.templateCalibration || { x_offset_mm: 0, y_offset_mm: 0, scale_x: 1, scale_y: 1 };
     }
@@ -184,10 +198,10 @@
     }
 
     function clampEffective(x, y, width, height) {
-        var paper = paperSize();
+        var sheet = sheetSize();
         return {
-            x: Math.max(0, Math.min(x, paper.w - width)),
-            y: Math.max(0, Math.min(y, paper.h - height)),
+            x: Math.max(0, Math.min(x, sheet.w - width)),
+            y: Math.max(0, Math.min(y, sheet.h - height)),
             width: width,
             height: height
         };
@@ -2045,24 +2059,66 @@
         });
     }
 
+    function syncCanvasHeightFromBackground() {
+        var bg = document.querySelector('.print-cal-bg');
+        var canvas = canvasEl();
+        if (!bg || !canvas || !bg.naturalWidth || !bg.naturalHeight) {
+            return;
+        }
+        var sheetW = parseFloat(canvas.getAttribute('data-sheet-w') || canvas.getAttribute('data-paper-w') || '0');
+        if (!sheetW) {
+            return;
+        }
+        var impliedH = sheetW * (bg.naturalHeight / bg.naturalWidth);
+        var currentH = parseFloat(canvas.getAttribute('data-paper-h') || '0');
+        if (impliedH <= currentH + 0.25) {
+            return;
+        }
+        impliedH = Math.round(impliedH * 100) / 100;
+        canvas.style.height = impliedH.toFixed(2) + 'mm';
+        canvas.setAttribute('data-paper-h', impliedH.toFixed(2));
+    }
+
     function fitCalibrationCanvas() {
         var wrap = document.getElementById('calCanvasWrap');
+        var outer = document.getElementById('calCanvasOuter');
         var scaler = document.getElementById('calCanvasScaler');
         var canvas = canvasEl();
         if (!wrap || !scaler || !canvas) return;
 
         scaler.style.transform = 'none';
+        scaler.style.marginBottom = '';
+        scaler.style.marginRight = '';
+        scaler.style.marginLeft = '';
+
         var naturalWidth = canvas.offsetWidth;
         var naturalHeight = canvas.offsetHeight;
         if (!naturalWidth || !naturalHeight) return;
 
-        var availableWidth = Math.max(wrap.clientWidth - 24, 320);
+        var pad = 16;
+        var availableWidth = Math.max(wrap.clientWidth - pad * 2, 280);
+        var availableHeight = Math.max(wrap.clientHeight - pad * 2, 120);
         var widthScale = availableWidth / naturalWidth;
-        var scale = Math.min(Math.max(widthScale, 0.9), 2) * zoomLevel;
-        scale = Math.round(scale * 50) / 50;
-        scaler.style.transform = 'scale(' + scale.toFixed(2) + ') translateZ(0)';
+        var heightScale = availableHeight / naturalHeight;
+
+        baseFitScale = Math.min(widthScale, heightScale);
+        baseFitScale = Math.max(0.25, Math.min(baseFitScale, 1.5));
+
+        var scale = baseFitScale * zoomLevel;
+        scale = Math.max(0.25, Math.min(scale, 2.5));
+        scale = Math.round(scale * 100) / 100;
+
         scaler.style.width = naturalWidth + 'px';
-        scaler.style.height = (naturalHeight * scale) + 'px';
+        scaler.style.height = naturalHeight + 'px';
+        scaler.style.transformOrigin = 'top left';
+        scaler.style.transform = 'scale(' + scale.toFixed(2) + ') translateZ(0)';
+
+        var visualW = naturalWidth * scale;
+        var visualH = naturalHeight * scale;
+        if (outer) {
+            outer.style.width = Math.ceil(visualW) + 'px';
+            outer.style.height = Math.ceil(visualH) + 'px';
+        }
 
         var zoomLabel = document.getElementById('calZoomLabel');
         if (zoomLabel) {
@@ -2071,7 +2127,7 @@
     }
 
     function setZoomLevel(value) {
-        zoomLevel = Math.max(0.75, Math.min(1.5, value));
+        zoomLevel = Math.max(0.5, Math.min(2, value));
         var slider = document.getElementById('calZoom');
         if (slider) slider.value = String(zoomLevel);
         fitCalibrationCanvas();
@@ -2350,8 +2406,18 @@
         var bg = document.querySelector('.print-cal-bg');
         if (bg) {
             bg.addEventListener('load', function () {
-                safeRun('bgLoad', fitCalibrationCanvas);
+                safeRun('bgLoad', function () {
+                    syncCanvasHeightFromBackground();
+                    fitCalibrationCanvas();
+                    repositionAllMarkers();
+                });
             });
+            if (bg.complete && bg.naturalWidth) {
+                safeRun('bgSync', function () {
+                    syncCanvasHeightFromBackground();
+                    fitCalibrationCanvas();
+                });
+            }
         }
         var formBgImg = document.querySelector('.print-cal-form-bg img');
         if (formBgImg) {

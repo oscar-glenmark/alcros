@@ -248,7 +248,7 @@ $faqs = [
                     </div>
                 </div>
                 <div class="border border-slate-200 rounded-lg overflow-hidden shadow-sm flex flex-col">
-                    <div class="bg-[#071428] text-white px-5 py-3 font-bold text-sm uppercase tracking-wider">About ALCROS</div>
+                    <div class="bg-[#071428] text-white px-5 py-3 font-bold text-sm uppercase tracking-wider">About ALCROSsss</div>
                     <div class="p-5 flex flex-col sm:flex-row gap-5 flex-1">
                         <img src="images/municipal-hall.jpg" alt="Aloran Municipal Hall" class="w-full sm:w-36 h-28 object-cover rounded-md shrink-0">
                         <div>

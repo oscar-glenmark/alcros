@@ -4,10 +4,7 @@
 name: Deploy to SmarterASP.NET
 
 on:
-  push:
-    branches:
-      - main
-      - master
+  # Manual only — InfinityFree deploy runs on push; avoids failed SmarterASP runs when not in use.
   workflow_dispatch:
 
 concurrency:

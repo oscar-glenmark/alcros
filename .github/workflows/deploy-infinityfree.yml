@@ -15,6 +15,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate FTP secrets
+        env:
+          SERVER: ${{ secrets.INFINITYFREE_FTP_SERVER }}
+          USER: ${{ secrets.INFINITYFREE_FTP_USERNAME }}
+          PASS: ${{ secrets.INFINITYFREE_FTP_PASSWORD }}
+          REMOTE: ${{ secrets.INFINITYFREE_FTP_REMOTE_DIR }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in SERVER USER PASS REMOTE; do
+            eval "val=\$$name"
+            if [ -z "${val:-}" ]; then
+              echo "::error::Missing secret (see deploy/GITHUB_INFINITYFREE.md)"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ]
+          case "$REMOTE" in
+            */) ;;
+            *)
+              echo "::error::INFINITYFREE_FTP_REMOTE_DIR must end with / (e.g. /alcros.wuaze.com/htdocs/)"
+              exit 1
+              ;;
+          esac
+          if echo "$REMOTE" | grep -q '^/home/'; then
+            echo "::error::Use FTP web path like /alcros.wuaze.com/htdocs/ — not the panel Home Directory path"
+            exit 1
+          fi
+
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -22,6 +51,10 @@ jobs:
           username: ${{ secrets.INFINITYFREE_FTP_USERNAME }}
           password: ${{ secrets.INFINITYFREE_FTP_PASSWORD }}
           server-dir: ${{ secrets.INFINITYFREE_FTP_REMOTE_DIR }}
+          protocol: ftp
+          port: 21
+          log-level: verbose
+          timeout: 600000
           exclude: |
             **/.git*
             **/.github/**

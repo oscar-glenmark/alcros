@@ -311,7 +311,7 @@ $faqs = [
                     </ul>
                 </div>
                 <div>
-                    <h4 class="text-white font-bold text-xs uppercase tracking-wider mb-4">Contact Us</h4>
+                    <h4 class="text-white font-bold text-xs uppercase tracking-wider mb-4">Contact Us Now</h4>
                     <ul class="space-y-3 text-xs">
                         <li class="flex items-start gap-2">
                             <i data-lucide="map-pin" class="w-4 h-4 text-gold shrink-0 mt-0.5"></i>

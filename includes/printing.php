@@ -1999,6 +1999,35 @@ function printFillFieldRecognizedInCatalog(
     return printFillCatalogLabel($certificateType, $pageSide, $fieldName, $documentKind) !== '';
 }
 
+/** Viewport size shared by Print Calibration and staff preview (matches form scan aspect). */
+function printCertificateDisplayPaperDimensions(array $template): array
+{
+    require_once __DIR__ . '/print_field_definitions.php';
+    require_once __DIR__ . '/print_form_svgs.php';
+
+    $paperW = (float) ($template['paper_width_mm'] ?? printOfficialPaperWidthMm());
+    $paperH = (float) ($template['paper_height_mm'] ?? printOfficialPaperHeightMm());
+    $certType = (string) ($template['certificate_type'] ?? 'birth');
+    $pageSide = (string) ($template['page_side'] ?? 'front');
+
+    $scanPath = null;
+    $scan = printFormScanAsset($certType, $pageSide);
+    if ($scan !== null) {
+        $relative = (string) preg_replace('/\?.*$/', '', $scan);
+        $full = dirname(__DIR__) . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative);
+        if (is_file($full)) {
+            $scanPath = $full;
+        }
+    }
+
+    $display = printCalibrationDisplayPaperSize($paperW, $paperH, $scanPath);
+
+    return [
+        'width_mm'  => (float) $display['width_mm'],
+        'height_mm' => (float) $display['height_mm'],
+    ];
+}
+
 /** @return array{width_mm: float, height_mm: float} */
 function printTemplatePaperDimensions(array $template, string $documentKind = 'certificate'): array
 {
@@ -2009,14 +2038,7 @@ function printTemplatePaperDimensions(array $template, string $documentKind = 'c
         return certificationDisplayPaperDimensions($template);
     }
 
-    if (!function_exists('printOfficialPaperWidthMm')) {
-        require_once __DIR__ . '/print_field_definitions.php';
-    }
-
-    return [
-        'width_mm'  => (float) ($template['paper_width_mm'] ?? printOfficialPaperWidthMm()),
-        'height_mm' => (float) ($template['paper_height_mm'] ?? printOfficialPaperHeightMm()),
-    ];
+    return printCertificateDisplayPaperDimensions($template);
 }
 
 function printFillResolveDisplayLabel(

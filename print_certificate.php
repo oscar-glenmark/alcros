@@ -58,13 +58,27 @@ if (!$context['ok']) {
             ? printCertificationFillEditorFields($certificateType, $record, $certFillOverrides, $pdo)
             : printFillEditorFields($certificateType, $record, [], $pdo);
         $frontTemplate = getPrintTemplate($pdo, $certificateType, 'front', $documentKind);
+        $backPaperW = null;
+        $backPaperH = null;
         if ($frontTemplate) {
             $paperDims = printTemplatePaperDimensions($frontTemplate, $documentKind);
             $paperW = (float) $paperDims['width_mm'];
             $paperH = (float) $paperDims['height_mm'];
+            if (!$isCertification) {
+                $backTemplate = getPrintTemplate($pdo, $certificateType, 'back', $documentKind);
+                if ($backTemplate) {
+                    $backDims = printTemplatePaperDimensions($backTemplate, $documentKind);
+                    $backPaperW = (float) $backDims['width_mm'];
+                    $backPaperH = (float) $backDims['height_mm'];
+                }
+            }
         } else {
             $paperW = printOfficialPaperWidthMm();
             $paperH = printOfficialPaperHeightMm();
+        }
+        if ($backPaperW === null) {
+            $backPaperW = $paperW;
+            $backPaperH = $paperH;
         }
     }
 }
@@ -224,7 +238,9 @@ $printModeSetting = printMode();
                      data-preview-view="front"
                      data-paper-w="<?= htmlspecialchars((string) $paperW) ?>"
                      data-paper-h="<?= htmlspecialchars((string) $paperH) ?>">
-                <div class="print-cert-preview-block" data-preview-side="front">
+                <div class="print-cert-preview-block" data-preview-side="front"
+                     data-paper-w="<?= htmlspecialchars((string) $paperW) ?>"
+                     data-paper-h="<?= htmlspecialchars((string) $paperH) ?>">
                     <div class="print-cert-preview-head">
                         <h2>Front Preview</h2>
                         <div class="print-cert-preview-actions no-print">
@@ -239,7 +255,9 @@ $printModeSetting = printMode();
                     </div>
                 </div>
                 <?php if (!$isCertification): ?>
-                <div class="print-cert-preview-block" data-preview-side="back">
+                <div class="print-cert-preview-block" data-preview-side="back"
+                     data-paper-w="<?= htmlspecialchars((string) $backPaperW) ?>"
+                     data-paper-h="<?= htmlspecialchars((string) $backPaperH) ?>">
                     <div class="print-cert-preview-head">
                         <h2>Back Preview</h2>
                         <div class="print-cert-preview-actions no-print">

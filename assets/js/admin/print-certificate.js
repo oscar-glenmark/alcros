@@ -333,12 +333,23 @@
         return !!document.querySelector('[data-preview-viewport]');
     }
 
-    function localPreviewPaperPixels() {
+    function localPreviewPaperPixels(side) {
+        var block = side ? document.querySelector('.print-cert-preview-block[data-preview-side="' + side + '"]') : null;
         var section = document.querySelector('.print-cert-previews');
         var defaultW = cfg.documentKind === 'certification' ? '210' : '215.9';
         var defaultH = cfg.documentKind === 'certification' ? '297' : '330.2';
-        var paperW = parseFloat((section && section.getAttribute('data-paper-w')) || cfg.paperWidthMm || defaultW);
-        var paperH = parseFloat((section && section.getAttribute('data-paper-h')) || cfg.paperHeightMm || defaultH);
+        var paperW = parseFloat(
+            (block && block.getAttribute('data-paper-w'))
+            || (section && section.getAttribute('data-paper-w'))
+            || cfg.paperWidthMm
+            || defaultW
+        );
+        var paperH = parseFloat(
+            (block && block.getAttribute('data-paper-h'))
+            || (section && section.getAttribute('data-paper-h'))
+            || cfg.paperHeightMm
+            || defaultH
+        );
         var pxPerMm = 96 / 25.4;
         return {
             width: Math.max(Math.round(paperW * pxPerMm), 1),
@@ -347,7 +358,11 @@
     }
 
     function localPreviewContentSize(iframe) {
-        var size = localPreviewPaperPixels();
+        var side = 'front';
+        if (iframe && iframe.id === 'previewBack') {
+            side = 'back';
+        }
+        var size = localPreviewPaperPixels(side);
         var width = size.width;
         var height = size.height;
         try {
@@ -452,11 +467,9 @@
         var layoutH = iframe.offsetHeight;
         if (layoutW > naturalWidth) naturalWidth = layoutW;
         if (layoutH > naturalHeight) naturalHeight = layoutH;
-        if (isCertificationDocument()) {
-            var paperPx = localPreviewPaperPixels();
-            naturalWidth = Math.max(naturalWidth, paperPx.width);
-            naturalHeight = Math.max(naturalHeight, paperPx.height);
-        }
+        var paperPx = localPreviewPaperPixels(side);
+        naturalWidth = Math.max(naturalWidth, paperPx.width);
+        naturalHeight = Math.max(naturalHeight, paperPx.height);
 
         var availableWidth = Math.max(viewport.clientWidth, 120);
         var availableHeight = Math.max(viewport.clientHeight, 120);

@@ -52,6 +52,16 @@ if (!$frontTemplate) {
     $paperDims = printTemplatePaperDimensions($frontTemplate, $documentKind);
     $paperW = (float) $paperDims['width_mm'];
     $paperH = (float) $paperDims['height_mm'];
+    $backPaperW = $paperW;
+    $backPaperH = $paperH;
+    if (!$isCertification) {
+        $backTemplate = getPrintTemplate($pdo, $certificateType, 'back', $documentKind);
+        if ($backTemplate) {
+            $backDims = printTemplatePaperDimensions($backTemplate, $documentKind);
+            $backPaperW = (float) $backDims['width_mm'];
+            $backPaperH = (float) $backDims['height_mm'];
+        }
+    }
 }
 
 $pageTitle = 'Documents';
@@ -184,7 +194,9 @@ $pageSubtitle = 'Blank certificate and certification forms for manual entry';
                      data-preview-view="front"
                      data-paper-w="<?= htmlspecialchars((string) $paperW) ?>"
                      data-paper-h="<?= htmlspecialchars((string) $paperH) ?>">
-                <div class="print-cert-preview-block" data-preview-side="front">
+                <div class="print-cert-preview-block" data-preview-side="front"
+                     data-paper-w="<?= htmlspecialchars((string) $paperW) ?>"
+                     data-paper-h="<?= htmlspecialchars((string) $paperH) ?>">
                     <div class="print-cert-preview-head">
                         <h2>Front Preview</h2>
                         <div class="print-cert-preview-actions no-print">
@@ -199,7 +211,9 @@ $pageSubtitle = 'Blank certificate and certification forms for manual entry';
                     </div>
                 </div>
                 <?php if (!$isCertification): ?>
-                <div class="print-cert-preview-block" data-preview-side="back">
+                <div class="print-cert-preview-block" data-preview-side="back"
+                     data-paper-w="<?= htmlspecialchars((string) $backPaperW) ?>"
+                     data-paper-h="<?= htmlspecialchars((string) $backPaperH) ?>">
                     <div class="print-cert-preview-head">
                         <h2>Back Preview</h2>
                         <div class="print-cert-preview-actions no-print">

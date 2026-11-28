@@ -159,10 +159,8 @@ if ($isCertificationDoc) {
     $showBackground = !empty($_GET['background']) || $isPreview || $autoPrint;
 }
 $printWithBackground = $showBackground && $isCertificationDoc;
-if ($isCertificationDoc) {
-    $printData['template']['paper_width_mm'] = $paperW;
-    $printData['template']['paper_height_mm'] = $paperH;
-}
+$printData['template']['paper_width_mm'] = $paperW;
+$printData['template']['paper_height_mm'] = $paperH;
 $overlayHtml = renderPrintOverlayHtml($printData, array_merge($printOptions, [
     'mode'                         => $mode,
     'test_mode'                    => $testMode,

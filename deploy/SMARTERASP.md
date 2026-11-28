@@ -106,6 +106,8 @@ Zips are **not** served publicly (`storage/` is denied in `web.config`). Treat t
 
 Inside each zip: `alcros-backup.sql`, `manifest.json`, and `files/` (uploaded assets from the bundle step).
 
+`alcros-backup.sql` is **import-ready** for local XAMPP/phpMyAdmin: it sets `FOREIGN_KEY_CHECKS`, normalizes **utf8mb4**, and can be imported into a full `alcros_db` without hand-editing. Copy `files/` into the project (`uploads/staff`, `assets/print/forms`) after the SQL import.
+
 ## 7. Post-deploy checks
 
 1. Public home, request wizard, appointment booking, kiosk, queue display

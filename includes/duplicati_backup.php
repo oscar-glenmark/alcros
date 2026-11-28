@@ -18,11 +18,11 @@ function alcrosDuplicatiBackupDir(): string
 function alcrosDuplicatiBackupTables(): array
 {
     return [
+        'staff',
         'civil_records',
         'birth_record_details',
         'death_record_details',
         'marriage_record_details',
-        'staff',
         'print_templates',
         'print_fields',
     ];
@@ -146,6 +146,60 @@ function alcrosDuplicatiBackupPrintSettingsSql(PDO $pdo): string
     return implode("\n", $lines) . "\n";
 }
 
+/**
+ * Host dumps often use utf8mb3; local XAMPP uses utf8mb4 with FKs to staff.
+ * Wrap SQL so phpMyAdmin import into a full alcros_db does not fail on staff (errno 150).
+ */
+function alcrosDuplicatiNormalizeSqlDumpForImport(string $sql): string
+{
+    $sql = ltrim($sql, "\xEF\xBB\xBF");
+
+    if (str_contains($sql, 'ALCROS registry backup (import-ready')) {
+        return $sql;
+    }
+
+    $sql = str_replace(
+        [
+            'utf8mb3_unicode_ci',
+            'utf8mb3_general_ci',
+            'utf8_unicode_ci',
+            'utf8_general_ci',
+            'CHARSET=utf8mb3',
+            'charset=utf8mb3',
+        ],
+        [
+            'utf8mb4_unicode_ci',
+            'utf8mb4_unicode_ci',
+            'utf8mb4_unicode_ci',
+            'utf8mb4_unicode_ci',
+            'CHARSET=utf8mb4',
+            'charset=utf8mb4',
+        ],
+        $sql
+    );
+
+    $sql = str_replace('utf8mb3', 'utf8mb4', $sql);
+
+    $header = implode("\n", [
+        '-- ALCROS registry backup (import-ready for phpMyAdmin / local XAMPP)',
+        '-- Scope: staff, civil registry rows, print templates/fields, print_* settings.',
+        '-- Import into existing alcros_db: upload this file as-is (no manual edits).',
+        'SET NAMES utf8mb4;',
+        'SET FOREIGN_KEY_CHECKS=0;',
+        '',
+    ]);
+
+    $combined = $header . $sql;
+    $combined = rtrim($combined);
+    if (!preg_match('/SET\s+FOREIGN_KEY_CHECKS\s*=\s*1\s*;?\s*$/iu', $combined)) {
+        $combined .= "\n\nSET FOREIGN_KEY_CHECKS=1;\n";
+    } else {
+        $combined .= "\n";
+    }
+
+    return $combined;
+}
+
 function alcrosDuplicatiRunMysqldump(string $mysqldump, string $outputFile): void
 {
     if (!function_exists('exec')) {
@@ -220,6 +274,7 @@ function alcrosDuplicatiWriteSqlDump(PDO $pdo, string $outputFile): string
     if ($mysqldump !== null) {
         alcrosDuplicatiRunMysqldump($mysqldump, $outputFile);
         file_put_contents($outputFile, alcrosDuplicatiBackupPrintSettingsSql($pdo), FILE_APPEND);
+        alcrosDuplicatiFinalizeSqlDumpFile($outputFile);
 
         return 'mysqldump';
     }
@@ -227,8 +282,6 @@ function alcrosDuplicatiWriteSqlDump(PDO $pdo, string $outputFile): string
     $parts = [
         '-- ALCROS registry backup (PDO fallback)',
         '-- Generated ' . date('Y-m-d H:i:s'),
-        'SET FOREIGN_KEY_CHECKS=0;',
-        'SET NAMES ' . DB_CHARSET . ';',
         '',
     ];
 
@@ -237,14 +290,32 @@ function alcrosDuplicatiWriteSqlDump(PDO $pdo, string $outputFile): string
     }
 
     $parts[] = alcrosDuplicatiBackupPrintSettingsSql($pdo);
-    $parts[] = 'SET FOREIGN_KEY_CHECKS=1;';
     $parts[] = '';
 
     if (file_put_contents($outputFile, implode("\n", $parts)) === false) {
         throw new RuntimeException('Could not write SQL backup file.');
     }
 
+    alcrosDuplicatiFinalizeSqlDumpFile($outputFile);
+
     return 'pdo';
+}
+
+function alcrosDuplicatiFinalizeSqlDumpFile(string $outputFile): void
+{
+    if (!is_file($outputFile)) {
+        throw new RuntimeException('SQL backup file was not created.');
+    }
+
+    $sql = file_get_contents($outputFile);
+    if ($sql === false) {
+        throw new RuntimeException('Could not read SQL backup file.');
+    }
+
+    $normalized = alcrosDuplicatiNormalizeSqlDumpForImport($sql);
+    if (file_put_contents($outputFile, $normalized) === false) {
+        throw new RuntimeException('Could not write import-ready SQL backup file.');
+    }
 }
 
 function alcrosDuplicatiRemoveTree(string $dir): void

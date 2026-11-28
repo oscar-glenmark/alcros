@@ -73,7 +73,11 @@ if ($displayPng && isset($pngFull) && is_file($pngFull)) {
         $calibrationScanPath = $certPath;
     }
 }
-$calDisplaySize = printCalibrationDisplayPaperSize($paperW, $paperH, $calibrationScanPath);
+if ($isCertification) {
+    $calDisplaySize = certificationDisplayPaperDimensions($template, $calibrationScanPath);
+} else {
+    $calDisplaySize = printCalibrationDisplayPaperSize($paperW, $paperH, $calibrationScanPath);
+}
 $canvasW = (float) $calDisplaySize['width_mm'];
 $canvasH = (float) $calDisplaySize['height_mm'];
 $calQueryParams = static function (array $extra = []) use ($certificateType, $pageSide, $isCertification): array {

@@ -58,7 +58,7 @@ $faqs = [
     <meta charset="UTF-8">
     <?= faviconLinkTag() ?>
     <?= alcrosCitizenHeadMeta() ?>
-    <title>ALCROS -Aloran Local Civil Registry Online System</title>
+    <title>ALCROS</title>
     <?= vendorScriptTag('tailwindcss.js') ?>
     <?= interFontTags() ?>
     <?= vendorScriptTag('lucide.min.js') ?>
@@ -73,7 +73,7 @@ $faqs = [
                 <a href="index.php" class="flex items-center gap-3 min-w-0">
                     <?= alcrosFaviconImg(48, 'brand-logo shrink-0') ?>
                     <div class="site-brand-text">
-                        <div class="site-brand-title">ALCROSsssssss</div>
+                        <div class="site-brand-title">ALCROs</div>
                         <div class="site-brand-subtitle">Aloran Local Civil Registry Online System</div>
                     </div>
                 </a>

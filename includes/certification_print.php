@@ -521,6 +521,32 @@ function certificationFormScanAsset(string $certificateType): ?string
     return $relative . '?v=' . filemtime($full);
 }
 
+/** Viewport size shared by Print Calibration and staff Documents preview (matches scan aspect). */
+function certificationDisplayPaperDimensions(array $template, ?string $scanFullPath = null): array
+{
+    $paperW = (float) ($template['paper_width_mm'] ?? certificationPaperSize()['paper_width_mm']);
+    $paperH = (float) ($template['paper_height_mm'] ?? certificationPaperSize()['paper_height_mm']);
+
+    if ($scanFullPath === null) {
+        $certType = (string) ($template['certificate_type'] ?? 'birth');
+        $scan = certificationFormScanAsset($certType);
+        if ($scan !== null) {
+            $relative = (string) preg_replace('/\?.*$/', '', $scan);
+            $full = dirname(__DIR__) . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative);
+            if (is_file($full)) {
+                $scanFullPath = $full;
+            }
+        }
+    }
+
+    $display = printCalibrationDisplayPaperSize($paperW, $paperH, $scanFullPath);
+
+    return [
+        'width_mm'  => (float) $display['width_mm'],
+        'height_mm' => (float) $display['height_mm'],
+    ];
+}
+
 function certificationTitle(string $certificateType): string
 {
     return match ($certificateType) {
@@ -886,48 +912,11 @@ function certificationIssuedToOverridesForPrint(?array $request, array $record):
 
 function printCertificationFillEditorFields(string $certificateType, array $record, array $overrides = [], ?PDO $pdo = null): array
 {
-    $values = certificationBuildFieldValues($record, $certificateType, ['keep_empty' => true]);
-    $values = printApplyFillOverrides($values, $overrides);
-    $catalog = certificationFieldCatalog()[$certificateType] ?? [];
-    $fields = [];
-    $seen = [];
-
-    foreach ($catalog as $fieldName => $label) {
-        if ($pdo !== null && !printFieldIncludedInFillEditor($pdo, $certificateType, 'front', (string) $fieldName, 'certification')) {
-            continue;
-        }
-        $fields[] = [
-            'field_name' => $fieldName,
-            'label'      => $label,
-            'value'      => (string) ($values[$fieldName] ?? ''),
-            'page_side'  => 'front',
-        ];
-        $seen[$fieldName] = true;
-    }
-
-    if ($pdo !== null) {
-        $template = getPrintTemplate($pdo, $certificateType, 'front', 'certification');
-        if ($template) {
-            foreach (getPrintFields($pdo, (int) $template['id'], true) as $dbField) {
-                $name = (string) $dbField['field_name'];
-                if (!printIsCustomField($name) || isset($seen[$name])) {
-                    continue;
-                }
-                if (!printFieldIncludedInFillEditor($pdo, $certificateType, 'front', $name, 'certification')) {
-                    continue;
-                }
-                $fields[] = [
-                    'field_name' => $name,
-                    'label'      => (string) ($dbField['label'] ?: $name),
-                    'value'      => (string) ($values[$name] ?? ''),
-                    'page_side'  => 'front',
-                ];
-                $seen[$name] = true;
-            }
-        }
-    }
-
-    return $fields;
+    return printFillEditorFields($certificateType, $record, [
+        'keep_empty'     => true,
+        'document_kind'  => 'certification',
+        'fill_overrides' => $overrides,
+    ], $pdo);
 }
 
 function printCertification(PDO $pdo, string $certificateType, array $record, array $options = []): ?array

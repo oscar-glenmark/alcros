@@ -2005,13 +2005,8 @@ function printTemplatePaperDimensions(array $template, string $documentKind = 'c
     $documentKind = normalizePrintDocumentKind($documentKind);
     if ($documentKind === 'certification') {
         require_once __DIR__ . '/certification_print.php';
-        $certType = (string) ($template['certificate_type'] ?? 'birth');
-        $certPaper = certificationPaperSize($certType);
 
-        return [
-            'width_mm'  => (float) $certPaper['paper_width_mm'],
-            'height_mm' => (float) $certPaper['paper_height_mm'],
-        ];
+        return certificationDisplayPaperDimensions($template);
     }
 
     if (!function_exists('printOfficialPaperWidthMm')) {
@@ -2097,10 +2092,21 @@ function printFillCsvTemplateHeadersForType(PDO $pdo, string $type): array
 /** @return list<array{field_name: string, label: string, page_side: string, value: string}> */
 function printFillEditorFields(string $certificateType, array $record, array $options = [], ?PDO $pdo = null): array
 {
-    $values = printBuildFieldValues($record, $certificateType, array_merge([
-        'keep_empty' => true,
-    ], $options));
     $documentKind = normalizePrintDocumentKind($options['document_kind'] ?? 'certificate');
+    if ($documentKind === 'certification') {
+        require_once __DIR__ . '/certification_print.php';
+        $values = certificationBuildFieldValues($record, $certificateType, array_merge([
+            'keep_empty' => true,
+        ], $options));
+        $overrides = $options['fill_overrides'] ?? [];
+        if (is_array($overrides) && $overrides !== []) {
+            $values = printApplyFillOverrides($values, $overrides);
+        }
+    } else {
+        $values = printBuildFieldValues($record, $certificateType, array_merge([
+            'keep_empty' => true,
+        ], $options));
+    }
 
     if ($pdo === null) {
         if (!function_exists('printFieldCatalog')) {

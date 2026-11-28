@@ -92,6 +92,9 @@ if ($calibrationPreview) {
     $printOptions['manual_blank'] = true;
     $printOptions['keep_empty'] = true;
     $printOptions['skip_fill_overrides'] = true;
+    if ($documentKind === 'certification') {
+        $printOptions['include_disabled_fields'] = true;
+    }
 }
 
 if ($documentKind === 'certification' && !empty($request)) {

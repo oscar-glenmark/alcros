@@ -168,7 +168,7 @@ $faqs = [
         </div>
     </section>
 
-    <!-- HOW IT WORKS -->
+    <!-- HOW IT WORKSssss -->
     <section id="how-it-works" class="py-16 md:py-20 bg-white scroll-mt-24">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="text-center mb-14">

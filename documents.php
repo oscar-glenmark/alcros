@@ -49,14 +49,9 @@ if (!$frontTemplate) {
     $printError = 'Print template not found for this document. Ask an administrator to set up print templates.';
 } else {
     $fillEditorFields = printDocumentsFillEditorFields($pdo, $certificateType, $documentKind);
-    if ($isCertification) {
-        $certPaper = certificationPaperSize($certificateType);
-        $paperW = (float) $certPaper['paper_width_mm'];
-        $paperH = (float) $certPaper['paper_height_mm'];
-    } else {
-        $paperW = (float) ($frontTemplate['paper_width_mm'] ?? printOfficialPaperWidthMm());
-        $paperH = (float) ($frontTemplate['paper_height_mm'] ?? printOfficialPaperHeightMm());
-    }
+    $paperDims = printTemplatePaperDimensions($frontTemplate, $documentKind);
+    $paperW = (float) $paperDims['width_mm'];
+    $paperH = (float) $paperDims['height_mm'];
 }
 
 $pageTitle = 'Documents';

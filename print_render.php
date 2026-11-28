@@ -140,14 +140,9 @@ $printData['values'] = printStripExcludedOptionalSections(
 
 $template = $printData['template'];
 $isCertificationDoc = $documentKind === 'certification';
-if ($isCertificationDoc) {
-    $certPaper = certificationPaperSize($certificateType);
-    $paperW = (float) $certPaper['paper_width_mm'];
-    $paperH = (float) $certPaper['paper_height_mm'];
-} else {
-    $paperW = printOfficialPaperWidthMm();
-    $paperH = printOfficialPaperHeightMm();
-}
+$paperDims = printTemplatePaperDimensions($template, $documentKind);
+$paperW = (float) $paperDims['width_mm'];
+$paperH = (float) $paperDims['height_mm'];
 $pageCssSize = printPageCssSize($paperW, $paperH);
 $pageSizeFallback = $isCertificationDoc ? 'A4 portrait' : '8.5in 13in portrait';
 $isPreview = !empty($_GET['preview']);

@@ -1381,55 +1381,12 @@ function printManualBlankRecord(string $certificateType): array
 /** @return list<array{field_name: string, label: string, page_side: string, value: string}> */
 function printDocumentsFillEditorFields(PDO $pdo, string $certificateType, string $documentKind): array
 {
-    $record = printManualBlankRecord($certificateType);
-    $options = [
+    return printFillEditorFields($certificateType, printManualBlankRecord($certificateType), [
         'manual_blank'        => true,
         'keep_empty'          => true,
         'skip_fill_overrides' => true,
-    ];
-
-    if (normalizePrintDocumentKind($documentKind) === 'certification') {
-        require_once __DIR__ . '/certification_print.php';
-        $catalog = certificationFieldCatalog()[$certificateType] ?? [];
-        $fields = [];
-        $seen = [];
-        foreach ($catalog as $fieldName => $label) {
-            if (!printFieldIncludedInFillEditor($pdo, $certificateType, 'front', (string) $fieldName, 'certification')) {
-                continue;
-            }
-            $fields[] = [
-                'field_name' => $fieldName,
-                'label'      => $label,
-                'page_side'  => 'front',
-                'value'      => '',
-            ];
-            $seen[$fieldName] = true;
-        }
-
-        $template = getPrintTemplate($pdo, $certificateType, 'front', 'certification');
-        if ($template) {
-            foreach (getPrintFields($pdo, (int) $template['id'], true) as $dbField) {
-                $name = (string) $dbField['field_name'];
-                if (!printIsCustomField($name) || isset($seen[$name])) {
-                    continue;
-                }
-                if (!printFieldIncludedInFillEditor($pdo, $certificateType, 'front', $name, 'certification')) {
-                    continue;
-                }
-                $fields[] = [
-                    'field_name' => $name,
-                    'label'      => (string) ($dbField['label'] ?: $name),
-                    'page_side'  => 'front',
-                    'value'      => '',
-                ];
-                $seen[$name] = true;
-            }
-        }
-
-        return $fields;
-    }
-
-    return printFillEditorFields($certificateType, $record, $options, $pdo);
+        'document_kind'       => normalizePrintDocumentKind($documentKind),
+    ], $pdo);
 }
 
 function printMarriagePartySexDefault(string $fieldName): ?string
@@ -2007,77 +1964,111 @@ function printFieldIncludedInFillEditor(
     return $enabled === true;
 }
 
-/** @return array<string, string> Catalog + custom calibration field labels for front and back pages. */
-function printFillFieldLabelsForType(PDO $pdo, string $certificateType): array
+function printFillCatalogLabel(string $certificateType, string $pageSide, string $fieldName, string $documentKind = 'certificate'): string
 {
+    if ($documentKind === 'certification') {
+        require_once __DIR__ . '/certification_print.php';
+
+        return (string) (certificationFieldCatalog()[$certificateType][$fieldName] ?? '');
+    }
+
     if (!function_exists('printFieldCatalog')) {
         require_once __DIR__ . '/print_field_definitions.php';
     }
 
     $catalog = printFieldCatalog()[$certificateType] ?? [];
-    $labels = [];
 
-    foreach (['front', 'back'] as $side) {
-        foreach ($catalog[$side] ?? [] as $name => $label) {
-            if (printFieldIncludedInFillEditor($pdo, $certificateType, $side, (string) $name)) {
-                $labels[$name] = $label;
-            }
-        }
+    return (string) (
+        $catalog[$pageSide][$fieldName]
+        ?? $catalog['front'][$fieldName]
+        ?? $catalog['back'][$fieldName]
+        ?? ''
+    );
+}
+
+function printFillFieldRecognizedInCatalog(
+    string $certificateType,
+    string $pageSide,
+    string $fieldName,
+    string $documentKind = 'certificate'
+): bool {
+    if (printIsCustomField($fieldName)) {
+        return true;
     }
 
-    foreach (['front', 'back'] as $side) {
-        $template = getPrintTemplate($pdo, $certificateType, $side);
-        if (!$template) {
+    return printFillCatalogLabel($certificateType, $pageSide, $fieldName, $documentKind) !== '';
+}
+
+/** @return array{width_mm: float, height_mm: float} */
+function printTemplatePaperDimensions(array $template, string $documentKind = 'certificate'): array
+{
+    $documentKind = normalizePrintDocumentKind($documentKind);
+    if ($documentKind === 'certification') {
+        require_once __DIR__ . '/certification_print.php';
+        $certType = (string) ($template['certificate_type'] ?? 'birth');
+        $certPaper = certificationPaperSize($certType);
+
+        return [
+            'width_mm'  => (float) $certPaper['paper_width_mm'],
+            'height_mm' => (float) $certPaper['paper_height_mm'],
+        ];
+    }
+
+    if (!function_exists('printOfficialPaperWidthMm')) {
+        require_once __DIR__ . '/print_field_definitions.php';
+    }
+
+    return [
+        'width_mm'  => (float) ($template['paper_width_mm'] ?? printOfficialPaperWidthMm()),
+        'height_mm' => (float) ($template['paper_height_mm'] ?? printOfficialPaperHeightMm()),
+    ];
+}
+
+function printFillResolveDisplayLabel(
+    array $dbField,
+    string $certificateType,
+    string $pageSide,
+    string $documentKind = 'certificate'
+): string {
+    $dbLabel = trim((string) ($dbField['label'] ?? ''));
+    if ($dbLabel !== '') {
+        return $dbLabel;
+    }
+
+    $fieldName = (string) ($dbField['field_name'] ?? '');
+    $catalogLabel = printFillCatalogLabel($certificateType, $pageSide, $fieldName, $documentKind);
+    if ($catalogLabel !== '') {
+        return $catalogLabel;
+    }
+
+    return $fieldName !== '' ? $fieldName : 'Field';
+}
+
+/** @return array<string, string> Enabled print fields (same source as Print Calibration / staff Documents). */
+function printFillFieldLabelsForType(PDO $pdo, string $certificateType, string $documentKind = 'certificate'): array
+{
+    $labels = [];
+    foreach (printFillEditorFields($certificateType, ['record_type' => $certificateType], [
+        'document_kind' => $documentKind,
+    ], $pdo) as $field) {
+        $name = (string) ($field['field_name'] ?? '');
+        if ($name === '') {
             continue;
         }
-        foreach (getPrintFields($pdo, (int) $template['id'], true) as $dbField) {
-            $name = (string) $dbField['field_name'];
-            if (!printIsCustomField($name)) {
-                continue;
-            }
-            $labels[$name] = (string) ($dbField['label'] ?: $name);
-        }
+        $labels[$name] = (string) ($field['label'] ?? $name);
     }
 
     return $labels;
 }
 
-/** @return list<string> Catalog print fill columns plus custom calibration textboxes (front, then back). */
+/** @return list<string> Enabled print fill columns (order matches calibration templates). */
 function printFillCsvColumnsForType(PDO $pdo, string $type): array
 {
-    if (!function_exists('printFillCsvColumns')) {
-        require_once __DIR__ . '/print_field_definitions.php';
-    }
-
-    $catalog = printFieldCatalog()[$type] ?? [];
     $columns = [];
-    $seen = [];
-    foreach (['front', 'back'] as $side) {
-        foreach ($catalog[$side] ?? [] as $name => $_label) {
-            $name = (string) $name;
-            if (isset($seen[$name])) {
-                continue;
-            }
-            if (!printFieldIncludedInFillEditor($pdo, $type, $side, $name)) {
-                continue;
-            }
+    foreach (printFillEditorFields($type, ['record_type' => $type], [], $pdo) as $field) {
+        $name = (string) ($field['field_name'] ?? '');
+        if ($name !== '') {
             $columns[] = $name;
-            $seen[$name] = true;
-        }
-    }
-
-    foreach (['front', 'back'] as $side) {
-        $template = getPrintTemplate($pdo, $type, $side);
-        if (!$template) {
-            continue;
-        }
-        foreach (getPrintFields($pdo, (int) $template['id'], true) as $dbField) {
-            $name = (string) $dbField['field_name'];
-            if (!printIsCustomField($name) || isset($seen[$name])) {
-                continue;
-            }
-            $columns[] = $name;
-            $seen[$name] = true;
         }
     }
 
@@ -2109,52 +2100,29 @@ function printFillEditorFields(string $certificateType, array $record, array $op
     $values = printBuildFieldValues($record, $certificateType, array_merge([
         'keep_empty' => true,
     ], $options));
-    $catalog = printFieldCatalog()[$certificateType] ?? [];
-    $fields = [];
-    $seen = [];
+    $documentKind = normalizePrintDocumentKind($options['document_kind'] ?? 'certificate');
 
-    foreach (['front', 'back'] as $side) {
-        foreach ($catalog[$side] ?? [] as $name => $label) {
-            if (printIsRecordRegistryField($name) && !empty($options['exclude_record_registry_fields'])) {
-                continue;
-            }
-            if ($pdo !== null && !printFieldIncludedInFillEditor($pdo, $certificateType, $side, (string) $name)) {
-                continue;
-            }
-            if (isset($seen[$name])) {
-                continue;
-            }
-            $rawValue = (string) ($values[$name] ?? '');
-            $fields[] = [
-                'field_name' => $name,
-                'label'      => $label,
-                'page_side'  => $side,
-                'value'      => printIsLcroFooterField($name)
-                    ? printFormatLcroFooterDisplayText($rawValue)
-                    : $rawValue,
-            ];
-            $seen[$name] = true;
+    if ($pdo === null) {
+        if (!function_exists('printFieldCatalog')) {
+            require_once __DIR__ . '/print_field_definitions.php';
         }
-    }
 
-    if ($pdo !== null) {
+        $catalog = printFieldCatalog()[$certificateType] ?? [];
+        $fields = [];
+        $seen = [];
+
         foreach (['front', 'back'] as $side) {
-            $template = getPrintTemplate($pdo, $certificateType, $side);
-            if (!$template) {
-                continue;
-            }
-            foreach (getPrintFields($pdo, (int) $template['id'], true) as $dbField) {
-                $name = (string) $dbField['field_name'];
-                if (!printIsCustomField($name) || isset($seen[$name])) {
+            foreach ($catalog[$side] ?? [] as $name => $label) {
+                if (printIsRecordRegistryField($name) && !empty($options['exclude_record_registry_fields'])) {
                     continue;
                 }
-                if (!printFieldIncludedInFillEditor($pdo, $certificateType, $side, $name)) {
+                if (isset($seen[$name])) {
                     continue;
                 }
                 $rawValue = (string) ($values[$name] ?? '');
                 $fields[] = [
                     'field_name' => $name,
-                    'label'      => (string) ($dbField['label'] ?: $name),
+                    'label'      => $label,
                     'page_side'  => $side,
                     'value'      => printIsLcroFooterField($name)
                         ? printFormatLcroFooterDisplayText($rawValue)
@@ -2162,6 +2130,43 @@ function printFillEditorFields(string $certificateType, array $record, array $op
                 ];
                 $seen[$name] = true;
             }
+        }
+
+        return $fields;
+    }
+
+    $fields = [];
+    $seen = [];
+    $sides = $documentKind === 'certification' ? ['front'] : ['front', 'back'];
+
+    foreach ($sides as $side) {
+        $template = getPrintTemplate($pdo, $certificateType, $side, $documentKind);
+        if (!$template) {
+            continue;
+        }
+
+        foreach (getPrintFields($pdo, (int) $template['id'], true) as $dbField) {
+            $name = (string) ($dbField['field_name'] ?? '');
+            if ($name === '' || isset($seen[$name])) {
+                continue;
+            }
+            if (printIsRecordRegistryField($name) && !empty($options['exclude_record_registry_fields'])) {
+                continue;
+            }
+            if (!printFillFieldRecognizedInCatalog($certificateType, $side, $name, $documentKind)) {
+                continue;
+            }
+
+            $rawValue = (string) ($values[$name] ?? '');
+            $fields[] = [
+                'field_name' => $name,
+                'label'      => printFillResolveDisplayLabel($dbField, $certificateType, $side, $documentKind),
+                'page_side'  => $side,
+                'value'      => printIsLcroFooterField($name)
+                    ? printFormatLcroFooterDisplayText($rawValue)
+                    : $rawValue,
+            ];
+            $seen[$name] = true;
         }
     }
 

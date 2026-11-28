@@ -58,10 +58,10 @@ if (!$context['ok']) {
             ? printCertificationFillEditorFields($certificateType, $record, $certFillOverrides, $pdo)
             : printFillEditorFields($certificateType, $record, [], $pdo);
         $frontTemplate = getPrintTemplate($pdo, $certificateType, 'front', $documentKind);
-        if ($isCertification) {
-            $certPaper = certificationPaperSize($certificateType);
-            $paperW = (float) $certPaper['paper_width_mm'];
-            $paperH = (float) $certPaper['paper_height_mm'];
+        if ($frontTemplate) {
+            $paperDims = printTemplatePaperDimensions($frontTemplate, $documentKind);
+            $paperW = (float) $paperDims['width_mm'];
+            $paperH = (float) $paperDims['height_mm'];
         } else {
             $paperW = printOfficialPaperWidthMm();
             $paperH = printOfficialPaperHeightMm();
